@@ -2401,11 +2401,16 @@ function AbaChecklistConfigDinamico() {
     ordem: 10,
   });
 
-  const { data: checklistRes } = useQuery({
+  const { data: checklistRes, isLoading: checklistCarregando, isFetching: checklistAtualizando, error: checklistErroRede, refetch: recarregarChecklist } = useQuery({
     queryKey: ["admin-checklist-config"],
     queryFn: () => import("@/lib/admin-checklist.functions").then((m) => m.getChecklistConfigAdminFn()),
+    retry: 1,
   });
   const categorias = (checklistRes as any)?.ok ? ((checklistRes as any).data as any[]) : [];
+  const checklistErroMsg =
+    (checklistErroRede as any)?.message ||
+    (checklistRes && (checklistRes as any).ok === false ? (checklistRes as any).message : null);
+
 
   // Mantém selecionada a primeira categoria quando abrir a aba
   useEffect(() => {
