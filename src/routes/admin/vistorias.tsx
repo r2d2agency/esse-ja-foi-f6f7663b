@@ -2401,7 +2401,7 @@ function AbaChecklistConfigDinamico() {
     ordem: 10,
   });
 
-  const { data: checklistRes, isLoading: checklistCarregando, isFetching: checklistAtualizando, error: checklistErroRede, refetch: recarregarChecklist } = useQuery({
+  const { data: checklistRes, isLoading: checklistCarregando, error: checklistErroRede, refetch: recarregarChecklist } = useQuery({
     queryKey: ["admin-checklist-config"],
     queryFn: () => import("@/lib/admin-checklist.functions").then((m) => m.getChecklistConfigAdminFn()),
     retry: 1,
