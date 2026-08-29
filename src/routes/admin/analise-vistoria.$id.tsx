@@ -53,9 +53,9 @@ function DetalheAnaliseVistoriaPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("resumo");
-  const [comissaoPercent, setComissaoPercent] = useState(5);
-  const [valorMinimo, setValorMinimo] = useState(0);
-  const [valorReferencia, setValorReferencia] = useState(0);
+  const [comissaoPercentTxt, setComissaoPercentTxt] = useState("5");
+  const [valorMinimoTxt, setValorMinimoTxt] = useState("");
+  const [valorReferenciaTxt, setValorReferenciaTxt] = useState("");
   const [mensagemVendedor, setMensagemVendedor] = useState("");
   const [observacaoInterna, setObservacaoInterna] = useState("");
   const [novaVistoriaAberta, setNovaVistoriaAberta] = useState(false);
@@ -80,18 +80,24 @@ function DetalheAnaliseVistoriaPage() {
 
   useEffect(() => {
     if (!veiculo) return;
-    setValorReferencia(Number(propostaAtual?.valor_referencia ?? veiculo.valor_interesse_cliente ?? 0));
-    setValorMinimo(Number(propostaAtual?.valor_minimo_acordado ?? 0));
+    const ref = Number(propostaAtual?.valor_referencia ?? veiculo.valor_interesse_cliente ?? 0);
+    const min = Number(propostaAtual?.valor_minimo_acordado ?? 0);
+    setValorReferenciaTxt(ref > 0 ? String(ref) : "");
+    setValorMinimoTxt(min > 0 ? String(min) : "");
     setMensagemVendedor(String(propostaAtual?.mensagem_vendedor ?? ""));
     setObservacaoInterna(String(propostaAtual?.observacao_interna ?? ""));
     if (propostaAtual?.valor_minimo_acordado && propostaAtual?.comissao_valor) {
       const minimo = Number(propostaAtual.valor_minimo_acordado);
       const comissao = Number(propostaAtual.comissao_valor);
       if (minimo > 0) {
-        setComissaoPercent(Number(((comissao / minimo) * 100).toFixed(2)));
+        setComissaoPercentTxt(String(Number(((comissao / minimo) * 100).toFixed(2))));
       }
     }
   }, [veiculo, propostaAtual]);
+
+  const valorMinimo = Number(valorMinimoTxt) || 0;
+  const valorReferencia = Number(valorReferenciaTxt) || 0;
+  const comissaoPercent = Number(comissaoPercentTxt) || 0;
 
   const liquidEstimado = useMemo(() => {
     const comissao = (valorMinimo * comissaoPercent) / 100;
@@ -134,8 +140,8 @@ function DetalheAnaliseVistoriaPage() {
           comissao_tipo: "PERCENTUAL",
           comissao_valor: Number(((valorMinimo * comissaoPercent) / 100).toFixed(2)),
           valor_liquido_vendedor: Number(liquidEstimado.toFixed(2)),
-          observacao_interna: observacaoInterna || undefined,
-          mensagem_vendedor: mensagemVendedor || undefined,
+          observacao_interna: observacaoInterna || null,
+          mensagem_vendedor: mensagemVendedor || null,
           usuario_id: user.id,
         },
       });
@@ -398,19 +404,19 @@ function DetalheAnaliseVistoriaPage() {
                     <div className="grid gap-4 md:grid-cols-2">
                       <div className="space-y-2">
                         <Label>Valor de referência</Label>
-                        <Input type="number" value={valorReferencia} onChange={(e) => setValorReferencia(Number(e.target.value))} />
+                        <Input type="number" inputMode="decimal" min={0} placeholder="0" value={valorReferenciaTxt} onChange={(e) => setValorReferenciaTxt(e.target.value.replace(/^0+(?=\d)/, ""))} />
                         <p className="text-[10px] text-slate-400">Interesse inicial do vendedor: {formatCurrency(veiculo.valor_interesse_cliente)}</p>
                       </div>
                       <div className="space-y-2">
                         <Label>Valor mínimo acordado</Label>
-                        <Input type="number" value={valorMinimo} onChange={(e) => setValorMinimo(Number(e.target.value))} />
+                        <Input type="number" inputMode="decimal" min={0} placeholder="0" value={valorMinimoTxt} onChange={(e) => setValorMinimoTxt(e.target.value.replace(/^0+(?=\d)/, ""))} />
                       </div>
                     </div>
 
                     <div className="grid gap-4 md:grid-cols-2">
                       <div className="space-y-2">
                         <Label>Comissão da plataforma (%)</Label>
-                        <Input type="number" value={comissaoPercent} onChange={(e) => setComissaoPercent(Number(e.target.value))} />
+                        <Input type="number" inputMode="decimal" min={0} placeholder="0" value={comissaoPercentTxt} onChange={(e) => setComissaoPercentTxt(e.target.value.replace(/^0+(?=\d)/, ""))} />
                       </div>
                       <div className="space-y-2">
                         <Label>Mensagem para o vendedor</Label>
