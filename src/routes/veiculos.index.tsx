@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { getVitrine } from "@/lib/vitrine.functions";
+import { getSessionToken } from "@/lib/session";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, MapPin, Gauge, ShieldCheck, Lock, Menu, X } from "lucide-react";
@@ -14,7 +15,7 @@ function VitrinePublica() {
   const [menuOpen, setMenuOpen] = useState(false);
   const { data: veiculos, isLoading } = useQuery({
     queryKey: ["vitrine-veiculos"],
-    queryFn: () => getVitrine(),
+    queryFn: () => getVitrine({ data: { token: getSessionToken() } }),
   });
 
   return (

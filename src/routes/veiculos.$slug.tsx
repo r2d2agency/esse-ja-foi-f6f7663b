@@ -3,7 +3,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getAnuncioPublico } from "@/lib/vitrine.functions";
 import { getLeilaoInfo, darLanceFn } from "@/lib/leilao.functions";
 import { Button } from "@/components/ui/button";
-import { ShieldCheck, MapPin, Fuel, Settings2, Info, Lock, ArrowLeft, CheckCircle2, Gavel, Clock, TrendingUp } from "lucide-react";
+import { ShieldCheck, MapPin, Fuel, Settings2, Lock, ArrowLeft, Gavel, Clock, TrendingUp, Heart, BellPlus } from "lucide-react";
+import { getSessionToken } from "@/lib/session";
+import { alternarFavoritoFn, salvarLembreteFn } from "@/lib/comprador.functions";
 import { useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/use-auth";
@@ -12,6 +14,23 @@ import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/veiculos/$slug")({
+  head: () => ({
+    meta: [
+      { title: "Veículo em leilão — ESSE JÁ FOI" },
+      {
+        name: "description",
+        content:
+          "Detalhes completos do veículo vistoriado: fotos, ficha técnica e sala de lances para compradores aprovados.",
+      },
+      { property: "og:title", content: "Veículo em leilão — ESSE JÁ FOI" },
+      {
+        property: "og:description",
+        content: "Veículo vistoriado disponível para lances na plataforma Esse Já Foi.",
+      },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+    ],
+  }),
   component: DetalheVeiculoPublico,
 });
 
@@ -22,8 +41,12 @@ function DetalheVeiculoPublico() {
 
   const { data: anuncio, isLoading: loadingAnuncio } = useQuery({
     queryKey: ["anuncio-publico", slug],
-    queryFn: () => getAnuncioPublico({ data: slug }),
+    queryFn: () => getAnuncioPublico({ data: { slug, token: getSessionToken() } }),
   });
+
+  const acesso: any = (anuncio as any)?.acesso || {};
+  const podeVerValores = !!acesso.pode_ver_valores;
+  const podeDarLances = !!acesso.pode_dar_lances;
 
   // Buscamos info do leilão em tempo real se o anúncio for carregado e o usuário puder ver
   const { data: leilao, isLoading: loadingLeilao } = useQuery({
@@ -32,18 +55,19 @@ function DetalheVeiculoPublico() {
       const res = await getLeilaoInfo({ data: anuncio?.leilao_id });
       return res as any;
     },
-    enabled: !!(anuncio?.leilao_id && isAuthenticated && user?.pode_ver_valores),
+    enabled: !!(anuncio?.leilao_id && podeVerValores),
     refetchInterval: 5000,
   });
 
   const darLanceMutation = useMutation({
-    mutationFn: (valor: number) => darLanceFn({ 
-      data: { 
-        leilaoId: anuncio?.leilao_id, 
-        valor, 
-        compradorId: user?.id 
-      } 
-    }),
+    mutationFn: (valor: number) =>
+      darLanceFn({
+        data: {
+          leilaoId: anuncio?.leilao_id,
+          valor,
+          token: getSessionToken(),
+        },
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["leilao-veiculo"] });
       toast.success("Lance registrado com sucesso!");
@@ -51,6 +75,32 @@ function DetalheVeiculoPublico() {
     onError: (err: any) => {
       toast.error(err.message || "Erro ao registrar lance.");
     }
+  });
+
+  const favoritoMutation = useMutation({
+    mutationFn: () =>
+      alternarFavoritoFn({ data: { token: getSessionToken(), anuncioId: anuncio?.id } }),
+    onSuccess: (res: any) => {
+      queryClient.invalidateQueries({ queryKey: ["anuncio-publico", slug] });
+      toast.success(res?.favorito ? "Adicionado aos favoritos." : "Removido dos favoritos.");
+    },
+    onError: () => toast.error("Faça login para favoritar."),
+  });
+
+  const lembreteMutation = useMutation({
+    mutationFn: () =>
+      salvarLembreteFn({
+        data: {
+          token: getSessionToken(),
+          anuncioId: anuncio?.id,
+          lembrarEm: anuncio?.inicio_em || null,
+        },
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["anuncio-publico", slug] });
+      toast.success("Lembrete criado! Avisaremos antes do leilão começar.");
+    },
+    onError: () => toast.error("Faça login para criar lembretes."),
   });
 
   const [activePhoto, setActivePhoto] = useState(0);
@@ -190,7 +240,7 @@ function DetalheVeiculoPublico() {
                     Ainda não possui cadastro? <Link to="/comprador/cadastro" className="text-teal-400 hover:underline">Criar conta de comprador</Link>
                   </div>
                 </div>
-              ) : user?.role === 'comprador' && !user?.pode_ver_valores ? (
+              ) : !podeVerValores ? (
                 <div className="bg-white/5 border border-white/10 rounded-3xl p-6 mb-8 text-center">
                   <div className="flex justify-center mb-3">
                     <div className="w-12 h-12 rounded-full bg-amber-500/20 flex items-center justify-center text-amber-400">
@@ -226,14 +276,14 @@ function DetalheVeiculoPublico() {
                     <div className="grid grid-cols-2 gap-4">
                       <Button 
                         onClick={() => darLanceMutation.mutate(proximoLanceMinimo)}
-                        disabled={darLanceMutation.isPending || leilao?.status === 'ENCERRADO'}
+                        disabled={!podeDarLances || darLanceMutation.isPending || leilao?.status === 'ENCERRADO'}
                         className="h-14 bg-teal-600 hover:bg-teal-700 text-white font-black text-xs uppercase rounded-2xl shadow-lg shadow-teal-900/20"
                       >
                         Dar Lance R$ {proximoLanceMinimo.toLocaleString('pt-BR')}
                       </Button>
                       <Button 
                         onClick={() => darLanceMutation.mutate(proximoLanceMinimo + Number(leilao?.incremento_minimo || 0))}
-                        disabled={darLanceMutation.isPending || leilao?.status === 'ENCERRADO'}
+                        disabled={!podeDarLances || darLanceMutation.isPending || leilao?.status === 'ENCERRADO'}
                         variant="outline"
                         className="h-14 border-white/10 text-white hover:bg-white/5 font-black text-xs uppercase rounded-2xl"
                       >
@@ -265,6 +315,30 @@ function DetalheVeiculoPublico() {
                   <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-6">Valor Comercial</div>
                   <Button className="w-full h-12 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl">
                     Tenho Interesse
+                  </Button>
+                </div>
+              )}
+              {isAuthenticated && (
+                <div className="mt-8 grid grid-cols-2 gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => favoritoMutation.mutate()}
+                    className="h-12 rounded-2xl border-white/10 text-xs font-black uppercase text-white hover:bg-white/5"
+                  >
+                    <Heart
+                      className={`mr-2 h-4 w-4 ${anuncio.favorito ? "fill-teal-400 text-teal-400" : ""}`}
+                    />
+                    {anuncio.favorito ? "Favoritado" : "Favoritar"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => lembreteMutation.mutate()}
+                    className="h-12 rounded-2xl border-white/10 text-xs font-black uppercase text-white hover:bg-white/5"
+                  >
+                    <BellPlus className="mr-2 h-4 w-4" />
+                    {anuncio.lembrete ? "Lembrete ativo" : "Lembrar-me"}
                   </Button>
                 </div>
               )}
