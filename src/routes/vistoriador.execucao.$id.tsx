@@ -251,32 +251,40 @@ function VistoriaExecucaoPage() {
 
   if (!v) return null;
 
-  // Qual etapa permite continuar?
-  const permiteContinuar = () => {
-    if (etapaAtual === 0) return checkinRealizado;
-    // Categorias: itens obrigatórios sem resposta valida → trava
-    if (categoriaDaEtapaAtual) {
-      const itens = categoriaDaEtapaAtual.itens || [];
-      for (const item of itens) {
-        if (!item.obrigatorio) continue;
-        const r = respostasEmMemoria[item.id];
-        if (item.tipo_item === "CONFORMIDADE") {
-          if (!r?.resposta_conformidade) return false;
-          if (item.foto_obrigatoria && !r?.foto_url) return false;
-        } else if (item.tipo_item === "TEXTO_LIVRE") {
-          if (!String(r?.resposta_texto || "").trim()) return false;
-        } else if (item.tipo_item === "NUMERO") {
-          if (r?.resposta_numero === undefined || r?.resposta_numero === null || Number.isNaN(Number(r?.resposta_numero))) return false;
-        } else if (item.tipo_item === "CHECKBOX_MULTIPLO" || item.tipo_item === "SELECT_UNICO") {
-          if (!r?.resposta_opcoes || (Array.isArray(r.resposta_opcoes) && r.resposta_opcoes.length === 0) || (typeof r.resposta_opcoes === "string" && !r.resposta_opcoes)) {
-            return false;
-          }
+  // Itens obrigatórios ainda pendentes na etapa atual
+  const pendenciasEtapa = (): string[] => {
+    if (!categoriaDaEtapaAtual) return [];
+    const faltando: string[] = [];
+    for (const item of (categoriaDaEtapaAtual.itens || []) as any[]) {
+      if (!item.obrigatorio) continue;
+      const r = respostasEmMemoria[item.id];
+      const titulo = item.titulo || "Item";
+      const tipo = item.tipo_item;
+      if (tipo === "CONFORMIDADE") {
+        if (!r?.resposta_conformidade) faltando.push(titulo);
+        else if (item.foto_obrigatoria && !r?.foto_url) faltando.push(`${titulo} (foto)`);
+      } else if (tipo === "TEXTO_LIVRE") {
+        if (!String(r?.resposta_texto || "").trim()) faltando.push(titulo);
+      } else if (tipo === "CHECKBOX_MULTIPLO" || tipo === "SELECT_UNICO") {
+        const op = r?.resposta_opcoes;
+        if (!op || (Array.isArray(op) && op.length === 0) || (typeof op === "string" && !op)) faltando.push(titulo);
+      } else {
+        // NUMERO e tipos não mapeados usam o campo numérico
+        if (r?.resposta_numero === undefined || r?.resposta_numero === null || Number.isNaN(Number(r?.resposta_numero))) {
+          faltando.push(titulo);
+        } else if (item.foto_obrigatoria && !r?.foto_url) {
+          faltando.push(`${titulo} (foto)`);
         }
       }
-      return true;
     }
-    return true;
+    return faltando;
   };
+
+  const permiteContinuar = () => {
+    if (etapaAtual === 0) return checkinRealizado;
+    return pendenciasEtapa().length === 0;
+  };
+
 
   return (
     <div className="flex min-h-screen flex-col bg-background lg:ml-64">
