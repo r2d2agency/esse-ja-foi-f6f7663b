@@ -539,7 +539,8 @@ export async function ensureVistoriaSchema() {
       AND antiga.chave IS NOT NULL
       AND antiga.criado_em < nova.criado_em
   `);
-  await d.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_laudo_fotos_laudo_chave ON laudo_fotos(laudo_id, chave) WHERE chave IS NOT NULL`);
+  await d.execute(sql`DROP INDEX IF EXISTS idx_laudo_fotos_laudo_chave`);
+  await d.execute(sql`CREATE UNIQUE INDEX idx_laudo_fotos_laudo_chave ON laudo_fotos(laudo_id, chave)`);
 
   // Reconciliação: caso a tabela laudos já exista criada por outro módulo
   // (com agendamento_id e sem vistoria_id/concluido_em), garante as colunas
