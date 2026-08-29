@@ -2426,15 +2426,16 @@ function AbaChecklistConfigDinamico() {
     mutationFn: () => import("@/lib/admin-checklist.functions").then((m) => m.adminCriarCategoriaFn({
       data: { nome: novaCatNome, descricao: novaCatDesc || null, ordem: (categorias.length + 1) * 10 },
     })),
-    onSuccess: (r) => {
+    onSuccess: async (r) => {
       if ((r as any).ok) {
         setNovaCatNome("");
         setNovaCatDesc("");
         setCatSelecionadaId((r as any).id || null);
-        refetch();
+        await refetch();
         toast.success("Categoria criada.");
       } else toast.error((r as any).message || "Erro.");
     },
+    onError: (erro: any) => toast.error(erro?.message || "Não foi possível criar a categoria."),
   });
 
   const excluirCategoriaMut = useMutation({
