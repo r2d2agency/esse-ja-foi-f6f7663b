@@ -78,6 +78,7 @@ export async function ensureAnalisePosVistoriaSchema() {
 
 export async function listarVistoriasConcluidasFila() {
   const d = requireDb();
+  await ensureAnalisePosVistoriaSchema();
   const res = await d.execute(sql`
     SELECT 
       v.id as vistoria_id,
@@ -111,6 +112,7 @@ export async function listarVistoriasConcluidasFila() {
 
 export async function getDetalheAnaliseVistoria(veiculoId: string) {
   const d = requireDb();
+  await ensureAnalisePosVistoriaSchema();
   
   const vRes = await d.execute(sql`
     SELECT 
@@ -148,11 +150,15 @@ export async function getDetalheAnaliseVistoria(veiculoId: string) {
   let checklist = [];
   let fotos = [];
   if (vistoria?.laudo_id) {
-    const checkRes = await d.execute(sql`SELECT * FROM laudo_checklist WHERE laudo_id = ${vistoria.laudo_id}::uuid`);
-    checklist = rowsOf(checkRes) || [];
-    
-    const fotoRes = await d.execute(sql`SELECT * FROM laudo_fotos WHERE laudo_id = ${vistoria.laudo_id}::uuid`);
-    fotos = rowsOf(fotoRes) || [];
+    try {
+      const checkRes = await d.execute(sql`SELECT * FROM laudo_checklist WHERE laudo_id = ${vistoria.laudo_id}::uuid`);
+      checklist = rowsOf(checkRes) || [];
+    } catch { checklist = []; }
+
+    try {
+      const fotoRes = await d.execute(sql`SELECT * FROM laudo_fotos WHERE laudo_id = ${vistoria.laudo_id}::uuid`);
+      fotos = rowsOf(fotoRes) || [];
+    } catch { fotos = []; }
   }
 
   const propRes = await d.execute(sql`
