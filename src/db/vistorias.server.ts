@@ -531,6 +531,16 @@ export async function ensureVistoriaSchema() {
   await d.execute(sql`ALTER TABLE laudo_fotos ADD COLUMN IF NOT EXISTS url text`);
   await d.execute(sql`ALTER TABLE laudo_fotos ADD COLUMN IF NOT EXISTS legenda text`);
   await d.execute(sql`ALTER TABLE laudo_fotos ADD COLUMN IF NOT EXISTS metadata jsonb`);
+  await d.execute(sql`
+    DELETE FROM laudo_fotos antiga
+    USING laudo_fotos nova
+    WHERE antiga.laudo_id = nova.laudo_id
+      AND antiga.chave = nova.chave
+      AND antiga.chave IS NOT NULL
+      AND antiga.criado_em < nova.criado_em
+  `);
+  await d.execute(sql`DROP INDEX IF EXISTS idx_laudo_fotos_laudo_chave`);
+  await d.execute(sql`CREATE UNIQUE INDEX idx_laudo_fotos_laudo_chave ON laudo_fotos(laudo_id, chave)`);
 
   // Reconciliação: caso a tabela laudos já exista criada por outro módulo
   // (com agendamento_id e sem vistoria_id/concluido_em), garante as colunas
@@ -593,7 +603,7 @@ export async function getVeiculosAguardandoVistoria() {
       AND NOT EXISTS (
         SELECT 1 FROM vistorias vis 
         WHERE vis.veiculo_id = v.id 
-          AND vis.status NOT IN ('CANCELADA')
+          AND vis.status NOT IN ('CANCELADA', 'CONCLUIDA', 'CONCLUIDA_COM_RESTRICOES', 'REPROVADA', 'REJEITADA')
       )
     ORDER BY v.atualizado_em DESC
   `);
@@ -1756,17 +1766,61 @@ export async function salvarFotoLaudo(data: { laudoId: string; tipo_foto: string
   await d.execute(sql`
     INSERT INTO laudo_fotos (laudo_id, chave, tipo_foto, url, metadata)
     VALUES (${data.laudoId}::uuid, ${chave}, ${data.tipo_foto}, ${data.url}, ${metadataJson}::jsonb)
+    ON CONFLICT (laudo_id, chave) DO UPDATE SET
+      tipo_foto = EXCLUDED.tipo_foto,
+      url = EXCLUDED.url,
+      metadata = EXCLUDED.metadata
   `);
 
   return { ok: true };
 }
 
+export async function listarFotosLaudo(laudoId: string) {
+  const d = requireDb();
+  await ensureVistoriaSchema();
+  const idNorm = normalizarUuid(laudoId);
+  if (!idNorm) return [];
+  const r = await d.execute(sql`
+    SELECT id::text AS id, tipo_foto, url, metadata, criado_em
+    FROM laudo_fotos
+    WHERE laudo_id = ${idNorm}::uuid
+    ORDER BY criado_em, tipo_foto
+  `);
+  return rowsOf(r);
+}
+
 export async function concluirVistoriaApp(data: { laudoId: string; quilometragem: number; observacao_geral: string; declaracao: boolean }) {
   const d = requireDb();
+  await ensureVistoriaSchema();
+  if (!data.declaracao) throw new Error("Confirme a declaração antes de concluir a vistoria.");
   
   const lRes = await d.execute(sql`SELECT vistoria_id, veiculo_id FROM laudos WHERE id = ${data.laudoId}::uuid`);
   const laudo = rowsOf(lRes)[0];
   if (!laudo) throw new Error("Laudo não encontrado.");
+
+  const pendenciasRes = await d.execute(sql`
+    SELECT i.titulo
+    FROM vistorias_checklist_itens i
+    JOIN vistorias_checklist_categorias c ON c.id = i.categoria_id AND c.ativo = true
+    LEFT JOIN laudo_vistoria_respostas r
+      ON r.item_id = i.id AND r.laudo_id = ${data.laudoId}::uuid
+    WHERE i.ativo = true
+      AND i.obrigatorio = true
+      AND (
+        r.id IS NULL
+        OR (i.tipo_item = 'CONFORMIDADE' AND r.resposta_conformidade IS NULL)
+        OR (i.tipo_item = 'TEXTO_LIVRE' AND NULLIF(btrim(r.resposta_texto), '') IS NULL)
+        OR (i.tipo_item = 'NUMERO' AND r.resposta_numero IS NULL)
+        OR (i.tipo_item IN ('CHECKBOX_MULTIPLO', 'SELECT_UNICO') AND r.resposta_opcoes IS NULL)
+        OR (i.foto_obrigatoria = true AND NULLIF(btrim(r.foto_url), '') IS NULL)
+      )
+    ORDER BY c.ordem, i.ordem
+    LIMIT 10
+  `);
+  const pendencias = rowsOf(pendenciasRes);
+  if (pendencias.length > 0) {
+    throw new Error(`Ainda existem itens obrigatórios pendentes: ${pendencias.map((item: any) => item.titulo).join(", ")}.`);
+  }
 
   await d.execute(sql`
     UPDATE laudos SET 

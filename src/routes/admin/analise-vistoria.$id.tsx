@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { getDetalheAnaliseVistoriaFn, enviarPropostaVendedorFn } from "@/lib/analise-pos-vistoria.functions";
+import { getDetalheAnaliseVistoriaFn, enviarPropostaVendedorFn, solicitarNovaVistoriaFn } from "@/lib/analise-pos-vistoria.functions";
 import { useAuth } from "@/hooks/use-auth";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -15,6 +15,7 @@ import {
   Gavel,
   MapPin,
   MessageSquare,
+  RotateCcw,
   User,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -25,6 +26,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -56,9 +58,12 @@ function DetalheAnaliseVistoriaPage() {
   const [valorReferencia, setValorReferencia] = useState(0);
   const [mensagemVendedor, setMensagemVendedor] = useState("");
   const [observacaoInterna, setObservacaoInterna] = useState("");
+  const [novaVistoriaAberta, setNovaVistoriaAberta] = useState(false);
+  const [motivoNovaVistoria, setMotivoNovaVistoria] = useState("");
 
   const getDetalhe = useServerFn(getDetalheAnaliseVistoriaFn);
   const enviarProposta = useServerFn(enviarPropostaVendedorFn);
+  const solicitarNovaVistoria = useServerFn(solicitarNovaVistoriaFn);
 
   const { data: res, isLoading, refetch } = useQuery({
     queryKey: ["admin-analise-vistoria", id],
@@ -148,6 +153,27 @@ function DetalheAnaliseVistoriaPage() {
     }
   };
 
+  const handleSolicitarNovaVistoria = async () => {
+    if (!user?.id || !vistoria?.id || motivoNovaVistoria.trim().length < 5) {
+      toast.error("Informe o motivo da nova vistoria.");
+      return;
+    }
+    const toastId = toast.loading("Solicitando nova vistoria...");
+    const response = await solicitarNovaVistoria({ data: {
+      veiculoId: id,
+      vistoriaId: String(vistoria.id),
+      motivo: motivoNovaVistoria.trim(),
+      usuarioId: user.id,
+    } });
+    if (!response.ok) {
+      toast.error((response as any).message || "Não foi possível solicitar nova vistoria.", { id: toastId });
+      return;
+    }
+    toast.success("Nova vistoria solicitada. O laudo atual foi preservado.", { id: toastId });
+    setNovaVistoriaAberta(false);
+    navigate({ to: "/admin/vistorias", search: { tab: "agendamento", veiculoId: id } } as any);
+  };
+
   if (isLoading) return <div className="p-8">Carregando análise...</div>;
   if (!res?.ok || !data || !veiculo) return <div className="p-8 text-red-500">Erro: {res?.message || "Veículo não encontrado"}</div>;
 
@@ -172,6 +198,9 @@ function DetalheAnaliseVistoriaPage() {
         </div>
 
         <div className="flex items-center gap-3">
+          <Button variant="outline" className="font-bold text-amber-700" onClick={() => setNovaVistoriaAberta(true)}>
+            <RotateCcw className="mr-2 h-4 w-4" /> Solicitar nova vistoria
+          </Button>
           <Button variant="outline" className="font-bold" onClick={() => setActiveTab("checklist")}>
             <ClipboardList className="mr-2 h-4 w-4" /> Revisar checklist
           </Button>
@@ -316,7 +345,13 @@ function DetalheAnaliseVistoriaPage() {
                             </div>
                           </td>
                           <td className="px-6 py-4">{renderChecklistStatus(item.status)}</td>
-                          <td className="px-6 py-4 text-sm text-slate-500">{item.observacao || "-"}</td>
+                           <td className="px-6 py-4 text-sm text-slate-500">
+                             <div className="space-y-2">
+                               <p>{formatarRespostaChecklist(item)}</p>
+                               {item.observacao && <p className="text-xs italic">Observação: {item.observacao}</p>}
+                               {item.foto_url && <img src={item.foto_url} alt={`Foto de ${item.item_chave}`} className="h-20 w-28 rounded-md border border-slate-200 object-cover" />}
+                             </div>
+                           </td>
                         </tr>
                       )) : (
                         <tr>
@@ -452,6 +487,22 @@ function DetalheAnaliseVistoriaPage() {
           </div>
         </ScrollArea>
       </Tabs>
+      <Dialog open={novaVistoriaAberta} onOpenChange={setNovaVistoriaAberta}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Solicitar nova vistoria</DialogTitle>
+            <DialogDescription>O laudo atual continuará salvo no histórico. O veículo voltará para a fila de agendamento.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="motivo-nova-vistoria">Motivo</Label>
+            <Textarea id="motivo-nova-vistoria" value={motivoNovaVistoria} onChange={(event) => setMotivoNovaVistoria(event.target.value)} placeholder="Ex.: fotos insuficientes ou item técnico precisa ser conferido novamente." />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNovaVistoriaAberta(false)}>Cancelar</Button>
+            <Button onClick={() => void handleSolicitarNovaVistoria()} disabled={motivoNovaVistoria.trim().length < 5}>Confirmar solicitação</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -506,7 +557,17 @@ function renderChecklistStatus(status: string) {
       return <Badge className="bg-amber-50 text-amber-700 hover:bg-amber-50 text-[10px] font-bold">Com observação</Badge>;
     case "NAO_CONFORME":
       return <Badge className="bg-red-50 text-red-700 hover:bg-red-50 text-[10px] font-bold">Não conforme</Badge>;
+    case "RESPONDIDO":
+      return <Badge className="bg-blue-50 text-blue-700 hover:bg-blue-50 text-[10px] font-bold">Respondido</Badge>;
     default:
       return <Badge variant="outline" className="text-[10px] font-bold">{status || "N/A"}</Badge>;
   }
+}
+
+function formatarRespostaChecklist(item: any) {
+  if (item.resposta_texto) return item.resposta_texto;
+  if (item.resposta_numero !== null && item.resposta_numero !== undefined) return String(item.resposta_numero);
+  if (Array.isArray(item.resposta_opcoes)) return item.resposta_opcoes.join(", ");
+  if (item.resposta_opcoes) return String(item.resposta_opcoes);
+  return item.observacao || "Sem observação";
 }
