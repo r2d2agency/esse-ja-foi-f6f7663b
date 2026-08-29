@@ -6,11 +6,21 @@ function requireDb() {
   return db;
 }
 
+// Executa DDL tolerando falhas (esquemas legados / tabelas ausentes),
+// para que uma reconciliação não derrube a leitura da proposta.
+async function safeDDL(fn: () => Promise<unknown>, label: string) {
+  try {
+    await fn();
+  } catch (err: any) {
+    console.warn(`[analise-pos-vistoria] DDL ignorada (${label}):`, err?.message ?? err);
+  }
+}
+
 export async function ensureAnalisePosVistoriaSchema() {
   const d = requireDb();
 
   // Tabela de Propostas
-  await d.execute(sql`
+  await safeDDL(() => d.execute(sql`
     CREATE TABLE IF NOT EXISTS propostas_veiculo (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       veiculo_id uuid NOT NULL REFERENCES veiculos(id) ON DELETE CASCADE,
@@ -33,24 +43,24 @@ export async function ensureAnalisePosVistoriaSchema() {
       criado_em timestamptz DEFAULT now(),
       UNIQUE(veiculo_id, versao)
     );
-  `);
+  `), "propostas_veiculo");
 
   // Histórico de Fotos para Anúncio (seleção do admin)
-  await d.execute(sql`
+  await safeDDL(() => d.execute(sql`
     CREATE TABLE IF NOT EXISTS veiculos_fotos_selecao (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       veiculo_id uuid NOT NULL REFERENCES veiculos(id) ON DELETE CASCADE,
-      foto_laudo_id uuid REFERENCES laudo_fotos(id),
+      foto_laudo_id uuid,
       foto_url text NOT NULL,
       eh_principal boolean DEFAULT false,
       usar_anuncio boolean DEFAULT true,
       ordem integer DEFAULT 0,
       criado_em timestamptz DEFAULT now()
     );
-  `);
-  
+  `), "veiculos_fotos_selecao");
+
   // Pendências de Vistoria
-  await d.execute(sql`
+  await safeDDL(() => d.execute(sql`
     CREATE TABLE IF NOT EXISTS vistorias_pendencias (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       vistoria_id uuid NOT NULL REFERENCES vistorias(id) ON DELETE CASCADE,
@@ -61,18 +71,29 @@ export async function ensureAnalisePosVistoriaSchema() {
       criado_em timestamptz DEFAULT now(),
       resolvido_em timestamptz
     );
-  `);
+  `), "vistorias_pendencias");
 
   // Reconciliação de esquemas legados
-  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS versao integer NOT NULL DEFAULT 1`);
-  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS valor_referencia numeric(12,2)`);
-  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS valor_minimo_interno numeric(12,2)`);
-  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS observacao_interna text`);
-  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS mensagem_vendedor text`);
-  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS motivo_recusa text`);
-  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS detalhes_recusa text`);
-  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS respondido_em timestamptz`);
-  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS ip_vendedor text`);
+  const colunas: Array<[string, string]> = [
+    ["versao", "integer NOT NULL DEFAULT 1"],
+    ["valor_referencia", "numeric(12,2)"],
+    ["valor_minimo_interno", "numeric(12,2)"],
+    ["observacao_interna", "text"],
+    ["mensagem_vendedor", "text"],
+    ["motivo_recusa", "text"],
+    ["detalhes_recusa", "text"],
+    ["respondido_em", "timestamptz"],
+    ["ip_vendedor", "text"],
+    ["enviado_em", "timestamptz DEFAULT now()"],
+    ["criado_em", "timestamptz DEFAULT now()"],
+    ["status", "text NOT NULL DEFAULT 'AGUARDANDO_ACEITE'"],
+  ];
+  for (const [nome, tipo] of colunas) {
+    await safeDDL(
+      () => d.execute(sql.raw(`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS ${nome} ${tipo}`)),
+      `propostas_veiculo.${nome}`,
+    );
+  }
 }
 
 
@@ -357,18 +378,29 @@ function rowsOf(res: any): any[] {
 
 export async function getPropostaVeiculoVendedor(veiculoId: string, perfilId: string) {
   const d = requireDb();
-  await ensureAnalisePosVistoriaSchema();
+  try {
+    await ensureAnalisePosVistoriaSchema();
+  } catch (err: any) {
+    console.warn("[analise-pos-vistoria] ensure schema falhou:", err?.message ?? err);
+  }
 
+  // to_jsonb evita quebra por colunas ausentes em bases legadas.
   const vRes = await d.execute(sql`
-    SELECT id::text AS id, marca, modelo, placa, status_analise,
-           perfil_id::text AS perfil_id, vendedor_id::text AS vendedor_id
-    FROM veiculos
-    WHERE id = ${veiculoId}::uuid
-    LIMIT 1
+    SELECT to_jsonb(v) AS registro FROM veiculos v WHERE v.id = ${veiculoId}::uuid LIMIT 1
   `);
-  const veiculo = rowsOf(vRes)[0] ?? null;
+  const veiculoRaw = (rowsOf(vRes)[0]?.registro ?? null) as any;
 
-  if (!veiculo) return { veiculo: null, proposta: null, message: "Veículo não encontrado." };
+  if (!veiculoRaw) return { veiculo: null, proposta: null, message: "Veículo não encontrado." };
+
+  const veiculo = {
+    id: String(veiculoRaw.id),
+    marca: veiculoRaw.marca,
+    modelo: veiculoRaw.modelo,
+    placa: veiculoRaw.placa,
+    status_analise: veiculoRaw.status_analise,
+    perfil_id: veiculoRaw.perfil_id ? String(veiculoRaw.perfil_id) : null,
+    vendedor_id: veiculoRaw.vendedor_id ? String(veiculoRaw.vendedor_id) : null,
+  };
 
   const dono = [veiculo.perfil_id, veiculo.vendedor_id].filter(Boolean).map(String);
   if (dono.length > 0 && !dono.includes(String(perfilId))) {
@@ -376,14 +408,25 @@ export async function getPropostaVeiculoVendedor(veiculoId: string, perfilId: st
   }
 
   const pRes = await d.execute(sql`
-    SELECT id::text AS id, veiculo_id::text AS veiculo_id, versao, status,
-           valor_minimo_acordado, mensagem_vendedor, enviado_em
-    FROM propostas_veiculo
-    WHERE veiculo_id = ${veiculoId}::uuid
-    ORDER BY COALESCE(versao, 0) DESC, enviado_em DESC NULLS LAST
+    SELECT to_jsonb(p) AS registro
+    FROM propostas_veiculo p
+    WHERE p.veiculo_id = ${veiculoId}::uuid
+    ORDER BY p.criado_em DESC NULLS LAST, p.id DESC
     LIMIT 1
   `);
-  const proposta = rowsOf(pRes)[0] ?? null;
+  const propostaRaw = (rowsOf(pRes)[0]?.registro ?? null) as any;
+  const proposta = propostaRaw
+    ? {
+        id: String(propostaRaw.id),
+        veiculo_id: String(propostaRaw.veiculo_id),
+        versao: propostaRaw.versao ?? 1,
+        status: propostaRaw.status ?? "AGUARDANDO_ACEITE",
+        valor_minimo_acordado: propostaRaw.valor_minimo_acordado,
+        mensagem_vendedor: propostaRaw.mensagem_vendedor ?? null,
+        enviado_em: propostaRaw.enviado_em ?? propostaRaw.criado_em ?? null,
+      }
+    : null;
+  
 
   return {
     veiculo,
