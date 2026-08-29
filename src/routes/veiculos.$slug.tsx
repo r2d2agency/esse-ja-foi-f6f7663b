@@ -13,6 +13,8 @@ import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 import { LogoEsf } from "@/components/shared/LogoEsf";
+import { formatarTempoRestante } from "@/lib/tempo";
+
 
 export const Route = createFileRoute("/veiculos/$slug")({
   head: () => ({
@@ -115,24 +117,13 @@ function DetalheVeiculoPublico() {
   useEffect(() => {
     if (!leilaoFimEm) return;
 
-    const interval = setInterval(() => {
-      const now = new Date();
-      const end = new Date(leilaoFimEm);
-      const diff = end.getTime() - now.getTime();
+    const atualizar = () => setTimeLeft(formatarTempoRestante(leilaoFimEm));
+    atualizar();
 
-      if (diff <= 0) {
-        setTimeLeft("Encerrado");
-        clearInterval(interval);
-      } else {
-        const hours = Math.floor(diff / (1000 * 60 * 60));
-        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-        setTimeLeft(`${hours}h ${minutes}m ${seconds}s`);
-      }
-    }, 1000);
-
+    const interval = setInterval(atualizar, 1000);
     return () => clearInterval(interval);
   }, [leilaoFimEm]);
+
 
   if (loadingAnuncio) return <div className="p-10 text-center">Carregando veículo...</div>;
   if (!anuncio) return <div className="p-10 text-center">Veículo não encontrado.</div>;

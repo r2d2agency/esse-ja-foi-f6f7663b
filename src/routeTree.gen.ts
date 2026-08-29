@@ -21,6 +21,7 @@ import { Route as VendedorRouteImport } from './routes/vendedor'
 import { Route as VenderRouteImport } from './routes/vender'
 import { Route as VistoriadorRouteImport } from './routes/vistoriador'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
+import { Route as AdminAnalyticsRouteImport } from './routes/admin/analytics'
 import { Route as AdminAnunciosRouteImport } from './routes/admin/anuncios'
 import { Route as AdminCompradoresRouteImport } from './routes/admin/compradores'
 import { Route as AdminComunicacoesRouteImport } from './routes/admin/comunicacoes'
@@ -30,6 +31,7 @@ import { Route as AdminConversasRouteImport } from './routes/admin/conversas'
 import { Route as AdminDemoRouteImport } from './routes/admin/demo'
 import { Route as AdminEntregasRouteImport } from './routes/admin/entregas'
 import { Route as AdminLogsRouteImport } from './routes/admin/logs'
+import { Route as AdminMapaRouteImport } from './routes/admin/mapa'
 import { Route as AdminNegociacoesRouteImport } from './routes/admin/negociacoes'
 import { Route as AdminPagamentosRouteImport } from './routes/admin/pagamentos'
 import { Route as AdminRelatoriosRouteImport } from './routes/admin/relatorios'
@@ -142,6 +144,11 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminAnalyticsRoute = AdminAnalyticsRouteImport.update({
+  id: '/analytics',
+  path: '/analytics',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminAnunciosRoute = AdminAnunciosRouteImport.update({
   id: '/anuncios',
   path: '/anuncios',
@@ -185,6 +192,11 @@ const AdminEntregasRoute = AdminEntregasRouteImport.update({
 const AdminLogsRoute = AdminLogsRouteImport.update({
   id: '/logs',
   path: '/logs',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminMapaRoute = AdminMapaRouteImport.update({
+  id: '/mapa',
+  path: '/mapa',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminNegociacoesRoute = AdminNegociacoesRouteImport.update({
@@ -459,6 +471,7 @@ export interface FileRoutesByFullPath {
   '/vendedor': typeof VendedorRouteWithChildren
   '/vender': typeof VenderRoute
   '/vistoriador': typeof VistoriadorRouteWithChildren
+  '/admin/analytics': typeof AdminAnalyticsRoute
   '/admin/anuncios': typeof AdminAnunciosRouteWithChildren
   '/admin/compradores': typeof AdminCompradoresRoute
   '/admin/comunicacoes': typeof AdminComunicacoesRoute
@@ -468,6 +481,7 @@ export interface FileRoutesByFullPath {
   '/admin/demo': typeof AdminDemoRoute
   '/admin/entregas': typeof AdminEntregasRoute
   '/admin/logs': typeof AdminLogsRoute
+  '/admin/mapa': typeof AdminMapaRoute
   '/admin/negociacoes': typeof AdminNegociacoesRoute
   '/admin/pagamentos': typeof AdminPagamentosRoute
   '/admin/relatorios': typeof AdminRelatoriosRoute
@@ -528,6 +542,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/redefinir-senha': typeof RedefinirSenhaRoute
   '/vender': typeof VenderRoute
+  '/admin/analytics': typeof AdminAnalyticsRoute
   '/admin/anuncios': typeof AdminAnunciosRouteWithChildren
   '/admin/compradores': typeof AdminCompradoresRoute
   '/admin/comunicacoes': typeof AdminComunicacoesRoute
@@ -537,6 +552,7 @@ export interface FileRoutesByTo {
   '/admin/demo': typeof AdminDemoRoute
   '/admin/entregas': typeof AdminEntregasRoute
   '/admin/logs': typeof AdminLogsRoute
+  '/admin/mapa': typeof AdminMapaRoute
   '/admin/negociacoes': typeof AdminNegociacoesRoute
   '/admin/pagamentos': typeof AdminPagamentosRoute
   '/admin/relatorios': typeof AdminRelatoriosRoute
@@ -603,6 +619,7 @@ export interface FileRoutesById {
   '/vendedor': typeof VendedorRouteWithChildren
   '/vender': typeof VenderRoute
   '/vistoriador': typeof VistoriadorRouteWithChildren
+  '/admin/analytics': typeof AdminAnalyticsRoute
   '/admin/anuncios': typeof AdminAnunciosRouteWithChildren
   '/admin/compradores': typeof AdminCompradoresRoute
   '/admin/comunicacoes': typeof AdminComunicacoesRoute
@@ -612,6 +629,7 @@ export interface FileRoutesById {
   '/admin/demo': typeof AdminDemoRoute
   '/admin/entregas': typeof AdminEntregasRoute
   '/admin/logs': typeof AdminLogsRoute
+  '/admin/mapa': typeof AdminMapaRoute
   '/admin/negociacoes': typeof AdminNegociacoesRoute
   '/admin/pagamentos': typeof AdminPagamentosRoute
   '/admin/relatorios': typeof AdminRelatoriosRoute
@@ -679,6 +697,7 @@ export interface FileRouteTypes {
     | '/vendedor'
     | '/vender'
     | '/vistoriador'
+    | '/admin/analytics'
     | '/admin/anuncios'
     | '/admin/compradores'
     | '/admin/comunicacoes'
@@ -688,6 +707,7 @@ export interface FileRouteTypes {
     | '/admin/demo'
     | '/admin/entregas'
     | '/admin/logs'
+    | '/admin/mapa'
     | '/admin/negociacoes'
     | '/admin/pagamentos'
     | '/admin/relatorios'
@@ -748,6 +768,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/redefinir-senha'
     | '/vender'
+    | '/admin/analytics'
     | '/admin/anuncios'
     | '/admin/compradores'
     | '/admin/comunicacoes'
@@ -757,6 +778,7 @@ export interface FileRouteTypes {
     | '/admin/demo'
     | '/admin/entregas'
     | '/admin/logs'
+    | '/admin/mapa'
     | '/admin/negociacoes'
     | '/admin/pagamentos'
     | '/admin/relatorios'
@@ -822,6 +844,7 @@ export interface FileRouteTypes {
     | '/vendedor'
     | '/vender'
     | '/vistoriador'
+    | '/admin/analytics'
     | '/admin/anuncios'
     | '/admin/compradores'
     | '/admin/comunicacoes'
@@ -831,6 +854,7 @@ export interface FileRouteTypes {
     | '/admin/demo'
     | '/admin/entregas'
     | '/admin/logs'
+    | '/admin/mapa'
     | '/admin/negociacoes'
     | '/admin/pagamentos'
     | '/admin/relatorios'
@@ -988,6 +1012,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/analytics': {
+      id: '/admin/analytics'
+      path: '/analytics'
+      fullPath: '/admin/analytics'
+      preLoaderRoute: typeof AdminAnalyticsRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/anuncios': {
       id: '/admin/anuncios'
       path: '/anuncios'
@@ -1049,6 +1080,13 @@ declare module '@tanstack/react-router' {
       path: '/logs'
       fullPath: '/admin/logs'
       preLoaderRoute: typeof AdminLogsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/mapa': {
+      id: '/admin/mapa'
+      path: '/mapa'
+      fullPath: '/admin/mapa'
+      preLoaderRoute: typeof AdminMapaRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/negociacoes': {
@@ -1436,6 +1474,7 @@ const AdminVeiculoIdRouteWithChildren = AdminVeiculoIdRoute._addFileChildren(
 )
 
 interface AdminRouteChildren {
+  AdminAnalyticsRoute: typeof AdminAnalyticsRoute
   AdminAnunciosRoute: typeof AdminAnunciosRouteWithChildren
   AdminCompradoresRoute: typeof AdminCompradoresRoute
   AdminComunicacoesRoute: typeof AdminComunicacoesRoute
@@ -1445,6 +1484,7 @@ interface AdminRouteChildren {
   AdminDemoRoute: typeof AdminDemoRoute
   AdminEntregasRoute: typeof AdminEntregasRoute
   AdminLogsRoute: typeof AdminLogsRoute
+  AdminMapaRoute: typeof AdminMapaRoute
   AdminNegociacoesRoute: typeof AdminNegociacoesRoute
   AdminPagamentosRoute: typeof AdminPagamentosRoute
   AdminRelatoriosRoute: typeof AdminRelatoriosRoute
@@ -1465,6 +1505,7 @@ interface AdminRouteChildren {
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
+  AdminAnalyticsRoute: AdminAnalyticsRoute,
   AdminAnunciosRoute: AdminAnunciosRouteWithChildren,
   AdminCompradoresRoute: AdminCompradoresRoute,
   AdminComunicacoesRoute: AdminComunicacoesRoute,
@@ -1474,6 +1515,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminDemoRoute: AdminDemoRoute,
   AdminEntregasRoute: AdminEntregasRoute,
   AdminLogsRoute: AdminLogsRoute,
+  AdminMapaRoute: AdminMapaRoute,
   AdminNegociacoesRoute: AdminNegociacoesRoute,
   AdminPagamentosRoute: AdminPagamentosRoute,
   AdminRelatoriosRoute: AdminRelatoriosRoute,
