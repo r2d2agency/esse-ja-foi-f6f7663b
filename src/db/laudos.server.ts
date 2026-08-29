@@ -26,7 +26,11 @@ export async function ensureLaudoSchema(silent = true) {
     END $$;
   `);
   
-  await d.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS laudos_agendamento_uidx ON laudos (agendamento_id);`);
+  // Um mesmo agendamento pode manter mais de um laudo no histórico quando a
+  // vistoria é refeita. O índice antigo era UNIQUE e falhava ao inicializar
+  // outros módulos quando já existiam laudos repetidos.
+  await d.execute(sql`DROP INDEX IF EXISTS laudos_agendamento_uidx;`);
+  await d.execute(sql`CREATE INDEX IF NOT EXISTS laudos_agendamento_idx ON laudos (agendamento_id);`);
   await d.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS laudos_protocolo_uidx ON laudos (protocolo) WHERE protocolo IS NOT NULL;`);
   await d.execute(sql`CREATE INDEX IF NOT EXISTS laudos_vistoriador_idx ON laudos (vistoriador_id, status);`);
 

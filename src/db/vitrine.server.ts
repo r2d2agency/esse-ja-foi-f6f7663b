@@ -33,6 +33,23 @@ async function ensureDependencias() {
   } catch (e) { console.error("[vitrine] comprador schema", e); }
 }
 
+async function repararPublicacoesAtivas() {
+  if (!db) return;
+  const ativosRes = await db.execute(sql`
+    SELECT DISTINCT veiculo_id
+    FROM publicacao_canais
+    WHERE ativo = true AND canal IN ('ANUNCIO', 'VITRINE')
+  `);
+  const { sincronizarVitrine } = await import("./publicacao.server");
+  for (const row of rowsOf(ativosRes)) {
+    try {
+      await sincronizarVitrine(String(row.veiculo_id));
+    } catch (error) {
+      console.error("[vitrine] reparo de publicação", error);
+    }
+  }
+}
+
 /** Descobre o nível de acesso comercial do visitante. */
 export async function getAcessoComercial(userId?: string | null) {
   const base = { autenticado: false, pode_ver_valores: false, pode_dar_lances: false, comprador_id: null as string | null };
@@ -55,6 +72,9 @@ export async function getAcessoComercial(userId?: string | null) {
 export async function listarAnunciosVitrine(userId?: string | null) {
   const d = requireDb();
   await ensureDependencias();
+  // Reconstitui anúncios auxiliares de canais já ativos. Isso cobre canais
+  // salvos antes de uma falha de schema sem exigir que o admin publique outra vez.
+  await repararPublicacoesAtivas();
   const acesso = await getAcessoComercial(userId);
 
   const res = await d.execute(sql`
