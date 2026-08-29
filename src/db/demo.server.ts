@@ -29,13 +29,13 @@ export const DEMO = {
   placa: "DEM0A11",
 };
 
-async function colunasDe(tabela: string): Promise<Set<string>> {
+async function colunasDe(tabela: string): Promise<Map<string, string>> {
   const d = requireDb();
   const res = await d.execute(sql`
-    SELECT column_name FROM information_schema.columns
+    SELECT column_name, data_type FROM information_schema.columns
     WHERE table_schema = 'public' AND table_name = ${tabela}
   `);
-  return new Set(rowsOf(res).map((r: any) => String(r.column_name)));
+  return new Map(rowsOf(res).map((r: any) => [String(r.column_name), String(r.data_type)]));
 }
 
 /** UPSERT tolerante: usa apenas colunas que existem de fato na tabela. */
@@ -45,9 +45,16 @@ async function upsert(tabela: string, id: string, valores: Record<string, any>) 
   const colunas: string[] = ["id"];
   const parts: any[] = [sql`${id}::uuid`];
   for (const [col, val] of Object.entries(valores)) {
-    if (!existentes.has(col)) continue;
+    const tipo = existentes.get(col);
+    if (!tipo) continue;
     colunas.push(col);
-    parts.push(sql`${val}`);
+    if (typeof val === "string" && (tipo === "jsonb" || tipo === "json")) {
+      parts.push(sql`${val}::jsonb`);
+    } else if (typeof val === "string" && (tipo === "integer" || tipo === "numeric")) {
+      parts.push(sql`${val}::numeric`);
+    } else {
+      parts.push(sql`${val}`);
+    }
   }
   const sets = colunas
     .filter((c) => c !== "id")
@@ -59,6 +66,7 @@ async function upsert(tabela: string, id: string, valores: Record<string, any>) 
     ON CONFLICT (id) DO UPDATE SET ${sql.raw(sets || "id = EXCLUDED.id")}
   `);
 }
+
 
 async function ensureSchemas() {
   const { ensurePerfilSchema } = await import("./perfil.server");
