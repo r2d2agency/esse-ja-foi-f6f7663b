@@ -49,6 +49,7 @@ export const listarCompradoresFn = createServerFn({ method: "GET" })
 export const obterDetalheCompradorFn = createServerFn({ method: "GET" })
   .validator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data }) => {
+    await ensureSchema();
     const d = db;
     if (!d) return { ok: false, message: "DB offline" };
 
