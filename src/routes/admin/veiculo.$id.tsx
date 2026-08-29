@@ -6,6 +6,7 @@ import { salvarConfiguracaoLeilao } from "@/lib/leilao.functions";
 import { useAuth } from "@/hooks/use-auth";
 import { useEffect, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CanaisPublicacao } from "@/components/publicacao/CanaisPublicacao";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -386,7 +387,7 @@ function DetalheVeiculoAdminPage() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
           <div className="bg-white border-b border-slate-200 px-6 overflow-x-auto">
             <TabsList className="bg-transparent border-none h-12 gap-6 p-0">
-              {["Resumo", "Dados", "Documentação", "Condição", "Fotos", "Valores", "Análise", "Histórico"].map((tab) => (
+              {["Resumo", "Dados", "Documentação", "Condição", "Fotos", "Valores", "Análise", "Publicação", "Histórico"].map((tab) => (
                 <TabsTrigger 
                   key={tab} 
                   value={tab.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")}
@@ -907,6 +908,10 @@ function DetalheVeiculoAdminPage() {
                     </div>
                   </CardContent>
                 </Card>
+              </TabsContent>
+
+              <TabsContent value="publicacao" className="mt-0 space-y-6">
+                <CanaisPublicacao veiculoId={id} />
               </TabsContent>
 
               <TabsContent value="historico" className="mt-0">
