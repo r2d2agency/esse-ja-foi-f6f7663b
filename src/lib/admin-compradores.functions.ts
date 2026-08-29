@@ -24,26 +24,48 @@ export const listarCompradoresFn = createServerFn({ method: "GET" })
     const search = data.busca ? `%${data.busca.toLowerCase()}%` : null;
     const status = data.status || null;
 
-    const query = sql`
-      SELECT 
-        p.id, p.nome, p.email, p.whatsapp, p.cpf, p.cnpj, p.tipo_pessoa, 
-        p.status_compliance, p.cidade, p.uf, p.atualizado_em,
-        p.responsavel_nome as responsavel
-      FROM profiles p
-      WHERE p.role = 'comprador'::app_role
-        AND (${status} IS NULL OR p.status_compliance = ${status})
-        AND (${search} IS NULL OR (
-          lower(p.nome) LIKE ${search} OR 
-          p.cpf LIKE ${search} OR 
-          p.cnpj LIKE ${search} OR 
-          p.email LIKE ${search}
-        ))
-      ORDER BY p.criado_em DESC
-      LIMIT 100
-    `;
-
-    const res = await d.execute(query);
-    return { ok: true, data: (res as any).rows || res };
+    try {
+      const res = await d.execute(sql`
+        SELECT
+          p.id, p.nome, p.email, p.whatsapp, p.cpf, p.cnpj, p.tipo_pessoa,
+          p.status_compliance, p.cidade, p.uf, p.atualizado_em,
+          p.responsavel_nome as responsavel
+        FROM profiles p
+        WHERE p.role = 'comprador'::app_role
+          AND (${status} IS NULL OR p.status_compliance = ${status})
+          AND (${search} IS NULL OR (
+            lower(p.nome) LIKE ${search} OR
+            p.cpf LIKE ${search} OR
+            p.cnpj LIKE ${search} OR
+            p.email LIKE ${search}
+          ))
+        ORDER BY p.criado_em DESC
+        LIMIT 100
+      `);
+      const rows = Array.isArray(res) ? res : (res as any).rows || [];
+      return { ok: true as const, data: rows };
+    } catch (e: any) {
+      console.error("[admin-compradores] listagem completa falhou:", e?.message || e);
+      try {
+        // Fallback: colunas básicas, para bancos ainda sem as colunas de compliance.
+        const res = await d.execute(sql`
+          SELECT p.id, p.nome, p.email, p.whatsapp, p.cpf, p.cidade, p.uf, p.criado_em
+          FROM profiles p
+          WHERE p.role = 'comprador'::app_role
+            AND (${search} IS NULL OR (
+              lower(p.nome) LIKE ${search} OR
+              p.cpf LIKE ${search} OR
+              p.email LIKE ${search}
+            ))
+          ORDER BY p.criado_em DESC
+          LIMIT 100
+        `);
+        const rows = Array.isArray(res) ? res : (res as any).rows || [];
+        return { ok: true as const, data: rows };
+      } catch (e2: any) {
+        return { ok: false as const, message: e2?.message || "Erro ao listar compradores.", data: [] };
+      }
+    }
   });
 
 export const obterDetalheCompradorFn = createServerFn({ method: "GET" })
