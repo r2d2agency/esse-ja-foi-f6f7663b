@@ -722,17 +722,26 @@ function ChecklistCategoriaDinamica({ categoria, respostasEmMemoria, onMudarResp
                 </div>
               )}
 
-              {item.tipo_item === "NUMERO" && !(item.titulo || "").toLowerCase().includes("quilometragem") && (
+              {(item.tipo_item === "NUMERO" ||
+                !["CONFORMIDADE", "TEXTO_LIVRE", "CHECKBOX_MULTIPLO", "SELECT_UNICO"].includes(item.tipo_item)) && (
                 <div className="space-y-2">
+                  <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    {(item.titulo || "").toLowerCase().includes("quilometragem") ? "Valor em KM" : "Valor"}
+                  </Label>
                   <Input
                     type="number"
                     placeholder="Digite o número..."
                     className="h-12 rounded-xl text-base font-bold"
                     value={r.resposta_numero ?? ""}
-                    onChange={(e) => onMudarResposta(item, { resposta_numero: e.target.value ? Number(e.target.value) : null })}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (onSetKm && (item.titulo || "").toLowerCase().includes("quilometragem")) onSetKm(val);
+                      onMudarResposta(item, { resposta_numero: val ? Number(val) : null });
+                    }}
                   />
                 </div>
               )}
+
 
               {item.tipo_item === "CHECKBOX_MULTIPLO" && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
