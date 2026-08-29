@@ -30,6 +30,7 @@ import { Route as AdminConversasRouteImport } from './routes/admin/conversas'
 import { Route as AdminDemoRouteImport } from './routes/admin/demo'
 import { Route as AdminEntregasRouteImport } from './routes/admin/entregas'
 import { Route as AdminLogsRouteImport } from './routes/admin/logs'
+import { Route as AdminMapaRouteImport } from './routes/admin/mapa'
 import { Route as AdminNegociacoesRouteImport } from './routes/admin/negociacoes'
 import { Route as AdminPagamentosRouteImport } from './routes/admin/pagamentos'
 import { Route as AdminRelatoriosRouteImport } from './routes/admin/relatorios'
@@ -185,6 +186,11 @@ const AdminEntregasRoute = AdminEntregasRouteImport.update({
 const AdminLogsRoute = AdminLogsRouteImport.update({
   id: '/logs',
   path: '/logs',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminMapaRoute = AdminMapaRouteImport.update({
+  id: '/mapa',
+  path: '/mapa',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminNegociacoesRoute = AdminNegociacoesRouteImport.update({
@@ -468,6 +474,7 @@ export interface FileRoutesByFullPath {
   '/admin/demo': typeof AdminDemoRoute
   '/admin/entregas': typeof AdminEntregasRoute
   '/admin/logs': typeof AdminLogsRoute
+  '/admin/mapa': typeof AdminMapaRoute
   '/admin/negociacoes': typeof AdminNegociacoesRoute
   '/admin/pagamentos': typeof AdminPagamentosRoute
   '/admin/relatorios': typeof AdminRelatoriosRoute
@@ -537,6 +544,7 @@ export interface FileRoutesByTo {
   '/admin/demo': typeof AdminDemoRoute
   '/admin/entregas': typeof AdminEntregasRoute
   '/admin/logs': typeof AdminLogsRoute
+  '/admin/mapa': typeof AdminMapaRoute
   '/admin/negociacoes': typeof AdminNegociacoesRoute
   '/admin/pagamentos': typeof AdminPagamentosRoute
   '/admin/relatorios': typeof AdminRelatoriosRoute
@@ -612,6 +620,7 @@ export interface FileRoutesById {
   '/admin/demo': typeof AdminDemoRoute
   '/admin/entregas': typeof AdminEntregasRoute
   '/admin/logs': typeof AdminLogsRoute
+  '/admin/mapa': typeof AdminMapaRoute
   '/admin/negociacoes': typeof AdminNegociacoesRoute
   '/admin/pagamentos': typeof AdminPagamentosRoute
   '/admin/relatorios': typeof AdminRelatoriosRoute
@@ -688,6 +697,7 @@ export interface FileRouteTypes {
     | '/admin/demo'
     | '/admin/entregas'
     | '/admin/logs'
+    | '/admin/mapa'
     | '/admin/negociacoes'
     | '/admin/pagamentos'
     | '/admin/relatorios'
@@ -757,6 +767,7 @@ export interface FileRouteTypes {
     | '/admin/demo'
     | '/admin/entregas'
     | '/admin/logs'
+    | '/admin/mapa'
     | '/admin/negociacoes'
     | '/admin/pagamentos'
     | '/admin/relatorios'
@@ -831,6 +842,7 @@ export interface FileRouteTypes {
     | '/admin/demo'
     | '/admin/entregas'
     | '/admin/logs'
+    | '/admin/mapa'
     | '/admin/negociacoes'
     | '/admin/pagamentos'
     | '/admin/relatorios'
@@ -1049,6 +1061,13 @@ declare module '@tanstack/react-router' {
       path: '/logs'
       fullPath: '/admin/logs'
       preLoaderRoute: typeof AdminLogsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/mapa': {
+      id: '/admin/mapa'
+      path: '/mapa'
+      fullPath: '/admin/mapa'
+      preLoaderRoute: typeof AdminMapaRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/negociacoes': {
@@ -1445,6 +1464,7 @@ interface AdminRouteChildren {
   AdminDemoRoute: typeof AdminDemoRoute
   AdminEntregasRoute: typeof AdminEntregasRoute
   AdminLogsRoute: typeof AdminLogsRoute
+  AdminMapaRoute: typeof AdminMapaRoute
   AdminNegociacoesRoute: typeof AdminNegociacoesRoute
   AdminPagamentosRoute: typeof AdminPagamentosRoute
   AdminRelatoriosRoute: typeof AdminRelatoriosRoute
@@ -1474,6 +1494,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminDemoRoute: AdminDemoRoute,
   AdminEntregasRoute: AdminEntregasRoute,
   AdminLogsRoute: AdminLogsRoute,
+  AdminMapaRoute: AdminMapaRoute,
   AdminNegociacoesRoute: AdminNegociacoesRoute,
   AdminPagamentosRoute: AdminPagamentosRoute,
   AdminRelatoriosRoute: AdminRelatoriosRoute,
