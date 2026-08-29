@@ -46,6 +46,13 @@ export const Route = createFileRoute("/comprador/")({
   component: CompradorDashboard,
 });
 
+const brl = (v: any) =>
+  Number(v || 0).toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    maximumFractionDigits: 0,
+  });
+
 const STATUS_LABEL: Record<string, { txt: string; cls: string }> = {
   APROVADO: { txt: "Aprovado", cls: "bg-teal-500" },
   AGUARDANDO_ANALISE: { txt: "Em análise", cls: "bg-blue-500" },
