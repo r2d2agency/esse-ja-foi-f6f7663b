@@ -212,6 +212,7 @@ export const updateInteressesFn = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     try {
+      await ensureSchema();
       const userId = await userFromToken(data.token);
       const { db } = await import("@/db/index");
       const { sql } = await import("drizzle-orm");
