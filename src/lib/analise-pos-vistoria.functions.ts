@@ -46,6 +46,22 @@ export const enviarPropostaVendedorFn = createServerFn({ method: "POST" })
     }
   });
 
+export const solicitarNovaVistoriaFn = createServerFn({ method: "POST" })
+  .validator((d) => z.object({
+    veiculoId: z.string().uuid(),
+    vistoriaId: z.string().uuid(),
+    motivo: z.string().trim().min(5),
+    usuarioId: z.string().uuid(),
+  }).parse(d))
+  .handler(async ({ data }) => {
+    const { solicitarNovaVistoria } = await import("@/db/analise-pos-vistoria.server");
+    try {
+      return await solicitarNovaVistoria(data);
+    } catch (err: any) {
+      return { ok: false as const, message: err.message };
+    }
+  });
+
 export const responderPropostaVendedorFn = createServerFn({ method: "POST" })
   .validator((d) => z.object({
     veiculo_id: z.string(),

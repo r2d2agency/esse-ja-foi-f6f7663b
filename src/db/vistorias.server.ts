@@ -603,7 +603,7 @@ export async function getVeiculosAguardandoVistoria() {
       AND NOT EXISTS (
         SELECT 1 FROM vistorias vis 
         WHERE vis.veiculo_id = v.id 
-          AND vis.status NOT IN ('CANCELADA')
+          AND vis.status NOT IN ('CANCELADA', 'CONCLUIDA', 'CONCLUIDA_COM_RESTRICOES', 'REPROVADA', 'REJEITADA')
       )
     ORDER BY v.atualizado_em DESC
   `);

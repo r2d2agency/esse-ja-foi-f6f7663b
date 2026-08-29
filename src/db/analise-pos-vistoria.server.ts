@@ -254,6 +254,28 @@ export async function enviarPropostaVendedor(data: any) {
   return { ok: true, versao };
 }
 
+export async function solicitarNovaVistoria(data: { veiculoId: string; vistoriaId: string; motivo: string; usuarioId: string }) {
+  const d = requireDb();
+  const { ensureVistoriaSchema } = await import("./vistorias.server");
+  await ensureVistoriaSchema();
+
+  await d.transaction(async (tx) => {
+    await tx.execute(sql`
+      UPDATE veiculos
+      SET status = 'PRONTO_PARA_VISTORIA',
+          status_analise = 'PRONTO_PARA_VISTORIA',
+          atualizado_em = now()
+      WHERE id = ${data.veiculoId}::uuid
+    `);
+    await tx.execute(sql`
+      INSERT INTO vistorias_historico (vistoria_id, acao, detalhe, usuario_id)
+      VALUES (${data.vistoriaId}::uuid, 'NOVA_VISTORIA_SOLICITADA', ${data.motivo}, ${data.usuarioId}::uuid)
+    `);
+  });
+
+  return { ok: true as const };
+}
+
 // O driver postgres-js devolve as linhas como array (sem .rows).
 function rowsOf(res: any): any[] {
   if (!res) return [];

@@ -184,14 +184,6 @@ function VistoriaExecucaoPage() {
     }
   });
 
-  const concluirComSeguranca = async () => {
-    setSalvandoEtapa(true);
-    await enviarPendentes();
-    await filaOffline.sincronizar();
-    setSalvandoEtapa(false);
-    concluirVistoriaMutation.mutate();
-  };
-
   const handleCheckin = () => {
     if (!placaInput || placaInput.toUpperCase() !== v?.placa.toUpperCase()) {
       toast.error("A placa digitada não corresponde ao veículo agendado.");
@@ -332,6 +324,14 @@ function VistoriaExecucaoPage() {
     pendentesRef.current = {};
     const emAndamento = Object.values(cadeiasEnvioRef.current);
     await Promise.allSettled([...novosEnvios, ...emAndamento]);
+  };
+
+  const concluirComSeguranca = async () => {
+    setSalvandoEtapa(true);
+    await enviarPendentes();
+    await filaOffline.sincronizar();
+    setSalvandoEtapa(false);
+    concluirVistoriaMutation.mutate();
   };
 
   const avancarEtapa = async () => {
