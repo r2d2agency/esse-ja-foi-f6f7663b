@@ -426,7 +426,7 @@ export async function getPropostaVeiculoVendedor(veiculoId: string, perfilId: st
         enviado_em: propostaRaw.enviado_em ?? propostaRaw.criado_em ?? null,
       }
     : null;
-  const proposta = rowsOf(pRes)[0] ?? null;
+  
 
   return {
     veiculo,
