@@ -140,6 +140,25 @@ function CompradorDashboard() {
         <p className="font-medium text-slate-500">Seu centro de leilões do Esse Já Foi.</p>
       </div>
 
+      {vitoria && !vitoriaFechada && (
+        <CelebracaoVitoria
+          titulo={vitoria.titulo || "Você venceu o leilão!"}
+          mensagem={vitoria.mensagem}
+          onVer={() => {
+            marcarLidas.mutate();
+            navigate({ to: "/comprador/negociacoes" });
+          }}
+          onFechar={() => {
+            setVitoriaFechada(true);
+            marcarLidas.mutate();
+          }}
+        />
+      )}
+
+      <InstalarApp />
+
+
+
       {/* Status de habilitação */}
       <div
         className={cn(
