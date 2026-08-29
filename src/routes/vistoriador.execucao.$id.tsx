@@ -120,10 +120,27 @@ function VistoriaExecucaoPage() {
     }).then((rr: any) => {
       const arr = (rr as any)?.data || [];
       const map: Record<string, any> = {};
-      arr.forEach((r: any) => { map[r.item_id] = r; });
+      arr.forEach((r: any) => {
+        let opcoes = r.resposta_opcoes;
+        if (typeof opcoes === "string" && opcoes) {
+          try { opcoes = JSON.parse(opcoes); } catch { /* mantém string */ }
+        }
+        map[r.item_id] = {
+          ...r,
+          resposta_opcoes: opcoes ?? null,
+          resposta_numero: r.resposta_numero === null || r.resposta_numero === undefined ? null : Number(r.resposta_numero),
+          _respondido: true,
+        };
+      });
+      respostasRef.current = { ...respostasRef.current, ...map };
       setRespostasEmMemoria((prev) => ({ ...prev, ...map }));
+      // Retoma a quilometragem já registrada
+      const itemKm = Object.values(map).find((r: any) => r.resposta_numero !== null && r.resposta_numero !== undefined) as any;
+      if (itemKm && !km) setKm(String(itemKm.resposta_numero));
     }).catch(() => { /* ignore */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [laudoId, queryClient]);
+
 
   const iniciarCheckinMutation = useMutation({
     mutationFn: (data: { placa: string; localizacao: any }) => 
