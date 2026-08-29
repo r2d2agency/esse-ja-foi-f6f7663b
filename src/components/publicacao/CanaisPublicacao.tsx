@@ -20,6 +20,15 @@ function paraInputLocal(valor?: string | null) {
   return new Date(d.getTime() - off).toISOString().slice(0, 16);
 }
 
+function lerValorMonetario(valor: string) {
+  const limpo = valor.trim().replace(/\s/g, "");
+  if (!limpo) return Number.NaN;
+  const normalizado = limpo.includes(",")
+    ? limpo.replace(/\./g, "").replace(",", ".")
+    : limpo;
+  return Number(normalizado);
+}
+
 const CANAIS = [
   { id: "LEILAO", label: "Leilão", icon: Gavel, desc: "Sala de lances com cronômetro e incremento." },
   { id: "ANUNCIO", label: "Anúncio", icon: Megaphone, desc: "Peça comercial para divulgação direta." },
@@ -98,11 +107,33 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
       if (canalAtivo === "LEILAO" && form.ativo) {
         const inicioEm = inicioRef.current?.value.trim() || leilao.inicio_em.trim();
         const fimEm = fimRef.current?.value.trim() || leilao.fim_em.trim();
-        const lanceInicial = Number(lanceInicialRef.current?.value || leilao.lance_inicial);
-        const incrementoMinimo = Number(incrementoRef.current?.value || leilao.incremento_minimo);
+        const inicioTimestamp = inicioRef.current?.valueAsNumber ?? new Date(inicioEm).getTime();
+        const fimTimestamp = fimRef.current?.valueAsNumber ?? new Date(fimEm).getTime();
+        const lanceInicial = lerValorMonetario(
+          lanceInicialRef.current?.value || leilao.lance_inicial,
+        );
+        const incrementoMinimo = lerValorMonetario(
+          incrementoRef.current?.value || leilao.incremento_minimo,
+        );
 
-        if (!inicioEm || !fimEm || !Number.isFinite(lanceInicial) || lanceInicial <= 0) {
-          toast.error("Confira o início, o encerramento e o lance inicial do leilão.");
+        if (!inicioEm || !Number.isFinite(inicioTimestamp)) {
+          toast.error("Informe uma data e hora válidas para o início das ofertas.");
+          inicioRef.current?.focus();
+          return;
+        }
+        if (!fimEm || !Number.isFinite(fimTimestamp)) {
+          toast.error("Informe uma data e hora válidas para o encerramento.");
+          fimRef.current?.focus();
+          return;
+        }
+        if (fimTimestamp <= inicioTimestamp) {
+          toast.error("O encerramento precisa ser depois do início das ofertas.");
+          fimRef.current?.focus();
+          return;
+        }
+        if (!Number.isFinite(lanceInicial) || lanceInicial <= 0) {
+          toast.error("Informe um lance inicial maior que zero.");
+          lanceInicialRef.current?.focus();
           return;
         }
         if (!Number.isFinite(incrementoMinimo) || incrementoMinimo <= 0) {
@@ -112,8 +143,8 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
         const resL: any = await salvarLeilaoVeiculoFn({
           data: {
             veiculo_id: veiculoId,
-            inicio_em: new Date(inicioEm).toISOString(),
-            fim_em: new Date(fimEm).toISOString(),
+            inicio_em: new Date(inicioTimestamp).toISOString(),
+            fim_em: new Date(fimTimestamp).toISOString(),
             lance_inicial: lanceInicial,
             incremento_minimo: incrementoMinimo,
             prorrogacao_ativa: leilao.prorrogacao_ativa,
