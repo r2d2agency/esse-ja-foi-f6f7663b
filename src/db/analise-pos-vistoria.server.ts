@@ -62,7 +62,19 @@ export async function ensureAnalisePosVistoriaSchema() {
       resolvido_em timestamptz
     );
   `);
+
+  // Reconciliação de esquemas legados
+  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS versao integer NOT NULL DEFAULT 1`);
+  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS valor_referencia numeric(12,2)`);
+  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS valor_minimo_interno numeric(12,2)`);
+  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS observacao_interna text`);
+  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS mensagem_vendedor text`);
+  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS motivo_recusa text`);
+  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS detalhes_recusa text`);
+  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS respondido_em timestamptz`);
+  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS ip_vendedor text`);
 }
+
 
 export async function listarVistoriasConcluidasFila() {
   const d = requireDb();
