@@ -6,11 +6,21 @@ function requireDb() {
   return db;
 }
 
+// Executa DDL tolerando falhas (esquemas legados / tabelas ausentes),
+// para que uma reconciliação não derrube a leitura da proposta.
+async function safeDDL(fn: () => Promise<unknown>, label: string) {
+  try {
+    await fn();
+  } catch (err: any) {
+    console.warn(`[analise-pos-vistoria] DDL ignorada (${label}):`, err?.message ?? err);
+  }
+}
+
 export async function ensureAnalisePosVistoriaSchema() {
   const d = requireDb();
 
   // Tabela de Propostas
-  await d.execute(sql`
+  await safeDDL(() => d.execute(sql`
     CREATE TABLE IF NOT EXISTS propostas_veiculo (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       veiculo_id uuid NOT NULL REFERENCES veiculos(id) ON DELETE CASCADE,
