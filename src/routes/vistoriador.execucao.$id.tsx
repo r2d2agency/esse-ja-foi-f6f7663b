@@ -337,7 +337,7 @@ function VistoriaExecucaoPage() {
         )}
       </header>
 
-      <main className="flex-1 p-4 pb-40">
+      <main className="flex-1 p-4 pb-64 lg:pb-40">
         {etapaAtual === 0 && !checkinRealizado && (
             <div className="space-y-6 pt-4">
             <div className="rounded-3xl bg-primary p-8 text-center text-primary-foreground shadow-lg">
