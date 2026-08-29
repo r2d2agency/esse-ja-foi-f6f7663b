@@ -279,30 +279,58 @@ function VistoriaExecucaoPage() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50 lg:ml-64">
+    <div className="flex min-h-screen flex-col bg-background lg:ml-64">
       {/* Header Fixo */}
-      <header className="sticky top-0 z-40 border-b bg-white p-4">
+      <header className="sticky top-0 z-40 border-b border-border bg-card/95 p-4 backdrop-blur">
         <div className="flex items-center justify-between mb-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate({ to: `/vistoriador/vistoria/${vistoriaId}` })}>
+          <Button variant="ghost" size="icon" className="rounded-full" onClick={() => navigate({ to: `/vistoriador/vistoria/${vistoriaId}` })}>
             <ArrowLeft className="h-6 w-6" />
           </Button>
           <div className="text-center">
-            <h1 className="text-sm font-black uppercase tracking-widest text-slate-900">Vistoria em execução</h1>
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">{v.marca} {v.modelo} • {v.placa}</p>
+            <h1 className="text-sm font-black uppercase tracking-widest text-foreground">Vistoria em execução</h1>
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-tighter">{v.marca} {v.modelo} • {v.placa}</p>
           </div>
           <div className="w-10" />
         </div>
         <div className="space-y-1">
-          <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest text-slate-400">
+          <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
             <span>Etapa {etapaAtual + 1} de {ETAPAS.length}</span>
             <span>{progress}%</span>
           </div>
-          <Progress value={progress} className="h-1.5 bg-slate-100" />
-          <p className="mt-2 text-center text-xs font-black text-teal-700 uppercase">{ETAPAS[etapaAtual] || ""}</p>
+          <Progress value={progress} className="h-1.5" />
         </div>
+        {/* Navegação rápida entre etapas */}
+        <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {ETAPAS.map((nome, idx) => (
+            <button
+              key={nome}
+              type="button"
+              onClick={() => { if (idx > 0 && !checkinRealizado) return; if (idx <= etapaAtual || permiteContinuar()) setEtapaAtual(idx); }}
+              className={`shrink-0 rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-wide transition-colors ${
+                idx === etapaAtual
+                  ? "bg-primary text-primary-foreground"
+                  : idx < etapaAtual
+                    ? "bg-emerald-100 text-emerald-800"
+                    : "bg-muted text-muted-foreground"
+              }`}
+            >
+              {idx + 1}. {nome}
+            </button>
+          ))}
+        </div>
+        {filaOffline.pendentes > 0 && (
+          <button
+            type="button"
+            onClick={() => void filaOffline.sincronizar()}
+            className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-amber-100 px-3 py-2 text-[11px] font-bold text-amber-900"
+          >
+            {filaOffline.sincronizando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            {filaOffline.pendentes} alteração(ões) salva(s) no aparelho — toque para sincronizar
+          </button>
+        )}
       </header>
 
-      <main className="flex-1 p-4 pb-32">
+      <main className="flex-1 p-4 pb-40">
         {etapaAtual === 0 && !checkinRealizado && (
           <div className="space-y-6 pt-4">
             <div className="rounded-2xl bg-teal-50 p-6 text-center">
