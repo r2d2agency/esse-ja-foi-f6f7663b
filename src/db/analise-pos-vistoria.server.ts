@@ -353,3 +353,26 @@ function rowsOf(res: any): any[] {
   if (Array.isArray(res.rows)) return res.rows;
   return [];
 }
+
+export async function getPropostaVeiculoVendedor(veiculoId: string) {
+  const d = requireDb();
+  await ensureAnalisePosVistoriaSchema();
+
+  const vRes = await d.execute(sql`
+    SELECT id::text AS id, marca, modelo, placa, status_analise
+    FROM veiculos WHERE id = ${veiculoId}::uuid LIMIT 1
+  `);
+  const veiculo = rowsOf(vRes)[0] ?? null;
+
+  const pRes = await d.execute(sql`
+    SELECT id::text AS id, veiculo_id::text AS veiculo_id, versao, status,
+           valor_minimo_acordado, mensagem_vendedor, enviado_em
+    FROM propostas_veiculo
+    WHERE veiculo_id = ${veiculoId}::uuid
+    ORDER BY versao DESC
+    LIMIT 1
+  `);
+  const proposta = rowsOf(pRes)[0] ?? null;
+
+  return { veiculo, proposta };
+}
