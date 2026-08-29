@@ -97,6 +97,8 @@ function DashboardVendedor() {
         )}
       </div>
 
+      {user?.id && <CardPropostaVendedor vendedorId={user.id} />}
+
       <CardsEntregaVendedor vendedorId={user?.id} />
 
       <div className="grid gap-4 lg:grid-cols-2 lg:gap-6">
