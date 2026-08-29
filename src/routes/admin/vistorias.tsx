@@ -2528,6 +2528,21 @@ function AbaChecklistConfigDinamico() {
           </CardContent>
         </Card>
 
+        {checklistErroMsg && (
+          <Card className="border-red-200 bg-red-50 shadow-none">
+            <CardContent className="p-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-sm font-bold text-red-800">Não foi possível carregar o checklist</p>
+                <p className="text-xs text-red-700 mt-0.5">{String(checklistErroMsg)}</p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => recarregarChecklist()} className="border-red-300 text-red-800 self-start md:self-center">
+                Tentar novamente
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+
         <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
           {/* Coluna esquerda: lista categorias + criar */}
           <div className="space-y-4">
