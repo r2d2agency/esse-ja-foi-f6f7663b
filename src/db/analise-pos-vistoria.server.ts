@@ -229,8 +229,21 @@ export async function enviarPropostaVendedor(data: any) {
   const d = requireDb();
   await ensureAnalisePosVistoriaSchema();
 
+  const num = (v: any): number | null => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  const txt = (v: any): string | null => {
+    const s = v === undefined || v === null ? "" : String(v).trim();
+    return s ? s : null;
+  };
+
+  const valorMinimo = num(data.valor_minimo_acordado) ?? 0;
+  const comissaoValor = num(data.comissao_valor) ?? 0;
+  const liquido = num(data.valor_liquido_vendedor) ?? Math.max(valorMinimo - comissaoValor, 0);
+
   const vRes = await d.execute(sql`SELECT COALESCE(MAX(versao), 0) + 1 as prox FROM propostas_veiculo WHERE veiculo_id = ${data.veiculo_id}::uuid`);
-  const versao = rowsOf(vRes)[0].prox;
+  const versao = Number(rowsOf(vRes)[0]?.prox ?? 1);
 
   await d.execute(sql`
     INSERT INTO propostas_veiculo (
@@ -238,11 +251,12 @@ export async function enviarPropostaVendedor(data: any) {
       comissao_tipo, comissao_valor, valor_liquido_vendedor, 
       valor_minimo_interno, observacao_interna, mensagem_vendedor, enviado_por
     ) VALUES (
-      ${data.veiculo_id}::uuid, ${versao}, ${data.valor_referencia}, ${data.valor_minimo_acordado},
-      ${data.comissao_tipo}, ${data.comissao_valor}, ${data.valor_liquido_vendedor},
-      ${data.valor_minimo_interno}, ${data.observacao_interna}, ${data.mensagem_vendedor}, ${data.usuario_id}::uuid
+      ${data.veiculo_id}::uuid, ${versao}, ${num(data.valor_referencia)}, ${valorMinimo},
+      ${txt(data.comissao_tipo) ?? "PERCENTUAL"}, ${comissaoValor}, ${liquido},
+      ${num(data.valor_minimo_interno)}, ${txt(data.observacao_interna)}, ${txt(data.mensagem_vendedor)}, ${txt(data.usuario_id)}::uuid
     )
   `);
+
 
   await d.execute(sql`
     UPDATE veiculos SET 
