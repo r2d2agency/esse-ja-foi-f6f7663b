@@ -252,10 +252,12 @@ function DetalheVeiculoPublico() {
               ) : anuncio.leilao_id ? (
                 <div className="space-y-6">
                   <div className="bg-white/5 border border-white/10 rounded-3xl p-6 space-y-6">
-                    <div className="flex justify-between items-end">
+                    <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Lance Atual</div>
-                        <div className="text-3xl font-black text-teal-400">R$ {lanceAtual.toLocaleString('pt-BR')}</div>
+                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Valor de partida</div>
+                        <div className="text-xl font-black text-white">
+                          R$ {Number(leilao?.lance_inicial || 0).toLocaleString("pt-BR")}
+                        </div>
                       </div>
                       <div className="text-right">
                         <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Tempo Restante</div>
@@ -264,6 +266,17 @@ function DetalheVeiculoPublico() {
                         </div>
                       </div>
                     </div>
+
+                    <div className="rounded-2xl bg-teal-500/10 border border-teal-500/20 p-5">
+                      <div className="text-[11px] font-bold text-teal-300 uppercase tracking-widest mb-1">Lance atual</div>
+                      <div className="text-4xl md:text-5xl font-black leading-none tracking-tight text-teal-400 tabular-nums break-words">
+                        R$ {lanceAtual.toLocaleString("pt-BR")}
+                      </div>
+                      <div className="mt-2 text-xs font-medium text-slate-400">
+                        Incremento mínimo: R$ {Number(leilao?.incremento_minimo || 0).toLocaleString("pt-BR")}
+                      </div>
+                    </div>
+
 
                     {leilao?.ultimo_lance?.comprador_id === user?.id && (
                       <div className="bg-teal-500/10 border border-teal-500/20 rounded-xl p-3 flex items-center gap-3">
