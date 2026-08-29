@@ -33,7 +33,7 @@ function PropostaVendedorPage() {
     return (
       <div className="p-8 text-center space-y-3">
         <p className="text-slate-600">Sua sessão expirou. Entre novamente para ver a proposta.</p>
-        <Button asChild><Link to="/entrar">Entrar</Link></Button>
+        <Button asChild><Link to="/login">Entrar</Link></Button>
       </div>
     );
   }
