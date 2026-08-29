@@ -8,6 +8,20 @@
       "when": 1786410644144,
       "tag": "0000_lame_wild_pack",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1786410644145,
+      "tag": "0001_checklist_dinamico",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786410644146,
+      "tag": "0002_add_comprador_profile_columns",
+      "breakpoints": true
     }
   ]
 }
