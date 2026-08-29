@@ -50,8 +50,8 @@ export async function ensureCompradorSchema() {
   for (const [name, type] of cols) {
     try {
       await db.execute(sql.raw(`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS ${name} ${type};`));
-    } catch {
-      /* coluna já existe */
+    } catch (e: any) {
+      console.error(`[ensureCompradorSchema] falha ao criar coluna ${name}:`, e?.message || e);
     }
   }
 
