@@ -132,9 +132,9 @@ function LoginPage() {
             </Button>
           </form>
 
-          <p className="mt-6 text-center text-sm text-slate-500">
-            Ainda não possui conta?{" "}
-            <div className="flex justify-center gap-4 mt-2">
+          <div className="mt-6 text-center text-sm text-slate-500">
+            <p>Ainda não possui conta?</p>
+            <div className="mt-2 flex justify-center gap-4">
               <Link to="/cadastro" className="font-semibold text-teal-700 underline-offset-4 hover:underline">
                 Vendedor
               </Link>
@@ -143,7 +143,7 @@ function LoginPage() {
                 Comprador
               </Link>
             </div>
-          </p>
+          </div>
         </div>
       </div>
 
