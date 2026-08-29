@@ -144,7 +144,7 @@ function CompradorDocumentosPage() {
             key={d.tipo}
             label={d.label}
             value={perfil[d.campo] || ""}
-            onChange={(url: string) => upload.mutate({ tipo: d.tipo, url })}
+            onChange={(url: string | null) => upload.mutate({ tipo: d.tipo, url: url || "" })}
           />
         ))}
       </div>

@@ -66,7 +66,10 @@ function CompradoresPage() {
     setSalvandoPre(true);
     try {
       const r: any = await preCadastrarCompradorFn({ data: pre });
-      if (!r?.ok) return toast.error(r?.message || "Erro ao pré-cadastrar.");
+      if (!r?.ok) {
+        toast.error(r?.message || "Erro ao pré-cadastrar.");
+        return;
+      }
       toast.success("Comprador pré-cadastrado. Ele já pode ver os veículos.");
       setPreOpen(false);
       setPre({ nome: "", email: "", senha: "", whatsapp: "", cnpj: "", regiao: "", endereco: "", cidade: "", uf: "" });

@@ -48,7 +48,10 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
       const res: any = await salvarCanalPublicacaoFn({
         data: { veiculo_id: veiculoId, canal: canalAtivo, ...form },
       });
-      if (!res?.ok) return toast.error(res?.message || "Erro ao salvar canal.");
+      if (!res?.ok) {
+        toast.error(res?.message || "Erro ao salvar canal.");
+        return;
+      }
       toast.success(`Canal ${canalAtivo.toLowerCase()} atualizado.`);
       refetch();
     } finally {

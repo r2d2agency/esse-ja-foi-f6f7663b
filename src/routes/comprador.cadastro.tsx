@@ -93,7 +93,10 @@ function CadastroComprador() {
   const pj = form.tipo === "PJ";
 
   async function criarConta() {
-    if (form.password !== form.confirm) return toast.error("As senhas não conferem.");
+    if (form.password !== form.confirm) {
+      toast.error("As senhas não conferem.");
+      return;
+    }
     setLoading(true);
     try {
       const res: any = await cadastrarCompradorFn({
@@ -107,7 +110,10 @@ function CadastroComprador() {
           cnpj: form.cnpj,
         },
       });
-      if (!res?.ok) return toast.error(res?.message || "Erro ao criar conta.");
+      if (!res?.ok) {
+        toast.error(res?.message || "Erro ao criar conta.");
+        return;
+      }
       login({
         user: {
           id: res.user.id,
@@ -135,7 +141,10 @@ function CadastroComprador() {
       const res: any = await salvarEtapaCompradorFn({
         data: { token: getSessionToken(), etapa: proxima, dados },
       });
-      if (!res?.ok) return toast.error(res?.message || "Não foi possível salvar.");
+      if (!res?.ok) {
+        toast.error(res?.message || "Não foi possível salvar.");
+        return;
+      }
       setProgresso(res.progresso);
       setEtapa(proxima);
     } finally {
@@ -149,7 +158,8 @@ function CadastroComprador() {
       const res: any = await enviarCadastroCompradorFn({ data: { token: getSessionToken() } });
       if (!res?.ok) {
         if (res?.progresso) setProgresso(res.progresso);
-        return toast.error(res?.message || "Cadastro incompleto.");
+        toast.error(res?.message || "Cadastro incompleto.");
+        return;
       }
       toast.success("Cadastro enviado para análise!");
       navigate({ to: "/comprador" });
@@ -443,8 +453,8 @@ function CadastroComprador() {
               <FileUpload
                 label="Contrato social"
                 value={form.documento_contrato_social_url}
-                onChange={(url: string) =>
-                  subirDoc("CONTRATO_SOCIAL", "documento_contrato_social_url", url)
+                onChange={(url: string | null) =>
+                  subirDoc("CONTRATO_SOCIAL", "documento_contrato_social_url", url || "")
                 }
               />
             ) : (
@@ -452,19 +462,19 @@ function CadastroComprador() {
                 <FileUpload
                   label="CNH ou RG"
                   value={form.documento_cnh_url}
-                  onChange={(url: string) => subirDoc("CNH", "documento_cnh_url", url)}
+                  onChange={(url: string | null) => subirDoc("CNH", "documento_cnh_url", url || "")}
                 />
                 <FileUpload
                   label="Selfie segurando o documento"
                   value={form.documento_selfie_url}
-                  onChange={(url: string) => subirDoc("SELFIE", "documento_selfie_url", url)}
+                  onChange={(url: string | null) => subirDoc("SELFIE", "documento_selfie_url", url || "")}
                 />
               </>
             )}
             <FileUpload
               label="Comprovante de endereço"
               value={form.documento_comprovante_url}
-              onChange={(url: string) => subirDoc("COMPROVANTE", "documento_comprovante_url", url)}
+              onChange={(url: string | null) => subirDoc("COMPROVANTE", "documento_comprovante_url", url || "")}
             />
             <NavBotoes
               loading={loading}
