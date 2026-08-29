@@ -1,106 +1,159 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { db } from "../db/index";
-import { sql } from "drizzle-orm";
-import { hashPassword, issueToken } from "../db/auth.server";
 
-export const updateInteressesFn = createServerFn({ method: "POST" })
-  .validator((data: any) => data)
-  .handler(async ({ data, context }) => {
-    if (!db) throw new Error("DB offline");
-    const userId = (context as any).userId;
-    if (!userId) throw new Error("Não autorizado");
+const tokenSchema = z.object({ token: z.string().min(10) });
 
-    await db.execute(sql`
-      UPDATE profiles SET
-        interesses_veiculos = ${JSON.stringify(data.veiculos)}::jsonb,
-        interesses_marcas = ${JSON.stringify(data.marcas)}::jsonb,
-        pode_receber_comunicacoes = ${data.receberWhatsApp},
-        atualizado_em = now()
-      WHERE id = ${userId}::uuid
-    `);
-
-    return { ok: true };
-  });
-
-export const getInteressesFn = createServerFn({ method: "GET" })
-  .handler(async ({ context }) => {
-    if (!db) throw new Error("DB offline");
-    const userId = (context as any).userId;
-    if (!userId) throw new Error("Não autorizado");
-
-    const res = await db.execute(sql`
-      SELECT interesses_veiculos, interesses_marcas, pode_receber_comunicacoes
-      FROM profiles WHERE id = ${userId}::uuid
-    `);
-    
-    return (res as any).rows?.[0] || {};
-  });
+async function userFromToken(token: string) {
+  const { verifyToken } = await import("@/db/auth.server");
+  const userId = await verifyToken(token);
+  if (!userId) throw new Error("Sessão expirada. Faça login novamente.");
+  return userId;
+}
 
 export const cadastrarCompradorFn = createServerFn({ method: "POST" })
-  .validator((data: any) => data)
+  .validator((data: unknown) =>
+    z
+      .object({
+        tipo: z.enum(["PF", "PJ"]).default("PF"),
+        nome: z.string().min(2),
+        email: z.string().email(),
+        password: z.string().min(6),
+        whatsapp: z.string().optional(),
+        cpf: z.string().optional(),
+        cnpj: z.string().optional(),
+      })
+      .parse(data),
+  )
   .handler(async ({ data }) => {
-    if (!db) throw new Error("DB offline");
-    
-    const senhaHash = await hashPassword(data.password); // form field is 'password'
-    
-    const res = await db.execute(sql`
-      INSERT INTO profiles (nome, email, whatsapp, cpf, role, senha_hash, tipo_pessoa, cep, endereco, cidade, uf)
-      VALUES (
-        ${data.nome}, 
-        ${data.email}, 
-        ${data.whatsapp}, 
-        ${data.cpf || data.cnpj}, 
-        'comprador', 
-        ${senhaHash},
-        ${data.tipo},
-        ${data.cep || ''},
-        ${data.endereco || ''},
-        ${data.cidade || ''},
-        ${data.uf || ''}
-      )
-      RETURNING id, nome, email, role
-    `);
-    
-    const user = (res as any).rows?.[0];
-    if (!user) throw new Error("Erro ao criar usuário");
-    
-    const accessToken = await issueToken(user.id);
-    
-    return { 
-      ok: true, 
-      user: { id: user.id, nome: user.nome, email: user.email, role: user.role },
-      accessToken 
-    };
+    const m = await import("@/db/comprador.server");
+    return m.cadastrarComprador(data);
   });
 
-export const getStatusCompradorFn = createServerFn({ method: "GET" })
-  .validator((data: any) => data)
-  .handler(async ({ context }) => {
-    if (!db) throw new Error("DB offline");
-    const userId = (context as any).userId;
-    if (!userId) throw new Error("Não autorizado");
+export const getPerfilCompradorFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) => tokenSchema.parse(d))
+  .handler(async ({ data }) => {
+    const userId = await userFromToken(data.token);
+    const m = await import("@/db/comprador.server");
+    const res = await m.getPerfilComprador(userId);
+    if (!res) return { ok: false as const, message: "Perfil não encontrado." };
+    return { ok: true as const, ...res };
+  });
 
-    const res = await db.execute(sql`
-      SELECT cadastro_completo, ativo, whatsapp_status, pode_receber_comunicacoes
-      FROM profiles WHERE id = ${userId}::uuid
-    `);
-    return (res as any).rows?.[0];
+export const salvarEtapaCompradorFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) =>
+    tokenSchema.extend({ etapa: z.number().int(), dados: z.record(z.any()) }).parse(d),
+  )
+  .handler(async ({ data }) => {
+    try {
+      const userId = await userFromToken(data.token);
+      const m = await import("@/db/comprador.server");
+      const res = await m.salvarEtapaComprador(userId, data.etapa, data.dados);
+      return { ok: true as const, ...(res || {}) };
+    } catch (e: any) {
+      return { ok: false as const, message: e.message };
+    }
+  });
+
+export const enviarCadastroCompradorFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) => tokenSchema.parse(d))
+  .handler(async ({ data }) => {
+    try {
+      const userId = await userFromToken(data.token);
+      const m = await import("@/db/comprador.server");
+      return await m.enviarCadastroCompradorParaAnalise(userId);
+    } catch (e: any) {
+      return { ok: false as const, message: e.message };
+    }
   });
 
 export const enviarDocumentoCompradorFn = createServerFn({ method: "POST" })
-  .validator((data: any) => data)
-  .handler(async ({ data, context }) => {
-    if (!db) throw new Error("DB offline");
-    const userId = (context as any).userId;
-    if (!userId) throw new Error("Não autorizado");
+  .validator((d: unknown) => tokenSchema.extend({ tipo: z.string(), url: z.string() }).parse(d))
+  .handler(async ({ data }) => {
+    try {
+      const userId = await userFromToken(data.token);
+      const m = await import("@/db/comprador.server");
+      await m.salvarDocumentoComprador(userId, data.tipo, data.url);
+      return { ok: true as const };
+    } catch (e: any) {
+      return { ok: false as const, message: e.message };
+    }
+  });
 
-    const column = data.tipo === 'CNH' || data.tipo === 'CNH_RG' ? 'documento_cnh_url' : 
-                   data.tipo === 'CRLV' || data.tipo === 'CONTRATO_SOCIAL' ? 'documento_crlv_url' : 'documento_selfie_url';
+/* ----------------- Favoritos / lembretes / notificações ----------------- */
 
-    await db.execute(sql.raw(`
-      UPDATE profiles SET ${column} = '${data.url}', atualizado_em = now() WHERE id = '${userId}'
-    `));
+export const alternarFavoritoFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) => tokenSchema.extend({ anuncioId: z.string().uuid() }).parse(d))
+  .handler(async ({ data }) => {
+    try {
+      const userId = await userFromToken(data.token);
+      const m = await import("@/db/comprador.server");
+      return { ok: true as const, ...(await m.alternarFavorito(userId, data.anuncioId)) };
+    } catch (e: any) {
+      return { ok: false as const, message: e.message };
+    }
+  });
 
-    return { ok: true };
+export const listarFavoritosFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) => tokenSchema.parse(d))
+  .handler(async ({ data }) => {
+    try {
+      const userId = await userFromToken(data.token);
+      const m = await import("@/db/comprador.server");
+      return { ok: true as const, data: await m.listarFavoritos(userId) };
+    } catch (e: any) {
+      return { ok: false as const, message: e.message, data: [] as any[] };
+    }
+  });
+
+export const salvarLembreteFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) =>
+    tokenSchema
+      .extend({ anuncioId: z.string().uuid(), lembrarEm: z.string().nullable().optional() })
+      .parse(d),
+  )
+  .handler(async ({ data }) => {
+    try {
+      const userId = await userFromToken(data.token);
+      const m = await import("@/db/comprador.server");
+      await m.salvarLembrete(userId, data.anuncioId, data.lembrarEm ?? null);
+      return { ok: true as const };
+    } catch (e: any) {
+      return { ok: false as const, message: e.message };
+    }
+  });
+
+export const listarLembretesFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) => tokenSchema.parse(d))
+  .handler(async ({ data }) => {
+    try {
+      const userId = await userFromToken(data.token);
+      const m = await import("@/db/comprador.server");
+      return { ok: true as const, data: await m.listarLembretes(userId) };
+    } catch (e: any) {
+      return { ok: false as const, message: e.message, data: [] as any[] };
+    }
+  });
+
+export const listarNotificacoesFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) => tokenSchema.parse(d))
+  .handler(async ({ data }) => {
+    try {
+      const userId = await userFromToken(data.token);
+      const m = await import("@/db/comprador.server");
+      return { ok: true as const, data: await m.listarNotificacoes(userId) };
+    } catch (e: any) {
+      return { ok: false as const, message: e.message, data: [] as any[] };
+    }
+  });
+
+export const marcarNotificacoesLidasFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) => tokenSchema.parse(d))
+  .handler(async ({ data }) => {
+    try {
+      const userId = await userFromToken(data.token);
+      const m = await import("@/db/comprador.server");
+      return await m.marcarNotificacoesLidas(userId);
+    } catch (e: any) {
+      return { ok: false as const, message: e.message };
+    }
   });
