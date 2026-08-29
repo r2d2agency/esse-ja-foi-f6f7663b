@@ -97,6 +97,18 @@ async function getTransporter() {
   return { transporter, from: `"${fromName}" <${from}>` };
 }
 
+export async function enviarEmailSimples(destinatario: string, assunto: string, html: string) {
+  const { transporter, from } = await getTransporter();
+  await transporter.sendMail({
+    from,
+    to: destinatario,
+    subject: assunto,
+    html,
+    text: html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(),
+  });
+  return { ok: true as const };
+}
+
 export async function enviarEmailTeste(destinatario: string) {
   const { transporter, from } = await getTransporter();
 
