@@ -22,23 +22,28 @@ export const listarCompradoresFn = createServerFn({ method: "GET" })
     if (!d) return { ok: false, message: "DB offline" };
 
     const search = data.busca ? `%${data.busca.toLowerCase()}%` : null;
-    const status = data.status || null;
+    const status = data.status && data.status !== "TODOS" ? data.status : null;
+
+    // Fragmentos condicionais: evitam parâmetros sem tipo definido ($1 IS NULL),
+    // que fazem o Postgres recusar a query.
+    const filtroStatus = status ? sql` AND p.status_compliance = ${status}` : sql``;
+    const filtroBusca = search
+      ? sql` AND (lower(p.nome) LIKE ${search} OR lower(coalesce(p.cpf,'')) LIKE ${search} OR lower(coalesce(p.email,'')) LIKE ${search})`
+      : sql``;
+    const filtroBuscaCompleta = search
+      ? sql` AND (lower(p.nome) LIKE ${search} OR lower(coalesce(p.cpf,'')) LIKE ${search} OR lower(coalesce(p.cnpj,'')) LIKE ${search} OR lower(coalesce(p.email,'')) LIKE ${search})`
+      : sql``;
 
     try {
       const res = await d.execute(sql`
         SELECT
           p.id, p.nome, p.email, p.whatsapp, p.cpf, p.cnpj, p.tipo_pessoa,
-          p.status_compliance, p.cidade, p.uf, p.atualizado_em,
+          p.status_compliance, p.cidade, p.uf, p.atualizado_em, p.criado_em,
           p.responsavel_nome as responsavel
         FROM profiles p
-        WHERE p.role = 'comprador'::app_role
-          AND (${status} IS NULL OR p.status_compliance = ${status})
-          AND (${search} IS NULL OR (
-            lower(p.nome) LIKE ${search} OR
-            p.cpf LIKE ${search} OR
-            p.cnpj LIKE ${search} OR
-            p.email LIKE ${search}
-          ))
+        WHERE p.role::text = 'comprador'
+        ${filtroStatus}
+        ${filtroBuscaCompleta}
         ORDER BY p.criado_em DESC
         LIMIT 100
       `);
@@ -51,17 +56,16 @@ export const listarCompradoresFn = createServerFn({ method: "GET" })
         const res = await d.execute(sql`
           SELECT p.id, p.nome, p.email, p.whatsapp, p.cpf, p.cidade, p.uf, p.criado_em
           FROM profiles p
-          WHERE p.role = 'comprador'::app_role
-            AND (${search} IS NULL OR (
-              lower(p.nome) LIKE ${search} OR
-              p.cpf LIKE ${search} OR
-              p.email LIKE ${search}
-            ))
+          WHERE p.role::text = 'comprador'
+          ${filtroBusca}
           ORDER BY p.criado_em DESC
           LIMIT 100
         `);
         const rows = Array.isArray(res) ? res : (res as any).rows || [];
-        return { ok: true as const, data: rows };
+        return {
+          ok: true as const,
+          data: rows.map((r: any) => ({ ...r, status_compliance: r.status_compliance ?? "NAO_ENVIADO" })),
+        };
       } catch (e2: any) {
         return { ok: false as const, message: e2?.message || "Erro ao listar compradores.", data: [] };
       }
@@ -77,7 +81,7 @@ export const obterDetalheCompradorFn = createServerFn({ method: "GET" })
 
     const res = await d.execute(sql`
       SELECT * FROM profiles 
-      WHERE id = ${data.id}::uuid AND role = 'comprador'::app_role
+      WHERE id = ${data.id}::uuid AND role::text = 'comprador'
     `);
     const comprador = (res as any).rows[0];
 
