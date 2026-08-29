@@ -7,6 +7,11 @@ function chaveDoPayload(payload: any): string {
   return JSON.stringify(payload);
 }
 
+function assinaturaDoPayload(payload: any): string {
+  const { _enfileiradoEm: _ignorado, ...dados } = payload || {};
+  return JSON.stringify(dados);
+}
+
 export function useOnline() {
   const [online, setOnline] = useState(true);
   useEffect(() => {
@@ -46,7 +51,12 @@ export function enfileirarOffline(payload: any) {
 export function confirmarEnvioOffline(payload: any) {
   try {
     const chave = chaveDoPayload(payload);
-    const fila = lerFilaOffline().filter((item) => chaveDoPayload(item) !== chave);
+    const assinatura = assinaturaDoPayload(payload);
+    // Uma confirmação atrasada nunca pode remover uma edição mais recente do
+    // mesmo item que já esteja aguardando sincronização.
+    const fila = lerFilaOffline().filter(
+      (item) => chaveDoPayload(item) !== chave || assinaturaDoPayload(item) !== assinatura,
+    );
     if (fila.length) window.localStorage.setItem(CHAVE_FILA, JSON.stringify(fila));
     else limparFilaOffline();
   } catch {

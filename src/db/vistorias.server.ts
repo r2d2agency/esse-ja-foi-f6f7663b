@@ -523,6 +523,14 @@ export async function ensureVistoriaSchema() {
       criado_em timestamptz DEFAULT now()
     );
   `);
+  // A tabela também é usada pelo módulo de laudos. Bancos antigos podem ter
+  // apenas `chave/item_id`; reconciliamos as duas estruturas sem perder dados.
+  await d.execute(sql`ALTER TABLE laudo_fotos ADD COLUMN IF NOT EXISTS item_id uuid`);
+  await d.execute(sql`ALTER TABLE laudo_fotos ADD COLUMN IF NOT EXISTS chave text`);
+  await d.execute(sql`ALTER TABLE laudo_fotos ADD COLUMN IF NOT EXISTS tipo_foto text`);
+  await d.execute(sql`ALTER TABLE laudo_fotos ADD COLUMN IF NOT EXISTS url text`);
+  await d.execute(sql`ALTER TABLE laudo_fotos ADD COLUMN IF NOT EXISTS legenda text`);
+  await d.execute(sql`ALTER TABLE laudo_fotos ADD COLUMN IF NOT EXISTS metadata jsonb`);
 
   // Reconciliação: caso a tabela laudos já exista criada por outro módulo
   // (com agendamento_id e sem vistoria_id/concluido_em), garante as colunas
@@ -1743,10 +1751,11 @@ export async function salvarFotoLaudo(data: { laudoId: string; tipo_foto: string
   const d = requireDb();
   await ensureVistoriaSchema();
   const metadataJson = JSON.stringify(data.metadata ?? {});
+  const chave = `vistoria/${data.laudoId}/${data.tipo_foto}`;
 
   await d.execute(sql`
-    INSERT INTO laudo_fotos (laudo_id, tipo_foto, url, metadata)
-    VALUES (${data.laudoId}::uuid, ${data.tipo_foto}, ${data.url}, ${metadataJson}::jsonb)
+    INSERT INTO laudo_fotos (laudo_id, chave, tipo_foto, url, metadata)
+    VALUES (${data.laudoId}::uuid, ${chave}, ${data.tipo_foto}, ${data.url}, ${metadataJson}::jsonb)
   `);
 
   return { ok: true };
