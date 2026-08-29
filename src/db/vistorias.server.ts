@@ -2408,5 +2408,8 @@ export async function aplicarTemplateChecklist(templateId: string) {
     throw new Error(`Não foi possível aplicar o modelo: ${detalharErroDb(e)}`);
   }
 
-  return { ok: true as const, categoriasCriadas, itensCriados };
+  // Devolve a configuração recém-lida do banco para a interface não depender
+  // de uma segunda requisição (que pode ser atendida por cache intermediário).
+  const categorias = await listarChecklistConfig();
+  return { ok: true as const, categoriasCriadas, itensCriados, categorias };
 }
