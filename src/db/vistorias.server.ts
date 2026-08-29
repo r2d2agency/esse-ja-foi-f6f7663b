@@ -2348,25 +2348,20 @@ export async function aplicarTemplateChecklist(templateId: string) {
     let ordemBase = Number((maiorOrdem as any).rows?.[0]?.ordem || 0);
 
     for (const cat of template.categorias) {
-      const existente = await d.execute(sql`
-        SELECT id::text AS id FROM vistorias_checklist_categorias
-        WHERE lower(nome) = lower(${cat.nome}) LIMIT 1
-      `);
-      let categoriaId = (existente as any).rows?.[0]?.id as string | undefined;
+      const antes = await d.execute(sql`SELECT count(*)::int AS total FROM vistorias_checklist_categorias`);
+      const totalAntes = Number((antes as any).rows?.[0]?.total || 0);
 
-      if (!categoriaId) {
-        ordemBase += 10;
-        const inserida = await d.execute(sql`
-          INSERT INTO vistorias_checklist_categorias (nome, descricao, ordem)
-          VALUES (${cat.nome}, ${cat.descricao}, ${ordemBase})
-          RETURNING id::text AS id
-        `);
-        categoriaId = (inserida as any).rows?.[0]?.id as string | undefined;
-        if (categoriaId) categoriasCriadas += 1;
-      } else {
-        await d.execute(sql`UPDATE vistorias_checklist_categorias SET ativo = true, atualizado_em = now() WHERE id = ${categoriaId}::uuid`);
-      }
+      ordemBase += 10;
+      const categoriaId = await obterOuCriarCategoriaChecklist(d, {
+        nome: cat.nome,
+        descricao: cat.descricao,
+        ordem: ordemBase,
+      });
       if (!categoriaId) continue;
+
+      const depois = await d.execute(sql`SELECT count(*)::int AS total FROM vistorias_checklist_categorias`);
+      if (Number((depois as any).rows?.[0]?.total || 0) > totalAntes) categoriasCriadas += 1;
+
 
       for (const item of cat.itens) {
         const jaExiste = await d.execute(sql`
