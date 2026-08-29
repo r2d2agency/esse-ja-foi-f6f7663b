@@ -1,165 +1,86 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
-import { Car, Clock, MapPin, ChevronRight, AlertCircle, LogOut } from "lucide-react";
+import { CalendarCheck, CheckCircle2, ClipboardCheck, Loader2, LogOut, RefreshCw } from "lucide-react";
+import { useServerFn } from "@tanstack/react-start";
+import { getPainelVistoriadorFn } from "@/lib/vistoriador.functions";
 import { useAuthStore } from "@/hooks/use-auth";
-import { getVistoriasHojeVistoriadorFn } from "@/lib/vistoriador.functions";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { GpsStatus } from "@/components/vistoriador/GpsStatus";
+import { VistoriaCard } from "@/components/vistoriador/VistoriaCard";
 
 export const Route = createFileRoute("/vistoriador/")({
   component: VistoriasHojePage,
+  head: () => ({ meta: [
+    { title: "Painel do vistoriador | Esse Já Foi" },
+    { name: "description", content: "Agenda diária, indicadores e localização operacional do vistoriador." },
+    { property: "og:title", content: "Painel do vistoriador | Esse Já Foi" },
+    { property: "og:description", content: "Agenda diária, indicadores e localização operacional do vistoriador." },
+    { property: "og:type", content: "website" },
+    { name: "twitter:card", content: "summary" },
+  ] }),
 });
 
+function dataSaoPaulo() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+}
 
 function VistoriasHojePage() {
   const { user, logout } = useAuthStore();
-  
-  const { data: vistoriasRes } = useQuery({
-    queryKey: ["vistorias-hoje", user?.id],
-    queryFn: () => getVistoriasHojeVistoriadorFn({ data: { usuarioId: user?.id || "" } }),
-    initialData: { ok: false, data: [] } as any,
+  const carregar = useServerFn(getPainelVistoriadorFn);
+  const hoje = dataSaoPaulo();
+  const consulta = useQuery({
+    queryKey: ["painel-vistoriador", user?.id, hoje],
+    queryFn: () => carregar({ data: { usuarioId: user?.id || "", inicio: hoje, fim: hoje } }),
+    enabled: !!user?.id,
   });
-
-  const vistorias = vistoriasRes?.ok ? vistoriasRes.data : [];
-  const hoje = format(new Date(), "EEEE, d 'de' MMMM", { locale: ptBR });
+  const resposta = consulta.data;
+  const painel = resposta?.ok ? resposta.data : null;
+  const vistorias = painel?.vistorias || [];
 
   return (
-    <div className="p-4 lg:ml-64 lg:p-10">
-      <header className="mb-6 flex justify-between items-start">
+    <div className="mx-auto max-w-6xl space-y-5 p-4 pb-24 lg:ml-64 lg:p-8">
+      <header className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-black text-slate-900">Vistorias de hoje</h1>
-          <p className="text-slate-500 capitalize">{hoje}</p>
+          <p className="text-xs font-bold uppercase text-muted-foreground">Operação de vistoria</p>
+          <h1 className="mt-1 text-2xl font-black text-foreground">Olá, {user?.nome?.split(" ")[0] || "vistoriador"}</h1>
+          <p className="text-sm text-muted-foreground">Sua agenda de hoje e o andamento do mês.</p>
         </div>
-        <Button variant="ghost" size="sm" onClick={() => logout()} className="text-slate-400 hover:text-red-600">
-          <LogOut className="h-5 w-5" />
-        </Button>
+        <Button variant="ghost" size="icon" onClick={logout} aria-label="Sair"><LogOut className="h-5 w-5" /></Button>
       </header>
 
+      <GpsStatus />
 
-      {vistorias.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 text-slate-400">
-            <Calendar className="h-8 w-8" />
-          </div>
-          <h2 className="text-lg font-bold text-slate-900">Nenhuma vistoria para hoje</h2>
-          <p className="mt-1 text-slate-500">Aproveite para organizar sua agenda.</p>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {vistorias.map((vistoria: any, index: number) => (
-            <div
-              key={vistoria.id}
-              className={`relative overflow-hidden rounded-2xl border bg-white p-5 transition-all active:scale-[0.98] ${
-                index === 0 ? "border-teal-200 ring-2 ring-teal-500/10" : ""
-              }`}
-            >
-              {index === 0 && (
-                <div className="absolute right-0 top-0 rounded-bl-xl bg-teal-500 px-3 py-1 text-[10px] font-bold text-white uppercase tracking-wider">
-                  Próxima
-                </div>
-              )}
+      <section className="grid grid-cols-3 gap-2" aria-label="Resumo operacional">
+        <Metrica icone={<CalendarCheck className="h-5 w-5" />} valor={painel?.metricas?.agendadas_hoje || 0} rotulo="Agendadas hoje" />
+        <Metrica icone={<CheckCircle2 className="h-5 w-5" />} valor={painel?.metricas?.concluidas_hoje || 0} rotulo="Concluídas hoje" />
+        <Metrica icone={<ClipboardCheck className="h-5 w-5" />} valor={painel?.metricas?.realizadas_mes || 0} rotulo="Realizadas no mês" />
+      </section>
 
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-2 text-teal-700">
-                  <Clock className="h-4 w-4" />
-                  <span className="text-lg font-black tracking-tight">
-                    {vistoria.horario_vistoria.substring(0, 5)}
-                  </span>
-                </div>
-                <Badge
-                  variant="outline"
-                  className={
-                    vistoria.status === "CONFIRMADA"
-                      ? "border-emerald-100 bg-emerald-50 text-emerald-700"
-                      : "bg-slate-50 text-slate-600"
-                  }
-                >
-                  {vistoria.status}
-                </Badge>
-              </div>
-
-              <div className="mt-4 flex items-center gap-4">
-                <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
-                  <Car className="h-6 w-6" />
-                </div>
-                <div>
-                  <h3 className="font-bold leading-tight text-slate-900">
-                    {vistoria.marca} {vistoria.modelo}
-                  </h3>
-                  <p className="text-sm font-medium text-slate-500 uppercase tracking-wider">
-                    {vistoria.placa}
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-4 space-y-2 border-t pt-4">
-                <div className="flex items-center gap-2 text-sm text-slate-600">
-                  <User className="h-4 w-4 text-slate-400" />
-                  <span>{vistoria.vendedor_nome}</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm text-slate-600">
-                  <MapPin className="h-4 w-4 text-slate-400" />
-                  <span>{vistoria.unidade_nome}</span>
-                </div>
-              </div>
-
-              <Button
-                asChild
-                className="mt-5 w-full h-12 rounded-xl bg-slate-900 text-white font-bold hover:bg-slate-800"
-              >
-                <Link to="/vistoriador/vistoria/$id" params={{ id: vistoria.id }}>
-                  Ver vistoria
-                  <ChevronRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
-            </div>
-          ))}
-        </div>
+      {painel?.perfil?.unidade_nome && (
+        <section className="border border-border bg-card p-4">
+          <p className="text-xs font-bold uppercase text-muted-foreground">Sua unidade</p>
+          <p className="mt-1 font-bold text-foreground">{painel.perfil.unidade_nome}</p>
+          <p className="text-sm text-muted-foreground">{[painel.perfil.unidade_endereco, painel.perfil.unidade_cidade, painel.perfil.unidade_estado].filter(Boolean).join(" · ")}</p>
+        </section>
       )}
+
+      <section>
+        <div className="mb-3 flex items-end justify-between">
+          <div><p className="text-xs font-bold uppercase text-muted-foreground">Hoje</p><h2 className="text-lg font-black text-foreground">Vistorias programadas</h2></div>
+          <Button variant="ghost" size="icon" onClick={() => consulta.refetch()} aria-label="Atualizar agenda"><RefreshCw className="h-4 w-4" /></Button>
+        </div>
+        {consulta.isLoading ? <Estado texto="Carregando agenda..." carregando /> : resposta?.ok === false ? <Estado texto={resposta.message} /> : vistorias.length === 0 ? <Estado texto="Nenhuma vistoria agendada para hoje." /> : (
+          <div className="grid gap-3 xl:grid-cols-2">{vistorias.map((v: any, i: number) => <VistoriaCard key={v.id} vistoria={v} destaque={i === 0} />)}</div>
+        )}
+      </section>
     </div>
   );
 }
 
-function Calendar({ className }: { className?: string }) {
-  return (
-    <svg 
-      xmlns="http://www.w3.org/2000/svg" 
-      width="24" 
-      height="24" 
-      viewBox="0 0 24 24" 
-      fill="none" 
-      stroke="currentColor" 
-      strokeWidth="2" 
-      strokeLinecap="round" 
-      strokeLinejoin="round" 
-      className={className}
-    >
-      <rect width="18" height="18" x="3" y="4" rx="2" ry="2"/>
-      <line x1="16" x2="16" y1="2" y2="6"/>
-      <line x1="8" x2="8" y1="2" y2="6"/>
-      <line x1="3" x2="21" y1="10" y2="10"/>
-    </svg>
-  );
+function Metrica({ icone, valor, rotulo }: { icone: React.ReactNode; valor: number; rotulo: string }) {
+  return <div className="min-w-0 border border-border bg-card p-3"><div className="text-primary">{icone}</div><strong className="mt-2 block text-2xl text-foreground">{valor}</strong><span className="block text-[11px] leading-tight text-muted-foreground">{rotulo}</span></div>;
 }
 
-function User({ className }: { className?: string }) {
-  return (
-    <svg 
-      xmlns="http://www.w3.org/2000/svg" 
-      width="24" 
-      height="24" 
-      viewBox="0 0 24 24" 
-      fill="none" 
-      stroke="currentColor" 
-      strokeWidth="2" 
-      strokeLinecap="round" 
-      strokeLinejoin="round" 
-      className={className}
-    >
-      <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
-      <circle cx="12" cy="7" r="4"/>
-    </svg>
-  );
+function Estado({ texto, carregando = false }: { texto: string; carregando?: boolean }) {
+  return <div className="flex min-h-36 flex-col items-center justify-center border border-dashed border-border bg-card p-6 text-center text-sm text-muted-foreground">{carregando && <Loader2 className="mb-2 h-5 w-5 animate-spin" />}{texto}</div>;
 }

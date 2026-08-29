@@ -115,7 +115,7 @@ function DetalheVistoriaPage() {
               <MapPin className="mt-0.5 h-5 w-5 text-teal-600" />
               <div>
                 <p className="font-bold text-slate-900">{v.unidade_nome}</p>
-                <p className="text-sm text-slate-500">{v.unidade_endereco}</p>
+                <p className="text-sm text-slate-500">{[v.unidade_endereco, v.unidade_cidade, v.unidade_estado].filter(Boolean).join(" · ")}</p>
               </div>
             </div>
           </div>

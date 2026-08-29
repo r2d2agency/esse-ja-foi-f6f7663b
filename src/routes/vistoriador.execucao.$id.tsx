@@ -177,17 +177,11 @@ function VistoriaExecucaoPage() {
           });
         },
         () => {
-          iniciarCheckinMutation.mutate({
-            placa: placaInput.toUpperCase(),
-            localizacao: { error: "Permission denied", timestamp: new Date().toISOString() }
-          });
+          toast.error("Ative o GPS e permita o acesso à localização para iniciar a vistoria.");
         }
       );
     } else {
-      iniciarCheckinMutation.mutate({
-        placa: placaInput.toUpperCase(),
-        localizacao: { error: "Not supported", timestamp: new Date().toISOString() }
-      });
+      toast.error("Este aparelho não oferece GPS. O check-in não pode ser iniciado.");
     }
   };
 
