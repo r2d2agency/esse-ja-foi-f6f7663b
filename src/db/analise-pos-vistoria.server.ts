@@ -318,7 +318,8 @@ export async function listarPropostasPendentesVendedor(perfilId: string) {
       v.marca, v.modelo, v.placa
     FROM propostas_veiculo p
     JOIN veiculos v ON v.id = p.veiculo_id
-    WHERE v.perfil_id = ${perfilId}::uuid AND p.status = 'AGUARDANDO_ACEITE'
+    WHERE (v.perfil_id = ${perfilId}::uuid OR v.vendedor_id = ${perfilId}::uuid)
+      AND UPPER(COALESCE(p.status, '')) IN ('AGUARDANDO_ACEITE', 'ENVIADA', 'PENDENTE')
     ORDER BY p.veiculo_id, p.versao DESC
   `);
   return rowsOf(res);
