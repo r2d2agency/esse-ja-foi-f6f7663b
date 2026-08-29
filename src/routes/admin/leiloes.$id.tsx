@@ -66,18 +66,19 @@ function AdminLeilaoAcompanhamentoPage() {
         
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-slate-500 uppercase">Encerramento</CardTitle>
+            <CardTitle className="text-xs font-medium text-slate-500 uppercase">Tempo restante</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-black text-slate-900 flex items-center gap-2">
+            <div className="text-2xl font-black text-slate-900 flex items-center gap-2 tabular-nums">
               <Clock className="h-5 w-5 text-slate-400" />
-              {format(fimEm, "HH:mm:ss", { locale: ptBR })}
+              {formatarTempoRestante(leilao.fim_em)}
             </div>
             <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">
-              {format(fimEm, "dd 'de' MMMM", { locale: ptBR })}
+              Encerra {format(fimEm, "dd/MM 'às' HH:mm", { locale: ptBR })}
             </p>
           </CardContent>
         </Card>
+
 
         <Card>
           <CardHeader className="pb-2">
