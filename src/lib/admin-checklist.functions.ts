@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-export const getChecklistConfigAdminFn = createServerFn({ method: "GET" })
+export const getChecklistConfigAdminFn = createServerFn({ method: "POST" })
   .handler(async () => {
     const { listarChecklistConfig } = await import("@/db/vistorias.server");
     try {

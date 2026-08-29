@@ -2412,9 +2412,15 @@ function AbaChecklistConfigDinamico() {
     (checklistRes && (checklistRes as any).ok === false ? (checklistRes as any).message : null);
 
 
-  // Mantém selecionada a primeira categoria quando abrir a aba
+  // Mantém uma categoria válida selecionada quando a lista for atualizada.
   useEffect(() => {
-    if (!catSelecionadaId && categorias?.[0]) setCatSelecionadaId(categorias[0].id);
+    if (!categorias?.[0]) {
+      if (catSelecionadaId) setCatSelecionadaId(null);
+      return;
+    }
+    if (!catSelecionadaId || !categorias.some((categoria: any) => categoria.id === catSelecionadaId)) {
+      setCatSelecionadaId(categorias[0].id);
+    }
   }, [categorias, catSelecionadaId]);
 
   const refetch = () => queryClient.invalidateQueries({ queryKey: ["admin-checklist-config"] });
@@ -2429,7 +2435,11 @@ function AbaChecklistConfigDinamico() {
       import("@/lib/admin-checklist.functions").then((m) => m.aplicarTemplateChecklistFn({ data: { templateId } })),
     onSuccess: async (r: any) => {
       if (r?.ok) {
-        await refetch();
+        if (Array.isArray(r.categorias)) {
+          queryClient.setQueryData(["admin-checklist-config"], { ok: true, data: r.categorias });
+          if (r.categorias[0]?.id) setCatSelecionadaId(r.categorias[0].id);
+        }
+        await recarregarChecklist();
         toast.success(`Modelo aplicado: ${r.categoriasCriadas} categorias e ${r.itensCriados} itens adicionados.`);
       } else {
         toast.error(r?.message || "Não foi possível aplicar o modelo.");

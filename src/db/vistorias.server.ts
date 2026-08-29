@@ -2370,10 +2370,18 @@ export async function aplicarTemplateChecklist(templateId: string) {
 
       for (const item of cat.itens) {
         const jaExiste = await d.execute(sql`
-          SELECT id FROM vistorias_checklist_itens
+          SELECT id::text AS id FROM vistorias_checklist_itens
           WHERE categoria_id = ${categoriaId}::uuid AND lower(titulo) = lower(${item.titulo}) LIMIT 1
         `);
-        if ((jaExiste as any).rows?.[0]) continue;
+        const itemExistenteId = (jaExiste as any).rows?.[0]?.id as string | undefined;
+        if (itemExistenteId) {
+          await d.execute(sql`
+            UPDATE vistorias_checklist_itens
+            SET ativo = true, atualizado_em = now()
+            WHERE id = ${itemExistenteId}::uuid
+          `);
+          continue;
+        }
 
         const opcoesJson = item.opcoes && Array.isArray(item.opcoes) && item.opcoes.length > 0
           ? JSON.stringify(item.opcoes)
@@ -2408,5 +2416,8 @@ export async function aplicarTemplateChecklist(templateId: string) {
     throw new Error(`Não foi possível aplicar o modelo: ${detalharErroDb(e)}`);
   }
 
-  return { ok: true as const, categoriasCriadas, itensCriados };
+  // Devolve a configuração recém-lida do banco para a interface não depender
+  // de uma segunda requisição (que pode ser atendida por cache intermediário).
+  const categorias = await listarChecklistConfig();
+  return { ok: true as const, categoriasCriadas, itensCriados, categorias };
 }
