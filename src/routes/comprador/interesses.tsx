@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { getInteressesFn, updateInteressesFn } from "@/lib/comprador.functions";
+import { getSessionToken } from "@/lib/session";
 import { TODAS_MARCAS, CATEGORIAS_VEICULOS } from "@/lib/constants-veiculos";
 
 export const Route = createFileRoute("/comprador/interesses")({
@@ -28,7 +29,7 @@ function CompradorInteressesPage() {
 
   const { data: interesses, isLoading } = useQuery({
     queryKey: ['comprador-interesses', user?.id],
-    queryFn: () => getInteressesFn(),
+    queryFn: () => getInteressesFn({ data: { token: getSessionToken() } }),
     enabled: !!user?.id
   });
 
@@ -41,7 +42,7 @@ function CompradorInteressesPage() {
   }, [interesses]);
 
   const mutation = useMutation({
-    mutationFn: (data: any) => updateInteressesFn({ data }),
+    mutationFn: (data: any) => updateInteressesFn({ data: { ...data, token: getSessionToken() } }),
     onSuccess: () => {
       toast.success("Preferências salvas com sucesso!");
     },

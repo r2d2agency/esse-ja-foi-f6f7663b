@@ -1,12 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { listarCompradoresFn } from "@/lib/admin-compradores.functions";
+import { listarCompradoresFn, preCadastrarCompradorFn } from "@/lib/admin-compradores.functions";
+import { toast } from "sonner";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useState } from "react";
 import { 
   Search, 
   ChevronRight, 
   ShoppingBag,
+  UserPlus,
   Building2,
   User as UserIcon,
   CheckCircle2,
@@ -49,6 +52,31 @@ function CompradoresPage() {
   });
 
   const compradores = res?.data || [];
+  const [preOpen, setPreOpen] = useState(false);
+  const [pre, setPre] = useState({
+    nome: "", email: "", senha: "", whatsapp: "", cnpj: "", regiao: "", endereco: "", cidade: "", uf: "",
+  });
+  const [salvandoPre, setSalvandoPre] = useState(false);
+
+  async function salvarPreCadastro() {
+    if (!pre.nome || !pre.email || pre.senha.length < 6) {
+      toast.error("Preencha nome, e-mail e uma senha com ao menos 6 caracteres.");
+      return;
+    }
+    setSalvandoPre(true);
+    try {
+      const r: any = await preCadastrarCompradorFn({ data: pre });
+      if (!r?.ok) {
+        toast.error(r?.message || "Erro ao pré-cadastrar.");
+        return;
+      }
+      toast.success("Comprador pré-cadastrado. Ele já pode ver os veículos.");
+      setPreOpen(false);
+      setPre({ nome: "", email: "", senha: "", whatsapp: "", cnpj: "", regiao: "", endereco: "", cidade: "", uf: "" });
+    } finally {
+      setSalvandoPre(false);
+    }
+  }
 
   return (
     <div className="p-6 space-y-8 max-w-7xl mx-auto">
@@ -58,6 +86,38 @@ function CompradoresPage() {
           <h1 className="text-2xl font-black text-slate-950 uppercase tracking-tight">Compradores</h1>
           <p className="text-slate-500 font-medium">Gestão de interessados, investidores e lojistas.</p>
         </div>
+
+        <Dialog open={preOpen} onOpenChange={setPreOpen}>
+          <DialogTrigger asChild>
+            <Button className="h-11 rounded-xl bg-teal-600 font-bold hover:bg-teal-700">
+              <UserPlus className="mr-2 h-4 w-4" /> Pré-cadastrar comprador
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-black uppercase">Pré-cadastro de comprador</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 pt-2">
+              <Input placeholder="Nome / Razão social" value={pre.nome} onChange={(e) => setPre({ ...pre, nome: e.target.value })} className="h-12" />
+              <Input placeholder="E-mail de acesso" type="email" value={pre.email} onChange={(e) => setPre({ ...pre, email: e.target.value })} className="h-12" />
+              <Input placeholder="Senha provisória" value={pre.senha} onChange={(e) => setPre({ ...pre, senha: e.target.value })} className="h-12" />
+              <Input placeholder="WhatsApp" value={pre.whatsapp} onChange={(e) => setPre({ ...pre, whatsapp: e.target.value })} className="h-12" />
+              <Input placeholder="CNPJ (lojista)" value={pre.cnpj} onChange={(e) => setPre({ ...pre, cnpj: e.target.value })} className="h-12" />
+              <Input placeholder="Região de atuação" value={pre.regiao} onChange={(e) => setPre({ ...pre, regiao: e.target.value })} className="h-12" />
+              <Input placeholder="Endereço da loja" value={pre.endereco} onChange={(e) => setPre({ ...pre, endereco: e.target.value })} className="h-12" />
+              <div className="grid grid-cols-[2fr_1fr] gap-3">
+                <Input placeholder="Cidade" value={pre.cidade} onChange={(e) => setPre({ ...pre, cidade: e.target.value })} className="h-12" />
+                <Input placeholder="UF" value={pre.uf} onChange={(e) => setPre({ ...pre, uf: e.target.value.toUpperCase().slice(0, 2) })} className="h-12" />
+              </div>
+              <p className="rounded-xl bg-amber-50 p-3 text-xs font-medium text-amber-800">
+                O comprador poderá ver os veículos imediatamente, mas só dará lances após completar o cadastro da empresa e do responsável.
+              </p>
+              <Button onClick={salvarPreCadastro} disabled={salvandoPre} className="h-12 w-full rounded-xl bg-teal-600 font-bold hover:bg-teal-700">
+                Criar acesso
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
 
       <div className="flex flex-col gap-4">

@@ -72,6 +72,7 @@ export const aprovarCompradorFn = createServerFn({ method: "POST" })
       UPDATE profiles 
       SET status_compliance = 'APROVADO', 
           pode_ver_valores = true,
+          pode_dar_lances = true,
           atualizado_em = now()
       WHERE id = ${data.id}::uuid
     `);
@@ -98,4 +99,38 @@ export const solicitarPendenciaCompradorFn = createServerFn({ method: "POST" })
     `);
 
     return { ok: true };
+  });
+
+export const preCadastrarCompradorFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) => z.object({
+    nome: z.string().min(2),
+    email: z.string().email(),
+    senha: z.string().min(6),
+    whatsapp: z.string().optional(),
+    cnpj: z.string().optional(),
+    regiao: z.string().optional(),
+    endereco: z.string().optional(),
+    cidade: z.string().optional(),
+    uf: z.string().optional(),
+  }).parse(d))
+  .handler(async ({ data }) => {
+    try {
+      const m = await import("@/db/comprador.server");
+      return await m.preCadastrarComprador(data);
+    } catch (e: any) {
+      return { ok: false as const, message: e.message };
+    }
+  });
+
+export const reprovarCompradorFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) => z.object({ id: z.string().uuid(), motivo: z.string().optional() }).parse(d))
+  .handler(async ({ data }) => {
+    if (!db) return { ok: false as const, message: "DB offline" };
+    await db.execute(sql`
+      UPDATE profiles SET status_compliance = 'REPROVADO',
+        compliance_motivo_pendencia = ${data.motivo || null},
+        pode_ver_valores = false, pode_dar_lances = false, atualizado_em = now()
+      WHERE id = ${data.id}::uuid
+    `);
+    return { ok: true as const };
   });
