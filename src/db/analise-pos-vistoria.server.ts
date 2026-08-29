@@ -62,10 +62,23 @@ export async function ensureAnalisePosVistoriaSchema() {
       resolvido_em timestamptz
     );
   `);
+
+  // Reconciliação de esquemas legados
+  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS versao integer NOT NULL DEFAULT 1`);
+  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS valor_referencia numeric(12,2)`);
+  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS valor_minimo_interno numeric(12,2)`);
+  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS observacao_interna text`);
+  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS mensagem_vendedor text`);
+  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS motivo_recusa text`);
+  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS detalhes_recusa text`);
+  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS respondido_em timestamptz`);
+  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS ip_vendedor text`);
 }
+
 
 export async function listarVistoriasConcluidasFila() {
   const d = requireDb();
+  await ensureAnalisePosVistoriaSchema();
   const res = await d.execute(sql`
     SELECT 
       v.id as vistoria_id,
@@ -99,6 +112,7 @@ export async function listarVistoriasConcluidasFila() {
 
 export async function getDetalheAnaliseVistoria(veiculoId: string) {
   const d = requireDb();
+  await ensureAnalisePosVistoriaSchema();
   
   const vRes = await d.execute(sql`
     SELECT 
@@ -136,11 +150,15 @@ export async function getDetalheAnaliseVistoria(veiculoId: string) {
   let checklist = [];
   let fotos = [];
   if (vistoria?.laudo_id) {
-    const checkRes = await d.execute(sql`SELECT * FROM laudo_checklist WHERE laudo_id = ${vistoria.laudo_id}::uuid`);
-    checklist = rowsOf(checkRes) || [];
-    
-    const fotoRes = await d.execute(sql`SELECT * FROM laudo_fotos WHERE laudo_id = ${vistoria.laudo_id}::uuid`);
-    fotos = rowsOf(fotoRes) || [];
+    try {
+      const checkRes = await d.execute(sql`SELECT * FROM laudo_checklist WHERE laudo_id = ${vistoria.laudo_id}::uuid`);
+      checklist = rowsOf(checkRes) || [];
+    } catch { checklist = []; }
+
+    try {
+      const fotoRes = await d.execute(sql`SELECT * FROM laudo_fotos WHERE laudo_id = ${vistoria.laudo_id}::uuid`);
+      fotos = rowsOf(fotoRes) || [];
+    } catch { fotos = []; }
   }
 
   const propRes = await d.execute(sql`
