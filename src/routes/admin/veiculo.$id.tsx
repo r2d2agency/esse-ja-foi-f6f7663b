@@ -65,7 +65,7 @@ function formatCurrencyBR(value: unknown, fallback = "Não informado") {
   return `R$ ${n.toLocaleString("pt-BR")}`;
 }
 
-function desserializarObservacoesVeiculo(obsRaw?: string | null) {
+function desserializarObservacoesVeiculo(obsRaw?: string | null): Record<string, any> {
   if (!obsRaw) return {};
 
   try {
