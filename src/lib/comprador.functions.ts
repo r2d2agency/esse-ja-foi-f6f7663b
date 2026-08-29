@@ -42,6 +42,7 @@ export const cadastrarCompradorFn = createServerFn({ method: "POST" })
 export const getPerfilCompradorFn = createServerFn({ method: "POST" })
   .validator((d: unknown) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
+    await ensureSchema();
     const userId = await userFromToken(data.token);
     const m = await import("@/db/comprador.server");
     const res = await m.getPerfilComprador(userId);
