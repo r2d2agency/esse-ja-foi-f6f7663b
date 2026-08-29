@@ -118,6 +118,10 @@ function CompradorDashboard() {
     });
   }, [vitrine, busca, soLeilao]);
 
+  const [vitoriaFechada, setVitoriaFechada] = useState(false);
+  const vitoria = notifs.find((n) => n.tipo === "LEILAO_VENCIDO" && !n.lida);
+
+
 
   if (isLoading) {
     return (
