@@ -136,7 +136,7 @@ function DetalheAnaliseVistoriaPage() {
       });
 
       if (!response.ok) {
-        toast.error(response.message || "Não foi possível enviar a proposta.", { id: toastId });
+        toast.error((response as any).message || "Não foi possível enviar a proposta.", { id: toastId });
         return;
       }
 

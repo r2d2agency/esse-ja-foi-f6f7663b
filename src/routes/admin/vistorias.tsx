@@ -832,7 +832,7 @@ function VistoriasAdminPage() {
         });
 
         if (!response?.ok) {
-          toast.error(response?.message || "Não foi possível remarcar o agendamento.", { id: toastId });
+          toast.error((response as any)?.message || "Não foi possível remarcar o agendamento.", { id: toastId });
           return;
         }
         toast.success("Agendamento remarcado com sucesso.", { id: toastId });
@@ -852,7 +852,7 @@ function VistoriasAdminPage() {
         });
 
         if (!response?.ok) {
-          toast.error(response?.message || "Não foi possível criar o agendamento.", { id: toastId });
+          toast.error((response as any)?.message || "Não foi possível criar o agendamento.", { id: toastId });
           return;
         }
         toast.success("Vistoria agendada com sucesso.", { id: toastId });
@@ -921,7 +921,7 @@ function VistoriasAdminPage() {
       });
 
       if (!response?.ok) {
-        toast.error(response?.message || "Não foi possível salvar a unidade.", { id: toastId });
+        toast.error((response as any)?.message || "Não foi possível salvar a unidade.", { id: toastId });
         return;
       }
 
@@ -946,7 +946,7 @@ function VistoriasAdminPage() {
       const response = await salvarVistoriadorCadastro({ data: vistoriadorForm as any });
 
       if (!response?.ok) {
-        toast.error(response?.message || "Não foi possível salvar o vistoriador.", { id: toastId });
+        toast.error((response as any)?.message || "Não foi possível salvar o vistoriador.", { id: toastId });
         return;
       }
 
@@ -2013,11 +2013,11 @@ function VistoriasAdminPage() {
                           Escolha um horário para agendar.
                         </p>
                       </div>
-                      {slotsRes?.configuracao && (
+                      {(slotsRes as any)?.configuracao && (
                         <p className="text-[11px] text-slate-500 text-right max-w-[55%]">
-                          {(slotsRes.configuracao.periodos || []).map((periodo: any) => `${periodo.inicio}-${periodo.fim}`).join(" | ") || "Sem períodos"}
+                          {((slotsRes as any).configuracao.periodos || []).map((periodo: any) => `${periodo.inicio}-${periodo.fim}`).join(" | ") || "Sem períodos"}
                           <br />
-                          {slotsRes.configuracao.duracao_padrao_minutos}min + {slotsRes.configuracao.intervalo_entre_vistorias_minutos}min de janela
+                          {(slotsRes as any).configuracao.duracao_padrao_minutos}min + {(slotsRes as any).configuracao.intervalo_entre_vistorias_minutos}min de janela
                         </p>
                       )}
                     </div>

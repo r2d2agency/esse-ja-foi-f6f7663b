@@ -107,7 +107,7 @@ export const salvarUnidadeCadastroFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { salvarUnidadeVistoria } = await import("@/db/vistorias.server");
     try {
-      const unidade = await salvarUnidadeVistoria(data);
+      const unidade = await salvarUnidadeVistoria(data as any);
       return { ok: true, data: unidade };
     } catch (err: any) {
       return { ok: false, message: err.message };
@@ -134,7 +134,7 @@ export const salvarVistoriadorCadastroFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { salvarVistoriadorCadastro } = await import("@/db/vistorias.server");
     try {
-      const vistoriador = await salvarVistoriadorCadastro(data);
+      const vistoriador = await salvarVistoriadorCadastro(data as any);
       return { ok: true, data: vistoriador };
     } catch (err: any) {
       return { ok: false, message: err.message };
