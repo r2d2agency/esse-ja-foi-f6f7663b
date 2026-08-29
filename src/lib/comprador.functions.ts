@@ -83,6 +83,7 @@ export const enviarDocumentoCompradorFn = createServerFn({ method: "POST" })
   .validator((d: unknown) => tokenSchema.extend({ tipo: z.string(), url: z.string() }).parse(d))
   .handler(async ({ data }) => {
     try {
+      await ensureSchema();
       const userId = await userFromToken(data.token);
       const m = await import("@/db/comprador.server");
       await m.salvarDocumentoComprador(userId, data.tipo, data.url);
