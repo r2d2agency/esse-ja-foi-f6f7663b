@@ -378,18 +378,29 @@ function rowsOf(res: any): any[] {
 
 export async function getPropostaVeiculoVendedor(veiculoId: string, perfilId: string) {
   const d = requireDb();
-  await ensureAnalisePosVistoriaSchema();
+  try {
+    await ensureAnalisePosVistoriaSchema();
+  } catch (err: any) {
+    console.warn("[analise-pos-vistoria] ensure schema falhou:", err?.message ?? err);
+  }
 
+  // to_jsonb evita quebra por colunas ausentes em bases legadas.
   const vRes = await d.execute(sql`
-    SELECT id::text AS id, marca, modelo, placa, status_analise,
-           perfil_id::text AS perfil_id, vendedor_id::text AS vendedor_id
-    FROM veiculos
-    WHERE id = ${veiculoId}::uuid
-    LIMIT 1
+    SELECT to_jsonb(v) AS registro FROM veiculos v WHERE v.id = ${veiculoId}::uuid LIMIT 1
   `);
-  const veiculo = rowsOf(vRes)[0] ?? null;
+  const veiculoRaw = (rowsOf(vRes)[0]?.registro ?? null) as any;
 
-  if (!veiculo) return { veiculo: null, proposta: null, message: "Veículo não encontrado." };
+  if (!veiculoRaw) return { veiculo: null, proposta: null, message: "Veículo não encontrado." };
+
+  const veiculo = {
+    id: String(veiculoRaw.id),
+    marca: veiculoRaw.marca,
+    modelo: veiculoRaw.modelo,
+    placa: veiculoRaw.placa,
+    status_analise: veiculoRaw.status_analise,
+    perfil_id: veiculoRaw.perfil_id ? String(veiculoRaw.perfil_id) : null,
+    vendedor_id: veiculoRaw.vendedor_id ? String(veiculoRaw.vendedor_id) : null,
+  };
 
   const dono = [veiculo.perfil_id, veiculo.vendedor_id].filter(Boolean).map(String);
   if (dono.length > 0 && !dono.includes(String(perfilId))) {
@@ -397,13 +408,24 @@ export async function getPropostaVeiculoVendedor(veiculoId: string, perfilId: st
   }
 
   const pRes = await d.execute(sql`
-    SELECT id::text AS id, veiculo_id::text AS veiculo_id, versao, status,
-           valor_minimo_acordado, mensagem_vendedor, enviado_em
-    FROM propostas_veiculo
-    WHERE veiculo_id = ${veiculoId}::uuid
-    ORDER BY COALESCE(versao, 0) DESC, enviado_em DESC NULLS LAST
+    SELECT to_jsonb(p) AS registro
+    FROM propostas_veiculo p
+    WHERE p.veiculo_id = ${veiculoId}::uuid
+    ORDER BY p.criado_em DESC NULLS LAST, p.id DESC
     LIMIT 1
   `);
+  const propostaRaw = (rowsOf(pRes)[0]?.registro ?? null) as any;
+  const proposta = propostaRaw
+    ? {
+        id: String(propostaRaw.id),
+        veiculo_id: String(propostaRaw.veiculo_id),
+        versao: propostaRaw.versao ?? 1,
+        status: propostaRaw.status ?? "AGUARDANDO_ACEITE",
+        valor_minimo_acordado: propostaRaw.valor_minimo_acordado,
+        mensagem_vendedor: propostaRaw.mensagem_vendedor ?? null,
+        enviado_em: propostaRaw.enviado_em ?? propostaRaw.criado_em ?? null,
+      }
+    : null;
   const proposta = rowsOf(pRes)[0] ?? null;
 
   return {
