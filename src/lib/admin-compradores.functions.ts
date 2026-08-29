@@ -72,6 +72,14 @@ export const listarCompradoresFn = createServerFn({ method: "GET" })
     }
   });
 
+// postgres-js retorna array direto; pg retorna { rows }. Normaliza ambos.
+function rowsOf(res: any): any[] {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res.rows)) return res.rows;
+  return [];
+}
+
 export const obterDetalheCompradorFn = createServerFn({ method: "GET" })
   .validator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data }) => {
@@ -83,16 +91,22 @@ export const obterDetalheCompradorFn = createServerFn({ method: "GET" })
       SELECT * FROM profiles 
       WHERE id = ${data.id}::uuid AND role::text = 'comprador'
     `);
-    const comprador = (res as any).rows[0];
+    const comprador = rowsOf(res)[0];
 
     if (!comprador) return { ok: false, message: "Comprador não encontrado" };
 
-    const docsRes = await d.execute(sql`
-      SELECT * FROM documentos 
-      WHERE entidade = 'comprador' AND entidade_id = ${data.id}::uuid
-    `);
+    let documentos: any[] = [];
+    try {
+      const docsRes = await d.execute(sql`
+        SELECT * FROM documentos 
+        WHERE entidade = 'comprador' AND entidade_id = ${data.id}::uuid
+      `);
+      documentos = rowsOf(docsRes);
+    } catch (e: any) {
+      console.error("[admin-compradores] documentos falhou:", e?.message || e);
+    }
 
-    return { ok: true, data: { ...comprador, documentos: (docsRes as any).rows || [] } };
+    return { ok: true, data: { ...comprador, documentos } };
   });
 
 export const aprovarCompradorFn = createServerFn({ method: "POST" })
