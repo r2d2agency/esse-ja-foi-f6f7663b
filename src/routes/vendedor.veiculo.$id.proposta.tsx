@@ -17,7 +17,7 @@ function PropostaVendedorPage() {
   const { id } = Route.useParams() as { id: string };
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { user, initialized } = useAuth();
   const getProposta = useServerFn(getPropostaVeiculoVendedorFn);
   const responder = useServerFn(responderPropostaVendedorFn);
   const [respondendo, setRespondendo] = useState(false);
@@ -28,6 +28,15 @@ function PropostaVendedorPage() {
     enabled: !!user?.id,
   });
 
+  if (!initialized && !user?.id) return <div className="p-8">Carregando sessão...</div>;
+  if (!user?.id) {
+    return (
+      <div className="p-8 text-center space-y-3">
+        <p className="text-slate-600">Sua sessão expirou. Entre novamente para ver a proposta.</p>
+        <Button asChild><Link to="/login">Entrar</Link></Button>
+      </div>
+    );
+  }
   if (isLoading) return <div className="p-8">Carregando proposta...</div>;
   const veiculo = res?.veiculo as any;
   const proposta = res?.proposta as any;
@@ -38,7 +47,7 @@ function PropostaVendedorPage() {
     return (
       <div className="p-8 text-center space-y-3">
         <p className="text-slate-600">Não encontramos nenhuma proposta para este veículo.</p>
-        {res && !res.ok ? <p className="text-xs text-red-500">{(res as any).message}</p> : null}
+        {(res as any)?.message ? <p className="text-xs text-red-500">{(res as any).message}</p> : null}
         <Button asChild className="mt-2">
           <Link to="/vendedor/veiculo/$id" params={{ id }}>Voltar</Link>
         </Button>

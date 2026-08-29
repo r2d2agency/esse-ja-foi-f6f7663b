@@ -318,7 +318,8 @@ export async function listarPropostasPendentesVendedor(perfilId: string) {
       v.marca, v.modelo, v.placa
     FROM propostas_veiculo p
     JOIN veiculos v ON v.id = p.veiculo_id
-    WHERE v.perfil_id = ${perfilId}::uuid AND p.status = 'AGUARDANDO_ACEITE'
+    WHERE (v.perfil_id = ${perfilId}::uuid OR v.vendedor_id = ${perfilId}::uuid)
+      AND UPPER(COALESCE(p.status, '')) IN ('AGUARDANDO_ACEITE', 'ENVIADA', 'PENDENTE')
     ORDER BY p.veiculo_id, p.versao DESC
   `);
   return rowsOf(res);
@@ -359,28 +360,38 @@ export async function getPropostaVeiculoVendedor(veiculoId: string, perfilId: st
   await ensureAnalisePosVistoriaSchema();
 
   const vRes = await d.execute(sql`
-    SELECT id::text AS id, marca, modelo, placa, status_analise
+    SELECT id::text AS id, marca, modelo, placa, status_analise,
+           perfil_id::text AS perfil_id, vendedor_id::text AS vendedor_id
     FROM veiculos
     WHERE id = ${veiculoId}::uuid
-      AND COALESCE(perfil_id, vendedor_id) = ${perfilId}::uuid
     LIMIT 1
   `);
   const veiculo = rowsOf(vRes)[0] ?? null;
 
-  if (!veiculo) return { veiculo: null, proposta: null };
+  if (!veiculo) return { veiculo: null, proposta: null, message: "Veículo não encontrado." };
+
+  const dono = [veiculo.perfil_id, veiculo.vendedor_id].filter(Boolean).map(String);
+  if (dono.length > 0 && !dono.includes(String(perfilId))) {
+    return { veiculo: null, proposta: null, message: "Este veículo não pertence à sua conta." };
+  }
 
   const pRes = await d.execute(sql`
     SELECT id::text AS id, veiculo_id::text AS veiculo_id, versao, status,
            valor_minimo_acordado, mensagem_vendedor, enviado_em
     FROM propostas_veiculo
     WHERE veiculo_id = ${veiculoId}::uuid
-    ORDER BY versao DESC
+    ORDER BY COALESCE(versao, 0) DESC, enviado_em DESC NULLS LAST
     LIMIT 1
   `);
   const proposta = rowsOf(pRes)[0] ?? null;
 
-  return { veiculo, proposta };
+  return {
+    veiculo,
+    proposta,
+    message: proposta ? undefined : "Nenhuma proposta foi enviada para este veículo ainda.",
+  };
 }
+
 
 export async function responderPropostaVendedor(data: {
   veiculoId: string;
@@ -401,7 +412,8 @@ export async function responderPropostaVendedor(data: {
       JOIN veiculos v ON v.id = p.veiculo_id
       WHERE p.id = ${data.propostaId}::uuid
         AND p.veiculo_id = ${data.veiculoId}::uuid
-        AND COALESCE(v.perfil_id, v.vendedor_id) = ${data.perfilId}::uuid
+        AND (v.perfil_id IS NULL OR v.perfil_id = ${data.perfilId}::uuid)
+        AND (v.vendedor_id IS NULL OR v.vendedor_id = ${data.perfilId}::uuid)
       FOR UPDATE
     `);
     const proposta = rowsOf(propostaRes)[0];
@@ -436,7 +448,6 @@ export async function responderPropostaVendedor(data: {
       SET status_analise = ${statusVeiculo},
           atualizado_em = now()
       WHERE id = ${data.veiculoId}::uuid
-        AND COALESCE(perfil_id, vendedor_id) = ${data.perfilId}::uuid
     `);
 
     return { ok: true as const, alreadyAnswered: false as const };
