@@ -1471,16 +1471,17 @@ export async function remarcarAgendamentoVistoria(args: {
   const minsAtual = toMinutes(horarioAtualStr);
   const agoraSPData = dataFormatadaSP(0);
   const agoraSPMin = minutosAgoraSP();
-  const antecedenciaMinimaMinutos = 60;
-
-  if (dataAtualStr === agoraSPData) {
-    if (minsAtual - agoraSPMin < antecedenciaMinimaMinutos) {
-      throw new Error(
-        `Só é permitido remarcar com no mínimo ${antecedenciaMinimaMinutos / 60} hora de antecedência. O horário está muito próximo.`
-      );
+  if (!args.permissaoAdmin) {
+    const antecedenciaMinimaMinutos = 60;
+    if (dataAtualStr === agoraSPData) {
+      if (minsAtual - agoraSPMin < antecedenciaMinimaMinutos) {
+        throw new Error(
+          `Só é permitido remarcar com no mínimo ${antecedenciaMinimaMinutos / 60} hora de antecedência. O horário está muito próximo.`
+        );
+      }
+    } else if (dataAtualStr < agoraSPData) {
+      throw new Error("O horário atual da vistoria já passou. Contate o suporte.");
     }
-  } else if (dataAtualStr < agoraSPData) {
-    throw new Error("O horário atual da vistoria já passou. Contate o suporte.");
   }
 
   if (dataEstaNoPassado(args.novaData)) {

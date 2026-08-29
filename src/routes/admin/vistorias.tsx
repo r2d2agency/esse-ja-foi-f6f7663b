@@ -1711,7 +1711,7 @@ function VistoriasAdminPage() {
             <DialogTitle>{remarcacao ? "Remarcar vistoria" : "Agendar vistoria"}</DialogTitle>
             <DialogDescription>
               {remarcacao
-                ? `Remarcação de ${remarcacao.dataOriginal ?? "-"} às ${remarcacao.horarioOriginal ?? "-"}. Selecione nova unidade, data e horário. Mínimo 1 hora de antecedência.`
+                ? `Remarcação de ${remarcacao.dataOriginal ?? "-"} às ${remarcacao.horarioOriginal ?? "-"}. Selecione qualquer nova data e horário disponível.`
                 : "Defina a unidade, a data e escolha um horário disponível. O vistoriador será alocado automaticamente a partir da equipe da unidade."}
             </DialogDescription>
           </DialogHeader>
