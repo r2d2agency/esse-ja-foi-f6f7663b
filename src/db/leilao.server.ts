@@ -262,7 +262,33 @@ export async function registrarLance(leilaoId: string, compradorId: string, valo
         `Novo lance de R$ ${Number(valor).toLocaleString("pt-BR")}. Faça uma nova oferta para voltar à liderança.`,
         `/veiculos`,
       );
+
+      // E-mail de lance superado (nunca bloqueia o registro do lance)
+      try {
+        const supRes = await tx.execute(sql`
+          SELECT email, nome FROM profiles WHERE id = ${maiorLanceAnterior.comprador_id}::uuid
+        `);
+        const superado = rowsOf(supRes)[0];
+        if (superado?.email) {
+          const { enviarEmailSimples } = await import("./mail.server");
+          const valorFmt = `R$ ${Number(valor).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
+          await enviarEmailSimples(
+            superado.email,
+            "Seu lance foi superado — Esse Já Foi",
+            `<div style="font-family:Inter,Arial,sans-serif;color:#0f172a">
+               <h2 style="margin:0 0 8px">Seu lance foi superado</h2>
+               <p style="margin:0 0 12px">Olá ${superado.nome || "comprador"}, um novo lance de <strong>${valorFmt}</strong> foi registrado no leilão que você acompanha.</p>
+               <p style="margin:0 0 16px">Faça uma nova oferta para voltar à liderança antes do encerramento.</p>
+               <a href="https://desenvolvimento-r2d2-essejafoi-front.ckilhl.easypanel.host/veiculos"
+                  style="background:#0f766e;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:700">Ver leilão</a>
+             </div>`,
+          );
+        }
+      } catch (e) {
+        console.error("[leilao] falha ao enviar e-mail de lance superado", e);
+      }
     }
+
     if (maiorLanceAnterior) {
       await processarEventoSistema("LANCE_SUPERADO", {
         leilao_id: leilaoId,
