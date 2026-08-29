@@ -531,6 +531,15 @@ export async function ensureVistoriaSchema() {
   await d.execute(sql`ALTER TABLE laudo_fotos ADD COLUMN IF NOT EXISTS url text`);
   await d.execute(sql`ALTER TABLE laudo_fotos ADD COLUMN IF NOT EXISTS legenda text`);
   await d.execute(sql`ALTER TABLE laudo_fotos ADD COLUMN IF NOT EXISTS metadata jsonb`);
+  await d.execute(sql`
+    DELETE FROM laudo_fotos antiga
+    USING laudo_fotos nova
+    WHERE antiga.laudo_id = nova.laudo_id
+      AND antiga.chave = nova.chave
+      AND antiga.chave IS NOT NULL
+      AND antiga.criado_em < nova.criado_em
+  `);
+  await d.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_laudo_fotos_laudo_chave ON laudo_fotos(laudo_id, chave) WHERE chave IS NOT NULL`);
 
   // Reconciliação: caso a tabela laudos já exista criada por outro módulo
   // (com agendamento_id e sem vistoria_id/concluido_em), garante as colunas

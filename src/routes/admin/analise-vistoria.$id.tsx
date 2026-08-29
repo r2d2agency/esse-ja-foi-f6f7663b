@@ -316,7 +316,13 @@ function DetalheAnaliseVistoriaPage() {
                             </div>
                           </td>
                           <td className="px-6 py-4">{renderChecklistStatus(item.status)}</td>
-                          <td className="px-6 py-4 text-sm text-slate-500">{item.observacao || "-"}</td>
+                           <td className="px-6 py-4 text-sm text-slate-500">
+                             <div className="space-y-2">
+                               <p>{formatarRespostaChecklist(item)}</p>
+                               {item.observacao && <p className="text-xs italic">Observação: {item.observacao}</p>}
+                               {item.foto_url && <img src={item.foto_url} alt={`Foto de ${item.item_chave}`} className="h-20 w-28 rounded-md border border-slate-200 object-cover" />}
+                             </div>
+                           </td>
                         </tr>
                       )) : (
                         <tr>
@@ -506,7 +512,17 @@ function renderChecklistStatus(status: string) {
       return <Badge className="bg-amber-50 text-amber-700 hover:bg-amber-50 text-[10px] font-bold">Com observação</Badge>;
     case "NAO_CONFORME":
       return <Badge className="bg-red-50 text-red-700 hover:bg-red-50 text-[10px] font-bold">Não conforme</Badge>;
+    case "RESPONDIDO":
+      return <Badge className="bg-blue-50 text-blue-700 hover:bg-blue-50 text-[10px] font-bold">Respondido</Badge>;
     default:
       return <Badge variant="outline" className="text-[10px] font-bold">{status || "N/A"}</Badge>;
   }
+}
+
+function formatarRespostaChecklist(item: any) {
+  if (item.resposta_texto) return item.resposta_texto;
+  if (item.resposta_numero !== null && item.resposta_numero !== undefined) return String(item.resposta_numero);
+  if (Array.isArray(item.resposta_opcoes)) return item.resposta_opcoes.join(", ");
+  if (item.resposta_opcoes) return String(item.resposta_opcoes);
+  return item.observacao || "Sem observação";
 }

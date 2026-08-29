@@ -18,6 +18,7 @@ import {
   getChecklistConfigFn,
   salvarRespostaChecklistFn,
   getRespostasChecklistFn,
+  getFotosLaudoFn,
   salvarFotoLaudoFn,
 } from "@/lib/vistoriador.functions";
 import { Button } from "@/components/ui/button";
@@ -182,6 +183,14 @@ function VistoriaExecucaoPage() {
       }
     }
   });
+
+  const concluirComSeguranca = async () => {
+    setSalvandoEtapa(true);
+    await enviarPendentes();
+    await filaOffline.sincronizar();
+    setSalvandoEtapa(false);
+    concluirVistoriaMutation.mutate();
+  };
 
   const handleCheckin = () => {
     if (!placaInput || placaInput.toUpperCase() !== v?.placa.toUpperCase()) {
@@ -493,6 +502,11 @@ function VistoriaExecucaoPage() {
 
         {etapaAtual === ETAPAS.length - 1 && (
           <div className="space-y-6">
+            <RevisaoFinal
+              categorias={categoriasConfig}
+              respostas={respostasEmMemoria}
+              laudoId={laudoId}
+            />
           <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
               <h3 className="text-sm font-black uppercase tracking-widest text-muted-foreground">Revisão Final</h3>
               
@@ -521,12 +535,15 @@ function VistoriaExecucaoPage() {
                 </div>
 
                 <Button 
-                  onClick={() => concluirVistoriaMutation.mutate()}
-                  disabled={!declaracao || concluirVistoriaMutation.isPending}
+                  onClick={() => void concluirComSeguranca()}
+                  disabled={!declaracao || concluirVistoriaMutation.isPending || salvandoEtapa || filaOffline.pendentes > 0}
                   className="h-16 w-full rounded-2xl bg-accent text-lg font-black uppercase text-accent-foreground hover:bg-accent/90"
                 >
-                  {concluirVistoriaMutation.isPending ? "Concluindo..." : "Concluir Vistoria"}
+                  {concluirVistoriaMutation.isPending || salvandoEtapa ? "Salvando e concluindo..." : "Salvar e finalizar laudo"}
                 </Button>
+                {filaOffline.pendentes > 0 && (
+                  <p className="text-center text-xs font-bold text-amber-700">Sincronize as {filaOffline.pendentes} alteração(ões) pendentes antes de finalizar.</p>
+                )}
               </div>
             </div>
           </div>
@@ -936,6 +953,21 @@ function FotosAnuncio({ laudoId }: { laudoId: string | null }) {
   const enviadas = Object.keys(fotos).length;
   const [cameraMovel, setCameraMovel] = useState(false);
 
+  const { data: fotosSalvas } = useQuery({
+    queryKey: ["fotos-laudo", laudoId],
+    queryFn: () => laudoId ? getFotosLaudoFn({ data: { laudoId } }) : Promise.resolve({ ok: true, data: [] }),
+    enabled: !!laudoId,
+  });
+
+  useEffect(() => {
+    if (!fotosSalvas?.ok) return;
+    const mapa = (fotosSalvas.data || []).reduce((acc: Record<string, string>, foto: any) => {
+      if (foto.tipo_foto && foto.url) acc[foto.tipo_foto] = foto.url;
+      return acc;
+    }, {});
+    setFotos(mapa);
+  }, [fotosSalvas]);
+
   useEffect(() => {
     setCameraMovel(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) && "mediaDevices" in navigator);
   }, []);
@@ -1045,6 +1077,70 @@ function FotosAnuncio({ laudoId }: { laudoId: string | null }) {
           ? "Toque em um ângulo para abrir a câmera. A foto é comprimida e enviada automaticamente."
           : "Abra esta vistoria no celular para fotografar o veículo. O carregamento pelo computador está bloqueado."}
       </p>
+    </div>
+  );
+}
+
+function RevisaoFinal({ categorias, respostas, laudoId }: {
+  categorias: any[];
+  respostas: Record<string, any>;
+  laudoId: string | null;
+}) {
+  const { data: fotosRes } = useQuery({
+    queryKey: ["fotos-laudo", laudoId],
+    queryFn: () => laudoId ? getFotosLaudoFn({ data: { laudoId } }) : Promise.resolve({ ok: true, data: [] }),
+    enabled: !!laudoId,
+  });
+  const fotosGerais = fotosRes?.ok ? fotosRes.data : [];
+
+  const exibirResposta = (item: any, resposta: any) => {
+    if (resposta?.resposta_conformidade) return String(resposta.resposta_conformidade).replaceAll("_", " ");
+    if (resposta?.resposta_texto) return resposta.resposta_texto;
+    if (resposta?.resposta_numero !== null && resposta?.resposta_numero !== undefined) return String(resposta.resposta_numero);
+    if (Array.isArray(resposta?.resposta_opcoes)) return resposta.resposta_opcoes.join(", ");
+    if (resposta?.resposta_opcoes) return String(resposta.resposta_opcoes);
+    return "Não respondido";
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+        <h2 className="text-base font-black text-foreground">Confira todo o laudo</h2>
+        <p className="mt-1 text-xs text-muted-foreground">Revise respostas, observações e fotos antes de salvar e finalizar.</p>
+      </div>
+      {categorias.map((categoria) => (
+        <Card key={categoria.id} className="overflow-hidden rounded-2xl border-border">
+          <div className="border-b border-border bg-muted/40 px-4 py-3">
+            <p className="text-xs font-black uppercase text-foreground">{categoria.nome}</p>
+          </div>
+          <div className="divide-y divide-border">
+            {(categoria.itens || []).map((item: any) => {
+              const resposta = respostas[item.id] || {};
+              return (
+                <div key={item.id} className="space-y-2 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-sm font-bold text-foreground">{item.titulo}</p>
+                    <Badge variant="outline" className={resposta._respondido ? "border-emerald-300 text-emerald-700" : "border-amber-300 text-amber-700"}>
+                      {resposta._respondido ? "Preenchido" : "Pendente"}
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{exibirResposta(item, resposta)}</p>
+                  {resposta.observacao && <p className="text-xs text-muted-foreground">Observação: {resposta.observacao}</p>}
+                  {resposta.foto_url && <img src={resposta.foto_url} alt={`Foto de ${item.titulo}`} className="h-28 w-36 rounded-lg border border-border object-cover" />}
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      ))}
+      <Card className="rounded-2xl border-border p-4">
+        <p className="text-xs font-black uppercase text-foreground">Fotos gerais do veículo ({fotosGerais.length})</p>
+        {fotosGerais.length > 0 ? (
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            {fotosGerais.map((foto: any) => <img key={foto.id} src={foto.url} alt={foto.tipo_foto || "Foto do veículo"} className="aspect-square w-full rounded-lg border border-border object-cover" />)}
+          </div>
+        ) : <p className="mt-2 text-xs text-muted-foreground">Nenhuma foto geral registrada.</p>}
+      </Card>
     </div>
   );
 }
