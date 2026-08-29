@@ -27,6 +27,7 @@ import { Route as AdminComunicacoesRouteImport } from './routes/admin/comunicaco
 import { Route as AdminConfiguracoesRouteImport } from './routes/admin/configuracoes'
 import { Route as AdminContratosRouteImport } from './routes/admin/contratos'
 import { Route as AdminConversasRouteImport } from './routes/admin/conversas'
+import { Route as AdminDemoRouteImport } from './routes/admin/demo'
 import { Route as AdminEntregasRouteImport } from './routes/admin/entregas'
 import { Route as AdminLeiloesRouteImport } from './routes/admin/leiloes'
 import { Route as AdminLogsRouteImport } from './routes/admin/logs'
@@ -169,6 +170,11 @@ const AdminContratosRoute = AdminContratosRouteImport.update({
 const AdminConversasRoute = AdminConversasRouteImport.update({
   id: '/conversas',
   path: '/conversas',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminDemoRoute = AdminDemoRouteImport.update({
+  id: '/demo',
+  path: '/demo',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminEntregasRoute = AdminEntregasRouteImport.update({
@@ -459,6 +465,7 @@ export interface FileRoutesByFullPath {
   '/admin/configuracoes': typeof AdminConfiguracoesRoute
   '/admin/contratos': typeof AdminContratosRoute
   '/admin/conversas': typeof AdminConversasRoute
+  '/admin/demo': typeof AdminDemoRoute
   '/admin/entregas': typeof AdminEntregasRoute
   '/admin/leiloes': typeof AdminLeiloesRouteWithChildren
   '/admin/logs': typeof AdminLogsRoute
@@ -527,6 +534,7 @@ export interface FileRoutesByTo {
   '/admin/configuracoes': typeof AdminConfiguracoesRoute
   '/admin/contratos': typeof AdminContratosRoute
   '/admin/conversas': typeof AdminConversasRoute
+  '/admin/demo': typeof AdminDemoRoute
   '/admin/entregas': typeof AdminEntregasRoute
   '/admin/leiloes': typeof AdminLeiloesRouteWithChildren
   '/admin/logs': typeof AdminLogsRoute
@@ -601,6 +609,7 @@ export interface FileRoutesById {
   '/admin/configuracoes': typeof AdminConfiguracoesRoute
   '/admin/contratos': typeof AdminContratosRoute
   '/admin/conversas': typeof AdminConversasRoute
+  '/admin/demo': typeof AdminDemoRoute
   '/admin/entregas': typeof AdminEntregasRoute
   '/admin/leiloes': typeof AdminLeiloesRouteWithChildren
   '/admin/logs': typeof AdminLogsRoute
@@ -676,6 +685,7 @@ export interface FileRouteTypes {
     | '/admin/configuracoes'
     | '/admin/contratos'
     | '/admin/conversas'
+    | '/admin/demo'
     | '/admin/entregas'
     | '/admin/leiloes'
     | '/admin/logs'
@@ -744,6 +754,7 @@ export interface FileRouteTypes {
     | '/admin/configuracoes'
     | '/admin/contratos'
     | '/admin/conversas'
+    | '/admin/demo'
     | '/admin/entregas'
     | '/admin/leiloes'
     | '/admin/logs'
@@ -817,6 +828,7 @@ export interface FileRouteTypes {
     | '/admin/configuracoes'
     | '/admin/contratos'
     | '/admin/conversas'
+    | '/admin/demo'
     | '/admin/entregas'
     | '/admin/leiloes'
     | '/admin/logs'
@@ -1016,6 +1028,13 @@ declare module '@tanstack/react-router' {
       path: '/conversas'
       fullPath: '/admin/conversas'
       preLoaderRoute: typeof AdminConversasRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/demo': {
+      id: '/admin/demo'
+      path: '/demo'
+      fullPath: '/admin/demo'
+      preLoaderRoute: typeof AdminDemoRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/entregas': {
@@ -1435,6 +1454,7 @@ interface AdminRouteChildren {
   AdminConfiguracoesRoute: typeof AdminConfiguracoesRoute
   AdminContratosRoute: typeof AdminContratosRoute
   AdminConversasRoute: typeof AdminConversasRoute
+  AdminDemoRoute: typeof AdminDemoRoute
   AdminEntregasRoute: typeof AdminEntregasRoute
   AdminLeiloesRoute: typeof AdminLeiloesRouteWithChildren
   AdminLogsRoute: typeof AdminLogsRoute
@@ -1462,6 +1482,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminConfiguracoesRoute: AdminConfiguracoesRoute,
   AdminContratosRoute: AdminContratosRoute,
   AdminConversasRoute: AdminConversasRoute,
+  AdminDemoRoute: AdminDemoRoute,
   AdminEntregasRoute: AdminEntregasRoute,
   AdminLeiloesRoute: AdminLeiloesRouteWithChildren,
   AdminLogsRoute: AdminLogsRoute,

@@ -204,6 +204,13 @@ const MENU_SECTIONS: MenuSection[] = [
         activePrefixes: ["/admin/configuracoes", "/admin/logs"],
         description: "Parâmetros do sistema",
       },
+      {
+        label: "Ambiente Demo",
+        icon: Settings,
+        to: "/admin/demo",
+        activePrefixes: ["/admin/demo"],
+        description: "Vendedor e veículo de teste",
+      },
     ],
   },
 ];
