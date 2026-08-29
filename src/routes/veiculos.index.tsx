@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, MapPin, Gauge, ShieldCheck, Lock, Menu, X } from "lucide-react";
 import { useState } from "react";
+import { LogoEsf } from "@/components/shared/LogoEsf";
 
 export const Route = createFileRoute("/veiculos/")({
   component: VitrinePublica,
@@ -23,10 +24,7 @@ function VitrinePublica() {
       {/* HEADER */}
       <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-          <Link to="/" className="text-xl font-black tracking-tight text-slate-950 flex items-center gap-2">
-            <div className="w-8 h-8 rounded bg-teal-600 flex items-center justify-center text-white text-xs">EJ</div>
-            ESSE JÁ FOI
-          </Link>
+          <LogoEsf height={32} />
 
           <nav className="hidden items-center gap-8 md:flex">
             <Link to="/veiculos" className="text-sm font-semibold text-teal-700">Veículos</Link>

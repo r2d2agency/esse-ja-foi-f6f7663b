@@ -1,7 +1,16 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { migrateDb } from "@/db";
 
 const tokenSchema = z.object({ token: z.string().min(10) });
+
+async function ensureSchema() {
+  try {
+    await migrateDb();
+  } catch (e: any) {
+    console.error("[comprador.functions] migrateDb error:", e?.message || e);
+  }
+}
 
 async function userFromToken(token: string) {
   const { verifyToken } = await import("@/db/auth.server");
@@ -25,6 +34,7 @@ export const cadastrarCompradorFn = createServerFn({ method: "POST" })
       .parse(data),
   )
   .handler(async ({ data }) => {
+    await ensureSchema();
     const m = await import("@/db/comprador.server");
     return m.cadastrarComprador(data);
   });
@@ -32,6 +42,7 @@ export const cadastrarCompradorFn = createServerFn({ method: "POST" })
 export const getPerfilCompradorFn = createServerFn({ method: "POST" })
   .validator((d: unknown) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
+    await ensureSchema();
     const userId = await userFromToken(data.token);
     const m = await import("@/db/comprador.server");
     const res = await m.getPerfilComprador(userId);
@@ -45,6 +56,7 @@ export const salvarEtapaCompradorFn = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     try {
+      await ensureSchema();
       const userId = await userFromToken(data.token);
       const m = await import("@/db/comprador.server");
       const res = await m.salvarEtapaComprador(userId, data.etapa, data.dados);
@@ -58,6 +70,7 @@ export const enviarCadastroCompradorFn = createServerFn({ method: "POST" })
   .validator((d: unknown) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     try {
+      await ensureSchema();
       const userId = await userFromToken(data.token);
       const m = await import("@/db/comprador.server");
       return await m.enviarCadastroCompradorParaAnalise(userId);
@@ -70,6 +83,7 @@ export const enviarDocumentoCompradorFn = createServerFn({ method: "POST" })
   .validator((d: unknown) => tokenSchema.extend({ tipo: z.string(), url: z.string() }).parse(d))
   .handler(async ({ data }) => {
     try {
+      await ensureSchema();
       const userId = await userFromToken(data.token);
       const m = await import("@/db/comprador.server");
       await m.salvarDocumentoComprador(userId, data.tipo, data.url);
@@ -85,6 +99,7 @@ export const alternarFavoritoFn = createServerFn({ method: "POST" })
   .validator((d: unknown) => tokenSchema.extend({ anuncioId: z.string().uuid() }).parse(d))
   .handler(async ({ data }) => {
     try {
+      await ensureSchema();
       const userId = await userFromToken(data.token);
       const m = await import("@/db/comprador.server");
       return { ok: true as const, ...(await m.alternarFavorito(userId, data.anuncioId)) };
@@ -97,6 +112,7 @@ export const listarFavoritosFn = createServerFn({ method: "POST" })
   .validator((d: unknown) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     try {
+      await ensureSchema();
       const userId = await userFromToken(data.token);
       const m = await import("@/db/comprador.server");
       return { ok: true as const, data: await m.listarFavoritos(userId) };
@@ -113,6 +129,7 @@ export const salvarLembreteFn = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     try {
+      await ensureSchema();
       const userId = await userFromToken(data.token);
       const m = await import("@/db/comprador.server");
       await m.salvarLembrete(userId, data.anuncioId, data.lembrarEm ?? null);
@@ -126,6 +143,7 @@ export const listarLembretesFn = createServerFn({ method: "POST" })
   .validator((d: unknown) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     try {
+      await ensureSchema();
       const userId = await userFromToken(data.token);
       const m = await import("@/db/comprador.server");
       return { ok: true as const, data: await m.listarLembretes(userId) };
@@ -138,6 +156,7 @@ export const listarNotificacoesFn = createServerFn({ method: "POST" })
   .validator((d: unknown) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     try {
+      await ensureSchema();
       const userId = await userFromToken(data.token);
       const m = await import("@/db/comprador.server");
       return { ok: true as const, data: await m.listarNotificacoes(userId) };
@@ -150,6 +169,7 @@ export const marcarNotificacoesLidasFn = createServerFn({ method: "POST" })
   .validator((d: unknown) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     try {
+      await ensureSchema();
       const userId = await userFromToken(data.token);
       const m = await import("@/db/comprador.server");
       return await m.marcarNotificacoesLidas(userId);
@@ -164,6 +184,7 @@ export const getInteressesFn = createServerFn({ method: "POST" })
   .validator((d: unknown) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     try {
+      await ensureSchema();
       const userId = await userFromToken(data.token);
       const { db } = await import("@/db/index");
       const { sql } = await import("drizzle-orm");
@@ -191,6 +212,7 @@ export const updateInteressesFn = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     try {
+      await ensureSchema();
       const userId = await userFromToken(data.token);
       const { db } = await import("@/db/index");
       const { sql } = await import("drizzle-orm");

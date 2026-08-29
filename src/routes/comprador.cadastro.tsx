@@ -8,6 +8,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { formatCPF, formatPhone, cn } from "@/lib/utils";
 import { buscarCep } from "@/lib/viacep";
 import { FileUpload } from "@/components/onboarding/FileUpload";
+import { LogoEsf } from "@/components/shared/LogoEsf";
 import {
   cadastrarCompradorFn,
   salvarEtapaCompradorFn,
@@ -177,9 +178,7 @@ function CadastroComprador() {
     <div className="min-h-screen bg-slate-50 pb-28">
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white px-5 py-4">
         <div className="mx-auto flex max-w-xl items-center justify-between">
-          <Link to="/" className="text-sm font-black uppercase tracking-[0.18em] text-slate-900">
-            Esse<span className="text-teal-700">JáFoi</span>
-          </Link>
+          <LogoEsf height={28} />
           <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
             Etapa {etapa} de {ETAPAS.length}
           </span>

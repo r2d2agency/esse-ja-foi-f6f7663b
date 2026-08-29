@@ -4,6 +4,7 @@ import { FileText, Clock, CheckCircle2, AlertCircle } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { contratoDoVendedorFn } from "@/lib/contratos.functions";
+import { LogoEsf } from "@/components/shared/LogoEsf";
 
 export const Route = createFileRoute("/vendedor/contrato")({
   head: () => ({
@@ -49,7 +50,7 @@ function ContratoVendedorPage() {
         <div className="rounded-2xl border border-slate-200 bg-white p-8">
           <div className="prose prose-slate max-w-none">
             <div className="mb-8 flex items-center justify-between border-b pb-6">
-              <div className="text-sm font-black uppercase tracking-widest">Esse Já Foi</div>
+              <LogoEsf height={24} to="" />
               <div className="text-right">
                 <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Número do Contrato</div>
                 <div className="font-mono text-sm font-bold">{contrato.numero}</div>

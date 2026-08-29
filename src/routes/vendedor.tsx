@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { Home, Car, Handshake, FileText, User, HelpCircle, LogOut } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
+import { LogoEsf } from '@/components/shared/LogoEsf';
 
 export const Route = createFileRoute('/vendedor')({
   component: VendedorLayout,
@@ -49,9 +50,7 @@ function VendedorLayout() {
     <div className="min-h-screen bg-slate-50">
       {/* Sidebar desktop */}
       <aside className="fixed inset-y-0 left-0 hidden w-64 flex-col border-r border-slate-200 bg-white px-5 py-6 lg:flex">
-        <Link to="/" className="text-sm font-black uppercase tracking-[0.18em] text-slate-900">
-          Esse<span className="text-teal-700">JáFoi</span>
-        </Link>
+        <LogoEsf height={32} />
 
         <nav className="mt-10 flex-1 space-y-1">
           {MENU.map((m) => (
@@ -81,9 +80,7 @@ function VendedorLayout() {
 
       {/* Header mobile */}
       <header className="sticky top-0 z-40 flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4 lg:hidden">
-        <span className="text-sm font-black uppercase tracking-[0.18em]">
-          Esse<span className="text-teal-700">JáFoi</span>
-        </span>
+        <LogoEsf height={28} />
         <button
           onClick={sair}
           aria-label="Sair"

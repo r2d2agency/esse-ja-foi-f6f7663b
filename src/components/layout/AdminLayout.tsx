@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { LogoEsf } from "@/components/shared/LogoEsf";
 
 type MenuItem = {
   label: string;
@@ -243,8 +244,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
       )}>
         <div className="h-16 flex items-center px-6 border-b border-slate-800">
           <Link to="/admin" className="flex items-center gap-2 overflow-hidden">
-            <div className="min-w-8 h-8 rounded bg-teal-500 flex items-center justify-center font-black text-slate-950">EJ</div>
-            {sidebarOpen && <span className="font-bold tracking-tight text-lg whitespace-nowrap">ESSE JÁ FOI</span>}
+            <LogoEsf height={sidebarOpen ? 32 : 28} variant="dark" />
           </Link>
         </div>
 

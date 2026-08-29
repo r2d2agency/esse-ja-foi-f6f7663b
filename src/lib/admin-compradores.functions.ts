@@ -1,7 +1,15 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { db } from "../db";
+import { db, migrateDb } from "../db";
 import { sql } from "drizzle-orm";
+
+async function ensureSchema() {
+  try {
+    await migrateDb();
+  } catch (e: any) {
+    console.error("[admin-compradores] migrateDb error:", e?.message || e);
+  }
+}
 
 export const listarCompradoresFn = createServerFn({ method: "GET" })
   .validator((d: unknown) => z.object({ 
@@ -9,6 +17,7 @@ export const listarCompradoresFn = createServerFn({ method: "GET" })
     busca: z.string().optional() 
   }).parse(d))
   .handler(async ({ data }) => {
+    await ensureSchema();
     const d = db;
     if (!d) return { ok: false, message: "DB offline" };
 
@@ -40,6 +49,7 @@ export const listarCompradoresFn = createServerFn({ method: "GET" })
 export const obterDetalheCompradorFn = createServerFn({ method: "GET" })
   .validator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data }) => {
+    await ensureSchema();
     const d = db;
     if (!d) return { ok: false, message: "DB offline" };
 
@@ -65,6 +75,7 @@ export const aprovarCompradorFn = createServerFn({ method: "POST" })
     observacao: z.string().optional()
   }).parse(d))
   .handler(async ({ data }) => {
+    await ensureSchema();
     const d = db;
     if (!d) return { ok: false, message: "DB offline" };
 
@@ -87,6 +98,7 @@ export const solicitarPendenciaCompradorFn = createServerFn({ method: "POST" })
     mensagem: z.string()
   }).parse(d))
   .handler(async ({ data }) => {
+    await ensureSchema();
     const d = db;
     if (!d) return { ok: false, message: "DB offline" };
 
@@ -115,6 +127,7 @@ export const preCadastrarCompradorFn = createServerFn({ method: "POST" })
   }).parse(d))
   .handler(async ({ data }) => {
     try {
+      await ensureSchema();
       const m = await import("@/db/comprador.server");
       return await m.preCadastrarComprador(data);
     } catch (e: any) {
@@ -125,6 +138,7 @@ export const preCadastrarCompradorFn = createServerFn({ method: "POST" })
 export const reprovarCompradorFn = createServerFn({ method: "POST" })
   .validator((d: unknown) => z.object({ id: z.string().uuid(), motivo: z.string().optional() }).parse(d))
   .handler(async ({ data }) => {
+    await ensureSchema();
     if (!db) return { ok: false as const, message: "DB offline" };
     await db.execute(sql`
       UPDATE profiles SET status_compliance = 'REPROVADO',
