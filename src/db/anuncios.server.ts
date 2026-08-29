@@ -64,6 +64,38 @@ export async function ensureAnunciosSchema() {
       criado_em timestamptz DEFAULT now()
     );
   `);
+
+  // Reconciliação defensiva de colunas em bases legadas
+  const alters = [
+    sql`ALTER TABLE anuncios_veiculo ADD COLUMN IF NOT EXISTS codigo_publico text`,
+    sql`ALTER TABLE anuncios_veiculo ADD COLUMN IF NOT EXISTS slug text`,
+    sql`ALTER TABLE anuncios_veiculo ADD COLUMN IF NOT EXISTS titulo text`,
+    sql`ALTER TABLE anuncios_veiculo ADD COLUMN IF NOT EXISTS descricao text`,
+    sql`ALTER TABLE anuncios_veiculo ADD COLUMN IF NOT EXISTS localizacao_publica text`,
+    sql`ALTER TABLE anuncios_veiculo ADD COLUMN IF NOT EXISTS tipo_publicacao text DEFAULT 'OFERTA_COMPETITIVA'`,
+    sql`ALTER TABLE anuncios_veiculo ADD COLUMN IF NOT EXISTS status text DEFAULT 'RASCUNHO'`,
+    sql`ALTER TABLE anuncios_veiculo ADD COLUMN IF NOT EXISTS agendado_para timestamptz`,
+    sql`ALTER TABLE anuncios_veiculo ADD COLUMN IF NOT EXISTS publicado_em timestamptz`,
+    sql`ALTER TABLE anuncios_veiculo ADD COLUMN IF NOT EXISTS encerrado_em timestamptz`,
+    sql`ALTER TABLE anuncios_veiculo ADD COLUMN IF NOT EXISTS motivo_pausa_cancelamento text`,
+    sql`ALTER TABLE anuncios_veiculo ADD COLUMN IF NOT EXISTS responsavel_id uuid`,
+    sql`ALTER TABLE anuncios_veiculo ADD COLUMN IF NOT EXISTS config_exibicao jsonb DEFAULT '{}'`,
+    sql`ALTER TABLE anuncios_veiculo ADD COLUMN IF NOT EXISTS copy_compartilhamento text`,
+    sql`ALTER TABLE anuncios_veiculo ADD COLUMN IF NOT EXISTS criado_em timestamptz DEFAULT now()`,
+    sql`ALTER TABLE anuncios_veiculo ADD COLUMN IF NOT EXISTS atualizado_em timestamptz DEFAULT now()`,
+    sql`ALTER TABLE anuncios_fotos ADD COLUMN IF NOT EXISTS foto_url text`,
+    sql`ALTER TABLE anuncios_fotos ADD COLUMN IF NOT EXISTS eh_capa boolean DEFAULT false`,
+    sql`ALTER TABLE anuncios_fotos ADD COLUMN IF NOT EXISTS ordem integer DEFAULT 0`,
+    sql`ALTER TABLE anuncios_fotos ADD COLUMN IF NOT EXISTS legenda text`,
+    sql`ALTER TABLE anuncios_fotos ADD COLUMN IF NOT EXISTS foto_original_id uuid`,
+  ];
+  for (const stmt of alters) {
+    try {
+      await d.execute(stmt);
+    } catch {
+      /* segue */
+    }
+  }
 }
 
 export async function listarVeiculosProntosParaAnuncio() {
