@@ -11,7 +11,7 @@ import { ptBR } from "date-fns/locale";
 import { Gavel, Eye } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 
-export const Route = createFileRoute("/admin/leiloes")({
+export const Route = createFileRoute("/admin/leiloes/")({
   component: AdminLeiloesPage,
 });
 
