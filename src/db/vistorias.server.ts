@@ -524,6 +524,20 @@ export async function ensureVistoriaSchema() {
     );
   `);
 
+  // Reconciliação: caso a tabela laudos já exista criada por outro módulo
+  // (com agendamento_id e sem vistoria_id/concluido_em), garante as colunas
+  // usadas pelo painel do vistoriador.
+  await d.execute(sql`ALTER TABLE laudos ADD COLUMN IF NOT EXISTS vistoria_id uuid`);
+  await d.execute(sql`ALTER TABLE laudos ADD COLUMN IF NOT EXISTS concluido_em timestamptz`);
+  await d.execute(sql`ALTER TABLE laudos ADD COLUMN IF NOT EXISTS localizacao_checkin jsonb`);
+  await d.execute(sql`ALTER TABLE laudos ADD COLUMN IF NOT EXISTS declaracao_vistoriador boolean DEFAULT false`);
+  await d.execute(sql`
+    UPDATE laudos l SET vistoria_id = v.id
+    FROM vistorias v
+    WHERE l.vistoria_id IS NULL
+      AND l.veiculo_id = v.veiculo_id
+  `).catch(() => {});
+
   await ensureChecklistSchema();
 }
 
