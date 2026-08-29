@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate, useParams, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { getDetalheAnaliseVistoriaFn, responderPropostaVendedorFn } from "@/lib/analise-pos-vistoria.functions";
+import { getPropostaVeiculoVendedorFn, responderPropostaVendedorFn } from "@/lib/analise-pos-vistoria.functions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Check, X, ArrowLeft } from "lucide-react";
@@ -16,26 +16,27 @@ export const Route = createFileRoute("/vendedor/veiculo/$id/proposta")({
 function PropostaVendedorPage() {
   const { id } = Route.useParams() as { id: string };
   const navigate = useNavigate();
-  const getDetalhe = useServerFn(getDetalheAnaliseVistoriaFn);
+  const getProposta = useServerFn(getPropostaVeiculoVendedorFn);
   const responder = useServerFn(responderPropostaVendedorFn);
   
   const [agreed, setAgreed] = useState(false);
 
   const { data: res, isLoading } = useQuery({
     queryKey: ["vendedor-proposta", id],
-    queryFn: () => getDetalhe({ data: { veiculoId: id } })
+    queryFn: () => getProposta({ data: { veiculoId: id } })
   });
 
   if (isLoading) return <div className="p-8">Carregando proposta...</div>;
-  const data = res?.data;
-  const veiculo = data?.veiculo;
-  const proposta = data?.propostas?.[0]; // Pega a última proposta
+  const veiculo = res?.veiculo as any;
+  const proposta = res?.proposta as any;
+  const respondida = proposta && proposta.status !== "AGUARDANDO_ACEITE";
 
-  if (!proposta || proposta.status !== 'AGUARDANDO_ACEITE') {
+  if (!proposta) {
     return (
-      <div className="p-8 text-center">
-        <p>Não há proposta pendente para este veículo.</p>
-        <Button asChild className="mt-4">
+      <div className="p-8 text-center space-y-3">
+        <p className="text-slate-600">Não encontramos nenhuma proposta para este veículo.</p>
+        {res && !res.ok ? <p className="text-xs text-red-500">{(res as any).message}</p> : null}
+        <Button asChild className="mt-2">
           <Link to="/vendedor/veiculo/$id" params={{ id }}>Voltar</Link>
         </Button>
       </div>
@@ -91,6 +92,11 @@ function PropostaVendedorPage() {
       </Card>
 
       <div className="space-y-4">
+        {respondida ? (
+          <p className="text-xs font-semibold text-slate-500 text-center">
+            Esta proposta já foi {proposta.status === "ACEITA" ? "aceita" : "respondida"}.
+          </p>
+        ) : null}
         <div className="flex items-center space-x-2">
           <Checkbox id="terms" checked={agreed} onCheckedChange={(c) => setAgreed(!!c)} />
           <label htmlFor="terms" className="text-xs font-medium text-slate-600">
@@ -99,10 +105,10 @@ function PropostaVendedorPage() {
         </div>
 
         <div className="flex flex-col gap-3">
-          <Button onClick={() => handleAceite(true)} className="h-14 bg-teal-600 hover:bg-teal-700 text-white font-bold text-base rounded-2xl">
+          <Button disabled={respondida} onClick={() => handleAceite(true)} className="h-14 bg-teal-600 hover:bg-teal-700 text-white font-bold text-base rounded-2xl">
              Aceitar e liberar para leilão
           </Button>
-          <Button onClick={() => handleAceite(false)} variant="ghost" className="text-slate-400 hover:text-red-600 font-bold">
+          <Button disabled={respondida} onClick={() => handleAceite(false)} variant="ghost" className="text-slate-400 hover:text-red-600 font-bold">
              Não concordo com o valor
           </Button>
         </div>
