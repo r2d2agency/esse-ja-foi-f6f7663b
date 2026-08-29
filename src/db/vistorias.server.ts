@@ -1550,7 +1550,7 @@ export async function listarVistoriasHojeVistoriador(usuarioId: string) {
   
   const res = await d.execute(sql`
     SELECT v.*, 
-           vei.placa, vei.marca, vei.modelo, vei.ano,
+           vei.placa, vei.marca, vei.modelo, vei.ano_modelo AS ano,
            prof.nome as vendedor_nome,
            uv.nome as unidade_nome, uv.endereco as unidade_endereco,
            uv.cidade as unidade_cidade, uv.estado as unidade_estado
@@ -1619,7 +1619,7 @@ export async function obterPainelVistoriador(usuarioId: string, filtros: {
 
   const listaRes = await d.execute(sql`
     SELECT v.id::text AS id, v.data_vistoria, v.horario_vistoria, v.status,
-           vei.placa, vei.marca, vei.modelo, vei.ano,
+           vei.placa, vei.marca, vei.modelo, vei.ano_modelo AS ano,
            p.nome AS vendedor_nome,
            uv.nome AS unidade_nome, uv.endereco AS unidade_endereco,
            uv.cidade AS unidade_cidade, uv.estado AS unidade_estado,
@@ -1663,7 +1663,7 @@ export async function getVistoriaDetalheVistoriador(vistoriaId: string, usuarioI
   
   const res = await d.execute(sql`
     SELECT v.*, 
-           vei.placa, vei.marca, vei.modelo, vei.ano, vei.km as km_base,
+           vei.placa, vei.marca, vei.modelo, vei.ano_modelo AS ano, vei.km as km_base,
            prof.nome as vendedor_nome, prof.telefone as vendedor_telefone,
            uv.nome as unidade_nome, uv.endereco as unidade_endereco,
            uv.cidade as unidade_cidade, uv.estado as unidade_estado,
