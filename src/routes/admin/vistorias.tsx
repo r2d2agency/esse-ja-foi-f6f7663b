@@ -2566,9 +2566,15 @@ function AbaChecklistConfigDinamico() {
               <CardContent className="p-3">
                 <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-3 px-2 pt-1">Categorias</h3>
                 <div className="space-y-1 max-h-[60vh] overflow-y-auto pr-1">
-                  {categorias.length === 0 && (
-                    <p className="text-xs text-slate-400 px-2 py-3">Nenhuma categoria ainda. Crie a primeira acima.</p>
+                  {checklistCarregando && (
+                    <p className="text-xs text-slate-400 px-2 py-3">Carregando categorias...</p>
                   )}
+                  {!checklistCarregando && categorias.length === 0 && (
+                    <p className="text-xs text-slate-400 px-2 py-3">
+                      {checklistErroMsg ? "Erro ao carregar. Veja o aviso acima." : "Nenhuma categoria ainda. Crie a primeira acima."}
+                    </p>
+                  )}
+
                   {categorias.map((c: any) => (
                     <button
                       key={c.id}
