@@ -129,6 +129,7 @@ export const salvarLembreteFn = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     try {
+      await ensureSchema();
       const userId = await userFromToken(data.token);
       const m = await import("@/db/comprador.server");
       await m.salvarLembrete(userId, data.anuncioId, data.lembrarEm ?? null);
