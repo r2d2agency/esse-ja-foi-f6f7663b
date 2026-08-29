@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Gavel, Megaphone, Store, Loader2 } from "lucide-react";
@@ -32,6 +32,10 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
   const [canalAtivo, setCanalAtivo] = useState<CanalId>("LEILAO");
   const [form, setForm] = useState<any>({ ativo: false, titulo: "", descricao: "", fotos: [] });
   const [salvando, setSalvando] = useState(false);
+  const inicioRef = useRef<HTMLInputElement>(null);
+  const fimRef = useRef<HTMLInputElement>(null);
+  const lanceInicialRef = useRef<HTMLInputElement>(null);
+  const incrementoRef = useRef<HTMLInputElement>(null);
   const [leilao, setLeilao] = useState({
     inicio_em: "",
     fim_em: "",
@@ -91,25 +95,27 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
   async function salvar() {
     setSalvando(true);
     try {
-      const res: any = await salvarCanalPublicacaoFn({
-        data: { veiculo_id: veiculoId, canal: canalAtivo, ...form },
-      });
-      if (!res?.ok) {
-        toast.error(res?.message || "Erro ao salvar canal.");
-        return;
-      }
       if (canalAtivo === "LEILAO" && form.ativo) {
-        if (!leilao.inicio_em || !leilao.fim_em || !Number(leilao.lance_inicial)) {
-          toast.error("Preencha início, encerramento e lance inicial do leilão.");
+        const inicioEm = inicioRef.current?.value.trim() || leilao.inicio_em.trim();
+        const fimEm = fimRef.current?.value.trim() || leilao.fim_em.trim();
+        const lanceInicial = Number(lanceInicialRef.current?.value || leilao.lance_inicial);
+        const incrementoMinimo = Number(incrementoRef.current?.value || leilao.incremento_minimo);
+
+        if (!inicioEm || !fimEm || !Number.isFinite(lanceInicial) || lanceInicial <= 0) {
+          toast.error("Confira o início, o encerramento e o lance inicial do leilão.");
+          return;
+        }
+        if (!Number.isFinite(incrementoMinimo) || incrementoMinimo <= 0) {
+          toast.error("Informe um incremento mínimo maior que zero.");
           return;
         }
         const resL: any = await salvarLeilaoVeiculoFn({
           data: {
             veiculo_id: veiculoId,
-            inicio_em: new Date(leilao.inicio_em).toISOString(),
-            fim_em: new Date(leilao.fim_em).toISOString(),
-            lance_inicial: Number(leilao.lance_inicial),
-            incremento_minimo: Number(leilao.incremento_minimo || 0),
+            inicio_em: new Date(inicioEm).toISOString(),
+            fim_em: new Date(fimEm).toISOString(),
+            lance_inicial: lanceInicial,
+            incremento_minimo: incrementoMinimo,
             prorrogacao_ativa: leilao.prorrogacao_ativa,
             prorrogacao_janela_segundos: Math.max(1, Number(leilao.prorrogacao_janela_minutos || 2)) * 60,
             prorrogacao_tempo_segundos: Math.max(1, Number(leilao.prorrogacao_tempo_minutos || 2)) * 60,
@@ -120,6 +126,13 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
           return;
         }
         refetchLeilao();
+      }
+      const res: any = await salvarCanalPublicacaoFn({
+        data: { veiculo_id: veiculoId, canal: canalAtivo, ...form },
+      });
+      if (!res?.ok) {
+        toast.error(res?.message || "Erro ao salvar canal.");
+        return;
       }
       toast.success(`Canal ${canalAtivo.toLowerCase()} atualizado.`);
       refetch();
@@ -216,6 +229,7 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-600">Início das ofertas</label>
                 <Input
+                  ref={inicioRef}
                   type="datetime-local"
                   className="h-11 bg-white"
                   value={leilao.inicio_em}
@@ -225,6 +239,7 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-600">Encerramento</label>
                 <Input
+                  ref={fimRef}
                   type="datetime-local"
                   className="h-11 bg-white"
                   value={leilao.fim_em}
@@ -234,6 +249,7 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-600">Lance inicial (R$)</label>
                 <Input
+                  ref={lanceInicialRef}
                   inputMode="numeric"
                   placeholder="45000"
                   className="h-11 bg-white"
@@ -246,6 +262,7 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-600">Incremento mínimo (R$)</label>
                 <Input
+                  ref={incrementoRef}
                   inputMode="numeric"
                   placeholder="500"
                   className="h-11 bg-white"
