@@ -127,6 +127,7 @@ export const preCadastrarCompradorFn = createServerFn({ method: "POST" })
   }).parse(d))
   .handler(async ({ data }) => {
     try {
+      await ensureSchema();
       const m = await import("@/db/comprador.server");
       return await m.preCadastrarComprador(data);
     } catch (e: any) {
