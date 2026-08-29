@@ -108,6 +108,13 @@ export async function semearAmbienteDemo() {
   await ensureSchemas();
   const senhaHash = await hashPassword(DEMO.senha);
 
+  // Garante os valores de papel usados abaixo.
+  for (const papel of ["vendedor", "comprador", "vistoriador"]) {
+    await d
+      .execute(sql.raw(`ALTER TYPE app_role ADD VALUE IF NOT EXISTS '${papel}'`))
+      .catch(() => {});
+  }
+
   // 1. Vendedor demo (compliance aprovado)
   await upsert("profiles", DEMO.vendedorId, {
     nome: "Vendedor Demonstração",
@@ -127,10 +134,8 @@ export async function semearAmbienteDemo() {
     documento_cnh_url: "https://placehold.co/600x400?text=CNH",
     documento_selfie_url: "https://placehold.co/600x400?text=Selfie",
     documento_comprovante_url: "https://placehold.co/600x400?text=Comprovante",
-  }).catch(async () => {
-    // role 'vendedor' pode não existir no enum; cai para 'comprador'
-    await d.execute(sql`ALTER TYPE app_role ADD VALUE IF NOT EXISTS 'vendedor'`).catch(() => {});
   });
+
 
   // 2. Comprador demo (pode ver valores e dar lances)
   await upsert("profiles", DEMO.compradorId, {
