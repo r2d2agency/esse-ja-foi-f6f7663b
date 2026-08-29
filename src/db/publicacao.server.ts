@@ -201,7 +201,6 @@ export async function sincronizarVitrine(veiculoId: string) {
         ${veiculoId}::uuid, ${codigo}, ${slug}, ${titulo},
         ${ativos[0]?.descricao || null}, ${localizacao}, 'PUBLICADO', now()
       )
-      ON CONFLICT (veiculo_id) DO NOTHING
     `);
   } catch (e) {
     console.error("[publicacao] sincronizarVitrine", e);
