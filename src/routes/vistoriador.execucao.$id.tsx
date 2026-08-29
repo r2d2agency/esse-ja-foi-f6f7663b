@@ -283,10 +283,29 @@ function VistoriaExecucaoPage() {
   };
 
   // Garante o envio de qualquer texto pendente ao sair da tela / fechar o app
+  const pendentesRef = useRef<Record<string, any>>({});
+  const enviarPendentes = () => {
+    Object.entries(pendentesRef.current).forEach(([itemId, item]) => {
+      if (timersRef.current[itemId]) clearTimeout(timersRef.current[itemId]);
+      const registro = respostasRef.current[itemId];
+      if (registro) enviarResposta(item, registro);
+    });
+    pendentesRef.current = {};
+  };
+
   useEffect(() => {
-    const timers = timersRef.current;
-    return () => Object.values(timers).forEach((t) => clearTimeout(t));
-  }, []);
+    const aoEsconder = () => {
+      if (document.visibilityState === "hidden") enviarPendentes();
+    };
+    document.addEventListener("visibilitychange", aoEsconder);
+    window.addEventListener("pagehide", enviarPendentes);
+    return () => {
+      document.removeEventListener("visibilitychange", aoEsconder);
+      window.removeEventListener("pagehide", enviarPendentes);
+      enviarPendentes();
+    };
+  });
+
 
 
 
