@@ -43,24 +43,24 @@ export async function ensureAnalisePosVistoriaSchema() {
       criado_em timestamptz DEFAULT now(),
       UNIQUE(veiculo_id, versao)
     );
-  `);
+  `), "propostas_veiculo");
 
   // Histórico de Fotos para Anúncio (seleção do admin)
-  await d.execute(sql`
+  await safeDDL(() => d.execute(sql`
     CREATE TABLE IF NOT EXISTS veiculos_fotos_selecao (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       veiculo_id uuid NOT NULL REFERENCES veiculos(id) ON DELETE CASCADE,
-      foto_laudo_id uuid REFERENCES laudo_fotos(id),
+      foto_laudo_id uuid,
       foto_url text NOT NULL,
       eh_principal boolean DEFAULT false,
       usar_anuncio boolean DEFAULT true,
       ordem integer DEFAULT 0,
       criado_em timestamptz DEFAULT now()
     );
-  `);
-  
+  `), "veiculos_fotos_selecao");
+
   // Pendências de Vistoria
-  await d.execute(sql`
+  await safeDDL(() => d.execute(sql`
     CREATE TABLE IF NOT EXISTS vistorias_pendencias (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       vistoria_id uuid NOT NULL REFERENCES vistorias(id) ON DELETE CASCADE,
@@ -71,18 +71,29 @@ export async function ensureAnalisePosVistoriaSchema() {
       criado_em timestamptz DEFAULT now(),
       resolvido_em timestamptz
     );
-  `);
+  `), "vistorias_pendencias");
 
   // Reconciliação de esquemas legados
-  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS versao integer NOT NULL DEFAULT 1`);
-  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS valor_referencia numeric(12,2)`);
-  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS valor_minimo_interno numeric(12,2)`);
-  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS observacao_interna text`);
-  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS mensagem_vendedor text`);
-  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS motivo_recusa text`);
-  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS detalhes_recusa text`);
-  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS respondido_em timestamptz`);
-  await d.execute(sql`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS ip_vendedor text`);
+  const colunas: Array<[string, string]> = [
+    ["versao", "integer NOT NULL DEFAULT 1"],
+    ["valor_referencia", "numeric(12,2)"],
+    ["valor_minimo_interno", "numeric(12,2)"],
+    ["observacao_interna", "text"],
+    ["mensagem_vendedor", "text"],
+    ["motivo_recusa", "text"],
+    ["detalhes_recusa", "text"],
+    ["respondido_em", "timestamptz"],
+    ["ip_vendedor", "text"],
+    ["enviado_em", "timestamptz DEFAULT now()"],
+    ["criado_em", "timestamptz DEFAULT now()"],
+    ["status", "text NOT NULL DEFAULT 'AGUARDANDO_ACEITE'"],
+  ];
+  for (const [nome, tipo] of colunas) {
+    await safeDDL(
+      () => d.execute(sql.raw(`ALTER TABLE propostas_veiculo ADD COLUMN IF NOT EXISTS ${nome} ${tipo}`)),
+      `propostas_veiculo.${nome}`,
+    );
+  }
 }
 
 
