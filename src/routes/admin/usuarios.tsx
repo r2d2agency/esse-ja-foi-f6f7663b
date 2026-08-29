@@ -54,7 +54,7 @@ function getRoleMeta(role: string | null | undefined) {
 }
 
 export const Route = createFileRoute("/admin/usuarios")({
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (search: Record<string, unknown>): { role?: string; open?: string } => ({
     role: isInternalRole(search.role) ? search.role : undefined,
     open: search.open === "novo" ? "novo" : undefined,
   }),

@@ -153,7 +153,7 @@ function resumirHorarioAtendimento(value: any) {
 }
 
 export const Route = createFileRoute("/admin/vistorias")({
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (search: Record<string, unknown>): { tab?: string; status?: string; veiculoId?: string } => ({
     tab: typeof search.tab === "string" ? search.tab : undefined,
     status: typeof search.status === "string" ? search.status : undefined,
     veiculoId: typeof search.veiculoId === "string" ? search.veiculoId : undefined,

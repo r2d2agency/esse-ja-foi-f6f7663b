@@ -793,17 +793,17 @@ function DetalheVeiculoAdminPage() {
                           ))}
                         </ul>
                         <div className="flex flex-wrap gap-2 mt-4">
-                          {!res.validacao?.details?.dados && (
+                          {!(res.validacao?.details as any)?.dados && (
                             <Button variant="outline" size="sm" className="font-bold" onClick={() => setActiveTab("dados")}>
                               Revisar dados
                             </Button>
                           )}
-                          {!res.validacao?.details?.crlv && (
+                          {!(res.validacao?.details as any)?.crlv && (
                             <Button variant="outline" size="sm" className="font-bold" onClick={() => setActiveTab("documentacao")}>
                               Revisar documentação
                             </Button>
                           )}
-                          {!res.validacao?.details?.fotos && (
+                          {!(res.validacao?.details as any)?.fotos && (
                             <Button variant="outline" size="sm" className="font-bold" onClick={() => setActiveTab("fotos")}>
                               Revisar fotos
                             </Button>
@@ -824,14 +824,14 @@ function DetalheVeiculoAdminPage() {
                       <div className="space-y-2">
                         <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
                           <span className="text-sm font-bold text-slate-700">Compliance</span>
-                          <span className={cn("text-xs font-black uppercase", res.validacao?.details?.compliance ? "text-green-600" : "text-amber-600")}>
-                            {res.validacao?.details?.compliance ? 'Aprovado' : complianceLabel}
+                          <span className={cn("text-xs font-black uppercase", (res.validacao?.details as any)?.compliance ? "text-green-600" : "text-amber-600")}>
+                            {(res.validacao?.details as any)?.compliance ? 'Aprovado' : complianceLabel}
                           </span>
                         </div>
                         <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
                           <span className="text-sm font-bold text-slate-700">Contrato</span>
-                          <span className={cn("text-xs font-black uppercase", res.validacao?.details?.contrato ? "text-green-600" : "text-amber-600")}>
-                            {res.validacao?.details?.contrato ? 'Assinado' : contratoLabel}
+                          <span className={cn("text-xs font-black uppercase", (res.validacao?.details as any)?.contrato ? "text-green-600" : "text-amber-600")}>
+                            {(res.validacao?.details as any)?.contrato ? 'Assinado' : contratoLabel}
                           </span>
                         </div>
                       </div>

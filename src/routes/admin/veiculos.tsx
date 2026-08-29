@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/admin/veiculos")({
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (search: Record<string, unknown>): { status?: string } => ({
     status: typeof search.status === "string" ? search.status : undefined,
   }),
   component: AdminVeiculosPage,
