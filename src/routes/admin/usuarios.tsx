@@ -54,7 +54,7 @@ function getRoleMeta(role: string | null | undefined) {
 }
 
 export const Route = createFileRoute("/admin/usuarios")({
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (search: Record<string, unknown>): { role?: string; open?: string } => ({
     role: isInternalRole(search.role) ? search.role : undefined,
     open: search.open === "novo" ? "novo" : undefined,
   }),
@@ -218,7 +218,7 @@ function UsuariosAdminPage() {
           </div>
         </div>
 
-        <Button className="bg-teal-700 hover:bg-teal-800 text-white gap-2 self-start" onClick={() => handleOpenNovoUsuario(search.role ?? "vistoriador")}>
+        <Button className="bg-teal-700 hover:bg-teal-800 text-white gap-2 self-start" onClick={() => handleOpenNovoUsuario((search.role as any) ?? "vistoriador")}>
           <UserPlus className="h-4 w-4" />
           Novo usuário interno
         </Button>

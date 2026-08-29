@@ -153,7 +153,7 @@ function resumirHorarioAtendimento(value: any) {
 }
 
 export const Route = createFileRoute("/admin/vistorias")({
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (search: Record<string, unknown>): { tab?: string; status?: string; veiculoId?: string } => ({
     tab: typeof search.tab === "string" ? search.tab : undefined,
     status: typeof search.status === "string" ? search.status : undefined,
     veiculoId: typeof search.veiculoId === "string" ? search.veiculoId : undefined,
@@ -832,7 +832,7 @@ function VistoriasAdminPage() {
         });
 
         if (!response?.ok) {
-          toast.error(response?.message || "Não foi possível remarcar o agendamento.", { id: toastId });
+          toast.error((response as any)?.message || "Não foi possível remarcar o agendamento.", { id: toastId });
           return;
         }
         toast.success("Agendamento remarcado com sucesso.", { id: toastId });
@@ -852,7 +852,7 @@ function VistoriasAdminPage() {
         });
 
         if (!response?.ok) {
-          toast.error(response?.message || "Não foi possível criar o agendamento.", { id: toastId });
+          toast.error((response as any)?.message || "Não foi possível criar o agendamento.", { id: toastId });
           return;
         }
         toast.success("Vistoria agendada com sucesso.", { id: toastId });
@@ -921,7 +921,7 @@ function VistoriasAdminPage() {
       });
 
       if (!response?.ok) {
-        toast.error(response?.message || "Não foi possível salvar a unidade.", { id: toastId });
+        toast.error((response as any)?.message || "Não foi possível salvar a unidade.", { id: toastId });
         return;
       }
 
@@ -946,7 +946,7 @@ function VistoriasAdminPage() {
       const response = await salvarVistoriadorCadastro({ data: vistoriadorForm as any });
 
       if (!response?.ok) {
-        toast.error(response?.message || "Não foi possível salvar o vistoriador.", { id: toastId });
+        toast.error((response as any)?.message || "Não foi possível salvar o vistoriador.", { id: toastId });
         return;
       }
 
@@ -2013,11 +2013,11 @@ function VistoriasAdminPage() {
                           Escolha um horário para agendar.
                         </p>
                       </div>
-                      {slotsRes?.configuracao && (
+                      {(slotsRes as any)?.configuracao && (
                         <p className="text-[11px] text-slate-500 text-right max-w-[55%]">
-                          {(slotsRes.configuracao.periodos || []).map((periodo: any) => `${periodo.inicio}-${periodo.fim}`).join(" | ") || "Sem períodos"}
+                          {((slotsRes as any).configuracao.periodos || []).map((periodo: any) => `${periodo.inicio}-${periodo.fim}`).join(" | ") || "Sem períodos"}
                           <br />
-                          {slotsRes.configuracao.duracao_padrao_minutos}min + {slotsRes.configuracao.intervalo_entre_vistorias_minutos}min de janela
+                          {(slotsRes as any).configuracao.duracao_padrao_minutos}min + {(slotsRes as any).configuracao.intervalo_entre_vistorias_minutos}min de janela
                         </p>
                       )}
                     </div>
@@ -2401,11 +2401,16 @@ function AbaChecklistConfigDinamico() {
     ordem: 10,
   });
 
-  const { data: checklistRes } = useQuery({
+  const { data: checklistRes, isLoading: checklistCarregando, error: checklistErroRede, refetch: recarregarChecklist } = useQuery({
     queryKey: ["admin-checklist-config"],
     queryFn: () => import("@/lib/admin-checklist.functions").then((m) => m.getChecklistConfigAdminFn()),
+    retry: 1,
   });
   const categorias = (checklistRes as any)?.ok ? ((checklistRes as any).data as any[]) : [];
+  const checklistErroMsg =
+    (checklistErroRede as any)?.message ||
+    (checklistRes && (checklistRes as any).ok === false ? (checklistRes as any).message : null);
+
 
   // Mantém selecionada a primeira categoria quando abrir a aba
   useEffect(() => {
@@ -2523,6 +2528,21 @@ function AbaChecklistConfigDinamico() {
           </CardContent>
         </Card>
 
+        {checklistErroMsg && (
+          <Card className="border-red-200 bg-red-50 shadow-none">
+            <CardContent className="p-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-sm font-bold text-red-800">Não foi possível carregar o checklist</p>
+                <p className="text-xs text-red-700 mt-0.5">{String(checklistErroMsg)}</p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => recarregarChecklist()} className="border-red-300 text-red-800 self-start md:self-center">
+                Tentar novamente
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+
         <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
           {/* Coluna esquerda: lista categorias + criar */}
           <div className="space-y-4">
@@ -2546,9 +2566,15 @@ function AbaChecklistConfigDinamico() {
               <CardContent className="p-3">
                 <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-3 px-2 pt-1">Categorias</h3>
                 <div className="space-y-1 max-h-[60vh] overflow-y-auto pr-1">
-                  {categorias.length === 0 && (
-                    <p className="text-xs text-slate-400 px-2 py-3">Nenhuma categoria ainda. Crie a primeira acima.</p>
+                  {checklistCarregando && (
+                    <p className="text-xs text-slate-400 px-2 py-3">Carregando categorias...</p>
                   )}
+                  {!checklistCarregando && categorias.length === 0 && (
+                    <p className="text-xs text-slate-400 px-2 py-3">
+                      {checklistErroMsg ? "Erro ao carregar. Veja o aviso acima." : "Nenhuma categoria ainda. Crie a primeira acima."}
+                    </p>
+                  )}
+
                   {categorias.map((c: any) => (
                     <button
                       key={c.id}
