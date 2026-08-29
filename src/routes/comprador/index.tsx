@@ -1,6 +1,9 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { getVitrine } from "@/lib/vitrine.functions";
 import { useAuth } from "@/hooks/use-auth";
+
 import { Button } from "@/components/ui/button";
 import {
   Search,
