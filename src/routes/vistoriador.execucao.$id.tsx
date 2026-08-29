@@ -276,11 +276,17 @@ function VistoriaExecucaoPage() {
     const ehTexto = "observacao" in patch || "resposta_texto" in patch || "resposta_numero" in patch;
     if (timersRef.current[item.id]) clearTimeout(timersRef.current[item.id]);
     if (ehTexto) {
-      timersRef.current[item.id] = setTimeout(() => enviarResposta(item, respostasRef.current[item.id]), 700);
+      pendentesRef.current[item.id] = item;
+      timersRef.current[item.id] = setTimeout(() => {
+        delete pendentesRef.current[item.id];
+        enviarResposta(item, respostasRef.current[item.id]);
+      }, 700);
     } else {
+      delete pendentesRef.current[item.id];
       enviarResposta(item, merged);
     }
   };
+
 
   // Garante o envio de qualquer texto pendente ao sair da tela / fechar o app
   const pendentesRef = useRef<Record<string, any>>({});
