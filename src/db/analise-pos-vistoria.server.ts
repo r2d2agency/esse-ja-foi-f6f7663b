@@ -308,6 +308,22 @@ export async function enviarPropostaVendedor(data: any) {
   return { ok: true, versao };
 }
 
+export async function listarPropostasPendentesVendedor(perfilId: string) {
+  const d = requireDb();
+  await ensureAnalisePosVistoriaSchema();
+  const res = await d.execute(sql`
+    SELECT DISTINCT ON (p.veiculo_id)
+      p.id, p.veiculo_id, p.versao, p.valor_minimo_acordado, p.comissao_valor,
+      p.valor_liquido_vendedor, p.mensagem_vendedor, p.enviado_em,
+      v.marca, v.modelo, v.placa
+    FROM propostas_veiculo p
+    JOIN veiculos v ON v.id = p.veiculo_id
+    WHERE v.perfil_id = ${perfilId}::uuid AND p.status = 'AGUARDANDO_ACEITE'
+    ORDER BY p.veiculo_id, p.versao DESC
+  `);
+  return rowsOf(res);
+}
+
 export async function solicitarNovaVistoria(data: { veiculoId: string; vistoriaId: string; motivo: string; usuarioId: string }) {
   const d = requireDb();
   const { ensureVistoriaSchema } = await import("./vistorias.server");

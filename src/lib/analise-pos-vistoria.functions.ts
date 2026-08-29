@@ -103,3 +103,15 @@ export const responderPropostaVendedorFn = createServerFn({ method: "POST" })
       return { ok: false, message: err.message };
     }
   });
+
+export const listarPropostasPendentesVendedorFn = createServerFn({ method: "GET" })
+  .validator((d) => z.object({ perfilId: z.string() }).parse(d))
+  .handler(async ({ data }) => {
+    const { listarPropostasPendentesVendedor } = await import("@/db/analise-pos-vistoria.server");
+    try {
+      const res = await listarPropostasPendentesVendedor(data.perfilId);
+      return { ok: true as const, data: res };
+    } catch (err: any) {
+      return { ok: false as const, message: err.message, data: [] as any[] };
+    }
+  });
