@@ -332,25 +332,27 @@ function VistoriaExecucaoPage() {
 
       <main className="flex-1 p-4 pb-40">
         {etapaAtual === 0 && !checkinRealizado && (
-          <div className="space-y-6 pt-4">
-            <div className="rounded-2xl bg-teal-50 p-6 text-center">
-              <MapPin className="mx-auto h-12 w-12 text-teal-600" />
-              <h2 className="mt-4 text-lg font-black text-teal-900">Iniciar Check-in</h2>
-              <p className="mt-2 text-sm text-teal-700">Usamos sua localização para registrar o início da vistoria.</p>
+            <div className="space-y-6 pt-4">
+            <div className="rounded-3xl bg-primary p-8 text-center text-primary-foreground shadow-lg">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-foreground/15">
+                <MapPin className="h-8 w-8" />
+              </div>
+              <h2 className="mt-4 text-lg font-black">Iniciar Check-in</h2>
+              <p className="mt-2 text-sm text-primary-foreground/80">Usamos sua localização para registrar o início da vistoria com auditoria de GPS, data e hora.</p>
             </div>
 
-            <div className="space-y-4 rounded-2xl border bg-white p-6">
-              <label className="text-xs font-black uppercase tracking-widest text-slate-400">Confirme a placa do veículo</label>
+            <div className="space-y-4 rounded-2xl border border-border bg-card p-6 shadow-sm">
+              <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Confirme a placa do veículo</label>
               <Input
                 placeholder="ABC-1234"
-                className="h-16 text-center text-3xl font-black uppercase tracking-widest placeholder:text-slate-200"
+                className="h-16 rounded-2xl text-center text-3xl font-black uppercase tracking-widest placeholder:text-muted"
                 value={placaInput}
                 onChange={(e) => setPlacaInput(e.target.value)}
               />
               <Button 
                 onClick={handleCheckin}
                 disabled={iniciarCheckinMutation.isPending || !placaInput}
-                className="h-14 w-full bg-slate-900 text-lg font-bold"
+                className="h-14 w-full rounded-2xl bg-accent text-lg font-black text-accent-foreground hover:bg-accent/90"
               >
                 {iniciarCheckinMutation.isPending ? "Validando..." : "Validar Placa"}
               </Button>
@@ -375,8 +377,8 @@ function VistoriaExecucaoPage() {
 
         {etapaAtual === ETAPAS.length - 1 && (
           <div className="space-y-6">
-            <div className="rounded-2xl border bg-white p-6">
-              <h3 className="text-sm font-black uppercase tracking-widest text-slate-400">Revisão Final</h3>
+          <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+              <h3 className="text-sm font-black uppercase tracking-widest text-muted-foreground">Revisão Final</h3>
               
               <div className="mt-6 space-y-6">
                 <div className="space-y-2">
