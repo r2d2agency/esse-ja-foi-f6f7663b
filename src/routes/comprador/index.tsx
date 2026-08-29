@@ -91,6 +91,22 @@ function CompradorDashboard() {
   const notifs: any[] = ((notificacoes as any)?.data as any[]) || [];
   const naoLidas = notifs.filter((n) => !n.lida).length;
 
+  const [busca, setBusca] = useState("");
+  const [soLeilao, setSoLeilao] = useState(false);
+  const { data: vitrine } = useQuery({
+    queryKey: ["vitrine-veiculos"],
+    queryFn: () => getVitrine({ data: { token: token() } }),
+  });
+  const vitrineFiltrada = useMemo(() => {
+    const termo = busca.trim().toLowerCase();
+    return ((vitrine as any[]) || []).filter((v: any) => {
+      if (soLeilao && !v.leilao_id) return false;
+      if (!termo) return true;
+      return `${v.marca ?? ""} ${v.modelo ?? ""}`.toLowerCase().includes(termo);
+    });
+  }, [vitrine, busca, soLeilao]);
+
+
   if (isLoading) {
     return (
       <div className="flex justify-center p-12">
