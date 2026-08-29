@@ -1877,21 +1877,14 @@ export async function listarChecklistConfig() {
   // ================================================================
   try {
     for (const catPadrao of SEED_CATEGORIAS_PADRAO) {
-      // 1) UPSERT CATEGORIA por NOME UNIQUE → retorna id da categoria (existente ou nova)
-      const existente = await d.execute(sql`
-        SELECT id::text AS id FROM vistorias_checklist_categorias
-        WHERE lower(nome) = lower(${catPadrao.nome}) LIMIT 1
-      `);
-      let categoriaId = (existente as any).rows?.[0]?.id as string | undefined;
-      if (!categoriaId) {
-        const inserida = await d.execute(sql`
-          INSERT INTO vistorias_checklist_categorias (nome, descricao, ordem)
-          VALUES (${catPadrao.nome}, ${catPadrao.descricao}, ${catPadrao.ordem})
-          RETURNING id::text AS id
-        `);
-        categoriaId = (inserida as any).rows?.[0]?.id as string | undefined;
-      }
+      // 1) Categoria padrão: obtém existente (mesmo com acentuação/espaços diferentes) ou cria
+      const categoriaId = await obterOuCriarCategoriaChecklist(d, {
+        nome: catPadrao.nome,
+        descricao: catPadrao.descricao,
+        ordem: catPadrao.ordem,
+      });
       if (!categoriaId) continue;
+
 
       // 2) Itera itens padroes → INSERT individual (nao lote) + ON CONFLICT DO NOTHING → preserva edicao admin
       for (const itemPadrao of catPadrao.itens) {
