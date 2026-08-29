@@ -1862,7 +1862,76 @@ export async function ensureChecklistSchema() {
 }
 
 
+// Busca a categoria por nome ignorando maiúsculas, espaços e acentuação; cria só se realmente não existir.
+// Tolera índices únicos existentes no banco (nunca estoura "duplicate key").
+async function obterOuCriarCategoriaChecklist(
+  d: any,
+  cat: { nome: string; descricao?: string | null; ordem?: number | null },
+): Promise<string | undefined> {
+  const nome = (cat.nome || "").trim();
+  if (!nome) return undefined;
+
+  const buscar = async () => {
+    const r = await d.execute(sql`
+      SELECT id::text AS id FROM vistorias_checklist_categorias
+      WHERE lower(btrim(nome)) = lower(btrim(${nome}))
+         OR lower(btrim(nome)) = lower(btrim(normalize(${nome}, NFC)))
+         OR lower(btrim(normalize(nome, NFC))) = lower(btrim(normalize(${nome}, NFC)))
+      ORDER BY criado_em
+      LIMIT 1
+    `);
+    return (r as any).rows?.[0]?.id as string | undefined;
+  };
+
+  let id: string | undefined;
+  try {
+    id = await buscar();
+  } catch {
+    // bancos sem normalize(): compara apenas por lower/btrim
+    const r = await d.execute(sql`
+      SELECT id::text AS id FROM vistorias_checklist_categorias
+      WHERE lower(btrim(nome)) = lower(btrim(${nome})) ORDER BY criado_em LIMIT 1
+    `);
+    id = (r as any).rows?.[0]?.id as string | undefined;
+  }
+
+  if (id) {
+    await d.execute(sql`
+      UPDATE vistorias_checklist_categorias
+      SET ativo = true, atualizado_em = now()
+      WHERE id = ${id}::uuid
+    `);
+    return id;
+  }
+
+  try {
+    const inserida = await d.execute(sql`
+      INSERT INTO vistorias_checklist_categorias (nome, descricao, ordem)
+      VALUES (${nome}, ${cat.descricao || null}, ${typeof cat.ordem === "number" ? cat.ordem : 0})
+      RETURNING id::text AS id
+    `);
+    const novoId = (inserida as any).rows?.[0]?.id as string | undefined;
+    if (novoId) return novoId;
+  } catch (e: any) {
+    const msg = String(e?.cause?.message || e?.message || "");
+    // Índice único no banco: a categoria já existe, então apenas reaproveita
+    if (!/duplicate key|unique constraint/i.test(msg)) throw e;
+  }
+
+  const existente = await d.execute(sql`
+    SELECT id::text AS id FROM vistorias_checklist_categorias
+    WHERE nome = ${nome} OR lower(btrim(nome)) = lower(btrim(${nome}))
+    ORDER BY criado_em LIMIT 1
+  `);
+  const idFinal = (existente as any).rows?.[0]?.id as string | undefined;
+  if (idFinal) {
+    await d.execute(sql`UPDATE vistorias_checklist_categorias SET ativo = true, atualizado_em = now() WHERE id = ${idFinal}::uuid`);
+  }
+  return idFinal;
+}
+
 export async function listarChecklistConfig() {
+
   const d = requireDb();
   await ensureChecklistSchema();
 
@@ -1877,21 +1946,14 @@ export async function listarChecklistConfig() {
   // ================================================================
   try {
     for (const catPadrao of SEED_CATEGORIAS_PADRAO) {
-      // 1) UPSERT CATEGORIA por NOME UNIQUE → retorna id da categoria (existente ou nova)
-      const existente = await d.execute(sql`
-        SELECT id::text AS id FROM vistorias_checklist_categorias
-        WHERE lower(nome) = lower(${catPadrao.nome}) LIMIT 1
-      `);
-      let categoriaId = (existente as any).rows?.[0]?.id as string | undefined;
-      if (!categoriaId) {
-        const inserida = await d.execute(sql`
-          INSERT INTO vistorias_checklist_categorias (nome, descricao, ordem)
-          VALUES (${catPadrao.nome}, ${catPadrao.descricao}, ${catPadrao.ordem})
-          RETURNING id::text AS id
-        `);
-        categoriaId = (inserida as any).rows?.[0]?.id as string | undefined;
-      }
+      // 1) Categoria padrão: obtém existente (mesmo com acentuação/espaços diferentes) ou cria
+      const categoriaId = await obterOuCriarCategoriaChecklist(d, {
+        nome: catPadrao.nome,
+        descricao: catPadrao.descricao,
+        ordem: catPadrao.ordem,
+      });
       if (!categoriaId) continue;
+
 
       // 2) Itera itens padroes → INSERT individual (nao lote) + ON CONFLICT DO NOTHING → preserva edicao admin
       for (const itemPadrao of catPadrao.itens) {
@@ -1978,9 +2040,14 @@ export async function adminCriarCategoriaChecklist(data: { nome: string; descric
       VALUES (${data.nome.trim()}, ${data.descricao || null}, ${ordemVal})
       RETURNING id::text as id
     `);
-  } catch (e) {
+  } catch (e: any) {
+    const msg = String(e?.cause?.message || e?.message || "");
+    if (/duplicate key|unique constraint/i.test(msg)) {
+      throw new Error(`Já existe uma categoria chamada "${data.nome.trim()}".`);
+    }
     throw new Error(`Não foi possível gravar a categoria: ${detalharErroDb(e)}`);
   }
+
   const id = (r as any).rows?.[0]?.id;
   if (!id) throw new Error("A categoria não foi gravada no banco de dados.");
   return { ok: true, id };
@@ -2286,25 +2353,20 @@ export async function aplicarTemplateChecklist(templateId: string) {
     let ordemBase = Number((maiorOrdem as any).rows?.[0]?.ordem || 0);
 
     for (const cat of template.categorias) {
-      const existente = await d.execute(sql`
-        SELECT id::text AS id FROM vistorias_checklist_categorias
-        WHERE lower(nome) = lower(${cat.nome}) LIMIT 1
-      `);
-      let categoriaId = (existente as any).rows?.[0]?.id as string | undefined;
+      const antes = await d.execute(sql`SELECT count(*)::int AS total FROM vistorias_checklist_categorias`);
+      const totalAntes = Number((antes as any).rows?.[0]?.total || 0);
 
-      if (!categoriaId) {
-        ordemBase += 10;
-        const inserida = await d.execute(sql`
-          INSERT INTO vistorias_checklist_categorias (nome, descricao, ordem)
-          VALUES (${cat.nome}, ${cat.descricao}, ${ordemBase})
-          RETURNING id::text AS id
-        `);
-        categoriaId = (inserida as any).rows?.[0]?.id as string | undefined;
-        if (categoriaId) categoriasCriadas += 1;
-      } else {
-        await d.execute(sql`UPDATE vistorias_checklist_categorias SET ativo = true, atualizado_em = now() WHERE id = ${categoriaId}::uuid`);
-      }
+      ordemBase += 10;
+      const categoriaId = await obterOuCriarCategoriaChecklist(d, {
+        nome: cat.nome,
+        descricao: cat.descricao,
+        ordem: ordemBase,
+      });
       if (!categoriaId) continue;
+
+      const depois = await d.execute(sql`SELECT count(*)::int AS total FROM vistorias_checklist_categorias`);
+      if (Number((depois as any).rows?.[0]?.total || 0) > totalAntes) categoriasCriadas += 1;
+
 
       for (const item of cat.itens) {
         const jaExiste = await d.execute(sql`
@@ -2317,23 +2379,29 @@ export async function aplicarTemplateChecklist(templateId: string) {
           ? JSON.stringify(item.opcoes)
           : null;
 
-        await d.execute(sql`
-          INSERT INTO vistorias_checklist_itens (
-            categoria_id, titulo, descricao_ajuda, tipo_item, opcoes,
-            obrigatorio, foto_obrigatoria, permite_observacao, ordem
-          ) VALUES (
-            ${categoriaId}::uuid,
-            ${item.titulo},
-            ${item.descricao_ajuda || null},
-            ${item.tipo_item},
-            ${opcoesJson}::jsonb,
-            ${item.obrigatorio === false ? false : true},
-            ${item.foto_obrigatoria === true ? true : false},
-            ${item.permite_observacao === false ? false : true},
-            ${typeof item.ordem === "number" ? item.ordem : 0}
-          )
-        `);
-        itensCriados += 1;
+        try {
+          await d.execute(sql`
+            INSERT INTO vistorias_checklist_itens (
+              categoria_id, titulo, descricao_ajuda, tipo_item, opcoes,
+              obrigatorio, foto_obrigatoria, permite_observacao, ordem
+            ) VALUES (
+              ${categoriaId}::uuid,
+              ${item.titulo},
+              ${item.descricao_ajuda || null},
+              ${item.tipo_item},
+              ${opcoesJson}::jsonb,
+              ${item.obrigatorio === false ? false : true},
+              ${item.foto_obrigatoria === true ? true : false},
+              ${item.permite_observacao === false ? false : true},
+              ${typeof item.ordem === "number" ? item.ordem : 0}
+            )
+          `);
+          itensCriados += 1;
+        } catch (e: any) {
+          const msg = String(e?.cause?.message || e?.message || "");
+          if (!/duplicate key|unique constraint/i.test(msg)) throw e;
+        }
+
       }
     }
   } catch (e) {
