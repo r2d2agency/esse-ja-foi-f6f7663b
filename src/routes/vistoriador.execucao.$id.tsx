@@ -280,25 +280,32 @@ function VistoriaExecucaoPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background lg:ml-64">
-      {/* Header Fixo */}
-      <header className="sticky top-0 z-40 border-b border-border bg-card/95 p-4 backdrop-blur">
-        <div className="flex items-center justify-between mb-4">
+      {/* Header Fixo com dados do veículo */}
+      <header className="sticky top-16 z-30 border-b border-border bg-card/95 px-4 pb-3 pt-3 backdrop-blur lg:top-0">
+        <div className="mb-3 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
           <Button variant="ghost" size="icon" className="rounded-full" onClick={() => navigate({ to: `/vistoriador/vistoria/${vistoriaId}` })}>
-            <ArrowLeft className="h-6 w-6" />
+            <ArrowLeft className="h-5 w-5" />
           </Button>
-          <div className="text-center">
-            <h1 className="text-sm font-black uppercase tracking-widest text-foreground">Vistoria em execução</h1>
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-tighter">{v.marca} {v.modelo} • {v.placa}</p>
+          <div className="min-w-0 text-center">
+            <p className="truncate text-sm font-black uppercase tracking-tight text-foreground">
+              {v.marca} {v.modelo}
+            </p>
+            <p className="truncate text-[11px] font-bold uppercase tracking-widest text-primary">
+              {v.placa}{v.ano ? ` • ${v.ano}` : ""}
+            </p>
           </div>
-          <div className="w-10" />
+          <Badge variant="outline" className="shrink-0 text-[10px] font-black uppercase">
+            {etapaAtual + 1}/{ETAPAS.length}
+          </Badge>
         </div>
         <div className="space-y-1">
           <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-            <span>Etapa {etapaAtual + 1} de {ETAPAS.length}</span>
+            <span className="truncate">{ETAPAS[etapaAtual]}</span>
             <span>{progress}%</span>
           </div>
           <Progress value={progress} className="h-1.5" />
         </div>
+
         {/* Navegação rápida entre etapas */}
         <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {ETAPAS.map((nome, idx) => (
