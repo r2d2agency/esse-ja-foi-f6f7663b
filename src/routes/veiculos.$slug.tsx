@@ -12,6 +12,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
+import { LogoEsf } from "@/components/shared/LogoEsf";
 
 export const Route = createFileRoute("/veiculos/$slug")({
   head: () => ({
@@ -141,9 +142,7 @@ function DetalheVeiculoPublico() {
           <Link to="/veiculos" className="text-sm font-medium text-slate-500 hover:text-slate-900 flex items-center gap-2">
             <ArrowLeft className="h-4 w-4" /> Voltar para vitrine
           </Link>
-          <div className="text-xl font-black tracking-tight text-slate-950 uppercase">
-            Esse<span className="text-teal-600">JáFoi</span>
-          </div>
+          <LogoEsf height={32} />
           <div className="w-20"></div>
         </div>
       </header>

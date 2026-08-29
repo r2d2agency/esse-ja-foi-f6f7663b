@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/hooks/use-auth";
 import { formatCPF, formatPhone } from "@/lib/utils";
 import { isValidCPF, formatPlaca } from "@/lib/validators";
+import { LogoEsf } from "@/components/shared/LogoEsf";
 import heroCar from "@/assets/hero-car.jpg";
 
 export const Route = createFileRoute("/cadastro")({
@@ -192,9 +193,7 @@ function CriarConta() {
   return (
     <div className="min-h-screen bg-white lg:grid lg:grid-cols-[1fr_0.9fr]">
       <div className="flex flex-col px-6 py-10 lg:px-16 lg:py-14">
-        <Link to="/" className="text-center text-sm font-black uppercase tracking-[0.18em] text-slate-900 lg:text-left">
-          Esse<span className="text-teal-700">JáFoi</span>
-        </Link>
+        <LogoEsf height={32} className="justify-center lg:justify-start" />
 
         <div className="mx-auto mt-10 w-full max-w-md lg:mt-16">
           {etapa === "form" && (

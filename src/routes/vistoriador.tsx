@@ -1,5 +1,6 @@
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
 import { Calendar, ClipboardList, Clock, User } from "lucide-react";
+import { LogoEsf } from "@/components/shared/LogoEsf";
 
 export const Route = createFileRoute("/vistoriador")({
   component: VistoriadorLayout,
@@ -54,8 +55,8 @@ function VistoriadorLayout() {
 
       {/* Layout Desktop Adaptado */}
       <aside className="fixed left-0 top-0 hidden h-full w-64 border-r bg-white p-6 lg:block">
-        <div className="mb-10 font-black uppercase tracking-widest text-teal-900">
-          Esse<span className="text-teal-600">JáFoi</span>
+        <div className="mb-10">
+          <LogoEsf height={32} />
         </div>
         <nav className="space-y-2">
           <Link

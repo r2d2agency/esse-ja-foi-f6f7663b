@@ -8,12 +8,12 @@ import {
   Star, 
   Clock, 
   FileCheck,
-  Zap,
   CheckCircle2,
   Phone,
   ArrowRight
 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
+import { LogoEsf } from '@/components/shared/LogoEsf';
 
 export const Route = createFileRoute('/')({
   component: LandingPage,
@@ -28,12 +28,7 @@ function LandingPage() {
       {/* Navegação */}
       <nav className="border-b bg-white/80 backdrop-blur-md sticky top-0 z-50">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="bg-teal-600 p-1.5 rounded-lg">
-              <Zap className="w-5 h-5 text-white" />
-            </div>
-            <span className="text-xl font-bold tracking-tight text-slate-900">ESSE JÁ FOI</span>
-          </div>
+          <LogoEsf height={36} />
           
           <div className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-600">
             <Link to="/" className="hover:text-teal-600 transition-colors">Comprar</Link>
@@ -149,11 +144,8 @@ function LandingPage() {
       {/* Footer */}
       <footer className="bg-slate-900 text-slate-400 py-12 border-t border-slate-800">
         <div className="container mx-auto px-4 text-center">
-          <div className="flex justify-center items-center gap-2 mb-6">
-            <div className="bg-teal-600 p-1 rounded-lg">
-              <Zap className="w-4 h-4 text-white" />
-            </div>
-            <span className="text-white font-bold tracking-tight">ESSE JÁ FOI</span>
+          <div className="flex justify-center items-center mb-6">
+            <LogoEsf height={40} variant="dark" />
           </div>
           <p className="text-sm">© 2026 Esse Já Foi - Todos os direitos reservados.</p>
         </div>

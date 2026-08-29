@@ -7,6 +7,7 @@ import { loginWithPassword } from "@/lib/auth.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { LogoEsf } from "@/components/shared/LogoEsf";
 import heroCar from "@/assets/hero-car.jpg";
 
 export const Route = createFileRoute("/login")({
@@ -87,9 +88,7 @@ function LoginPage() {
   return (
     <div className="min-h-screen bg-white lg:grid lg:grid-cols-[1fr_0.9fr]">
       <div className="flex flex-col px-6 py-10 lg:px-16 lg:py-14">
-        <Link to="/" className="text-center text-sm font-black uppercase tracking-[0.18em] lg:text-left">
-          Esse<span className="text-teal-700">JáFoi</span>
-        </Link>
+        <LogoEsf height={32} className="justify-center lg:justify-start" />
 
         <div className="mx-auto mt-16 w-full max-w-md lg:mt-28">
           <h1 className="text-3xl font-black leading-tight tracking-tight">Bem-vindo de volta</h1>

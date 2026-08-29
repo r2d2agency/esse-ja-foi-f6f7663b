@@ -4,6 +4,7 @@ import { Home, Search, Heart, MessageSquare, FileText, User, LogOut, ShoppingBag
 import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
 import { Outlet } from '@tanstack/react-router';
+import { LogoEsf } from '@/components/shared/LogoEsf';
 
 export const Route = createFileRoute('/comprador')({
   component: CompradorLayout,
@@ -42,10 +43,9 @@ function CompradorLayout() {
   return (
     <div className="min-h-screen bg-slate-50 font-sans">
       <aside className="fixed inset-y-0 left-0 hidden w-64 flex-col border-r border-slate-200 bg-white px-5 py-6 lg:flex shadow-sm">
-        <Link to="/" className="text-xl font-black uppercase tracking-[0.18em] text-slate-900 mb-10 flex items-center gap-2">
-          <div className="w-8 h-8 rounded bg-teal-600 flex items-center justify-center text-white text-[10px]">EJ</div>
-          Esse<span className="text-teal-700">JáFoi</span>
-        </Link>
+        <div className="mb-10">
+          <LogoEsf height={36} />
+        </div>
 
         <nav className="flex-1 space-y-1">
           {MENU.map((m) => (
@@ -74,9 +74,7 @@ function CompradorLayout() {
       </aside>
 
       <header className="sticky top-0 z-40 flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4 lg:hidden">
-        <span className="text-sm font-black uppercase tracking-[0.18em]">
-          Esse<span className="text-teal-700">JáFoi</span>
-        </span>
+        <LogoEsf height={28} />
         <button onClick={sair} className="text-slate-400 p-2">
           <LogOut className="h-5 w-5" />
         </button>

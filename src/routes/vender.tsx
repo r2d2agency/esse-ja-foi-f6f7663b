@@ -1,8 +1,9 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { Zap, Menu, X } from "lucide-react";
+import { Menu, X, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { LogoEsf } from "@/components/shared/LogoEsf";
 import heroVender from "@/assets/hero-car.jpg";
 
 export const Route = createFileRoute("/vender")({
@@ -36,9 +37,7 @@ function LandingVender() {
       {/* HEADER */}
       <header className="sticky top-0 z-50 border-b border-slate-100 bg-white/85 backdrop-blur-xl">
         <div className="mx-auto flex max-w-[1400px] items-center justify-between px-6 py-4 lg:px-12">
-          <Link to="/" className="text-lg font-black uppercase tracking-[0.18em] text-slate-900">
-            Esse<span className="text-teal-700">JáFoi</span>
-          </Link>
+          <LogoEsf height={32} />
 
           <nav className="hidden items-center gap-10 md:flex">
             <Link to="/login" className="text-sm text-slate-500 transition-colors hover:text-slate-900">
@@ -116,7 +115,7 @@ function LandingVender() {
 
       <footer className="border-t border-slate-100 py-10">
         <div className="mx-auto flex max-w-[1400px] flex-col items-center justify-between gap-6 px-6 sm:flex-row lg:px-12">
-          <span className="text-sm font-black uppercase tracking-[0.18em]">Esse Já Foi</span>
+          <LogoEsf height={28} />
           <p className="text-sm text-slate-400">© Esse Já Foi. Todos os direitos reservados.</p>
         </div>
       </footer>
