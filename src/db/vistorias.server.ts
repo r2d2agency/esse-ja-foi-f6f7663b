@@ -1577,7 +1577,7 @@ export async function obterPainelVistoriador(usuarioId: string, filtros: {
     FROM profiles p
     LEFT JOIN vistoriadores vist ON vist.usuario_id = p.id
     LEFT JOIN unidades_vistoria uv ON uv.id = vist.unidade_id
-    WHERE p.id = ${id}::uuid AND p.role = 'vistoriador'::app_role
+    WHERE p.id = ${id}::uuid AND p.role::text = 'vistoriador'
     LIMIT 1
   `);
   const perfil = (perfilRes as any).rows?.[0] || null;
@@ -1635,7 +1635,7 @@ export async function alterarSenhaVistoriador(usuarioId: string, senhaAtual: str
   const d = requireDb();
   const id = normalizarUuid(usuarioId);
   if (!id) throw new Error("Usuário inválido.");
-  const rows = await d.execute(sql`SELECT senha_hash FROM profiles WHERE id = ${id}::uuid AND role = 'vistoriador'::app_role LIMIT 1`);
+  const rows = await d.execute(sql`SELECT senha_hash FROM profiles WHERE id = ${id}::uuid AND role::text = 'vistoriador' LIMIT 1`);
   const perfil = (rows as any).rows?.[0];
   if (!perfil?.senha_hash) return { ok: false as const, message: "Perfil sem senha cadastrada." };
   const { verifyPassword, hashPassword } = await import("./auth.server");
@@ -1655,6 +1655,7 @@ export async function getVistoriaDetalheVistoriador(vistoriaId: string, usuarioI
            vei.placa, vei.marca, vei.modelo, vei.ano, vei.km as km_base,
            prof.nome as vendedor_nome, prof.telefone as vendedor_telefone,
            uv.nome as unidade_nome, uv.endereco as unidade_endereco,
+           uv.cidade as unidade_cidade, uv.estado as unidade_estado,
            l.id as laudo_id, l.status as laudo_status
     FROM vistorias v
     JOIN veiculos vei ON v.veiculo_id = vei.id

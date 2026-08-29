@@ -33,10 +33,10 @@ function PerfilPage() {
   const perfil = consulta.data?.ok ? consulta.data.data.perfil : null;
   const mutacao = useMutation({
     mutationFn: () => alterarSenha({ data: { usuarioId: user?.id || "", senhaAtual: senhas.atual, novaSenha: senhas.nova } }),
-    onSuccess: (res) => { if (!res.ok) return toast.error(res.message); setSenhas({ atual: "", nova: "", confirmar: "" }); toast.success("Senha alterada com sucesso."); },
-    onError: () => toast.error("Não foi possível alterar a senha."),
+    onSuccess: (res) => { if (!res.ok) { toast.error(res.message); return; } setSenhas({ atual: "", nova: "", confirmar: "" }); toast.success("Senha alterada com sucesso."); },
+    onError: () => { toast.error("Não foi possível alterar a senha."); },
   });
-  function enviar(e: React.FormEvent) { e.preventDefault(); if (senhas.nova.length < 6) return toast.error("A nova senha deve ter pelo menos 6 caracteres."); if (senhas.nova !== senhas.confirmar) return toast.error("A confirmação da senha não confere."); mutacao.mutate(); }
+  function enviar(e: React.FormEvent) { e.preventDefault(); if (senhas.nova.length < 6) { toast.error("A nova senha deve ter pelo menos 6 caracteres."); return; } if (senhas.nova !== senhas.confirmar) { toast.error("A confirmação da senha não confere."); return; } mutacao.mutate(); }
 
   if (consulta.isLoading) return <div className="flex min-h-64 items-center justify-center lg:ml-64"><Loader2 className="h-6 w-6 animate-spin" /></div>;
   return <div className="mx-auto max-w-4xl space-y-5 p-4 pb-24 lg:ml-64 lg:p-8">

@@ -2,16 +2,17 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { ClipboardCheck, Loader2, Search } from "lucide-react";
-import { z } from "zod";
-import { zodValidator } from "@tanstack/zod-adapter";
 import { getPainelVistoriadorFn } from "@/lib/vistoriador.functions";
 import { useAuthStore } from "@/hooks/use-auth";
 import { Input } from "@/components/ui/input";
 import { VistoriaCard } from "@/components/vistoriador/VistoriaCard";
 
-const buscaSchema = z.object({ inicio: z.string().optional(), fim: z.string().optional(), busca: z.string().optional() });
 export const Route = createFileRoute("/vistoriador/historico")({
-  validateSearch: zodValidator(buscaSchema),
+  validateSearch: (search: Record<string, unknown>): { inicio?: string; fim?: string; busca?: string } => ({
+    inicio: typeof search.inicio === "string" ? search.inicio : undefined,
+    fim: typeof search.fim === "string" ? search.fim : undefined,
+    busca: typeof search.busca === "string" ? search.busca : undefined,
+  }),
   component: HistoricoPage,
   head: () => ({ meta: [
     { title: "Histórico de vistorias | Esse Já Foi" },

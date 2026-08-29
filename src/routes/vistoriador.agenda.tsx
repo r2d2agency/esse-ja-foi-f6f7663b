@@ -2,8 +2,6 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { CalendarDays, Loader2, RefreshCw } from "lucide-react";
-import { z } from "zod";
-import { zodValidator } from "@tanstack/zod-adapter";
 import { getPainelVistoriadorFn } from "@/lib/vistoriador.functions";
 import { useAuthStore } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
@@ -11,9 +9,12 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { VistoriaCard } from "@/components/vistoriador/VistoriaCard";
 
-const buscaSchema = z.object({ inicio: z.string().optional(), fim: z.string().optional(), status: z.string().optional() });
 export const Route = createFileRoute("/vistoriador/agenda")({
-  validateSearch: zodValidator(buscaSchema),
+  validateSearch: (search: Record<string, unknown>): { inicio?: string; fim?: string; status?: string } => ({
+    inicio: typeof search.inicio === "string" ? search.inicio : undefined,
+    fim: typeof search.fim === "string" ? search.fim : undefined,
+    status: typeof search.status === "string" ? search.status : undefined,
+  }),
   component: AgendaPage,
   head: () => ({ meta: [
     { title: "Minha agenda | Esse Já Foi" },
