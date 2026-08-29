@@ -94,17 +94,21 @@ export async function registrarLance(leilaoId: string, compradorId: string, valo
       throw new Error("O leilão está fora do horário permitido.");
     }
 
-    // 2. Validar comprador (deve estar aprovado e ativo)
+    // 2. Validar comprador: precisa estar ativo, com cadastro completo e compliance APROVADO
     const cRes = await tx.execute(sql`
-      SELECT role, ativo, (config_exibicao->>'compliance_aprovado')::boolean as aprovado
+      SELECT role, ativo, cadastro_completo, status_compliance
       FROM profiles WHERE id = ${compradorId}::uuid
     `);
     const comprador = rowsOf(cRes)[0];
-    
-    // Nota: A lógica de 'aprovado' pode variar conforme a implementação prévia de compliance
-    // Aqui assumimos que se for role 'comprador' e 'ativo'
+
     if (!comprador || comprador.role !== 'comprador' || !comprador.ativo) {
       throw new Error("Comprador não autorizado ou bloqueado.");
+    }
+    if (!comprador.cadastro_completo) {
+      throw new Error("Complete seu cadastro para participar dos leilões.");
+    }
+    if (comprador.status_compliance !== 'APROVADO') {
+      throw new Error("Seu cadastro ainda está em análise. Você será avisado quando for aprovado.");
     }
 
     // 3. Buscar maior lance atual
@@ -128,6 +132,16 @@ export async function registrarLance(leilaoId: string, compradorId: string, valo
     const lanceId = rowsOf(res)?.[0]?.id;
 
     const { processarEventoSistema } = await import("./automacoes-motor.server");
+    if (maiorLanceAnterior && maiorLanceAnterior.comprador_id !== compradorId) {
+      const { criarNotificacaoComprador } = await import("./comprador.server");
+      await criarNotificacaoComprador(
+        maiorLanceAnterior.comprador_id,
+        "LANCE_SUPERADO",
+        "Seu lance foi superado",
+        `Novo lance de R$ ${Number(valor).toLocaleString("pt-BR")}. Faça uma nova oferta para voltar à liderança.`,
+        `/veiculos`,
+      );
+    }
     if (maiorLanceAnterior) {
       await processarEventoSistema("LANCE_SUPERADO", {
         leilao_id: leilaoId,
