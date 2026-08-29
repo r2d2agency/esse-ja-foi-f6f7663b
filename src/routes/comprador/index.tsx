@@ -24,6 +24,8 @@ import {
   listarNotificacoesFn,
   marcarNotificacoesLidasFn,
 } from "@/lib/comprador.functions";
+import { CelebracaoVitoria } from "@/components/comprador/CelebracaoVitoria";
+import { InstalarApp } from "@/components/vistoriador/InstalarApp";
 
 export const Route = createFileRoute("/comprador/")({
   head: () => ({
