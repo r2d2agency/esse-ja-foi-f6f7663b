@@ -64,41 +64,26 @@ export const solicitarNovaVistoriaFn = createServerFn({ method: "POST" })
 
 export const responderPropostaVendedorFn = createServerFn({ method: "POST" })
   .validator((d) => z.object({
-    veiculo_id: z.string(),
-    proposta_id: z.string(),
+    veiculo_id: z.string().uuid(),
+    proposta_id: z.string().uuid(),
+    perfil_id: z.string().uuid(),
     aceite: z.boolean(),
     motivo_recusa: z.string().optional(),
     detalhes_recusa: z.string().optional(),
     ip: z.string().optional()
   }).parse(d))
   .handler(async ({ data }) => {
-    const { db } = await import("@/db/index");
-    const { sql } = await import("drizzle-orm");
-    
-    if (!db) throw new Error("Banco de dados indisponível.");
-    
     try {
-      const status = data.aceite ? 'ACEITA' : 'RECUSADA';
-      const veiculoStatusAnalise = data.aceite ? 'PRONTO_PARA_ANUNCIO' : 'VALOR_RECUSADO';
-      
-      await db.execute(sql`
-        UPDATE propostas_veiculo SET 
-          status = ${status},
-          respondido_em = now(),
-          motivo_recusa = ${data.motivo_recusa || null},
-          detalhes_recusa = ${data.detalhes_recusa || null},
-          ip_vendedor = ${data.ip || null}
-        WHERE id = ${data.proposta_id}::uuid
-      `);
-
-      await db.execute(sql`
-        UPDATE veiculos SET 
-          status_analise = ${veiculoStatusAnalise},
-          atualizado_em = now()
-        WHERE id = ${data.veiculo_id}::uuid
-      `);
-
-      return { ok: true };
+      const { responderPropostaVendedor } = await import("@/db/analise-pos-vistoria.server");
+      return await responderPropostaVendedor({
+        veiculoId: data.veiculo_id,
+        propostaId: data.proposta_id,
+        perfilId: data.perfil_id,
+        aceite: data.aceite,
+        motivoRecusa: data.motivo_recusa,
+        detalhesRecusa: data.detalhes_recusa,
+        ip: data.ip,
+      });
     } catch (err: any) {
       return { ok: false, message: err.message };
     }
@@ -117,11 +102,11 @@ export const listarPropostasPendentesVendedorFn = createServerFn({ method: "GET"
   });
 
 export const getPropostaVeiculoVendedorFn = createServerFn({ method: "GET" })
-  .validator((d) => z.object({ veiculoId: z.string() }).parse(d))
+  .validator((d) => z.object({ veiculoId: z.string().uuid(), perfilId: z.string().uuid() }).parse(d))
   .handler(async ({ data }) => {
     const { getPropostaVeiculoVendedor } = await import("@/db/analise-pos-vistoria.server");
     try {
-      const res = await getPropostaVeiculoVendedor(data.veiculoId);
+      const res = await getPropostaVeiculoVendedor(data.veiculoId, data.perfilId);
       return { ok: true as const, ...res };
     } catch (err: any) {
       return { ok: false as const, message: err?.message ?? "Erro", veiculo: null as any, proposta: null as any };
