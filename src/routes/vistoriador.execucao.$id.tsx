@@ -792,3 +792,117 @@ function ChecklistCategoriaDinamica({ categoria, respostasEmMemoria, onMudarResp
   );
 }
 
+// ============================================================================
+// Sub-componente: Fotos do anúncio — upload real guiado por ângulos
+// ============================================================================
+const ANGULOS_ANUNCIO = [
+  "Frente 45°", "Frente", "Lateral Esq", "Lateral Dir", "Traseira 45°", "Traseira",
+  "Interior (dianteiro)", "Interior (traseiro)", "Painel", "Motor", "Porta-malas", "Estepe",
+];
+
+function FotosAnuncio({ laudoId }: { laudoId: string | null }) {
+  const [fotos, setFotos] = useState<Record<string, string>>({});
+  const [enviando, setEnviando] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const anguloAtualRef = useRef<string | null>(null);
+  const enviadas = Object.keys(fotos).length;
+
+  const abrirCamera = (angulo: string) => {
+    if (!laudoId) {
+      toast.error("Faça o check-in antes de enviar fotos.");
+      return;
+    }
+    anguloAtualRef.current = angulo;
+    inputRef.current?.click();
+  };
+
+  const handleArquivo = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const arquivo = e.target.files?.[0];
+    const angulo = anguloAtualRef.current;
+    if (inputRef.current) inputRef.current.value = "";
+    if (!arquivo || !angulo || !laudoId) return;
+
+    setEnviando(angulo);
+    try {
+      const blob = await compressImage(arquivo, 1600, 0.75, 0.82);
+      const extensao = extensaoPorMime(blob.type || "image/jpeg");
+      const formData = new FormData();
+      formData.append("file", blob, `anuncio-${angulo.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}.${extensao}`);
+
+      const resp = await fetch("/api/public/upload", { method: "POST", body: formData });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const dados = await resp.json();
+      if (!dados.url) throw new Error("Servidor não retornou URL da foto");
+
+      const salvo: any = await salvarFotoLaudoFn({ data: { laudoId, tipo_foto: angulo, url: dados.url } });
+      if (salvo?.ok === false) throw new Error(salvo.message || "Falha ao registrar foto no laudo");
+
+      setFotos((prev) => ({ ...prev, [angulo]: dados.url }));
+      toast.success(`Foto "${angulo}" enviada`);
+    } catch (erro: any) {
+      toast.error("Não foi possível enviar a foto", { description: erro?.message || "Tente novamente." });
+    } finally {
+      setEnviando(null);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-xs font-black uppercase tracking-widest text-muted-foreground">Fotos do anúncio</h3>
+            <p className="mt-1 text-xs font-medium text-muted-foreground">Siga os ângulos indicados para manter o padrão de publicação.</p>
+          </div>
+          <Badge variant="outline" className="shrink-0">{enviadas}/{ANGULOS_ANUNCIO.length}</Badge>
+        </div>
+        <Progress value={Math.round((enviadas / ANGULOS_ANUNCIO.length) * 100)} className="mt-3 h-1.5" />
+      </div>
+
+      <input ref={inputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleArquivo} />
+
+      <div className="grid grid-cols-2 gap-3">
+        {ANGULOS_ANUNCIO.map((angulo) => {
+          const url = fotos[angulo];
+          const carregando = enviando === angulo;
+          return (
+            <button
+              key={angulo}
+              type="button"
+              onClick={() => abrirCamera(angulo)}
+              disabled={carregando}
+              className={`relative flex aspect-square flex-col items-center justify-center overflow-hidden rounded-2xl border-2 text-center transition-colors ${
+                url
+                  ? "border-emerald-300"
+                  : carregando
+                    ? "border-amber-300 bg-amber-50"
+                    : "border-dashed border-border bg-card active:bg-muted/50"
+              }`}
+            >
+              {url ? (
+                <>
+                  <img src={url} alt={`Foto ${angulo}`} className="absolute inset-0 h-full w-full object-cover" />
+                  <span className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-foreground/60 px-2 py-1.5 text-[10px] font-bold uppercase text-primary-foreground backdrop-blur-sm">
+                    <CheckCircle2 className="h-3 w-3" /> {angulo}
+                  </span>
+                </>
+              ) : carregando ? (
+                <>
+                  <Loader2 className="h-6 w-6 animate-spin text-amber-700" />
+                  <span className="mt-2 text-[10px] font-bold uppercase text-amber-800">Enviando...</span>
+                </>
+              ) : (
+                <>
+                  <Camera className="h-6 w-6 text-muted-foreground" />
+                  <span className="mt-2 px-2 text-[10px] font-bold uppercase tracking-tight text-muted-foreground">{angulo}</span>
+                </>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      <p className="text-center text-[11px] text-muted-foreground">Toque em um ângulo para abrir a câmera. A foto é comprimida e enviada automaticamente.</p>
+    </div>
+  );
+}
+
