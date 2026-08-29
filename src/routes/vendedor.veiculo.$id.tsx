@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate, useParams, Link } from '@tanstack/react-router';
+import { createFileRoute, useNavigate, useParams, Link, Outlet, useRouterState } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useServerFn } from '@tanstack/react-start';
 import { Car, ArrowLeft, Check, DollarSign, Megaphone, ExternalLink } from 'lucide-react';
@@ -36,6 +36,9 @@ function DetalheVeiculo() {
   const { id } = useParams({ from: '/vendedor/veiculo/$id' });
   const { user } = useAuth();
   const navigate = useNavigate();
+  const exibindoProposta = useRouterState({
+    select: (state) => state.location.pathname.endsWith('/proposta'),
+  });
   const listar = useServerFn(listarMeusVeiculosFn);
 
   const { data, isLoading } = useQuery({
@@ -45,6 +48,8 @@ function DetalheVeiculo() {
   });
 
   const veiculo = ((data as any)?.data || []).find((v: any) => String(v.id) === id);
+
+  if (exibindoProposta) return <Outlet />;
 
   if (isLoading) return <p className="text-sm text-slate-400">Carregando veículo...</p>;
   if (!veiculo) {
