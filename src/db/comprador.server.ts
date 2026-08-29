@@ -50,8 +50,8 @@ export async function ensureCompradorSchema() {
   for (const [name, type] of cols) {
     try {
       await db.execute(sql.raw(`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS ${name} ${type};`));
-    } catch {
-      /* coluna já existe */
+    } catch (e: any) {
+      console.error(`[ensureCompradorSchema] falha ao criar coluna ${name}:`, e?.message || e);
     }
   }
 
@@ -158,31 +158,78 @@ export async function cadastrarComprador(data: any) {
   }
 }
 
+/** Colunas realmente existentes na tabela profiles (evita INSERT em coluna ausente). */
+async function colunasProfiles(): Promise<Set<string>> {
+  if (!db) return new Set();
+  const res = await db.execute(sql`
+    SELECT column_name FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'profiles'
+  `);
+  return new Set(rowsOf(res).map((r: any) => String(r.column_name)));
+}
+
+function detalharErro(err: any): string {
+  const partes = [err?.message, err?.detail, err?.hint, err?.column && `coluna: ${err.column}`]
+    .filter(Boolean)
+    .map((p: string) => String(p).split("\n")[0]);
+  return partes.join(" — ") || "Erro desconhecido ao gravar.";
+}
+
 /** Pré-cadastro feito pelo admin: dados mínimos + senha provisória. */
 export async function preCadastrarComprador(data: any) {
   if (!db) throw new Error("DB offline");
-  await ensureCompradorSchema();
+  try {
+    await ensureCompradorSchema();
+  } catch (e: any) {
+    console.error("[preCadastrarComprador] ensureCompradorSchema:", e?.message || e);
+  }
 
   const senhaHash = await hashPassword(data.senha);
+  const email = String(data.email).toLowerCase().trim();
+
+  const existentes = await colunasProfiles();
+  const candidatos: Record<string, any> = {
+    nome: data.nome,
+    email,
+    senha_hash: senhaHash,
+    whatsapp: data.whatsapp || null,
+    cnpj: data.cnpj || null,
+    tipo_pessoa: data.cnpj ? "PJ" : "PF",
+    regiao_atuacao: data.regiao || null,
+    endereco: data.endereco || null,
+    cidade: data.cidade || null,
+    uf: data.uf || null,
+    status_compliance: "NAO_ENVIADO",
+    origem_cadastro: "PRE_CADASTRO_ADMIN",
+    etapa_cadastro: 2,
+    pode_ver_valores: true,
+    pode_dar_lances: false,
+    cadastro_completo: false,
+    ativo: true,
+  };
+
+  const colunas: string[] = ["role"];
+  const valores: any[] = [sql`'comprador'::app_role`];
+  for (const [coluna, valor] of Object.entries(candidatos)) {
+    if (!existentes.size || existentes.has(coluna)) {
+      colunas.push(coluna);
+      valores.push(sql`${valor}`);
+    }
+  }
+
   try {
     const res = await db.execute(sql`
-      INSERT INTO profiles (
-        nome, email, role, senha_hash, whatsapp, cnpj, tipo_pessoa, regiao_atuacao,
-        endereco, cidade, uf, status_compliance, origem_cadastro, etapa_cadastro,
-        pode_ver_valores, pode_dar_lances, cadastro_completo, ativo
-      ) VALUES (
-        ${data.nome}, ${String(data.email).toLowerCase()}, 'comprador'::text::app_role, ${senhaHash},
-        ${data.whatsapp || null}, ${data.cnpj || null}, ${data.cnpj ? "PJ" : "PF"}, ${data.regiao || null},
-        ${data.endereco || null}, ${data.cidade || null}, ${data.uf || null},
-        'NAO_ENVIADO', 'PRE_CADASTRO_ADMIN', 2, true, false, false, true
-      ) RETURNING id, nome, email
+      INSERT INTO profiles (${sql.raw(colunas.join(", "))})
+      VALUES (${sql.join(valores, sql`, `)})
+      RETURNING id, nome, email
     `);
     return { ok: true as const, data: rowsOf(res)[0] };
   } catch (err: any) {
-    if (err.message?.includes("unique") || err.code === "23505") {
+    if (err?.code === "23505" || err?.message?.includes("unique")) {
       return { ok: false as const, message: "Já existe um usuário com este e-mail." };
     }
-    return { ok: false as const, message: err.message };
+    console.error("[preCadastrarComprador] insert:", err);
+    return { ok: false as const, message: detalharErro(err) };
   }
 }
 
