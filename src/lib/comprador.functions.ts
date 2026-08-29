@@ -41,7 +41,7 @@ export const getPerfilCompradorFn = createServerFn({ method: "POST" })
 
 export const salvarEtapaCompradorFn = createServerFn({ method: "POST" })
   .validator((d: unknown) =>
-    tokenSchema.extend({ etapa: z.number().int(), dados: z.record(z.any()) }).parse(d),
+    tokenSchema.extend({ etapa: z.number().int(), dados: z.record(z.string(), z.any()) }).parse(d),
   )
   .handler(async ({ data }) => {
     try {
