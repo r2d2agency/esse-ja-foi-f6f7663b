@@ -143,6 +143,7 @@ export const listarLembretesFn = createServerFn({ method: "POST" })
   .validator((d: unknown) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     try {
+      await ensureSchema();
       const userId = await userFromToken(data.token);
       const m = await import("@/db/comprador.server");
       return { ok: true as const, data: await m.listarLembretes(userId) };
