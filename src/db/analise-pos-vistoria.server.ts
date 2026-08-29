@@ -359,28 +359,38 @@ export async function getPropostaVeiculoVendedor(veiculoId: string, perfilId: st
   await ensureAnalisePosVistoriaSchema();
 
   const vRes = await d.execute(sql`
-    SELECT id::text AS id, marca, modelo, placa, status_analise
+    SELECT id::text AS id, marca, modelo, placa, status_analise,
+           perfil_id::text AS perfil_id, vendedor_id::text AS vendedor_id
     FROM veiculos
     WHERE id = ${veiculoId}::uuid
-      AND COALESCE(perfil_id, vendedor_id) = ${perfilId}::uuid
     LIMIT 1
   `);
   const veiculo = rowsOf(vRes)[0] ?? null;
 
-  if (!veiculo) return { veiculo: null, proposta: null };
+  if (!veiculo) return { veiculo: null, proposta: null, message: "Veículo não encontrado." };
+
+  const dono = [veiculo.perfil_id, veiculo.vendedor_id].filter(Boolean).map(String);
+  if (dono.length > 0 && !dono.includes(String(perfilId))) {
+    return { veiculo: null, proposta: null, message: "Este veículo não pertence à sua conta." };
+  }
 
   const pRes = await d.execute(sql`
     SELECT id::text AS id, veiculo_id::text AS veiculo_id, versao, status,
            valor_minimo_acordado, mensagem_vendedor, enviado_em
     FROM propostas_veiculo
     WHERE veiculo_id = ${veiculoId}::uuid
-    ORDER BY versao DESC
+    ORDER BY COALESCE(versao, 0) DESC, enviado_em DESC NULLS LAST
     LIMIT 1
   `);
   const proposta = rowsOf(pRes)[0] ?? null;
 
-  return { veiculo, proposta };
+  return {
+    veiculo,
+    proposta,
+    message: proposta ? undefined : "Nenhuma proposta foi enviada para este veículo ainda.",
+  };
 }
+
 
 export async function responderPropostaVendedor(data: {
   veiculoId: string;
