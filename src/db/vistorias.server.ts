@@ -260,7 +260,7 @@ async function encontrarUnidadeRobusta(args: {
            OR id::text ILIKE (${unidadeIdLower} || '%')
         LIMIT 3
       `);
-      for (const u of ((porUuid as any).rows || [])) todasCandidatas.push(u);
+      for (const u of (rowsOf(porUuid) || [])) todasCandidatas.push(u);
     } catch { /* ignora */ }
 
     if (todasCandidatas.length === 0 && unidadeIdLower.replace(/-/g, "").length >= 32) {
@@ -271,7 +271,7 @@ async function encontrarUnidadeRobusta(args: {
           WHERE id = (${unidadeIdLower}::uuid)
           LIMIT 3
         `);
-        for (const u of ((porCast as any).rows || [])) {
+        for (const u of (rowsOf(porCast) || [])) {
           if (!todasCandidatas.some((x) => String(x.id).toLowerCase() === String(u.id).toLowerCase())) {
             todasCandidatas.push(u);
           }
@@ -297,7 +297,7 @@ async function encontrarUnidadeRobusta(args: {
         ORDER BY ativo DESC, length(nome) ASC
         LIMIT 5
       `);
-      for (const u of ((porNome as any).rows || [])) {
+      for (const u of (rowsOf(porNome) || [])) {
         if (!todasCandidatas.some((x) => String(x.id).toLowerCase() === String(u.id).toLowerCase())) {
           todasCandidatas.push(u);
         }
@@ -554,7 +554,7 @@ export async function listarVistoriasAdmin(filtros: any = {}) {
   query = sql`${query} ORDER BY v.data_vistoria DESC, v.horario_vistoria DESC`;
   
   const res = await d.execute(query);
-  return (res as any).rows || res;
+  return rowsOf(res) || res;
 }
 
 export async function getVeiculosAguardandoVistoria() {
@@ -571,7 +571,7 @@ export async function getVeiculosAguardandoVistoria() {
       )
     ORDER BY v.atualizado_em DESC
   `);
-  return (res as any).rows || res;
+  return rowsOf(res) || res;
 }
 
 export async function criarAgendamento(data: any) {
@@ -638,7 +638,7 @@ export async function criarAgendamento(data: any) {
       FROM vistoriadores v
       WHERE v.unidade_id::text = ${unidadeIdTxt} AND v.status = 'ATIVO'
     `);
-    const idsRaw = (vistoriadoresAtivos as any).rows || [];
+    const idsRaw = rowsOf(vistoriadoresAtivos) || [];
     const ids: string[] = [];
     for (const v of idsRaw) {
       const vid = normalizarUuid(v?.id);
@@ -773,7 +773,7 @@ export async function listarUnidadesDisponiveis(cidade?: string) {
   }
 
   const res = await d.execute(finalQuery);
-  return (res as any).rows || res;
+  return rowsOf(res) || res;
 }
 
 export async function listarVistoriadoresUnidade(unidadeId: string) {
@@ -802,7 +802,7 @@ export async function listarVistoriadoresUnidade(unidadeId: string) {
     JOIN profiles p ON v.usuario_id = p.id
     WHERE v.unidade_id = ${unidadeIdNormalizado}::uuid AND v.status = 'ATIVO'
   `);
-  return (res as any).rows || res;
+  return rowsOf(res) || res;
 }
 
 export async function listarUnidadesVistoriaCadastro() {
@@ -839,7 +839,7 @@ export async function listarUnidadesVistoriaCadastro() {
     ORDER BY uv.ativo DESC, uv.nome ASC
   `);
 
-  return (res as any).rows || res;
+  return rowsOf(res) || res;
 }
 
 export async function salvarUnidadeVistoria(data: {
@@ -889,7 +889,7 @@ export async function salvarUnidadeVistoria(data: {
       RETURNING id
     `);
 
-    return (res as any).rows?.[0] || null;
+    return rowsOf(res)?.[0] || null;
   }
 
   const res = await d.execute(sql`
@@ -918,7 +918,7 @@ export async function salvarUnidadeVistoria(data: {
     RETURNING id
   `);
 
-  return (res as any).rows?.[0] || null;
+  return rowsOf(res)?.[0] || null;
 }
 
 export async function listarSlotsDisponiveisUnidade(
@@ -970,7 +970,7 @@ export async function listarSlotsDisponiveisUnidade(
            OR id::text ILIKE (${unidadeIdLower} || '%')
         LIMIT 3
       `);
-      for (const u of ((porUuid as any).rows || [])) todasCandidatas.push(u);
+      for (const u of (rowsOf(porUuid) || [])) todasCandidatas.push(u);
 
       if (todasCandidatas.length === 0 && unidadeIdLower.replace(/-/g, "").length >= 32) {
         try {
@@ -988,7 +988,7 @@ export async function listarSlotsDisponiveisUnidade(
             WHERE id = (${unidadeIdLower}::uuid)
             LIMIT 3
           `);
-          for (const u of ((porCast as any).rows || [])) {
+          for (const u of (rowsOf(porCast) || [])) {
             if (!todasCandidatas.some((x) => String(x.id).toLowerCase() === String(u.id).toLowerCase())) {
               todasCandidatas.push(u);
             }
@@ -1021,7 +1021,7 @@ export async function listarSlotsDisponiveisUnidade(
         ORDER BY ativo DESC, length(nome) ASC
         LIMIT 5
       `);
-      for (const u of ((porNome as any).rows || [])) {
+      for (const u of (rowsOf(porNome) || [])) {
         if (!todasCandidatas.some((x) => String(x.id).toLowerCase() === String(u.id).toLowerCase())) {
           todasCandidatas.push(u);
         }
@@ -1121,7 +1121,7 @@ export async function listarSlotsDisponiveisUnidade(
       AND data_vistoria = ${data}
       AND status NOT IN ('CANCELADA')
   `);
-  const agendamentos = (agendamentosRes as any).rows || [];
+  const agendamentos = rowsOf(agendamentosRes) || [];
 
   let agendamentosVistoriador: any[] = [];
   if (vistoriadorIdNormalizado) {
@@ -1132,7 +1132,7 @@ export async function listarSlotsDisponiveisUnidade(
         AND data_vistoria = ${data}
         AND status NOT IN ('CANCELADA')
     `);
-    agendamentosVistoriador = (agendamentosVistoriadorRes as any).rows || [];
+    agendamentosVistoriador = rowsOf(agendamentosVistoriadorRes) || [];
   }
 
   const agoraMinutosSP = ehHojeSP(data) ? minutosAgoraSP() : -1;
@@ -1214,7 +1214,7 @@ export async function listarVistoriadoresCadastro() {
     ORDER BY p.nome ASC
   `);
 
-  return (res as any).rows || res;
+  return rowsOf(res) || res;
 }
 
 export async function salvarVistoriadorCadastro(data: {
@@ -1239,7 +1239,7 @@ export async function salvarVistoriadorCadastro(data: {
     RETURNING id
   `);
 
-  return (res as any).rows?.[0] || null;
+  return rowsOf(res)?.[0] || null;
 }
 
 export async function getVistoriaVendedor(vendedorId: string) {
@@ -1268,7 +1268,7 @@ export async function getVistoriaVendedor(vendedorId: string) {
     LIMIT 1
   `);
   
-  return (res as any).rows[0] || null;
+  return rowsOf(res)[0] || null;
 }
 
 export async function confirmarVistoriaVendedor(vistoriaId: string, vendedorId: string) {
@@ -1334,7 +1334,7 @@ export async function remarcarAgendamentoVistoria(args: {
       WHERE id::text = ${buscaExata}
       LIMIT 1
     `);
-    vistoria = (resText as any).rows?.[0];
+    vistoria = rowsOf(resText)?.[0];
   } catch { /* ignore */ }
 
   // TENTATIVA 2: cast uuid
@@ -1353,7 +1353,7 @@ export async function remarcarAgendamentoVistoria(args: {
         WHERE id = ${apenasUuid[0]}::uuid
         LIMIT 1
       `);
-      vistoria = (resCast as any).rows?.[0];
+      vistoria = rowsOf(resCast)?.[0];
     } catch { /* ignore */ }
   }
 
@@ -1377,7 +1377,7 @@ export async function remarcarAgendamentoVistoria(args: {
           ORDER BY criado_em DESC
           LIMIT 50
         `);
-        const linhas = (resLike as any).rows || [];
+        const linhas = rowsOf(resLike) || [];
         if (linhas.length === 1) {
           vistoria = linhas[0];
         } else if (linhas.length > 1) {
@@ -1403,7 +1403,7 @@ export async function remarcarAgendamentoVistoria(args: {
         ORDER BY criado_em DESC
         LIMIT 500
       `);
-      const arr = (todas as any).rows || [];
+      const arr = rowsOf(todas) || [];
       vistoria = arr.find((v: any) => {
         const idV = String(v.id || "").toLowerCase();
         if (idV === vistoriaIdLower) return true;
@@ -1554,7 +1554,7 @@ export async function listarVistoriasHojeVistoriador(usuarioId: string) {
     ORDER BY v.horario_vistoria ASC
   `);
   
-  return (res as any).rows || res;
+  return rowsOf(res) || res;
 }
 
 export async function obterPainelVistoriador(usuarioId: string, filtros: {
@@ -1580,7 +1580,7 @@ export async function obterPainelVistoriador(usuarioId: string, filtros: {
     WHERE p.id = ${id}::uuid AND p.role::text = 'vistoriador'
     LIMIT 1
   `);
-  const perfil = (perfilRes as any).rows?.[0] || null;
+  const perfil = rowsOf(perfilRes)?.[0] || null;
   if (!perfil) throw new Error("Perfil de vistoriador não encontrado.");
 
   const metricasRes = await d.execute(sql`
@@ -1626,8 +1626,8 @@ export async function obterPainelVistoriador(usuarioId: string, filtros: {
 
   return {
     perfil,
-    metricas: (metricasRes as any).rows?.[0] || { agendadas_hoje: 0, concluidas_hoje: 0, realizadas_mes: 0 },
-    vistorias: (listaRes as any).rows || [],
+    metricas: rowsOf(metricasRes)?.[0] || { agendadas_hoje: 0, concluidas_hoje: 0, realizadas_mes: 0 },
+    vistorias: rowsOf(listaRes) || [],
   };
 }
 
@@ -1636,7 +1636,7 @@ export async function alterarSenhaVistoriador(usuarioId: string, senhaAtual: str
   const id = normalizarUuid(usuarioId);
   if (!id) throw new Error("Usuário inválido.");
   const rows = await d.execute(sql`SELECT senha_hash FROM profiles WHERE id = ${id}::uuid AND role::text = 'vistoriador' LIMIT 1`);
-  const perfil = (rows as any).rows?.[0];
+  const perfil = rowsOf(rows)?.[0];
   if (!perfil?.senha_hash) return { ok: false as const, message: "Perfil sem senha cadastrada." };
   const { verifyPassword, hashPassword } = await import("./auth.server");
   if (!(await verifyPassword(senhaAtual, perfil.senha_hash))) {
@@ -1668,7 +1668,7 @@ export async function getVistoriaDetalheVistoriador(vistoriaId: string, usuarioI
     LIMIT 1
   `);
   
-  return (res as any).rows[0] || null;
+  return rowsOf(res)[0] || null;
 }
 
 export async function iniciarCheckin(data: { vistoriaId: string; usuarioId: string; placa: string; localizacao: any }) {
@@ -1676,7 +1676,7 @@ export async function iniciarCheckin(data: { vistoriaId: string; usuarioId: stri
   await ensureVistoriaSchema();
 
   const vistRes = await d.execute(sql`SELECT id FROM vistoriadores WHERE usuario_id = ${data.usuarioId}::uuid LIMIT 1`);
-  const vistoriador = (vistRes as any).rows[0];
+  const vistoriador = rowsOf(vistRes)[0];
   if (!vistoriador) throw new Error("Vistoriador não encontrado.");
 
   const vRes = await d.execute(sql`
@@ -1685,7 +1685,7 @@ export async function iniciarCheckin(data: { vistoriaId: string; usuarioId: stri
     JOIN veiculos vei ON v.veiculo_id = vei.id
     WHERE v.id = ${data.vistoriaId}::uuid 
   `);
-  const vistoria = (vRes as any).rows[0];
+  const vistoria = rowsOf(vRes)[0];
   if (!vistoria) throw new Error("Vistoria não encontrada.");
   if (vistoria.placa.toUpperCase() !== data.placa.toUpperCase()) throw new Error("Essa placa não corresponde ao veículo agendado.");
 
@@ -1696,7 +1696,7 @@ export async function iniciarCheckin(data: { vistoriaId: string; usuarioId: stri
     RETURNING id
   `);
 
-  const laudoId = (res as any).rows[0].id;
+  const laudoId = rowsOf(res)[0].id;
 
   await d.execute(sql`UPDATE vistorias SET status = 'EM_ANDAMENTO', atualizado_em = now() WHERE id = ${data.vistoriaId}::uuid`);
 
@@ -1736,7 +1736,7 @@ export async function concluirVistoriaApp(data: { laudoId: string; quilometragem
   const d = requireDb();
   
   const lRes = await d.execute(sql`SELECT vistoria_id, veiculo_id FROM laudos WHERE id = ${data.laudoId}::uuid`);
-  const laudo = (lRes as any).rows[0];
+  const laudo = rowsOf(lRes)[0];
   if (!laudo) throw new Error("Laudo não encontrado.");
 
   await d.execute(sql`
@@ -1880,7 +1880,7 @@ async function obterOuCriarCategoriaChecklist(
       ORDER BY criado_em
       LIMIT 1
     `);
-    return (r as any).rows?.[0]?.id as string | undefined;
+    return rowsOf(r)?.[0]?.id as string | undefined;
   };
 
   let id: string | undefined;
@@ -1892,7 +1892,7 @@ async function obterOuCriarCategoriaChecklist(
       SELECT id::text AS id FROM vistorias_checklist_categorias
       WHERE lower(btrim(nome)) = lower(btrim(${nome})) ORDER BY criado_em LIMIT 1
     `);
-    id = (r as any).rows?.[0]?.id as string | undefined;
+    id = rowsOf(r)?.[0]?.id as string | undefined;
   }
 
   if (id) {
@@ -1910,7 +1910,7 @@ async function obterOuCriarCategoriaChecklist(
       VALUES (${nome}, ${cat.descricao || null}, ${typeof cat.ordem === "number" ? cat.ordem : 0})
       RETURNING id::text AS id
     `);
-    const novoId = (inserida as any).rows?.[0]?.id as string | undefined;
+    const novoId = rowsOf(inserida)?.[0]?.id as string | undefined;
     if (novoId) return novoId;
   } catch (e: any) {
     const msg = String(e?.cause?.message || e?.message || "");
@@ -1923,7 +1923,7 @@ async function obterOuCriarCategoriaChecklist(
     WHERE nome = ${nome} OR lower(btrim(nome)) = lower(btrim(${nome}))
     ORDER BY criado_em LIMIT 1
   `);
-  const idFinal = (existente as any).rows?.[0]?.id as string | undefined;
+  const idFinal = rowsOf(existente)?.[0]?.id as string | undefined;
   if (idFinal) {
     await d.execute(sql`UPDATE vistorias_checklist_categorias SET ativo = true, atualizado_em = now() WHERE id = ${idFinal}::uuid`);
   }
@@ -1970,7 +1970,7 @@ export async function listarChecklistConfig() {
           WHERE categoria_id = ${categoriaId}::uuid AND lower(titulo) = lower(${itemPadrao.titulo})
           LIMIT 1
         `);
-        if (!(itemExistente as any).rows?.[0]) {
+        if (!rowsOf(itemExistente)?.[0]) {
           await d.execute(sql`
             INSERT INTO vistorias_checklist_itens (
               categoria_id, titulo, descricao_ajuda, tipo_item, opcoes,
@@ -2023,7 +2023,7 @@ export async function listarChecklistConfig() {
     ORDER BY c.ordem, c.criado_em
   `);
 
-  return (categorias as any).rows || [];
+  return rowsOf(categorias) || [];
 }
 
 // Admin: criar categoria
@@ -2032,7 +2032,7 @@ export async function adminCriarCategoriaChecklist(data: { nome: string; descric
   await ensureChecklistSchema();
   const ordemVal = data.ordem && data.ordem > 0 ? data.ordem : 0;
   const existente = await d.execute(sql`SELECT id::text AS id FROM vistorias_checklist_categorias WHERE lower(nome) = lower(${data.nome.trim()}) LIMIT 1`);
-  if ((existente as any).rows?.[0]) throw new Error("Já existe uma categoria com esse nome.");
+  if (rowsOf(existente)?.[0]) throw new Error("Já existe uma categoria com esse nome.");
   let r: any;
   try {
     r = await d.execute(sql`
@@ -2048,7 +2048,7 @@ export async function adminCriarCategoriaChecklist(data: { nome: string; descric
     throw new Error(`Não foi possível gravar a categoria: ${detalharErroDb(e)}`);
   }
 
-  const id = (r as any).rows?.[0]?.id;
+  const id = rowsOf(r)?.[0]?.id;
   if (!id) throw new Error("A categoria não foi gravada no banco de dados.");
   return { ok: true, id };
 }
@@ -2119,7 +2119,7 @@ export async function adminCriarItemChecklist(data: {
       ${ordemVal}
     ) RETURNING id::text as id
   `);
-  return { ok: true, id: (r as any).rows?.[0]?.id };
+  return { ok: true, id: rowsOf(r)?.[0]?.id };
 }
 
 // Admin: atualizar item
@@ -2281,7 +2281,7 @@ export async function listarRespostasChecklistPorLaudo(laudoId: string) {
     WHERE laudo_id = ${idNorm}::uuid
     ORDER BY respondido_em
   `);
-  return (r as any).rows || [];
+  return rowsOf(r) || [];
 }
 
 // ============================================================================
@@ -2350,11 +2350,11 @@ export async function aplicarTemplateChecklist(templateId: string) {
 
   try {
     const maiorOrdem = await d.execute(sql`SELECT COALESCE(MAX(ordem), 0) AS ordem FROM vistorias_checklist_categorias`);
-    let ordemBase = Number((maiorOrdem as any).rows?.[0]?.ordem || 0);
+    let ordemBase = Number(rowsOf(maiorOrdem)?.[0]?.ordem || 0);
 
     for (const cat of template.categorias) {
       const antes = await d.execute(sql`SELECT count(*)::int AS total FROM vistorias_checklist_categorias`);
-      const totalAntes = Number((antes as any).rows?.[0]?.total || 0);
+      const totalAntes = Number(rowsOf(antes)?.[0]?.total || 0);
 
       ordemBase += 10;
       const categoriaId = await obterOuCriarCategoriaChecklist(d, {
@@ -2365,7 +2365,7 @@ export async function aplicarTemplateChecklist(templateId: string) {
       if (!categoriaId) continue;
 
       const depois = await d.execute(sql`SELECT count(*)::int AS total FROM vistorias_checklist_categorias`);
-      if (Number((depois as any).rows?.[0]?.total || 0) > totalAntes) categoriasCriadas += 1;
+      if (Number(rowsOf(depois)?.[0]?.total || 0) > totalAntes) categoriasCriadas += 1;
 
 
       for (const item of cat.itens) {
@@ -2373,7 +2373,7 @@ export async function aplicarTemplateChecklist(templateId: string) {
           SELECT id::text AS id FROM vistorias_checklist_itens
           WHERE categoria_id = ${categoriaId}::uuid AND lower(titulo) = lower(${item.titulo}) LIMIT 1
         `);
-        const itemExistenteId = (jaExiste as any).rows?.[0]?.id as string | undefined;
+        const itemExistenteId = rowsOf(jaExiste)?.[0]?.id as string | undefined;
         if (itemExistenteId) {
           await d.execute(sql`
             UPDATE vistorias_checklist_itens
