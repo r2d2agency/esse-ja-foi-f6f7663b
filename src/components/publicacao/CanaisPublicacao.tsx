@@ -29,7 +29,12 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
     enabled: !!veiculoId,
   });
 
-  const canais: any[] = ((data as any)?.data as any[]) || [];
+  const payload = (data as any)?.data;
+  const canais: any[] = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.canais)
+      ? payload.canais
+      : [];
 
   useEffect(() => {
     const c = canais.find((x) => x.canal === canalAtivo);
