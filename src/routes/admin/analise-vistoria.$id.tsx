@@ -53,9 +53,9 @@ function DetalheAnaliseVistoriaPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("resumo");
-  const [comissaoPercent, setComissaoPercent] = useState(5);
-  const [valorMinimo, setValorMinimo] = useState(0);
-  const [valorReferencia, setValorReferencia] = useState(0);
+  const [comissaoPercentTxt, setComissaoPercentTxt] = useState("5");
+  const [valorMinimoTxt, setValorMinimoTxt] = useState("");
+  const [valorReferenciaTxt, setValorReferenciaTxt] = useState("");
   const [mensagemVendedor, setMensagemVendedor] = useState("");
   const [observacaoInterna, setObservacaoInterna] = useState("");
   const [novaVistoriaAberta, setNovaVistoriaAberta] = useState(false);
