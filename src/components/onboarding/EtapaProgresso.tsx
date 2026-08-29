@@ -7,7 +7,7 @@ interface EtapaProps {
   etapas: string[];
   titulo?: string;
   subtitulo?: string;
-ff  onStepClick?: (step: number) => void;
+onStepClick?: (step: number) => void;
 }
 
 export function EtapaProgresso({
