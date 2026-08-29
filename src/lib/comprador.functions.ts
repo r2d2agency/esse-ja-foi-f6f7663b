@@ -157,3 +157,54 @@ export const marcarNotificacoesLidasFn = createServerFn({ method: "POST" })
       return { ok: false as const, message: e.message };
     }
   });
+
+/* ----------------------------- Interesses ----------------------------- */
+
+export const getInteressesFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) => tokenSchema.parse(d))
+  .handler(async ({ data }) => {
+    try {
+      const userId = await userFromToken(data.token);
+      const { db } = await import("@/db/index");
+      const { sql } = await import("drizzle-orm");
+      if (!db) return {};
+      const res: any = await db.execute(sql`
+        SELECT interesses_veiculos, interesses_marcas, pode_receber_comunicacoes
+        FROM profiles WHERE id = ${userId}::uuid
+      `);
+      const rows = Array.isArray(res) ? res : res?.rows || [];
+      return rows[0] || {};
+    } catch {
+      return {};
+    }
+  });
+
+export const updateInteressesFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) =>
+    tokenSchema
+      .extend({
+        veiculos: z.array(z.string()).default([]),
+        marcas: z.array(z.string()).default([]),
+        receberWhatsApp: z.boolean().default(true),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data }) => {
+    try {
+      const userId = await userFromToken(data.token);
+      const { db } = await import("@/db/index");
+      const { sql } = await import("drizzle-orm");
+      if (!db) return { ok: false as const, message: "DB offline" };
+      await db.execute(sql`
+        UPDATE profiles SET
+          interesses_veiculos = ${JSON.stringify(data.veiculos)}::jsonb,
+          interesses_marcas = ${JSON.stringify(data.marcas)}::jsonb,
+          pode_receber_comunicacoes = ${data.receberWhatsApp},
+          atualizado_em = now()
+        WHERE id = ${userId}::uuid
+      `);
+      return { ok: true as const };
+    } catch (e: any) {
+      return { ok: false as const, message: e.message };
+    }
+  });
