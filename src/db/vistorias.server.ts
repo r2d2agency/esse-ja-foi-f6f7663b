@@ -513,6 +513,8 @@ export async function ensureVistoriaSchema() {
       criado_em timestamptz DEFAULT now()
     );
   `);
+
+  await ensureChecklistSchema();
 }
 
 // Server Functions para Admin e App Vistoriador
@@ -1539,7 +1541,8 @@ export async function listarVistoriasHojeVistoriador(usuarioId: string) {
     SELECT v.*, 
            vei.placa, vei.marca, vei.modelo, vei.ano,
            prof.nome as vendedor_nome,
-           uv.nome as unidade_nome
+           uv.nome as unidade_nome, uv.endereco as unidade_endereco,
+           uv.cidade as unidade_cidade, uv.estado as unidade_estado
     FROM vistorias v
     JOIN veiculos vei ON v.veiculo_id = vei.id
     JOIN profiles prof ON v.vendedor_id = prof.id
@@ -1554,6 +1557,96 @@ export async function listarVistoriasHojeVistoriador(usuarioId: string) {
   return (res as any).rows || res;
 }
 
+export async function obterPainelVistoriador(usuarioId: string, filtros: {
+  inicio?: string | null;
+  fim?: string | null;
+  status?: string | null;
+  busca?: string | null;
+} = {}) {
+  const d = requireDb();
+  await ensureVistoriaSchema();
+  const id = normalizarUuid(usuarioId);
+  if (!id) throw new Error("Usuário inválido.");
+
+  const perfilRes = await d.execute(sql`
+    SELECT p.id::text AS usuario_id, p.nome, p.email, p.whatsapp, p.telefone,
+           vist.id::text AS vistoriador_id, vist.status AS vistoriador_status,
+           uv.id::text AS unidade_id, uv.nome AS unidade_nome, uv.endereco AS unidade_endereco,
+           uv.cep AS unidade_cep, uv.cidade AS unidade_cidade, uv.estado AS unidade_estado,
+           uv.latitude, uv.longitude, uv.telefone AS unidade_telefone
+    FROM profiles p
+    LEFT JOIN vistoriadores vist ON vist.usuario_id = p.id
+    LEFT JOIN unidades_vistoria uv ON uv.id = vist.unidade_id
+    WHERE p.id = ${id}::uuid AND p.role::text = 'vistoriador'
+    LIMIT 1
+  `);
+  const perfil = (perfilRes as any).rows?.[0] || null;
+  if (!perfil) throw new Error("Perfil de vistoriador não encontrado.");
+
+  const metricasRes = await d.execute(sql`
+    SELECT
+      COUNT(*) FILTER (WHERE v.data_vistoria = (now() AT TIME ZONE 'America/Sao_Paulo')::date
+        AND v.status NOT IN ('CANCELADA', 'CONCLUIDA'))::int AS agendadas_hoje,
+      COUNT(*) FILTER (WHERE v.data_vistoria = (now() AT TIME ZONE 'America/Sao_Paulo')::date
+        AND v.status = 'CONCLUIDA')::int AS concluidas_hoje,
+      COUNT(*) FILTER (WHERE v.status = 'CONCLUIDA'
+        AND v.data_vistoria >= date_trunc('month', now() AT TIME ZONE 'America/Sao_Paulo')::date
+        AND v.data_vistoria < (date_trunc('month', now() AT TIME ZONE 'America/Sao_Paulo') + interval '1 month')::date)::int AS realizadas_mes
+    FROM vistorias v
+    JOIN vistoriadores vist ON vist.id = v.vistoriador_id
+    WHERE vist.usuario_id = ${id}::uuid
+  `);
+
+  let filtroSql = sql``;
+  if (filtros.inicio) filtroSql = sql`${filtroSql} AND v.data_vistoria >= ${filtros.inicio}::date`;
+  if (filtros.fim) filtroSql = sql`${filtroSql} AND v.data_vistoria <= ${filtros.fim}::date`;
+  if (filtros.status && filtros.status !== "TODOS") filtroSql = sql`${filtroSql} AND v.status = ${filtros.status}`;
+  if (filtros.busca?.trim()) {
+    const busca = `%${filtros.busca.trim()}%`;
+    filtroSql = sql`${filtroSql} AND (vei.placa ILIKE ${busca} OR vei.marca ILIKE ${busca} OR vei.modelo ILIKE ${busca})`;
+  }
+
+  const listaRes = await d.execute(sql`
+    SELECT v.id::text AS id, v.data_vistoria, v.horario_vistoria, v.status,
+           vei.placa, vei.marca, vei.modelo, vei.ano,
+           p.nome AS vendedor_nome,
+           uv.nome AS unidade_nome, uv.endereco AS unidade_endereco,
+           uv.cidade AS unidade_cidade, uv.estado AS unidade_estado,
+           l.id::text AS laudo_id, l.concluido_em
+    FROM vistorias v
+    JOIN vistoriadores vist ON vist.id = v.vistoriador_id
+    JOIN veiculos vei ON vei.id = v.veiculo_id
+    JOIN profiles p ON p.id = v.vendedor_id
+    JOIN unidades_vistoria uv ON uv.id = v.unidade_id
+    LEFT JOIN laudos l ON l.vistoria_id = v.id
+    WHERE vist.usuario_id = ${id}::uuid ${filtroSql}
+    ORDER BY v.data_vistoria DESC, v.horario_vistoria DESC
+    LIMIT 250
+  `);
+
+  return {
+    perfil,
+    metricas: (metricasRes as any).rows?.[0] || { agendadas_hoje: 0, concluidas_hoje: 0, realizadas_mes: 0 },
+    vistorias: (listaRes as any).rows || [],
+  };
+}
+
+export async function alterarSenhaVistoriador(usuarioId: string, senhaAtual: string, novaSenha: string) {
+  const d = requireDb();
+  const id = normalizarUuid(usuarioId);
+  if (!id) throw new Error("Usuário inválido.");
+  const rows = await d.execute(sql`SELECT senha_hash FROM profiles WHERE id = ${id}::uuid AND role::text = 'vistoriador' LIMIT 1`);
+  const perfil = (rows as any).rows?.[0];
+  if (!perfil?.senha_hash) return { ok: false as const, message: "Perfil sem senha cadastrada." };
+  const { verifyPassword, hashPassword } = await import("./auth.server");
+  if (!(await verifyPassword(senhaAtual, perfil.senha_hash))) {
+    return { ok: false as const, message: "Senha atual incorreta." };
+  }
+  const hash = await hashPassword(novaSenha);
+  await d.execute(sql`UPDATE profiles SET senha_hash = ${hash}, atualizado_em = now() WHERE id = ${id}::uuid`);
+  return { ok: true as const };
+}
+
 export async function getVistoriaDetalheVistoriador(vistoriaId: string, usuarioId: string) {
   const d = requireDb();
   
@@ -1562,6 +1655,7 @@ export async function getVistoriaDetalheVistoriador(vistoriaId: string, usuarioI
            vei.placa, vei.marca, vei.modelo, vei.ano, vei.km as km_base,
            prof.nome as vendedor_nome, prof.telefone as vendedor_telefone,
            uv.nome as unidade_nome, uv.endereco as unidade_endereco,
+           uv.cidade as unidade_cidade, uv.estado as unidade_estado,
            l.id as laudo_id, l.status as laudo_status
     FROM vistorias v
     JOIN veiculos vei ON v.veiculo_id = vei.id
@@ -1676,8 +1770,7 @@ export async function concluirVistoriaApp(data: { laudoId: string; quilometragem
 
 export async function ensureChecklistSchema() {
   const d = requireDb();
-  try {
-    await d.execute(sql`CREATE TABLE IF NOT EXISTS "vistorias_checklist_categorias" (
+  await d.execute(sql`CREATE TABLE IF NOT EXISTS "vistorias_checklist_categorias" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
       "nome" text NOT NULL,
       "descricao" text,
@@ -1686,9 +1779,7 @@ export async function ensureChecklistSchema() {
       "criado_em" timestamp with time zone DEFAULT now() NOT NULL,
       "atualizado_em" timestamp with time zone DEFAULT now() NOT NULL
     )`);
-  } catch { /* ignore */ }
-  try {
-    await d.execute(sql`CREATE TABLE IF NOT EXISTS "vistorias_checklist_itens" (
+  await d.execute(sql`CREATE TABLE IF NOT EXISTS "vistorias_checklist_itens" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
       "categoria_id" uuid NOT NULL REFERENCES vistorias_checklist_categorias(id) ON DELETE CASCADE,
       "titulo" text NOT NULL,
@@ -1703,9 +1794,7 @@ export async function ensureChecklistSchema() {
       "criado_em" timestamp with time zone DEFAULT now() NOT NULL,
       "atualizado_em" timestamp with time zone DEFAULT now() NOT NULL
     )`);
-  } catch { /* ignore */ }
-  try {
-    await d.execute(sql`CREATE TABLE IF NOT EXISTS "laudo_vistoria_respostas" (
+  await d.execute(sql`CREATE TABLE IF NOT EXISTS "laudo_vistoria_respostas" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
       "laudo_id" uuid NOT NULL,
       "vistoria_id" uuid NOT NULL,
@@ -1720,21 +1809,9 @@ export async function ensureChecklistSchema() {
       "respondido_em" timestamp with time zone DEFAULT now() NOT NULL,
       "respondido_por" uuid
     )`);
-  } catch { /* ignore */ }
-  try {
-    await d.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_laudo_respostas_unq_laudo_item ON laudo_vistoria_respostas(laudo_id, item_id)`);
-  } catch { /* ignore */ }
-
-  // ================================================================
-  // ÍNDICES ÚNICOS EXIGIDOS PELO SEED SMART (listarChecklistConfig ON CONFLICT)
-  // Sem esses índices, ON CONFLICT (nome) / (categoria_id, titulo) dá erro.
-  // ================================================================
-  try {
-    await d.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_vistorias_checklist_cats_nome_unq ON vistorias_checklist_categorias(nome)`);
-  } catch { /* ignore */ }
-  try {
-    await d.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_vistorias_checklist_itens_cat_titulo_unq ON vistorias_checklist_itens(categoria_id, titulo)`);
-  } catch { /* ignore */ }
+  await d.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_laudo_respostas_unq_laudo_item ON laudo_vistoria_respostas(laudo_id, item_id)`);
+  await d.execute(sql`CREATE INDEX IF NOT EXISTS idx_vistorias_checklist_categorias_ordem ON vistorias_checklist_categorias(ordem)`);
+  await d.execute(sql`CREATE INDEX IF NOT EXISTS idx_vistorias_checklist_itens_categoria_ordem ON vistorias_checklist_itens(categoria_id, ordem)`);
 }
 
 export async function listarChecklistConfig() {
@@ -1753,16 +1830,19 @@ export async function listarChecklistConfig() {
   try {
     for (const catPadrao of SEED_CATEGORIAS_PADRAO) {
       // 1) UPSERT CATEGORIA por NOME UNIQUE → retorna id da categoria (existente ou nova)
-      const rCat = await d.execute(sql`
-        INSERT INTO vistorias_checklist_categorias (nome, descricao, ordem)
-        VALUES (${catPadrao.nome}, ${catPadrao.descricao}, ${catPadrao.ordem})
-        ON CONFLICT (nome) DO UPDATE
-          SET descricao = COALESCE(EXCLUDED.descricao, vistorias_checklist_categorias.descricao),
-              ordem     = COALESCE(EXCLUDED.ordem, vistorias_checklist_categorias.ordem),
-              ativo     = CASE WHEN vistorias_checklist_categorias.ativo = FALSE THEN FALSE ELSE TRUE END
-        RETURNING id::text as id
+      const existente = await d.execute(sql`
+        SELECT id::text AS id FROM vistorias_checklist_categorias
+        WHERE lower(nome) = lower(${catPadrao.nome}) LIMIT 1
       `);
-      const categoriaId = (rCat as any).rows?.[0]?.id as string | undefined;
+      let categoriaId = (existente as any).rows?.[0]?.id as string | undefined;
+      if (!categoriaId) {
+        const inserida = await d.execute(sql`
+          INSERT INTO vistorias_checklist_categorias (nome, descricao, ordem)
+          VALUES (${catPadrao.nome}, ${catPadrao.descricao}, ${catPadrao.ordem})
+          RETURNING id::text AS id
+        `);
+        categoriaId = (inserida as any).rows?.[0]?.id as string | undefined;
+      }
       if (!categoriaId) continue;
 
       // 2) Itera itens padroes → INSERT individual (nao lote) + ON CONFLICT DO NOTHING → preserva edicao admin
@@ -1775,7 +1855,12 @@ export async function listarChecklistConfig() {
         const obs   = itemPadrao.permite_observacao === false ? false : true;
         const ord   = typeof itemPadrao.ordem === "number" && itemPadrao.ordem > 0 ? itemPadrao.ordem : 0;
 
-        try {
+        const itemExistente = await d.execute(sql`
+          SELECT id FROM vistorias_checklist_itens
+          WHERE categoria_id = ${categoriaId}::uuid AND lower(titulo) = lower(${itemPadrao.titulo})
+          LIMIT 1
+        `);
+        if (!(itemExistente as any).rows?.[0]) {
           await d.execute(sql`
             INSERT INTO vistorias_checklist_itens (
               categoria_id, titulo, descricao_ajuda, tipo_item, opcoes,
@@ -1790,10 +1875,8 @@ export async function listarChecklistConfig() {
               ${foto},
               ${obs},
               ${ord}
-            ) ON CONFLICT (categoria_id, titulo) DO NOTHING
+            )
           `);
-        } catch (_errItem) {
-          // ignora item individual duplicado / conflito (outro seed paralelo)
         }
       } // fim itens
     } // fim categorias
@@ -1838,12 +1921,16 @@ export async function adminCriarCategoriaChecklist(data: { nome: string; descric
   const d = requireDb();
   await ensureChecklistSchema();
   const ordemVal = data.ordem && data.ordem > 0 ? data.ordem : 0;
+  const existente = await d.execute(sql`SELECT id::text AS id FROM vistorias_checklist_categorias WHERE lower(nome) = lower(${data.nome.trim()}) LIMIT 1`);
+  if ((existente as any).rows?.[0]) throw new Error("Já existe uma categoria com esse nome.");
   const r = await d.execute(sql`
     INSERT INTO vistorias_checklist_categorias (nome, descricao, ordem)
-    VALUES (${data.nome}, ${data.descricao || null}, ${ordemVal})
+    VALUES (${data.nome.trim()}, ${data.descricao || null}, ${ordemVal})
     RETURNING id::text as id
   `);
-  return { ok: true, id: (r as any).rows?.[0]?.id };
+  const id = (r as any).rows?.[0]?.id;
+  if (!id) throw new Error("A categoria não foi gravada no banco de dados.");
+  return { ok: true, id };
 }
 
 // Admin: atualizar categoria

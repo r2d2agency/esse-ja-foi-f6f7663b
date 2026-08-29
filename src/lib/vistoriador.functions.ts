@@ -13,6 +13,38 @@ export const getVistoriasHojeVistoriadorFn = createServerFn({ method: "GET" })
     }
   });
 
+export const getPainelVistoriadorFn = createServerFn({ method: "GET" })
+  .validator((d) => z.object({
+    usuarioId: z.string().uuid(),
+    inicio: z.string().optional().nullable(),
+    fim: z.string().optional().nullable(),
+    status: z.string().optional().nullable(),
+    busca: z.string().optional().nullable(),
+  }).parse(d))
+  .handler(async ({ data }) => {
+    const { obterPainelVistoriador } = await import("@/db/vistorias.server");
+    try {
+      return { ok: true as const, data: await obterPainelVistoriador(data.usuarioId, data) };
+    } catch (err: any) {
+      return { ok: false as const, message: err.message || "Não foi possível carregar os dados." };
+    }
+  });
+
+export const alterarSenhaVistoriadorFn = createServerFn({ method: "POST" })
+  .validator((d) => z.object({
+    usuarioId: z.string().uuid(),
+    senhaAtual: z.string().min(1),
+    novaSenha: z.string().min(6),
+  }).parse(d))
+  .handler(async ({ data }) => {
+    const { alterarSenhaVistoriador } = await import("@/db/vistorias.server");
+    try {
+      return await alterarSenhaVistoriador(data.usuarioId, data.senhaAtual, data.novaSenha);
+    } catch (err: any) {
+      return { ok: false as const, message: err.message || "Não foi possível alterar a senha." };
+    }
+  });
+
 export const getVistoriaDetalheVistoriadorFn = createServerFn({ method: "GET" })
   .validator((d) => z.object({ vistoriaId: z.string(), usuarioId: z.string() }).parse(d))
   .handler(async ({ data }) => {
