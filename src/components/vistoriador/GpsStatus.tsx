@@ -21,17 +21,46 @@ export function GpsStatus() {
   }
 
   const ativo = gps.estado === "ativo";
+  const erro = gps.estado === "erro";
   return (
-    <section className={`border p-4 ${ativo ? "border-emerald-200 bg-emerald-50" : gps.estado === "erro" ? "border-destructive/30 bg-destructive/5" : "border-amber-200 bg-amber-50"}`}>
+    <section
+      className={`rounded-2xl border p-4 ${
+        ativo
+          ? "border-emerald-200 bg-emerald-50"
+          : erro
+            ? "border-destructive/30 bg-destructive/5"
+            : "border-amber-200 bg-amber-50"
+      }`}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="flex gap-3">
-          {ativo ? <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-700" /> : gps.estado === "erro" ? <XCircle className="h-5 w-5 shrink-0 text-destructive" /> : <LocateFixed className="h-5 w-5 shrink-0 text-amber-700" />}
+          {ativo ? (
+            <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-700" />
+          ) : erro ? (
+            <XCircle className="h-5 w-5 shrink-0 text-destructive" />
+          ) : (
+            <LocateFixed className="h-5 w-5 shrink-0 text-amber-700" />
+          )}
           <div>
-            <h2 className="font-bold text-foreground">GPS {ativo ? "ativo e verificado" : "precisa ser verificado"}</h2>
-            <p className="mt-1 text-xs text-muted-foreground">{ativo ? `Precisão de ${gps.precisao} m · checado às ${gps.horario}` : gps.mensagem || "Obrigatório para iniciar o check-in de uma vistoria."}</p>
+            <h2 className="text-sm font-black text-foreground">
+              GPS {ativo ? "ativo e verificado" : erro ? "com problema" : "precisa ser verificado"}
+            </h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {ativo
+                ? `Precisão de ${gps.precisao} m · checado às ${gps.horario}`
+                : gps.mensagem || "Obrigatório para iniciar o check-in de uma vistoria."}
+            </p>
           </div>
         </div>
-        <Button type="button" variant="outline" size="icon" onClick={checar} disabled={gps.estado === "checando"} aria-label="Verificar GPS">
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          onClick={checar}
+          disabled={gps.estado === "checando"}
+          aria-label="Verificar GPS"
+          className="rounded-full"
+        >
           {gps.estado === "checando" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
         </Button>
       </div>

@@ -83,7 +83,7 @@ function LandingPage() {
                 </Button>
               </Link>
               <Link to="/vender">
-                <Button size="lg" variant="outline" className="text-white border-slate-700 hover:bg-slate-800 text-lg px-8 h-14 rounded-full w-full sm:w-auto">
+                <Button size="lg" variant="outline" className="bg-transparent !text-white border-slate-500 hover:!bg-white/10 hover:!text-white text-lg px-8 h-14 rounded-full w-full sm:w-auto">
                   Quero Vender
                 </Button>
               </Link>

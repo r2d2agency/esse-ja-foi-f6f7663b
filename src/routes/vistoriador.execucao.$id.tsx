@@ -9,6 +9,7 @@ import {
   RefreshCw, Loader2, Trash2,
 } from "lucide-react";
 import { useAuthStore } from "@/hooks/use-auth";
+import { useFilaOffline } from "@/hooks/use-online";
 import {
   getVistoriaDetalheVistoriadorFn,
   iniciarCheckinFn,
@@ -17,6 +18,7 @@ import {
   getChecklistConfigFn,
   salvarRespostaChecklistFn,
   getRespostasChecklistFn,
+  salvarFotoLaudoFn,
 } from "@/lib/vistoriador.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -192,10 +194,28 @@ function VistoriaExecucaoPage() {
     });
   };
 
+  // Fila offline: se a conexão cair, as respostas ficam salvas no aparelho
+  // e são reenviadas automaticamente quando a internet volta.
+  const filaOffline = useFilaOffline(async (payload: any) => {
+    const r: any = await salvarRespostaChecklistFn({ data: payload });
+    return { ok: !!r?.ok };
+  });
+
   const persistirRespostaMutation = useMutation({
     mutationFn: (payload: any) => salvarRespostaChecklistFn({ data: payload }),
-    onSuccess: (rr: any) => {
-      if (!rr.ok) toast.error((rr as any).message || "Erro ao salvar resposta");
+    onSuccess: (rr: any, payload: any) => {
+      if (!rr.ok) {
+        filaOffline.enfileirar(payload);
+        toast.warning("Sem confirmação do servidor", {
+          description: "A resposta ficou salva no aparelho e será enviada automaticamente.",
+        });
+      }
+    },
+    onError: (_e, payload: any) => {
+      filaOffline.enfileirar(payload);
+      toast.warning("Você está offline", {
+        description: "A resposta ficou salva no aparelho e será enviada quando a internet voltar.",
+      });
     },
   });
 
@@ -259,50 +279,80 @@ function VistoriaExecucaoPage() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50 lg:ml-64">
+    <div className="flex min-h-screen flex-col bg-background lg:ml-64">
       {/* Header Fixo */}
-      <header className="sticky top-0 z-40 border-b bg-white p-4">
+      <header className="sticky top-0 z-40 border-b border-border bg-card/95 p-4 backdrop-blur">
         <div className="flex items-center justify-between mb-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate({ to: `/vistoriador/vistoria/${vistoriaId}` })}>
+          <Button variant="ghost" size="icon" className="rounded-full" onClick={() => navigate({ to: `/vistoriador/vistoria/${vistoriaId}` })}>
             <ArrowLeft className="h-6 w-6" />
           </Button>
           <div className="text-center">
-            <h1 className="text-sm font-black uppercase tracking-widest text-slate-900">Vistoria em execução</h1>
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">{v.marca} {v.modelo} • {v.placa}</p>
+            <h1 className="text-sm font-black uppercase tracking-widest text-foreground">Vistoria em execução</h1>
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-tighter">{v.marca} {v.modelo} • {v.placa}</p>
           </div>
           <div className="w-10" />
         </div>
         <div className="space-y-1">
-          <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest text-slate-400">
+          <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
             <span>Etapa {etapaAtual + 1} de {ETAPAS.length}</span>
             <span>{progress}%</span>
           </div>
-          <Progress value={progress} className="h-1.5 bg-slate-100" />
-          <p className="mt-2 text-center text-xs font-black text-teal-700 uppercase">{ETAPAS[etapaAtual] || ""}</p>
+          <Progress value={progress} className="h-1.5" />
         </div>
+        {/* Navegação rápida entre etapas */}
+        <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {ETAPAS.map((nome, idx) => (
+            <button
+              key={nome}
+              type="button"
+              onClick={() => { if (idx > 0 && !checkinRealizado) return; if (idx <= etapaAtual || permiteContinuar()) setEtapaAtual(idx); }}
+              className={`shrink-0 rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-wide transition-colors ${
+                idx === etapaAtual
+                  ? "bg-primary text-primary-foreground"
+                  : idx < etapaAtual
+                    ? "bg-emerald-100 text-emerald-800"
+                    : "bg-muted text-muted-foreground"
+              }`}
+            >
+              {idx + 1}. {nome}
+            </button>
+          ))}
+        </div>
+        {filaOffline.pendentes > 0 && (
+          <button
+            type="button"
+            onClick={() => void filaOffline.sincronizar()}
+            className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-amber-100 px-3 py-2 text-[11px] font-bold text-amber-900"
+          >
+            {filaOffline.sincronizando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            {filaOffline.pendentes} alteração(ões) salva(s) no aparelho — toque para sincronizar
+          </button>
+        )}
       </header>
 
-      <main className="flex-1 p-4 pb-32">
+      <main className="flex-1 p-4 pb-40">
         {etapaAtual === 0 && !checkinRealizado && (
-          <div className="space-y-6 pt-4">
-            <div className="rounded-2xl bg-teal-50 p-6 text-center">
-              <MapPin className="mx-auto h-12 w-12 text-teal-600" />
-              <h2 className="mt-4 text-lg font-black text-teal-900">Iniciar Check-in</h2>
-              <p className="mt-2 text-sm text-teal-700">Usamos sua localização para registrar o início da vistoria.</p>
+            <div className="space-y-6 pt-4">
+            <div className="rounded-3xl bg-primary p-8 text-center text-primary-foreground shadow-lg">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-foreground/15">
+                <MapPin className="h-8 w-8" />
+              </div>
+              <h2 className="mt-4 text-lg font-black">Iniciar Check-in</h2>
+              <p className="mt-2 text-sm text-primary-foreground/80">Usamos sua localização para registrar o início da vistoria com auditoria de GPS, data e hora.</p>
             </div>
 
-            <div className="space-y-4 rounded-2xl border bg-white p-6">
-              <label className="text-xs font-black uppercase tracking-widest text-slate-400">Confirme a placa do veículo</label>
+            <div className="space-y-4 rounded-2xl border border-border bg-card p-6 shadow-sm">
+              <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Confirme a placa do veículo</label>
               <Input
                 placeholder="ABC-1234"
-                className="h-16 text-center text-3xl font-black uppercase tracking-widest placeholder:text-slate-200"
+                className="h-16 rounded-2xl text-center text-3xl font-black uppercase tracking-widest placeholder:text-muted"
                 value={placaInput}
                 onChange={(e) => setPlacaInput(e.target.value)}
               />
               <Button 
                 onClick={handleCheckin}
                 disabled={iniciarCheckinMutation.isPending || !placaInput}
-                className="h-14 w-full bg-slate-900 text-lg font-bold"
+                className="h-14 w-full rounded-2xl bg-accent text-lg font-black text-accent-foreground hover:bg-accent/90"
               >
                 {iniciarCheckinMutation.isPending ? "Validando..." : "Validar Placa"}
               </Button>
@@ -322,27 +372,13 @@ function VistoriaExecucaoPage() {
         )}
 
         {etapaAtual === ETAPAS.length - 2 && (
-          <div className="space-y-6">
-            <div className="rounded-2xl border bg-white p-5">
-              <h3 className="mb-2 text-xs font-black uppercase tracking-widest text-slate-400">Fotos do Anúncio</h3>
-              <p className="text-xs font-medium text-slate-500">Siga os ângulos indicados para manter o padrão.</p>
-              
-              <div className="mt-6 grid grid-cols-2 gap-4">
-                {["Frente 45°", "Frente", "Lateral Esq", "Lateral Dir", "Traseira 45°", "Traseira", "Interior (dianteiro)", "Interior (traseiro)", "Painel", "Motor", "Porta-malas", "Estepe"].map((f) => (
-                  <div key={f} className="flex aspect-square flex-col items-center justify-center rounded-2xl border bg-slate-50 p-2 text-center">
-                    <Camera className="h-6 w-6 text-slate-400" />
-                    <span className="mt-2 text-[10px] font-bold uppercase tracking-tight text-slate-600">{f}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+          <FotosAnuncio laudoId={laudoId} />
         )}
 
         {etapaAtual === ETAPAS.length - 1 && (
           <div className="space-y-6">
-            <div className="rounded-2xl border bg-white p-6">
-              <h3 className="text-sm font-black uppercase tracking-widest text-slate-400">Revisão Final</h3>
+          <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+              <h3 className="text-sm font-black uppercase tracking-widest text-muted-foreground">Revisão Final</h3>
               
               <div className="mt-6 space-y-6">
                 <div className="space-y-2">
@@ -371,7 +407,7 @@ function VistoriaExecucaoPage() {
                 <Button 
                   onClick={() => concluirVistoriaMutation.mutate()}
                   disabled={!declaracao || concluirVistoriaMutation.isPending}
-                  className="h-16 w-full bg-teal-600 text-lg font-black uppercase hover:bg-teal-700"
+                  className="h-16 w-full rounded-2xl bg-accent text-lg font-black uppercase text-accent-foreground hover:bg-accent/90"
                 >
                   {concluirVistoriaMutation.isPending ? "Concluindo..." : "Concluir Vistoria"}
                 </Button>
@@ -383,11 +419,11 @@ function VistoriaExecucaoPage() {
 
       {/* Navegação de Etapas */}
       {checkinRealizado && etapaAtual < ETAPAS.length - 1 && (
-        <footer className="fixed bottom-0 left-0 right-0 z-40 border-t bg-white p-4 lg:left-64">
-          <div className="flex gap-4">
+        <footer className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 p-4 backdrop-blur lg:left-64">
+          <div className="flex gap-3">
             <Button 
               variant="outline" 
-              className="h-14 flex-1 rounded-xl font-bold border-slate-200"
+              className="h-14 flex-1 rounded-2xl font-bold"
               onClick={() => setEtapaAtual(Math.max(1, etapaAtual - 1))}
               disabled={etapaAtual <= 1}
             >
@@ -395,7 +431,7 @@ function VistoriaExecucaoPage() {
               Voltar
             </Button>
             <Button 
-              className="h-14 flex-2 rounded-xl bg-slate-900 font-bold disabled:opacity-50"
+              className="h-14 flex-2 rounded-2xl bg-primary font-bold disabled:opacity-50"
               onClick={() => setEtapaAtual(etapaAtual + 1)}
               disabled={!permiteContinuar()}
               title={!permiteContinuar() ? "Preencha todos os itens obrigatórios para continuar." : undefined}
@@ -754,6 +790,120 @@ function ChecklistCategoriaDinamica({ categoria, respostasEmMemoria, onMudarResp
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Sub-componente: Fotos do anúncio — upload real guiado por ângulos
+// ============================================================================
+const ANGULOS_ANUNCIO = [
+  "Frente 45°", "Frente", "Lateral Esq", "Lateral Dir", "Traseira 45°", "Traseira",
+  "Interior (dianteiro)", "Interior (traseiro)", "Painel", "Motor", "Porta-malas", "Estepe",
+];
+
+function FotosAnuncio({ laudoId }: { laudoId: string | null }) {
+  const [fotos, setFotos] = useState<Record<string, string>>({});
+  const [enviando, setEnviando] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const anguloAtualRef = useRef<string | null>(null);
+  const enviadas = Object.keys(fotos).length;
+
+  const abrirCamera = (angulo: string) => {
+    if (!laudoId) {
+      toast.error("Faça o check-in antes de enviar fotos.");
+      return;
+    }
+    anguloAtualRef.current = angulo;
+    inputRef.current?.click();
+  };
+
+  const handleArquivo = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const arquivo = e.target.files?.[0];
+    const angulo = anguloAtualRef.current;
+    if (inputRef.current) inputRef.current.value = "";
+    if (!arquivo || !angulo || !laudoId) return;
+
+    setEnviando(angulo);
+    try {
+      const blob = await compressImage(arquivo, 1600, 0.75, 0.82);
+      const extensao = extensaoPorMime(blob.type || "image/jpeg");
+      const formData = new FormData();
+      formData.append("file", blob, `anuncio-${angulo.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}.${extensao}`);
+
+      const resp = await fetch("/api/public/upload", { method: "POST", body: formData });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const dados = await resp.json();
+      if (!dados.url) throw new Error("Servidor não retornou URL da foto");
+
+      const salvo: any = await salvarFotoLaudoFn({ data: { laudoId, tipo_foto: angulo, url: dados.url } });
+      if (salvo?.ok === false) throw new Error(salvo.message || "Falha ao registrar foto no laudo");
+
+      setFotos((prev) => ({ ...prev, [angulo]: dados.url }));
+      toast.success(`Foto "${angulo}" enviada`);
+    } catch (erro: any) {
+      toast.error("Não foi possível enviar a foto", { description: erro?.message || "Tente novamente." });
+    } finally {
+      setEnviando(null);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-xs font-black uppercase tracking-widest text-muted-foreground">Fotos do anúncio</h3>
+            <p className="mt-1 text-xs font-medium text-muted-foreground">Siga os ângulos indicados para manter o padrão de publicação.</p>
+          </div>
+          <Badge variant="outline" className="shrink-0">{enviadas}/{ANGULOS_ANUNCIO.length}</Badge>
+        </div>
+        <Progress value={Math.round((enviadas / ANGULOS_ANUNCIO.length) * 100)} className="mt-3 h-1.5" />
+      </div>
+
+      <input ref={inputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleArquivo} />
+
+      <div className="grid grid-cols-2 gap-3">
+        {ANGULOS_ANUNCIO.map((angulo) => {
+          const url = fotos[angulo];
+          const carregando = enviando === angulo;
+          return (
+            <button
+              key={angulo}
+              type="button"
+              onClick={() => abrirCamera(angulo)}
+              disabled={carregando}
+              className={`relative flex aspect-square flex-col items-center justify-center overflow-hidden rounded-2xl border-2 text-center transition-colors ${
+                url
+                  ? "border-emerald-300"
+                  : carregando
+                    ? "border-amber-300 bg-amber-50"
+                    : "border-dashed border-border bg-card active:bg-muted/50"
+              }`}
+            >
+              {url ? (
+                <>
+                  <img src={url} alt={`Foto ${angulo}`} className="absolute inset-0 h-full w-full object-cover" />
+                  <span className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-foreground/60 px-2 py-1.5 text-[10px] font-bold uppercase text-primary-foreground backdrop-blur-sm">
+                    <CheckCircle2 className="h-3 w-3" /> {angulo}
+                  </span>
+                </>
+              ) : carregando ? (
+                <>
+                  <Loader2 className="h-6 w-6 animate-spin text-amber-700" />
+                  <span className="mt-2 text-[10px] font-bold uppercase text-amber-800">Enviando...</span>
+                </>
+              ) : (
+                <>
+                  <Camera className="h-6 w-6 text-muted-foreground" />
+                  <span className="mt-2 px-2 text-[10px] font-bold uppercase tracking-tight text-muted-foreground">{angulo}</span>
+                </>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      <p className="text-center text-[11px] text-muted-foreground">Toque em um ângulo para abrir a câmera. A foto é comprimida e enviada automaticamente.</p>
     </div>
   );
 }
