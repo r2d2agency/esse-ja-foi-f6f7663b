@@ -138,6 +138,7 @@ export const preCadastrarCompradorFn = createServerFn({ method: "POST" })
 export const reprovarCompradorFn = createServerFn({ method: "POST" })
   .validator((d: unknown) => z.object({ id: z.string().uuid(), motivo: z.string().optional() }).parse(d))
   .handler(async ({ data }) => {
+    await ensureSchema();
     if (!db) return { ok: false as const, message: "DB offline" };
     await db.execute(sql`
       UPDATE profiles SET status_compliance = 'REPROVADO',
