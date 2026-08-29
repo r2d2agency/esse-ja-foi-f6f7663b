@@ -102,11 +102,11 @@ export const listarPropostasPendentesVendedorFn = createServerFn({ method: "GET"
   });
 
 export const getPropostaVeiculoVendedorFn = createServerFn({ method: "GET" })
-  .validator((d) => z.object({ veiculoId: z.string() }).parse(d))
+  .validator((d) => z.object({ veiculoId: z.string().uuid(), perfilId: z.string().uuid() }).parse(d))
   .handler(async ({ data }) => {
     const { getPropostaVeiculoVendedor } = await import("@/db/analise-pos-vistoria.server");
     try {
-      const res = await getPropostaVeiculoVendedor(data.veiculoId);
+      const res = await getPropostaVeiculoVendedor(data.veiculoId, data.perfilId);
       return { ok: true as const, ...res };
     } catch (err: any) {
       return { ok: false as const, message: err?.message ?? "Erro", veiculo: null as any, proposta: null as any };

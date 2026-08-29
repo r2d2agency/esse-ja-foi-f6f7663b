@@ -354,15 +354,20 @@ function rowsOf(res: any): any[] {
   return [];
 }
 
-export async function getPropostaVeiculoVendedor(veiculoId: string) {
+export async function getPropostaVeiculoVendedor(veiculoId: string, perfilId: string) {
   const d = requireDb();
   await ensureAnalisePosVistoriaSchema();
 
   const vRes = await d.execute(sql`
     SELECT id::text AS id, marca, modelo, placa, status_analise
-    FROM veiculos WHERE id = ${veiculoId}::uuid LIMIT 1
+    FROM veiculos
+    WHERE id = ${veiculoId}::uuid
+      AND COALESCE(perfil_id, vendedor_id) = ${perfilId}::uuid
+    LIMIT 1
   `);
   const veiculo = rowsOf(vRes)[0] ?? null;
+
+  if (!veiculo) return { veiculo: null, proposta: null };
 
   const pRes = await d.execute(sql`
     SELECT id::text AS id, veiculo_id::text AS veiculo_id, versao, status,

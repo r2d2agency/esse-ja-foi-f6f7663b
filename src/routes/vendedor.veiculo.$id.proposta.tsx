@@ -23,8 +23,9 @@ function PropostaVendedorPage() {
   const [respondendo, setRespondendo] = useState(false);
 
   const { data: res, isLoading } = useQuery({
-    queryKey: ["vendedor-proposta", id],
-    queryFn: () => getProposta({ data: { veiculoId: id } })
+    queryKey: ["vendedor-proposta", id, user?.id],
+    queryFn: () => getProposta({ data: { veiculoId: id, perfilId: user?.id || "" } }),
+    enabled: !!user?.id,
   });
 
   if (isLoading) return <div className="p-8">Carregando proposta...</div>;
