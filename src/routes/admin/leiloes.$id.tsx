@@ -10,6 +10,8 @@ import { ptBR } from "date-fns/locale";
 import { Gavel, Clock, Users, ArrowLeft, TrendingUp, AlertCircle, History as HistoryIcon } from "lucide-react";
 import { toast } from "sonner";
 import { useState, useEffect } from "react";
+import { formatarTempoRestante } from "@/lib/tempo";
+
 
 export const Route = createFileRoute("/admin/leiloes/$id")({
   component: AdminLeilaoAcompanhamentoPage,
