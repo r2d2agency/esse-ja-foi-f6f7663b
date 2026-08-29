@@ -456,10 +456,12 @@ function VistoriaExecucaoPage() {
             </Button>
           </div>
           {!permiteContinuar() && etapaAtual !== 0 && (
-            <p className="mt-2 text-[10px] font-bold text-amber-700 text-center uppercase tracking-wider">
-              Preencha todos os itens obrigatórios marcados com * para continuar.
+            <p className="mt-2 text-center text-[10px] font-bold uppercase tracking-wider text-amber-700">
+              Falta preencher: {pendenciasEtapa().slice(0, 3).join(", ")}
+              {pendenciasEtapa().length > 3 ? ` e mais ${pendenciasEtapa().length - 3}` : ""}
             </p>
           )}
+
         </footer>
       )}
     </div>
