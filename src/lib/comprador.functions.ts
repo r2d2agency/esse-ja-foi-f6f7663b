@@ -1,7 +1,16 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { migrateDb } from "@/db";
 
 const tokenSchema = z.object({ token: z.string().min(10) });
+
+async function ensureSchema() {
+  try {
+    await migrateDb();
+  } catch (e: any) {
+    console.error("[comprador.functions] migrateDb error:", e?.message || e);
+  }
+}
 
 async function userFromToken(token: string) {
   const { verifyToken } = await import("@/db/auth.server");
