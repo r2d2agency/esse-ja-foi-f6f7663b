@@ -362,3 +362,30 @@ export async function issueToken(userId: string) {
   const sig = toHex(await crypto.subtle.sign("HMAC", key, enc.encode(payload)));
   return `${payload}.${sig}`;
 }
+
+/** Valida um token emitido por issueToken e devolve o userId, ou null. */
+export async function verifyToken(token?: string | null): Promise<string | null> {
+  if (!token) return null;
+  try {
+    const [payload, sig] = token.split(".");
+    if (!payload || !sig) return null;
+    const secret = process.env["SESSION_SECRET"] ?? "esse-ja-foi-dev-secret";
+    const key = await crypto.subtle.importKey(
+      "raw",
+      enc.encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"],
+    );
+    const expected = toHex(await crypto.subtle.sign("HMAC", key, enc.encode(payload)));
+    if (expected.length !== sig.length) return null;
+    let diff = 0;
+    for (let i = 0; i < sig.length; i++) diff |= sig.charCodeAt(i) ^ expected.charCodeAt(i);
+    if (diff !== 0) return null;
+    const data = JSON.parse(atob(payload));
+    if (!data?.sub || (data.exp && Date.now() > data.exp)) return null;
+    return data.sub as string;
+  } catch {
+    return null;
+  }
+}
