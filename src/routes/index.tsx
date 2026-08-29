@@ -130,7 +130,7 @@ function LandingPage() {
             <FeatureCard 
               icon={<Car className="w-6 h-6" />}
               title="Vistoria Especializada"
-              description="Nossos vistoriadores analisam mais de 250 pontos antes do veículo ir para a vitrine."
+              description="Nossos vistoriadores analisam mais de 50 pontos antes do veículo ir para a vitrine."
             />
             <FeatureCard 
               icon={<FileCheck className="w-6 h-6" />}
