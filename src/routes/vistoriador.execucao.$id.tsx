@@ -251,54 +251,69 @@ function VistoriaExecucaoPage() {
 
   if (!v) return null;
 
-  // Qual etapa permite continuar?
-  const permiteContinuar = () => {
-    if (etapaAtual === 0) return checkinRealizado;
-    // Categorias: itens obrigatórios sem resposta valida → trava
-    if (categoriaDaEtapaAtual) {
-      const itens = categoriaDaEtapaAtual.itens || [];
-      for (const item of itens) {
-        if (!item.obrigatorio) continue;
-        const r = respostasEmMemoria[item.id];
-        if (item.tipo_item === "CONFORMIDADE") {
-          if (!r?.resposta_conformidade) return false;
-          if (item.foto_obrigatoria && !r?.foto_url) return false;
-        } else if (item.tipo_item === "TEXTO_LIVRE") {
-          if (!String(r?.resposta_texto || "").trim()) return false;
-        } else if (item.tipo_item === "NUMERO") {
-          if (r?.resposta_numero === undefined || r?.resposta_numero === null || Number.isNaN(Number(r?.resposta_numero))) return false;
-        } else if (item.tipo_item === "CHECKBOX_MULTIPLO" || item.tipo_item === "SELECT_UNICO") {
-          if (!r?.resposta_opcoes || (Array.isArray(r.resposta_opcoes) && r.resposta_opcoes.length === 0) || (typeof r.resposta_opcoes === "string" && !r.resposta_opcoes)) {
-            return false;
-          }
+  // Itens obrigatórios ainda pendentes na etapa atual
+  const pendenciasEtapa = (): string[] => {
+    if (!categoriaDaEtapaAtual) return [];
+    const faltando: string[] = [];
+    for (const item of (categoriaDaEtapaAtual.itens || []) as any[]) {
+      if (!item.obrigatorio) continue;
+      const r = respostasEmMemoria[item.id];
+      const titulo = item.titulo || "Item";
+      const tipo = item.tipo_item;
+      if (tipo === "CONFORMIDADE") {
+        if (!r?.resposta_conformidade) faltando.push(titulo);
+        else if (item.foto_obrigatoria && !r?.foto_url) faltando.push(`${titulo} (foto)`);
+      } else if (tipo === "TEXTO_LIVRE") {
+        if (!String(r?.resposta_texto || "").trim()) faltando.push(titulo);
+      } else if (tipo === "CHECKBOX_MULTIPLO" || tipo === "SELECT_UNICO") {
+        const op = r?.resposta_opcoes;
+        if (!op || (Array.isArray(op) && op.length === 0) || (typeof op === "string" && !op)) faltando.push(titulo);
+      } else {
+        // NUMERO e tipos não mapeados usam o campo numérico
+        if (r?.resposta_numero === undefined || r?.resposta_numero === null || Number.isNaN(Number(r?.resposta_numero))) {
+          faltando.push(titulo);
+        } else if (item.foto_obrigatoria && !r?.foto_url) {
+          faltando.push(`${titulo} (foto)`);
         }
       }
-      return true;
     }
-    return true;
+    return faltando;
   };
+
+  const permiteContinuar = () => {
+    if (etapaAtual === 0) return checkinRealizado;
+    return pendenciasEtapa().length === 0;
+  };
+
 
   return (
     <div className="flex min-h-screen flex-col bg-background lg:ml-64">
-      {/* Header Fixo */}
-      <header className="sticky top-0 z-40 border-b border-border bg-card/95 p-4 backdrop-blur">
-        <div className="flex items-center justify-between mb-4">
+      {/* Header Fixo com dados do veículo */}
+      <header className="sticky top-16 z-30 border-b border-border bg-card/95 px-4 pb-3 pt-3 backdrop-blur lg:top-0">
+        <div className="mb-3 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
           <Button variant="ghost" size="icon" className="rounded-full" onClick={() => navigate({ to: `/vistoriador/vistoria/${vistoriaId}` })}>
-            <ArrowLeft className="h-6 w-6" />
+            <ArrowLeft className="h-5 w-5" />
           </Button>
-          <div className="text-center">
-            <h1 className="text-sm font-black uppercase tracking-widest text-foreground">Vistoria em execução</h1>
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-tighter">{v.marca} {v.modelo} • {v.placa}</p>
+          <div className="min-w-0 text-center">
+            <p className="truncate text-sm font-black uppercase tracking-tight text-foreground">
+              {v.marca} {v.modelo}
+            </p>
+            <p className="truncate text-[11px] font-bold uppercase tracking-widest text-primary">
+              {v.placa}{v.ano ? ` • ${v.ano}` : ""}
+            </p>
           </div>
-          <div className="w-10" />
+          <Badge variant="outline" className="shrink-0 text-[10px] font-black uppercase">
+            {etapaAtual + 1}/{ETAPAS.length}
+          </Badge>
         </div>
         <div className="space-y-1">
           <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-            <span>Etapa {etapaAtual + 1} de {ETAPAS.length}</span>
+            <span className="truncate">{ETAPAS[etapaAtual]}</span>
             <span>{progress}%</span>
           </div>
           <Progress value={progress} className="h-1.5" />
         </div>
+
         {/* Navegação rápida entre etapas */}
         <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {ETAPAS.map((nome, idx) => (
@@ -330,7 +345,7 @@ function VistoriaExecucaoPage() {
         )}
       </header>
 
-      <main className="flex-1 p-4 pb-40">
+      <main className="flex-1 p-4 pb-64 lg:pb-40">
         {etapaAtual === 0 && !checkinRealizado && (
             <div className="space-y-6 pt-4">
             <div className="rounded-3xl bg-primary p-8 text-center text-primary-foreground shadow-lg">
@@ -419,7 +434,7 @@ function VistoriaExecucaoPage() {
 
       {/* Navegação de Etapas */}
       {checkinRealizado && etapaAtual < ETAPAS.length - 1 && (
-        <footer className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 p-4 backdrop-blur lg:left-64">
+        <footer className="fixed bottom-24 left-0 right-0 z-40 border-t border-border bg-card/95 p-4 backdrop-blur lg:bottom-0 lg:left-64">
           <div className="flex gap-3">
             <Button 
               variant="outline" 
@@ -441,10 +456,12 @@ function VistoriaExecucaoPage() {
             </Button>
           </div>
           {!permiteContinuar() && etapaAtual !== 0 && (
-            <p className="mt-2 text-[10px] font-bold text-amber-700 text-center uppercase tracking-wider">
-              Preencha todos os itens obrigatórios marcados com * para continuar.
+            <p className="mt-2 text-center text-[10px] font-bold uppercase tracking-wider text-amber-700">
+              Falta preencher: {pendenciasEtapa().slice(0, 3).join(", ")}
+              {pendenciasEtapa().length > 3 ? ` e mais ${pendenciasEtapa().length - 3}` : ""}
             </p>
           )}
+
         </footer>
       )}
     </div>
@@ -715,17 +732,26 @@ function ChecklistCategoriaDinamica({ categoria, respostasEmMemoria, onMudarResp
                 </div>
               )}
 
-              {item.tipo_item === "NUMERO" && !(item.titulo || "").toLowerCase().includes("quilometragem") && (
+              {(item.tipo_item === "NUMERO" ||
+                !["CONFORMIDADE", "TEXTO_LIVRE", "CHECKBOX_MULTIPLO", "SELECT_UNICO"].includes(item.tipo_item)) && (
                 <div className="space-y-2">
+                  <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    {(item.titulo || "").toLowerCase().includes("quilometragem") ? "Valor em KM" : "Valor"}
+                  </Label>
                   <Input
                     type="number"
                     placeholder="Digite o número..."
                     className="h-12 rounded-xl text-base font-bold"
                     value={r.resposta_numero ?? ""}
-                    onChange={(e) => onMudarResposta(item, { resposta_numero: e.target.value ? Number(e.target.value) : null })}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (onSetKm && (item.titulo || "").toLowerCase().includes("quilometragem")) onSetKm(val);
+                      onMudarResposta(item, { resposta_numero: val ? Number(val) : null });
+                    }}
                   />
                 </div>
               )}
+
 
               {item.tipo_item === "CHECKBOX_MULTIPLO" && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
