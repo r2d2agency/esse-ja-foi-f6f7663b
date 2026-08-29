@@ -165,11 +165,11 @@ export async function garantirEntregas() {
       AND NOT EXISTS (SELECT 1 FROM entregas e WHERE e.negociacao_id = n.id)
     RETURNING id, negociacao_id
   `);
-  for (const e of ((novas as any).rows || [])) {
+  for (const e of (rowsOf(novas) || [])) {
     await evento(d, e.id, "Entrega liberada para agendamento.", "Pagamento confirmado e conciliado.");
     await notificar(d, e.negociacao_id, "ADMIN", null, "Nova entrega aguardando agendamento", "Organize a entrega do veículo com vendedor e comprador.");
   }
-  return { criadas: ((novas as any).rows || []).length };
+  return { criadas: (rowsOf(novas) || []).length };
 }
 
 const SELECT_ENTREGA = sql`
@@ -197,13 +197,13 @@ export async function listarEntregasAdmin() {
   const d = requireDb();
   await garantirEntregas();
   const res = await d.execute(sql`${SELECT_ENTREGA} ORDER BY e.data_entrega NULLS FIRST, e.criado_em DESC`);
-  return ((res as any).rows || []).map(semCodigo);
+  return (rowsOf(res) || []).map(semCodigo);
 }
 
 export async function getEntregaAdmin(id: string) {
   const d = requireDb();
   const res = await d.execute(sql`${SELECT_ENTREGA} WHERE e.id = ${id}::uuid`);
-  const row = (res as any).rows?.[0];
+  const row = rowsOf(res)?.[0];
   if (!row) return null;
   const [eventos, fotos, agendamentos, observacoes] = await Promise.all([
     d.execute(sql`SELECT evento, detalhe, criado_em FROM entregas_eventos WHERE entrega_id = ${id}::uuid ORDER BY criado_em`),
@@ -213,10 +213,10 @@ export async function getEntregaAdmin(id: string) {
   ]);
   return {
     ...semCodigo(row),
-    eventos: (eventos as any).rows || [],
-    fotos: (fotos as any).rows || [],
-    agendamentos: (agendamentos as any).rows || [],
-    observacoes: (observacoes as any).rows || [],
+    eventos: rowsOf(eventos) || [],
+    fotos: rowsOf(fotos) || [],
+    agendamentos: rowsOf(agendamentos) || [],
+    observacoes: rowsOf(observacoes) || [],
   };
 }
 
@@ -231,7 +231,7 @@ export async function getIndicadoresEntrega() {
       COUNT(*) FILTER (WHERE repasse_liberado) as liberadas_repasse
     FROM entregas
   `);
-  return (res as any).rows?.[0] || {};
+  return rowsOf(res)?.[0] || {};
 }
 
 export async function agendarEntrega(params: {
@@ -251,7 +251,7 @@ export async function agendarEntrega(params: {
 }) {
   const d = requireDb();
   const atual = await d.execute(sql`SELECT * FROM entregas WHERE id = ${params.entrega_id}::uuid`);
-  const entrega = (atual as any).rows?.[0];
+  const entrega = rowsOf(atual)?.[0];
   if (!entrega) throw new Error("Entrega não encontrada.");
   if (["ENTREGA_CONFIRMADA", "LIBERADO_PARA_REPASSE"].includes(entrega.status)) throw new Error("Esta entrega já foi concluída.");
 
@@ -293,7 +293,7 @@ export async function confirmarAgendamento(entregaId: string, papel: "VENDEDOR" 
   const campo = papel === "VENDEDOR" ? sql`vendedor_confirmou_em` : sql`comprador_confirmou_em`;
   await d.execute(sql`UPDATE entregas SET ${campo} = now(), atualizado_em = now() WHERE id = ${entregaId}::uuid`);
   const res = await d.execute(sql`SELECT * FROM entregas WHERE id = ${entregaId}::uuid`);
-  const e = (res as any).rows[0];
+  const e = rowsOf(res)[0];
   await evento(d, entregaId, papel === "VENDEDOR" ? "Vendedor confirmou horário." : "Comprador confirmou horário.", null, autorId);
   if (e.vendedor_confirmou_em && e.comprador_confirmou_em) {
     await d.execute(sql`UPDATE entregas SET status = 'AGUARDANDO_ENTREGA' WHERE id = ${entregaId}::uuid AND status = 'ENTREGA_AGENDADA'`);
@@ -307,7 +307,7 @@ export async function solicitarReagendamento(entregaId: string, papel: string, m
   await d.execute(sql`UPDATE entregas SET status = 'REAGENDAMENTO_SOLICITADO', atualizado_em = now() WHERE id = ${entregaId}::uuid`);
   const res = await d.execute(sql`SELECT negociacao_id FROM entregas WHERE id = ${entregaId}::uuid`);
   await evento(d, entregaId, `Reagendamento solicitado pelo ${papel.toLowerCase()}.`, motivo, autorId);
-  await notificar(d, (res as any).rows[0].negociacao_id, "ADMIN", null, "Reagendamento solicitado", motivo);
+  await notificar(d, rowsOf(res)[0].negociacao_id, "ADMIN", null, "Reagendamento solicitado", motivo);
   return { ok: true };
 }
 
@@ -336,7 +336,7 @@ export async function regerarCodigo(entregaId: string, autorId: string) {
 export async function getEntregaComprador(entregaId: string, compradorId: string) {
   const d = requireDb();
   const res = await d.execute(sql`${SELECT_ENTREGA} WHERE e.id = ${entregaId}::uuid`);
-  const row = (res as any).rows?.[0];
+  const row = rowsOf(res)?.[0];
   if (!row || row.comprador_id !== compradorId) return null;
 
   let codigo = row.codigo;
@@ -353,8 +353,8 @@ export async function getEntregaComprador(entregaId: string, compradorId: string
   return {
     ...row,
     codigo: podeVerCodigo ? codigo : null,
-    eventos: (eventos as any).rows || [],
-    fotos: (fotos as any).rows || [],
+    eventos: rowsOf(eventos) || [],
+    fotos: rowsOf(fotos) || [],
   };
 }
 
@@ -362,27 +362,27 @@ export async function listarEntregasComprador(compradorId: string) {
   const d = requireDb();
   await garantirEntregas();
   const res = await d.execute(sql`${SELECT_ENTREGA} WHERE n.comprador_id = ${compradorId}::uuid ORDER BY e.criado_em DESC`);
-  return ((res as any).rows || []).map(semCodigo);
+  return (rowsOf(res) || []).map(semCodigo);
 }
 
 /** O vendedor nunca recebe o código, apenas os dados necessários para a entrega. */
 export async function getEntregaVendedor(entregaId: string, vendedorId: string) {
   const d = requireDb();
   const res = await d.execute(sql`${SELECT_ENTREGA} WHERE e.id = ${entregaId}::uuid`);
-  const row = (res as any).rows?.[0];
+  const row = rowsOf(res)?.[0];
   if (!row || row.vendedor_id !== vendedorId) return null;
   const [eventos, fotos] = await Promise.all([
     d.execute(sql`SELECT evento, detalhe, criado_em FROM entregas_eventos WHERE entrega_id = ${entregaId}::uuid ORDER BY criado_em`),
     d.execute(sql`SELECT categoria, url FROM entregas_fotos WHERE entrega_id = ${entregaId}::uuid ORDER BY criado_em`),
   ]);
-  return { ...semCodigo(row), eventos: (eventos as any).rows || [], fotos: (fotos as any).rows || [] };
+  return { ...semCodigo(row), eventos: rowsOf(eventos) || [], fotos: rowsOf(fotos) || [] };
 }
 
 export async function listarEntregasVendedor(vendedorId: string) {
   const d = requireDb();
   await garantirEntregas();
   const res = await d.execute(sql`${SELECT_ENTREGA} WHERE n.vendedor_id = ${vendedorId}::uuid ORDER BY e.criado_em DESC`);
-  return ((res as any).rows || []).map(semCodigo);
+  return (rowsOf(res) || []).map(semCodigo);
 }
 
 export async function iniciarEntrega(entregaId: string, vendedorId: string, coords?: { lat?: number | undefined; lng?: number | undefined }) {
@@ -400,7 +400,7 @@ export async function registrarChegada(entregaId: string, vendedorId: string) {
   await d.execute(sql`UPDATE entregas SET chegada_em = now(), status = 'EM_PROCESSO_DE_ENTREGA', atualizado_em = now() WHERE id = ${entregaId}::uuid`);
   await evento(d, entregaId, "Vendedor chegou ao local.", null, vendedorId);
   const res = await d.execute(sql`SELECT negociacao_id FROM entregas WHERE id = ${entregaId}::uuid`);
-  await notificar(d, (res as any).rows[0].negociacao_id, "COMPRADOR", null, "Use seu código no momento da entrega.", "O vendedor chegou ao local da entrega.");
+  await notificar(d, rowsOf(res)[0].negociacao_id, "COMPRADOR", null, "Use seu código no momento da entrega.", "O vendedor chegou ao local da entrega.");
   return { ok: true };
 }
 
@@ -409,7 +409,7 @@ const MAX_TENTATIVAS = 5;
 export async function validarCodigo(entregaId: string, vendedorId: string, codigo: string) {
   const d = requireDb();
   const res = await d.execute(sql`SELECT * FROM entregas WHERE id = ${entregaId}::uuid`);
-  const e = (res as any).rows?.[0];
+  const e = rowsOf(res)?.[0];
   if (!e) throw new Error("Entrega não encontrada.");
   if (e.codigo_validado_em) return { ok: true, ja_validado: true };
   if (e.codigo_bloqueado) return { ok: false, bloqueado: true };
@@ -447,7 +447,7 @@ export async function registrarEntrega(params: {
 }) {
   const d = requireDb();
   const res = await d.execute(sql`${SELECT_ENTREGA} WHERE e.id = ${params.entrega_id}::uuid`);
-  const e = (res as any).rows?.[0];
+  const e = rowsOf(res)?.[0];
   if (!e) throw new Error("Entrega não encontrada.");
   if (e.vendedor_id !== params.vendedor_id) throw new Error("Esta entrega não pertence a você.");
   if (!e.codigo_validado_em) throw new Error("Valide o código de entrega com o comprador antes de registrar.");
@@ -478,7 +478,7 @@ export async function registrarEntrega(params: {
 export async function confirmarRecebimento(entregaId: string, compradorId: string, ip?: string | null) {
   const d = requireDb();
   const res = await d.execute(sql`${SELECT_ENTREGA} WHERE e.id = ${entregaId}::uuid`);
-  const e = (res as any).rows?.[0];
+  const e = rowsOf(res)?.[0];
   if (!e || e.comprador_id !== compradorId) throw new Error("Entrega não encontrada.");
   if (e.status !== "AGUARDANDO_CONFIRMACAO_COMPRADOR") throw new Error("Esta entrega ainda não foi registrada pelo vendedor.");
 
@@ -508,7 +508,7 @@ export async function registrarDivergencia(params: {
 }) {
   const d = requireDb();
   const res = await d.execute(sql`${SELECT_ENTREGA} WHERE e.id = ${params.entrega_id}::uuid`);
-  const e = (res as any).rows?.[0];
+  const e = rowsOf(res)?.[0];
   if (!e || e.comprador_id !== params.comprador_id) throw new Error("Entrega não encontrada.");
   if (!params.descricao?.trim()) throw new Error("Descreva o que aconteceu.");
 
@@ -530,7 +530,7 @@ export async function decidirDivergencia(params: { entrega_id: string; decisao: 
   const d = requireDb();
   if (!params.observacao?.trim()) throw new Error("Registre uma observação interna.");
   const res = await d.execute(sql`${SELECT_ENTREGA} WHERE e.id = ${params.entrega_id}::uuid`);
-  const e = (res as any).rows?.[0];
+  const e = rowsOf(res)?.[0];
   if (!e) throw new Error("Entrega não encontrada.");
 
   await d.execute(sql`INSERT INTO entregas_observacoes (entrega_id, texto, autor_id) VALUES (${params.entrega_id}::uuid, ${params.observacao}, ${params.admin_id}::uuid)`);
@@ -566,7 +566,7 @@ export async function registrarNaoComparecimento(params: { entrega_id: string; p
   `);
   const res = await d.execute(sql`SELECT negociacao_id FROM entregas WHERE id = ${params.entrega_id}::uuid`);
   await evento(d, params.entrega_id, params.parte === "VENDEDOR" ? "Vendedor não compareceu." : "Comprador não compareceu.", params.observacao, params.autor_id);
-  await notificar(d, (res as any).rows[0].negociacao_id, "ADMIN", null, "Não comparecimento", params.observacao);
+  await notificar(d, rowsOf(res)[0].negociacao_id, "ADMIN", null, "Não comparecimento", params.observacao);
   return { ok: true };
 }
 
@@ -574,7 +574,7 @@ export async function cancelarAgendamento(params: { entrega_id: string; motivo: 
   const d = requireDb();
   if (!params.motivo?.trim()) throw new Error("Motivo obrigatório.");
   const atual = await d.execute(sql`SELECT * FROM entregas WHERE id = ${params.entrega_id}::uuid`);
-  const e = (atual as any).rows?.[0];
+  const e = rowsOf(atual)?.[0];
   if (e?.data_entrega) {
     await d.execute(sql`
       INSERT INTO entregas_agendamentos (entrega_id, data_entrega, hora_inicio, hora_fim, local_resumo, motivo, autor_id)
@@ -600,7 +600,7 @@ export async function adicionarObservacao(entregaId: string, texto: string, auto
 export async function getPrazoConfirmacaoHoras(): Promise<number> {
   const d = requireDb();
   const res = await d.execute(sql`SELECT valor FROM configuracoes_sistema WHERE chave = 'entrega_prazo_confirmacao_horas'`);
-  return Number((res as any).rows?.[0]?.valor || 24);
+  return Number(rowsOf(res)?.[0]?.valor || 24);
 }
 
 export async function setPrazoConfirmacaoHoras(horas: number) {
@@ -611,4 +611,12 @@ export async function setPrazoConfirmacaoHoras(horas: number) {
     ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor, atualizado_em = now()
   `);
   return { ok: true };
+}
+
+// O driver postgres-js devolve as linhas como array (sem .rows).
+function rowsOf(res: any): any[] {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res.rows)) return res.rows;
+  return [];
 }

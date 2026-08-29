@@ -48,7 +48,7 @@ export async function ensureAutomacoesSchema(silent = true) {
 
     // Inserir automações iniciais na biblioteca (desativadas) se a tabela estiver vazia
     const countRes = await d.execute(sql`SELECT count(*) FROM whatsapp_automacoes`);
-    if (parseInt((countRes as any).rows[0].count) === 0) {
+    if (parseInt(rowsOf(countRes)[0].count) === 0) {
        // A inserção real seria feita via seeds ou interface, mas deixamos a estrutura pronta
     }
 
@@ -67,7 +67,7 @@ export async function listarAutomacoes() {
     LEFT JOIN whatsapp_templates t ON t.id = a.template_id
     ORDER BY a.criado_em DESC
   `);
-  return (res as any).rows || [];
+  return rowsOf(res) || [];
 }
 
 export async function salvarAutomacao(data: any, usuarioId: string) {
@@ -98,7 +98,7 @@ export async function salvarAutomacao(data: any, usuarioId: string) {
         ${usuarioId}::uuid
       ) RETURNING id
     `);
-    return (res as any).rows[0];
+    return rowsOf(res)[0];
   }
 }
 
@@ -122,6 +122,14 @@ export async function getExecucoesAutomacao(automacaoId: string) {
     ORDER BY e.criado_em DESC
     LIMIT 50
   `);
-  return (res as any).rows || [];
+  return rowsOf(res) || [];
 }
 
+
+// O driver postgres-js devolve as linhas como array (sem .rows).
+function rowsOf(res: any): any[] {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res.rows)) return res.rows;
+  return [];
+}

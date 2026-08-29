@@ -9,7 +9,7 @@ export class MetaWhatsAppService {
   async init() {
     if (!db) return;
     const res = await db.execute(sql`SELECT * FROM whatsapp_config LIMIT 1`);
-    this.config = (res as any).rows?.[0];
+    this.config = rowsOf(res)?.[0];
   }
 
   private getGraphUrl(endpoint: string) {
@@ -198,3 +198,11 @@ export class MetaWhatsAppService {
 }
 
 export const metaService = new MetaWhatsAppService();
+
+// O driver postgres-js devolve as linhas como array (sem .rows).
+function rowsOf(res: any): any[] {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res.rows)) return res.rows;
+  return [];
+}

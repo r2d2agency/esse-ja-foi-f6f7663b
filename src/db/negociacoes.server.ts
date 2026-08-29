@@ -143,7 +143,7 @@ async function notificar(tx: any, negociacaoId: string, publico: string, destina
 export async function getPrazoPagamentoHoras(): Promise<number> {
   const d = requireDb();
   const res = await d.execute(sql`SELECT valor FROM configuracoes_negociacao WHERE chave = 'prazo_pagamento_horas'`);
-  return Number((res as any).rows?.[0]?.valor || 24);
+  return Number(rowsOf(res)?.[0]?.valor || 24);
 }
 
 export async function setPrazoPagamentoHoras(horas: number) {
@@ -158,7 +158,7 @@ export async function setPrazoPagamentoHoras(horas: number) {
 
 async function proximoCodigo(tx: any) {
   const res = await tx.execute(sql`SELECT count(*)::int as total FROM negociacoes`);
-  const total = (res as any).rows?.[0]?.total || 0;
+  const total = rowsOf(res)?.[0]?.total || 0;
   return `NEG-${String(total + 1).padStart(6, "0")}`;
 }
 
@@ -173,10 +173,10 @@ export async function fecharLeilao(leilaoId: string) {
   return await d.transaction(async (tx) => {
     // Já fechado? resultado é imutável
     const jaRes = await tx.execute(sql`SELECT * FROM leiloes_resultado WHERE leilao_id = ${leilaoId}::uuid`);
-    if ((jaRes as any).rows?.[0]) return { ok: true, jaFechado: true, resultado: (jaRes as any).rows[0] };
+    if (rowsOf(jaRes)?.[0]) return { ok: true, jaFechado: true, resultado: rowsOf(jaRes)[0] };
 
     const lRes = await tx.execute(sql`SELECT * FROM leiloes WHERE id = ${leilaoId}::uuid FOR UPDATE`);
-    const leilao = (lRes as any).rows?.[0];
+    const leilao = rowsOf(lRes)?.[0];
     if (!leilao) throw new Error("Leilão não encontrado.");
 
     const agora = new Date();
@@ -192,7 +192,7 @@ export async function fecharLeilao(leilaoId: string) {
       WHERE l.leilao_id = ${leilaoId}::uuid
       ORDER BY l.valor DESC, l.criado_em ASC
     `);
-    const ranking = ((rankRes as any).rows || []) as any[];
+    const ranking = (rowsOf(rankRes) || []) as any[];
 
     // Dados de suporte (veículo, vendedor, valores acordados)
     const ctxRes = await tx.execute(sql`
@@ -209,7 +209,7 @@ export async function fecharLeilao(leilaoId: string) {
       ) pr ON true
       WHERE le.id = ${leilaoId}::uuid
     `);
-    const ctx = (ctxRes as any).rows?.[0];
+    const ctx = rowsOf(ctxRes)?.[0];
     if (!ctx) throw new Error("Anúncio/veículo do leilão não localizado.");
 
     const valorMinimo = Number(ctx.valor_minimo_acordado || 0);
@@ -258,7 +258,7 @@ export async function fecharLeilao(leilaoId: string) {
         ${maiorLance}, ${comissao}, ${previstoVendedor}, ${prazo.toISOString()}, 'AGUARDANDO_PAGAMENTO'
       ) RETURNING id, codigo
     `);
-    const negociacao = (negRes as any).rows[0];
+    const negociacao = rowsOf(negRes)[0];
 
     await tx.execute(sql`
       INSERT INTO leiloes_resultado (leilao_id, resultado, maior_lance, valor_minimo_acordado, vencedor_id, ranking)
@@ -292,7 +292,7 @@ export async function processarFechamentos() {
     LEFT JOIN leiloes_resultado r ON r.leilao_id = l.id
     WHERE l.fim_em <= ${agora} AND l.status <> 'CANCELADO' AND r.id IS NULL
   `);
-  for (const row of ((pendentes as any).rows || [])) {
+  for (const row of (rowsOf(pendentes) || [])) {
     try { await fecharLeilao(row.id); } catch { /* segue para os demais */ }
   }
 
@@ -302,7 +302,7 @@ export async function processarFechamentos() {
     WHERE status = 'AGUARDANDO_PAGAMENTO' AND prazo_pagamento_em <= ${agora}
     RETURNING id, codigo, veiculo_id
   `);
-  for (const n of ((vencidas as any).rows || [])) {
+  for (const n of (rowsOf(vencidas) || [])) {
     await d.execute(sql`
       INSERT INTO negociacoes_timeline (negociacao_id, evento, detalhe)
       VALUES (${n.id}::uuid, 'Pagamento não realizado dentro do prazo.', 'Alteração automática pelo sistema.')
@@ -330,7 +330,7 @@ export async function listarNegociacoesAdmin(status?: string) {
     ${status ? sql`WHERE n.status = ${status}` : sql``}
     ORDER BY n.criado_em DESC
   `);
-  return (res as any).rows || [];
+  return rowsOf(res) || [];
 }
 
 export async function getNegociacao(id: string) {
@@ -346,14 +346,14 @@ export async function getNegociacao(id: string) {
     JOIN profiles pc ON pc.id = n.comprador_id
     WHERE n.id = ${id}::uuid
   `);
-  const negociacao = (res as any).rows?.[0];
+  const negociacao = rowsOf(res)?.[0];
   if (!negociacao) return null;
 
   const tl = await d.execute(sql`
     SELECT evento, detalhe, criado_em FROM negociacoes_timeline
     WHERE negociacao_id = ${id}::uuid ORDER BY criado_em ASC
   `);
-  return { ...negociacao, timeline: (tl as any).rows || [], servidor_agora: new Date().toISOString() };
+  return { ...negociacao, timeline: rowsOf(tl) || [], servidor_agora: new Date().toISOString() };
 }
 
 export async function getNegociacoesComprador(compradorId: string) {
@@ -380,8 +380,8 @@ export async function getNegociacoesComprador(compradorId: string) {
   `);
 
   return {
-    em_andamento: (ativas as any).rows || [],
-    encerradas: (encerradas as any).rows || [],
+    em_andamento: rowsOf(ativas) || [],
+    encerradas: rowsOf(encerradas) || [],
     servidor_agora: new Date().toISOString(),
   };
 }
@@ -397,7 +397,7 @@ export async function getNegociacoesVendedor(vendedorId: string) {
     WHERE n.vendedor_id = ${vendedorId}::uuid AND n.status <> 'CANCELADA'
     ORDER BY n.criado_em DESC
   `);
-  return (res as any).rows || [];
+  return rowsOf(res) || [];
 }
 
 /** Bloqueio de edição do veículo quando existe vencedor confirmado. */
@@ -409,7 +409,7 @@ export async function veiculoBloqueadoPorNegociacao(veiculoId: string) {
       AND status IN ('AGUARDANDO_PAGAMENTO','PAGAMENTO_EM_PROCESSAMENTO','PAGAMENTO_CONFIRMADO')
     LIMIT 1
   `);
-  return ((res as any).rows || []).length > 0;
+  return (rowsOf(res) || []).length > 0;
 }
 
 export async function cancelarNegociacao(params: {
@@ -426,7 +426,7 @@ export async function cancelarNegociacao(params: {
         cancelado_por = ${params.admin_id}::uuid, atualizado_em = now()
       WHERE id = ${params.id}::uuid RETURNING codigo
     `);
-    const neg = (res as any).rows?.[0];
+    const neg = rowsOf(res)?.[0];
     if (!neg) throw new Error("Negociação não encontrada.");
     await registrarEvento(tx, params.id, "Negociação cancelada pelo administrativo.", params.motivo, params.admin_id);
     return { ok: true, codigo: neg.codigo };
@@ -442,7 +442,7 @@ export async function getIndicadoresNegociacao() {
       count(*) FILTER (WHERE status = 'PAGAMENTO_CONFIRMADO')::int as pagamentos_confirmados
     FROM negociacoes
   `);
-  return (res as any).rows?.[0] || { aguardando_pagamento: 0, pagamentos_vencidos: 0, pagamentos_confirmados: 0 };
+  return rowsOf(res)?.[0] || { aguardando_pagamento: 0, pagamentos_vencidos: 0, pagamentos_confirmados: 0 };
 }
 
 export async function listarLeiloesSemVenda() {
@@ -455,5 +455,13 @@ export async function listarLeiloesSemVenda() {
     WHERE r.resultado IN ('ENCERRADO_SEM_MINIMO','ENCERRADO_SEM_OFERTAS')
     ORDER BY r.fechado_em DESC
   `);
-  return (res as any).rows || [];
+  return rowsOf(res) || [];
+}
+
+// O driver postgres-js devolve as linhas como array (sem .rows).
+function rowsOf(res: any): any[] {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res.rows)) return res.rows;
+  return [];
 }

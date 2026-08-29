@@ -94,7 +94,7 @@ export async function listarVistoriasConcluidasFila() {
     WHERE vei.status_analise IN ('AGUARDANDO_ANALISE_LAUDO', 'EM_ANALISE_POS_VISTORIA', 'PENDENCIA_VISTORIA')
     ORDER BY l.concluido_em ASC NULLS LAST
   `);
-  return (res as any).rows || res;
+  return rowsOf(res) || res;
 }
 
 export async function getDetalheAnaliseVistoria(veiculoId: string) {
@@ -111,7 +111,7 @@ export async function getDetalheAnaliseVistoria(veiculoId: string) {
     WHERE v.id = ${veiculoId}::uuid
     LIMIT 1
   `);
-  const veiculo = (vRes as any).rows[0];
+  const veiculo = rowsOf(vRes)[0];
 
   const vistRes = await d.execute(sql`
     SELECT 
@@ -131,16 +131,16 @@ export async function getDetalheAnaliseVistoria(veiculoId: string) {
     ORDER BY vis.criado_em DESC
     LIMIT 1
   `);
-  const vistoria = (vistRes as any).rows[0];
+  const vistoria = rowsOf(vistRes)[0];
 
   let checklist = [];
   let fotos = [];
   if (vistoria?.laudo_id) {
     const checkRes = await d.execute(sql`SELECT * FROM laudo_checklist WHERE laudo_id = ${vistoria.laudo_id}::uuid`);
-    checklist = (checkRes as any).rows || [];
+    checklist = rowsOf(checkRes) || [];
     
     const fotoRes = await d.execute(sql`SELECT * FROM laudo_fotos WHERE laudo_id = ${vistoria.laudo_id}::uuid`);
-    fotos = (fotoRes as any).rows || [];
+    fotos = rowsOf(fotoRes) || [];
   }
 
   const propRes = await d.execute(sql`
@@ -148,7 +148,7 @@ export async function getDetalheAnaliseVistoria(veiculoId: string) {
     WHERE veiculo_id = ${veiculoId}::uuid 
     ORDER BY versao DESC
   `);
-  const propostas = (propRes as any).rows || [];
+  const propostas = rowsOf(propRes) || [];
 
   return { veiculo, vistoria, checklist, fotos, propostas };
 }
@@ -158,7 +158,7 @@ export async function enviarPropostaVendedor(data: any) {
   await ensureAnalisePosVistoriaSchema();
 
   const vRes = await d.execute(sql`SELECT COALESCE(MAX(versao), 0) + 1 as prox FROM propostas_veiculo WHERE veiculo_id = ${data.veiculo_id}::uuid`);
-  const versao = (vRes as any).rows[0].prox;
+  const versao = rowsOf(vRes)[0].prox;
 
   await d.execute(sql`
     INSERT INTO propostas_veiculo (
@@ -180,4 +180,12 @@ export async function enviarPropostaVendedor(data: any) {
   `);
 
   return { ok: true, versao };
+}
+
+// O driver postgres-js devolve as linhas como array (sem .rows).
+function rowsOf(res: any): any[] {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res.rows)) return res.rows;
+  return [];
 }

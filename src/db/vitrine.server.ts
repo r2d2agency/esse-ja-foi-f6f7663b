@@ -22,7 +22,7 @@ export async function listarAnunciosVitrine(filtros: any = {}) {
     LIMIT 50
   `);
   
-  return (res as any).rows || res;
+  return rowsOf(res) || res;
 }
 
 export async function getDetalheAnuncioPublico(slug: string) {
@@ -38,7 +38,7 @@ export async function getDetalheAnuncioPublico(slug: string) {
     LIMIT 1
   `);
   
-  const anuncio = (aRes as any).rows[0];
+  const anuncio = rowsOf(aRes)[0];
   if (!anuncio) return null;
 
   const fotoRes = await d.execute(sql`
@@ -47,7 +47,15 @@ export async function getDetalheAnuncioPublico(slug: string) {
     ORDER BY ordem ASC
   `);
   
-  const fotos = (fotoRes as any).rows || [];
+  const fotos = rowsOf(fotoRes) || [];
 
   return { ...anuncio, fotos };
+}
+
+// O driver postgres-js devolve as linhas como array (sem .rows).
+function rowsOf(res: any): any[] {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res.rows)) return res.rows;
+  return [];
 }

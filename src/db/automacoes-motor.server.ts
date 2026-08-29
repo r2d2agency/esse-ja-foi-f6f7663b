@@ -22,7 +22,7 @@ export async function processarEventoSistema(evento: string, contexto: any) {
       WHERE a.evento = ${evento} AND a.status = 'ATIVA'
     `);
 
-    const rows = (automacoes as any).rows || [];
+    const rows = rowsOf(automacoes) || [];
     
     for (const auto of rows) {
       // Validação de template na Meta
@@ -40,7 +40,7 @@ export async function processarEventoSistema(evento: string, contexto: any) {
       const jaExiste = await db.execute(sql`
         SELECT 1 FROM whatsapp_automacoes_execucoes WHERE identificador_unico = ${identificador}
       `);
-      if ((jaExiste as any).rows.length > 0) continue;
+      if (rowsOf(jaExiste).length > 0) continue;
 
       // 4. Preencher variáveis (Mapeamento dinâmico)
       const componentes = mapearVariaveis(auto.mapeamento_variaveis, contexto);
@@ -52,7 +52,7 @@ export async function processarEventoSistema(evento: string, contexto: any) {
         RETURNING id
       `);
       
-      const execId = (resExec as any).rows[0].id;
+      const execId = rowsOf(resExec)[0].id;
 
       try {
         const resMeta = await metaService.enviarMensagem(
@@ -69,7 +69,7 @@ export async function processarEventoSistema(evento: string, contexto: any) {
           RETURNING id
         `);
         
-        const msgId = (msgRes as any).rows[0].id;
+        const msgId = rowsOf(msgRes)[0].id;
 
         await db.execute(sql`
           UPDATE whatsapp_automacoes_execucoes SET status = 'ENVIADO', mensagem_id = ${msgId}::uuid WHERE id = ${execId}::uuid;
@@ -104,7 +104,7 @@ async function identificarDestinatario(publico: string, contexto: any) {
     WHERE id = ${userId}::uuid
   `);
   
-  const user = (res as any).rows[0];
+  const user = rowsOf(res)[0];
   return (user && user.pode_receber_comunicacoes) ? user : null;
 }
 
@@ -135,4 +135,12 @@ function resolveOrigem(origem: string, contexto: any) {
     }
   }
   return String(current || '');
+}
+
+// O driver postgres-js devolve as linhas como array (sem .rows).
+function rowsOf(res: any): any[] {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res.rows)) return res.rows;
+  return [];
 }

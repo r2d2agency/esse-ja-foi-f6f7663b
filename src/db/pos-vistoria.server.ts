@@ -39,7 +39,7 @@ export async function getLaudoCompleto(veiculoId: string) {
     ORDER BY l.criado_em DESC
     LIMIT 1
   `);
-  return (res as any).rows?.[0] || res[0];
+  return rowsOf(res)?.[0] || res[0];
 }
 
 export async function salvarProposta(data: {
@@ -89,4 +89,12 @@ export async function salvarProposta(data: {
     
     return { ok: true };
   });
+}
+
+// O driver postgres-js devolve as linhas como array (sem .rows).
+function rowsOf(res: any): any[] {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res.rows)) return res.rows;
+  return [];
 }

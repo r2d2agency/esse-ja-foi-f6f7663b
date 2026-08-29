@@ -41,7 +41,7 @@ export async function getDashboardStats() {
       SELECT count(*)::int as total FROM contratos
       WHERE status IN ('GERADO','ENVIADO','VISUALIZADO','EXPIRADO')
     `);
-    contratosPendentes = Number(((c as any).rows?.[0] || (c as any)[0])?.total ?? 0);
+    contratosPendentes = Number((rowsOf(c)?.[0] || (c as any)[0])?.total ?? 0);
   } catch {
     contratosPendentes = 0;
   }
@@ -71,8 +71,16 @@ export async function getDashboardStats() {
   `);
 
   return {
-    stats: { ...((stats as any).rows?.[0] || (stats as any)[0]), contratos_pendentes: contratosPendentes },
-    funnel: (funnel as any).rows?.[0] || (funnel as any)[0],
-    activity: (activity as any).rows || activity
+    stats: { ...(rowsOf(stats)?.[0] || (stats as any)[0]), contratos_pendentes: contratosPendentes },
+    funnel: rowsOf(funnel)?.[0] || (funnel as any)[0],
+    activity: rowsOf(activity) || activity
   };
+}
+
+// O driver postgres-js devolve as linhas como array (sem .rows).
+function rowsOf(res: any): any[] {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res.rows)) return res.rows;
+  return [];
 }

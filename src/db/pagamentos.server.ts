@@ -111,7 +111,7 @@ async function carregarNegociacao(d: any, negociacaoId: string) {
     FROM negociacoes n JOIN anuncios_veiculo a ON a.id = n.anuncio_id
     WHERE n.id = ${negociacaoId}::uuid
   `);
-  return (res as any).rows?.[0] || null;
+  return rowsOf(res)?.[0] || null;
 }
 
 /**
@@ -128,7 +128,7 @@ export async function obterOuCriarCobranca(negociacaoId: string, compradorId: st
 
   if (neg.status === "PAGAMENTO_CONFIRMADO") {
     const paga = await d.execute(sql`SELECT * FROM cobrancas WHERE negociacao_id = ${negociacaoId}::uuid AND status = 'PAGO' ORDER BY criado_em DESC LIMIT 1`);
-    return { negociacao: neg, cobranca: (paga as any).rows?.[0] || null, servidor_agora: agora.toISOString() };
+    return { negociacao: neg, cobranca: rowsOf(paga)?.[0] || null, servidor_agora: agora.toISOString() };
   }
   if (neg.status !== "AGUARDANDO_PAGAMENTO" && neg.status !== "PAGAMENTO_EM_PROCESSAMENTO") {
     return { negociacao: neg, cobranca: null, servidor_agora: agora.toISOString() };
@@ -144,7 +144,7 @@ export async function obterOuCriarCobranca(negociacaoId: string, compradorId: st
     WHERE negociacao_id = ${negociacaoId}::uuid AND status IN ('AGUARDANDO','PROCESSANDO') AND expira_em > now()
     ORDER BY criado_em DESC LIMIT 1
   `);
-  const ativa = (ativaRes as any).rows?.[0];
+  const ativa = rowsOf(ativaRes)?.[0];
   if (ativa) {
     await log(d, ativa.id, "CONSULTA", "Comprador acessou a tela de pagamento.");
     return { negociacao: neg, cobranca: ativa, servidor_agora: agora.toISOString() };
@@ -174,7 +174,7 @@ export async function obterOuCriarCobranca(negociacaoId: string, compradorId: st
             ${externa.copia_e_cola}, ${valor}, 'AGUARDANDO', ${expiraEm.toISOString()}::timestamptz)
     RETURNING *
   `);
-  const cobranca = (inserida as any).rows[0];
+  const cobranca = rowsOf(inserida)[0];
 
   await log(d, cobranca.id, "CRIACAO", `Cobrança Pix criada no provedor ${provider.id}.`);
   await timeline(d, negociacaoId, "Cobrança Pix gerada.", `Referência ${referencia}`);
@@ -187,7 +187,7 @@ export async function obterOuCriarCobranca(negociacaoId: string, compradorId: st
 export async function verificarPagamento(cobrancaId: string) {
   const d = requireDb();
   const res = await d.execute(sql`SELECT * FROM cobrancas WHERE id = ${cobrancaId}::uuid`);
-  const cobranca = (res as any).rows?.[0];
+  const cobranca = rowsOf(res)?.[0];
   if (!cobranca) throw new Error("Cobrança não encontrada.");
   if (cobranca.status === "PAGO") return { status: "PAGO" };
 
@@ -224,7 +224,7 @@ export async function registrarEventoPagamento(evento: {
   const d = requireDb();
 
   const cRes = await d.execute(sql`SELECT * FROM cobrancas WHERE id_externo = ${evento.id_externo} LIMIT 1`);
-  const cobranca = (cRes as any).rows?.[0];
+  const cobranca = rowsOf(cRes)?.[0];
   if (!cobranca) return { ok: false, motivo: "COBRANCA_DESCONHECIDA" };
 
   return await d.transaction(async (tx) => {
@@ -234,7 +234,7 @@ export async function registrarEventoPagamento(evento: {
       ON CONFLICT (evento_externo_id) DO NOTHING
       RETURNING id
     `);
-    if (!((dup as any).rows || []).length) {
+    if (!(rowsOf(dup) || []).length) {
       return { ok: true, idempotente: true };
     }
 
@@ -328,7 +328,7 @@ export async function confirmarPagamentoManual(params: {
       JOIN anuncios_veiculo a ON a.id = n.anuncio_id
       WHERE n.id = ${params.negociacao_id}::uuid FOR UPDATE
     `);
-    const neg = (negRes as any).rows?.[0];
+    const neg = rowsOf(negRes)?.[0];
     if (!neg) throw new Error("Negociação não encontrada.");
     
     // 1. Atualizar Negociação
@@ -368,7 +368,7 @@ export async function expirarCobrancasVencidas() {
     WHERE status IN ('AGUARDANDO','PROCESSANDO') AND expira_em <= now()
     RETURNING id, negociacao_id, referencia
   `);
-  for (const c of ((venc as any).rows || [])) {
+  for (const c of (rowsOf(venc) || [])) {
     await d.execute(sql`
       UPDATE negociacoes SET status = 'PAGAMENTO_NAO_REALIZADO', atualizado_em = now()
       WHERE id = ${c.negociacao_id}::uuid AND status IN ('AGUARDANDO_PAGAMENTO','PAGAMENTO_EM_PROCESSAMENTO')
@@ -377,7 +377,7 @@ export async function expirarCobrancasVencidas() {
     await notificar(d, c.negociacao_id, "ADMIN", null, "Pagamento expirado", `Cobrança ${c.referencia} venceu sem confirmação.`);
     await log(d, c.id, "EXPIRACAO", "Prazo encerrado sem confirmação financeira.");
   }
-  return { expiradas: ((venc as any).rows || []).length };
+  return { expiradas: (rowsOf(venc) || []).length };
 }
 
 export async function listarPagamentosAdmin(status?: string) {
@@ -393,7 +393,7 @@ export async function listarPagamentosAdmin(status?: string) {
     ${status ? sql`WHERE c.status = ${status}` : sql``}
     ORDER BY c.criado_em DESC
   `);
-  return (res as any).rows || [];
+  return rowsOf(res) || [];
 }
 
 export async function getPagamento(cobrancaId: string) {
@@ -406,11 +406,11 @@ export async function getPagamento(cobrancaId: string) {
     LEFT JOIN profiles comp ON comp.id = n.comprador_id
     WHERE c.id = ${cobrancaId}::uuid
   `);
-  const cobranca = (res as any).rows?.[0];
+  const cobranca = rowsOf(res)?.[0];
   if (!cobranca) return null;
   const eventos = await d.execute(sql`SELECT tipo, valor, criado_em FROM cobrancas_eventos WHERE cobranca_id = ${cobrancaId}::uuid ORDER BY criado_em`);
   const logs = await d.execute(sql`SELECT acao, detalhe, criado_em FROM pagamentos_logs WHERE cobranca_id = ${cobrancaId}::uuid ORDER BY criado_em DESC LIMIT 50`);
-  return { ...cobranca, eventos: (eventos as any).rows || [], logs: (logs as any).rows || [] };
+  return { ...cobranca, eventos: rowsOf(eventos) || [], logs: rowsOf(logs) || [] };
 }
 
 /** Pagamento vinculado a uma negociação, para exibição no Admin e comprovante. */
@@ -419,7 +419,7 @@ export async function getPagamentoDaNegociacao(negociacaoId: string) {
   const res = await d.execute(sql`
     SELECT * FROM cobrancas WHERE negociacao_id = ${negociacaoId}::uuid ORDER BY criado_em DESC LIMIT 1
   `);
-  return (res as any).rows?.[0] || null;
+  return rowsOf(res)?.[0] || null;
 }
 
 export async function gerarNovaCobranca(params: { negociacao_id: string; motivo: string; admin_id: string }) {
@@ -463,7 +463,7 @@ export async function cancelarCobrancasDaNegociacao(negociacaoId: string) {
   const d = requireDb();
   const provider = getProvider();
   const ativas = await d.execute(sql`SELECT id, id_externo FROM cobrancas WHERE negociacao_id = ${negociacaoId}::uuid AND status IN ('AGUARDANDO','PROCESSANDO')`);
-  for (const c of ((ativas as any).rows || [])) {
+  for (const c of (rowsOf(ativas) || [])) {
     try { await provider.cancelarCobranca(c.id_externo); } catch { /* provedor indisponível: status interno prevalece */ }
     await d.execute(sql`UPDATE cobrancas SET status = 'CANCELADO', atualizado_em = now() WHERE id = ${c.id}::uuid`);
     await log(d, c.id, "CANCELAMENTO", "Cobrança cancelada junto com a negociação.");
@@ -482,7 +482,7 @@ export async function getIndicadoresPagamentos() {
       COUNT(*) FILTER (WHERE status IN ('DIVERGENCIA','DUPLICADO')) as analise
     FROM cobrancas
   `);
-  return (res as any).rows?.[0] || {};
+  return rowsOf(res)?.[0] || {};
 }
 
 /** Comprovante do sistema — somente dados da compra, sem informações internas. */
@@ -498,8 +498,16 @@ export async function getComprovante(cobrancaId: string, compradorId: string) {
     LEFT JOIN profiles comp ON comp.id = n.comprador_id
     WHERE c.id = ${cobrancaId}::uuid AND c.status = 'PAGO'
   `);
-  const row = (res as any).rows?.[0];
+  const row = rowsOf(res)?.[0];
   if (!row || row.comprador_id !== compradorId) return null;
   const { comprador_id, ...comprovante } = row;
   return comprovante;
+}
+
+// O driver postgres-js devolve as linhas como array (sem .rows).
+function rowsOf(res: any): any[] {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res.rows)) return res.rows;
+  return [];
 }

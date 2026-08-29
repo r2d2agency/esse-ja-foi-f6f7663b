@@ -86,7 +86,7 @@ export async function listarConversas(filtros: any) {
   query = sql`${query} ORDER BY c.ultimo_evento_em DESC`;
   
   const res = await db.execute(query);
-  return (res as any).rows || [];
+  return rowsOf(res) || [];
 }
 
 export async function getConversaCompleta(conversaId: string) {
@@ -101,7 +101,7 @@ export async function getConversaCompleta(conversaId: string) {
     WHERE c.id = ${conversaId}::uuid
   `);
   
-  const conversa = (convRes as any).rows[0];
+  const conversa = rowsOf(convRes)[0];
   if (!conversa) return null;
 
   const msgRes = await db.execute(sql`
@@ -114,7 +114,7 @@ export async function getConversaCompleta(conversaId: string) {
   
   return {
     ...conversa,
-    mensagens: (msgRes as any).rows || []
+    mensagens: rowsOf(msgRes) || []
   };
 }
 
@@ -129,7 +129,7 @@ export async function enviarMensagemAtendente(conversaId: string, atendenteId: s
     JOIN profiles p ON p.id = c.contato_id 
     WHERE c.id = ${conversaId}::uuid
   `);
-  const conversa = (convRes as any).rows[0];
+  const conversa = rowsOf(convRes)[0];
   
   if (payload.tipo === 'NOTA_INTERNA') {
     await db.execute(sql`
@@ -174,7 +174,7 @@ export async function processarMensagemRecebida(telefone: string, payload: any) 
 
   // 1. Localizar ou criar contato
   let resPerfil = await db.execute(sql`SELECT id FROM profiles WHERE telefone = ${telefone}`);
-  let perfilId = (resPerfil as any).rows[0]?.id;
+  let perfilId = rowsOf(resPerfil)[0]?.id;
 
   if (!perfilId) {
     // Cadastro temporário ou "Não Identificado"
@@ -183,7 +183,7 @@ export async function processarMensagemRecebida(telefone: string, payload: any) 
       VALUES ('Contato não identificado', ${telefone}, 'comprador', 'ATIVO')
       RETURNING id
     `);
-    perfilId = (res as any).rows[0].id;
+    perfilId = rowsOf(res)[0].id;
   }
 
   // 2. Localizar conversa aberta
@@ -191,7 +191,7 @@ export async function processarMensagemRecebida(telefone: string, payload: any) 
     SELECT id FROM whatsapp_conversas 
     WHERE contato_id = ${perfilId}::uuid AND status != 'RESOLVIDA' AND status != 'ARQUIVADA'
   `);
-  let conversaId = (resConv as any).rows[0]?.id;
+  let conversaId = rowsOf(resConv)[0]?.id;
 
   if (!conversaId) {
     const res = await db.execute(sql`
@@ -199,7 +199,7 @@ export async function processarMensagemRecebida(telefone: string, payload: any) 
       VALUES (${perfilId}::uuid, 'NOVA')
       RETURNING id
     `);
-    conversaId = (res as any).rows[0].id;
+    conversaId = rowsOf(res)[0].id;
   }
 
   // 3. Salvar mensagem
@@ -217,4 +217,12 @@ export async function processarMensagemRecebida(telefone: string, payload: any) 
       status = 'EM_ATENDIMENTO'
     WHERE id = ${conversaId}::uuid
   `);
+}
+
+// O driver postgres-js devolve as linhas como array (sem .rows).
+function rowsOf(res: any): any[] {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res.rows)) return res.rows;
+  return [];
 }
