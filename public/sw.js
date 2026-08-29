@@ -1,6 +1,12 @@
 /* Esse Já Foi — Service Worker do app do vistoriador */
-const CACHE = "ejf-vistoriador-v1";
-const SHELL = ["/vistoriador", "/manifest.webmanifest", "/favicon.png"];
+const CACHE = "ejf-vistoriador-v2";
+const SHELL = [
+  "/vistoriador",
+  "/manifest.webmanifest",
+  "/favicon.png",
+  "/logo-esse-ja-foi.png",
+  "/logo-esse-ja-foi-branco.png",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

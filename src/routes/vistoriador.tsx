@@ -34,6 +34,10 @@ function VistoriadorLayout() {
         </div>
       )}
 
+      <header className="sticky top-0 z-40 flex h-16 items-center border-b border-border bg-card/95 px-4 backdrop-blur lg:hidden">
+        <LogoEsf height={30} />
+      </header>
+
       <main className="flex-1 overflow-y-auto">
         <Outlet />
       </main>
