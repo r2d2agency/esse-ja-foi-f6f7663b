@@ -44,8 +44,8 @@ export async function getRelatoriosGerais(filtros: { dataInicio?: string | null;
       (SELECT count(*)::int FROM negociacoes WHERE status = 'CONCLUIDA' ${andWhereClause}) as concluidos
   `);
 
-  const rows = (stats as any).rows || stats;
-  const funnelRows = (funnel as any).rows || funnel;
+  const rows = rowsOf(stats) || stats;
+  const funnelRows = rowsOf(funnel) || funnel;
 
   return {
     overview: Array.isArray(rows) ? rows[0] : rows,
@@ -88,11 +88,19 @@ export async function getRelatoriosVendas(filtros: { dataInicio?: string | null;
     LIMIT 100
   `);
 
-  const statsRows = (stats as any).rows || stats;
-  const listaRows = (lista as any).rows || lista;
+  const statsRows = rowsOf(stats) || stats;
+  const listaRows = rowsOf(lista) || lista;
 
   return {
     stats: Array.isArray(statsRows) ? statsRows[0] : statsRows,
     lista: listaRows
   };
+}
+
+// O driver postgres-js devolve as linhas como array (sem .rows).
+function rowsOf(res: any): any[] {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res.rows)) return res.rows;
+  return [];
 }

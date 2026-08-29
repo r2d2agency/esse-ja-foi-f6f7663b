@@ -345,7 +345,7 @@ export async function ensureComunicacoesSchema(silent = true) {
 export async function getWhatsappConfig() {
   const d = requireDb();
   const res = await d.execute(sql`SELECT * FROM whatsapp_config LIMIT 1`);
-  return (res as any).rows?.[0] || null;
+  return rowsOf(res)?.[0] || null;
 }
 
 export async function updateWhatsappConfig(config: any) {
@@ -367,13 +367,13 @@ export async function updateWhatsappConfig(config: any) {
 export async function listarTemplates() {
   const d = requireDb();
   const res = await d.execute(sql`SELECT * FROM whatsapp_templates ORDER BY meta_name`);
-  return (res as any).rows || [];
+  return rowsOf(res) || [];
 }
 
 export async function listarSegmentos() {
   const d = requireDb();
   const res = await d.execute(sql`SELECT * FROM whatsapp_segmentos ORDER BY nome`);
-  return (res as any).rows || [];
+  return rowsOf(res) || [];
 }
 
 export async function listarCampanhas() {
@@ -385,7 +385,7 @@ export async function listarCampanhas() {
     LEFT JOIN whatsapp_templates t ON t.id = c.template_id
     ORDER BY c.criado_em DESC
   `);
-  return (res as any).rows || [];
+  return rowsOf(res) || [];
 }
 
 export async function getWebhookLogs() {
@@ -395,7 +395,7 @@ export async function getWebhookLogs() {
     ORDER BY criado_em DESC 
     LIMIT 50
   `);
-  return (res as any).rows || [];
+  return rowsOf(res) || [];
 }
 
 export async function getIndicadoresComunicacoes() {
@@ -407,7 +407,7 @@ export async function getIndicadoresComunicacoes() {
       (SELECT count(*) FROM whatsapp_mensagens WHERE status = 'LIDA') as total_lidas,
       (SELECT count(*) FROM profiles WHERE role = 'comprador' AND pode_receber_comunicacoes = true) as compradores_elegiveis
   `);
-  return (res as any).rows?.[0] || {};
+  return rowsOf(res)?.[0] || {};
 }
 
 export async function estimarPublico(filtros: any) {
@@ -433,7 +433,7 @@ export async function estimarPublico(filtros: any) {
   `);
 
   const res = await d.execute(query);
-  return (res as any).rows?.[0] || { total: 0, elegiveis: 0, nao_elegiveis: 0 };
+  return rowsOf(res)?.[0] || { total: 0, elegiveis: 0, nao_elegiveis: 0 };
 }
 
 export async function criarCampanha(data: any, usuarioId: string) {
@@ -453,7 +453,7 @@ export async function criarCampanha(data: any, usuarioId: string) {
     ) RETURNING id
   `);
   
-  const campanhaId = (resCampanha as any).rows[0].id;
+  const campanhaId = rowsOf(resCampanha)[0].id;
 
   // 2. Buscar destinatários elegíveis baseados nos filtros
   let whereClause = "WHERE p.role = 'comprador' AND p.pode_receber_comunicacoes = true AND p.whatsapp_status = 'ATIVO'";
@@ -466,7 +466,7 @@ export async function criarCampanha(data: any, usuarioId: string) {
   `));
 
   // 3. Popular a fila de mensagens
-  const rows = (destinatarios as any).rows || [];
+  const rows = rowsOf(destinatarios) || [];
   for (const dest of rows) {
     await d.execute(sql`
       INSERT INTO whatsapp_mensagens (campanha_id, comprador_id, telefone, payload)
@@ -497,7 +497,7 @@ export async function getCampanhaDetalhes(id: string) {
     WHERE c.id = ${id}::uuid
   `);
   
-  const campanha = (res as any).rows?.[0];
+  const campanha = rowsOf(res)?.[0];
   if (!campanha) return null;
 
   const mensagensRes = await d.execute(sql`
@@ -511,7 +511,7 @@ export async function getCampanhaDetalhes(id: string) {
 
   return { 
     ...campanha, 
-    mensagens: (mensagensRes as any).rows || [] 
+    mensagens: rowsOf(mensagensRes) || [] 
   };
 }
 
@@ -528,7 +528,7 @@ export async function processarEnvioCampanha(campanhaId: string) {
     SELECT * FROM whatsapp_mensagens WHERE campanha_id = ${campanhaId}::uuid AND status = 'NA_FILA'
   `);
 
-  const rows = (mensagens as any).rows || [];
+  const rows = rowsOf(mensagens) || [];
   let sucessos = 0;
   let falhas = 0;
 
@@ -572,4 +572,12 @@ export async function processarEnvioCampanha(campanhaId: string) {
   `);
 
   return { sucessos, falhas };
+}
+
+// O driver postgres-js devolve as linhas como array (sem .rows).
+function rowsOf(res: any): any[] {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res.rows)) return res.rows;
+  return [];
 }

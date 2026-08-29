@@ -173,7 +173,7 @@ export async function listarVendedoresPendentes(status?: string | null) {
     ${statusFilter}
     ORDER BY criado_em DESC;
   `);
-  return (rows as any).rows || rows;
+  return rowsOf(rows) || rows;
 }
 
 export async function listarCompradores() {
@@ -184,7 +184,7 @@ export async function listarCompradores() {
     WHERE role = 'comprador'::app_role
     ORDER BY criado_em DESC;
   `);
-  return (rows as any).rows || rows;
+  return rowsOf(rows) || rows;
 }
 
 export async function listarUsuariosInternos(role?: string | null) {
@@ -214,7 +214,7 @@ export async function listarUsuariosInternos(role?: string | null) {
       END,
       nome ASC
   `);
-  return (rows as any).rows || rows;
+  return rowsOf(rows) || rows;
 }
 
 export async function alterarStatusUsuario(userId: string, ativo: boolean) {
@@ -264,7 +264,7 @@ export async function atualizarUsuario(data: any) {
 export async function listarConfiguracoes() {
   const d = requireDb();
   const rows = await d.execute(sql`SELECT * FROM configuracoes_sistema ORDER BY chave;`);
-  return (rows as any).rows || rows;
+  return rowsOf(rows) || rows;
 }
 
 export async function salvarConfiguracao(chave: string, valor: string) {
@@ -275,4 +275,12 @@ export async function salvarConfiguracao(chave: string, valor: string) {
     ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor, atualizado_em = now();
   `);
   return { ok: true };
+}
+
+// O driver postgres-js devolve as linhas como array (sem .rows).
+function rowsOf(res: any): any[] {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res.rows)) return res.rows;
+  return [];
 }

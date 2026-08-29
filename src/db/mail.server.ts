@@ -61,7 +61,7 @@ export async function ensureMailSchema(silent = true) {
 async function getTransporter() {
   const d = requireDb();
   const rows = await d.execute(sql`SELECT chave, valor FROM configuracoes_sistema WHERE chave LIKE 'smtp_%'`);
-  const configs = ((rows as any).rows || rows).reduce((acc: any, curr: any) => {
+  const configs = (rowsOf(rows) || rows).reduce((acc: any, curr: any) => {
     acc[curr.chave] = curr.valor;
     return acc;
   }, {});
@@ -177,9 +177,17 @@ export async function validarOTP(email: string, code: string, type: string) {
     LIMIT 1
   `);
 
-  const otp = (res as any).rows?.[0];
+  const otp = rowsOf(res)?.[0];
   if (!otp) return false;
 
   await d.execute(sql`UPDATE otp_codes SET used_at = now() WHERE id = ${otp.id}::uuid`);
   return true;
+}
+
+// O driver postgres-js devolve as linhas como array (sem .rows).
+function rowsOf(res: any): any[] {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res.rows)) return res.rows;
+  return [];
 }

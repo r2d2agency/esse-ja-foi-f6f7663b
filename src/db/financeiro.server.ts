@@ -127,12 +127,12 @@ export async function prepararFinanceiroNegociacao(negociacaoId: string) {
       ) pv ON true
       WHERE n.id = ${negociacaoId}::uuid
     `);
-    const neg = (res as any).rows?.[0];
+    const neg = rowsOf(res)?.[0];
     if (!neg) throw new Error("Negociação não encontrada.");
     
     // 2. Verificar se já existe repasse
     const jaRepasse = await tx.execute(sql`SELECT id FROM repasses WHERE negociacao_id = ${negociacaoId}::uuid`);
-    if ((jaRepasse as any).rows?.[0]) return { ok: true, jaExiste: true };
+    if (rowsOf(jaRepasse)?.[0]) return { ok: true, jaExiste: true };
 
     // 3. Validar se a entrega permite repasse
     if (!neg.repasse_liberado && neg.entrega_status !== 'LIBERADO_PARA_REPASSE') {
@@ -141,7 +141,7 @@ export async function prepararFinanceiroNegociacao(negociacaoId: string) {
 
     // 4. Carregar dados bancários do vendedor
     const dbVendedor = await tx.execute(sql`SELECT * FROM vendedor_dados_bancarios WHERE vendedor_id = ${neg.vendedor_id}::uuid`);
-    const dadosBancarios = (dbVendedor as any).rows?.[0];
+    const dadosBancarios = rowsOf(dbVendedor)?.[0];
     
     // 5. Calcular comissão final (usa a regra do aceite inicial)
     // Se negociacao.valor_comissao for 0 (caso de lances), recalcula com base na proposta aceita
@@ -202,7 +202,7 @@ export async function salvarDadosBancarios(vendedorId: string, dados: {
   return await d.transaction(async (tx) => {
     // 1. Carregar perfil para validar documento
     const pRes = await tx.execute(sql`SELECT documento FROM profiles WHERE id = ${vendedorId}::uuid`);
-    const perfil = (pRes as any).rows?.[0];
+    const perfil = rowsOf(pRes)?.[0];
     
     // 2. Validar se o documento do titular bate com o perfil (Compliance)
     const docLimpo = dados.titular_documento.replace(/\D/g, '');
@@ -247,7 +247,7 @@ export async function listarRepassesAdmin(status?: string) {
     ${status ? sql`WHERE r.status = ${status}` : sql``}
     ORDER BY r.criado_em DESC
   `);
-  return (res as any).rows || [];
+  return rowsOf(res) || [];
 }
 
 export async function getRepasse(id: string) {
@@ -263,14 +263,14 @@ export async function getRepasse(id: string) {
     JOIN profiles comp ON comp.id = n.comprador_id
     WHERE r.id = ${id}::uuid
   `);
-  const repasse = (res as any).rows?.[0];
+  const repasse = rowsOf(res)?.[0];
   if (!repasse) return null;
 
   const logs = await d.execute(sql`
     SELECT * FROM financeiro_auditoria WHERE repasse_id = ${id}::uuid ORDER BY criado_em DESC
   `);
   
-  return { ...repasse, logs: (logs as any).rows || [] };
+  return { ...repasse, logs: rowsOf(logs) || [] };
 }
 
 export async function autorizarRepasse(repasseId: string, adminId: string) {
@@ -278,7 +278,7 @@ export async function autorizarRepasse(repasseId: string, adminId: string) {
   
   return await d.transaction(async (tx) => {
     const res = await tx.execute(sql`SELECT * FROM repasses WHERE id = ${repasseId}::uuid FOR UPDATE`);
-    const r = (res as any).rows?.[0];
+    const r = rowsOf(res)?.[0];
     if (!r) throw new Error("Repasse não encontrado.");
     if (r.status !== 'AGUARDANDO' && r.status !== 'FALHOU') throw new Error("Repasse em status que não permite autorização.");
 
@@ -307,7 +307,7 @@ export async function confirmarConclusaoRepasse(repasseId: string, params: { id_
 
   return await d.transaction(async (tx) => {
     const res = await tx.execute(sql`SELECT * FROM repasses WHERE id = ${repasseId}::uuid FOR UPDATE`);
-    const r = (res as any).rows?.[0];
+    const r = rowsOf(res)?.[0];
     if (!r) throw new Error("Repasse não encontrado.");
     
     // 1. Atualizar repasse
@@ -341,7 +341,7 @@ export async function confirmarConclusaoRepasse(repasseId: string, params: { id_
 
     // 5. Encerrar veículo
     const negRes = await tx.execute(sql`SELECT veiculo_id FROM negociacoes WHERE id = ${r.negociacao_id}::uuid`);
-    const veiculoId = (negRes as any).rows[0].veiculo_id;
+    const veiculoId = rowsOf(negRes)[0].veiculo_id;
     await tx.execute(sql`UPDATE veiculos SET status = 'VENDA_CONCLUIDA' WHERE id = ${veiculoId}::uuid`);
 
     // 6. Timeline e Notificações
@@ -370,5 +370,13 @@ export async function getIndicadoresFinanceiros() {
       COUNT(*) FILTER (WHERE status = 'FALHOU') as falhas
     FROM repasses
   `);
-  return (res as any).rows?.[0] || {};
+  return rowsOf(res)?.[0] || {};
+}
+
+// O driver postgres-js devolve as linhas como array (sem .rows).
+function rowsOf(res: any): any[] {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res.rows)) return res.rows;
+  return [];
 }

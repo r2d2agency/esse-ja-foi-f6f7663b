@@ -47,7 +47,7 @@ export async function cadastrarComprador(data: any) {
       ) RETURNING id, nome, email, role
     `);
     
-    const user = (res as any).rows[0];
+    const user = rowsOf(res)[0];
     const accessToken = await issueToken(user.id);
     
     return { ok: true as const, user, accessToken };
@@ -65,7 +65,7 @@ export async function getStatusComprador(id: string) {
     SELECT status_compliance, pode_ver_valores, cadastro_completo, tipo_pessoa
     FROM profiles WHERE id = ${id}::uuid
   `);
-  return (res as any).rows[0] || null;
+  return rowsOf(res)[0] || null;
 }
 
 export async function atualizarDadosComprador(id: string, dados: any) {
@@ -102,4 +102,12 @@ export async function salvarDocumentoComprador(compradorId: string, tipo: string
   `);
 
   return { ok: true };
+}
+
+// O driver postgres-js devolve as linhas como array (sem .rows).
+function rowsOf(res: any): any[] {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res.rows)) return res.rows;
+  return [];
 }

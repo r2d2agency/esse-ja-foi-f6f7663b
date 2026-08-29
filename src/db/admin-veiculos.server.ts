@@ -52,7 +52,15 @@ export async function listarVeiculosAdmin(filtros: {
     LIMIT 100
   `);
   
-  const veiculos = (rows as any).rows || rows;
+  const veiculos = rowsOf(rows) || rows;
 
   return veiculos;
+}
+
+// O driver postgres-js devolve as linhas como array (sem .rows).
+function rowsOf(res: any): any[] {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res.rows)) return res.rows;
+  return [];
 }

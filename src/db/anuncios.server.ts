@@ -82,7 +82,7 @@ export async function listarVeiculosProntosParaAnuncio() {
     AND NOT EXISTS (SELECT 1 FROM anuncios_veiculo a WHERE a.veiculo_id = v.id)
     ORDER BY v.atualizado_em DESC
   `);
-  return (res as any).rows || res;
+  return rowsOf(res) || res;
 }
 
 export async function listarAnuncios(status?: string) {
@@ -99,12 +99,20 @@ export async function listarAnuncios(status?: string) {
     ${status ? sql`WHERE a.status = ${status}` : sql``}
     ORDER BY a.criado_em DESC
   `);
-  return (res as any).rows || res;
+  return rowsOf(res) || res;
 }
 
 export async function getProximoCodigoAnuncio() {
   const d = requireDb();
   const res = await d.execute(sql`SELECT count(*) FROM anuncios_veiculo`);
-  const count = parseInt((res as any).rows[0].count) + 1;
+  const count = parseInt(rowsOf(res)[0].count) + 1;
   return `EJF-${count.toString().padStart(6, '0')}`;
+}
+
+// O driver postgres-js devolve as linhas como array (sem .rows).
+function rowsOf(res: any): any[] {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res.rows)) return res.rows;
+  return [];
 }

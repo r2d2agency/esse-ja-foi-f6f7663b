@@ -54,7 +54,7 @@ export async function configurarLeilao(data: any) {
   let veiculoId = data.veiculo_id;
   if (!veiculoId && data.anuncio_id) {
     const aRes = await d.execute(sql`SELECT veiculo_id FROM anuncios_veiculo WHERE id = ${data.anuncio_id}::uuid`);
-    veiculoId = (aRes as any).rows[0]?.veiculo_id;
+    veiculoId = rowsOf(aRes)[0]?.veiculo_id;
   }
 
   if (!veiculoId) throw new Error("veiculo_id não fornecido e não pôde ser determinado pelo anuncio_id.");
@@ -70,7 +70,7 @@ export async function configurarLeilao(data: any) {
       'AGENDADO'
     ) RETURNING id
   `);
-  return (res as any).rows[0];
+  return rowsOf(res)[0];
 }
 
 export async function registrarLance(leilaoId: string, compradorId: string, valor: number, ip?: string, ua?: string) {
@@ -82,7 +82,7 @@ export async function registrarLance(leilaoId: string, compradorId: string, valo
     const lRes = await tx.execute(sql`
       SELECT * FROM leiloes WHERE id = ${leilaoId}::uuid FOR UPDATE
     `);
-    const leilao = (lRes as any).rows[0];
+    const leilao = rowsOf(lRes)[0];
 
     if (!leilao) throw new Error("Leilão não encontrado.");
     if (leilao.status !== 'ATIVO' && leilao.status !== 'PRORROGADO') {
@@ -99,7 +99,7 @@ export async function registrarLance(leilaoId: string, compradorId: string, valo
       SELECT role, ativo, (config_exibicao->>'compliance_aprovado')::boolean as aprovado
       FROM profiles WHERE id = ${compradorId}::uuid
     `);
-    const comprador = (cRes as any).rows[0];
+    const comprador = rowsOf(cRes)[0];
     
     // Nota: A lógica de 'aprovado' pode variar conforme a implementação prévia de compliance
     // Aqui assumimos que se for role 'comprador' e 'ativo'
@@ -111,7 +111,7 @@ export async function registrarLance(leilaoId: string, compradorId: string, valo
     const maxRes = await tx.execute(sql`
       SELECT valor, comprador_id FROM lances WHERE leilao_id = ${leilaoId}::uuid ORDER BY valor DESC LIMIT 1
     `);
-    const maiorLanceAnterior = (maxRes as any).rows[0];
+    const maiorLanceAnterior = rowsOf(maxRes)[0];
     const valorMaiorLance = maiorLanceAnterior?.valor || leilao.lance_inicial;
     const lanceMinimoNecessario = Number(valorMaiorLance) + Number(leilao.incremento_minimo);
 
@@ -125,7 +125,7 @@ export async function registrarLance(leilaoId: string, compradorId: string, valo
       VALUES (${leilaoId}::uuid, ${compradorId}::uuid, ${valor}, ${ip || null}, ${ua || null})
       RETURNING id
     `);
-    const lanceId = (res as any).rows?.[0]?.id;
+    const lanceId = rowsOf(res)?.[0]?.id;
 
     const { processarEventoSistema } = await import("./automacoes-motor.server");
     if (maiorLanceAnterior) {
@@ -173,7 +173,7 @@ export async function getEstadoLeilao(leilaoId: string) {
     WHERE l.id = ${leilaoId}::uuid
   `);
   
-  const leilao = (lRes as any).rows[0];
+  const leilao = rowsOf(lRes)[0];
   if (!leilao) return null;
 
   const historicoRes = await d.execute(sql`
@@ -186,7 +186,7 @@ export async function getEstadoLeilao(leilaoId: string) {
 
   return { 
     ...leilao, 
-    historico: (historicoRes as any).rows || [] 
+    historico: rowsOf(historicoRes) || [] 
   };
 }
 
@@ -222,5 +222,13 @@ export async function listarLeiloesAdmin(status?: string) {
     ${status ? sql`WHERE l.status = ${status}` : sql``}
     ORDER BY l.criado_em DESC
   `);
-  return (res as any).rows || res;
+  return rowsOf(res) || res;
+}
+
+// O driver postgres-js devolve as linhas como array (sem .rows).
+function rowsOf(res: any): any[] {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res.rows)) return res.rows;
+  return [];
 }
