@@ -21,6 +21,7 @@ import { Route as VendedorRouteImport } from './routes/vendedor'
 import { Route as VenderRouteImport } from './routes/vender'
 import { Route as VistoriadorRouteImport } from './routes/vistoriador'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
+import { Route as AdminAnalyticsRouteImport } from './routes/admin/analytics'
 import { Route as AdminAnunciosRouteImport } from './routes/admin/anuncios'
 import { Route as AdminCompradoresRouteImport } from './routes/admin/compradores'
 import { Route as AdminComunicacoesRouteImport } from './routes/admin/comunicacoes'
@@ -141,6 +142,11 @@ const VistoriadorRoute = VistoriadorRouteImport.update({
 const AdminIndexRoute = AdminIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminAnalyticsRoute = AdminAnalyticsRouteImport.update({
+  id: '/analytics',
+  path: '/analytics',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminAnunciosRoute = AdminAnunciosRouteImport.update({
@@ -465,6 +471,7 @@ export interface FileRoutesByFullPath {
   '/vendedor': typeof VendedorRouteWithChildren
   '/vender': typeof VenderRoute
   '/vistoriador': typeof VistoriadorRouteWithChildren
+  '/admin/analytics': typeof AdminAnalyticsRoute
   '/admin/anuncios': typeof AdminAnunciosRouteWithChildren
   '/admin/compradores': typeof AdminCompradoresRoute
   '/admin/comunicacoes': typeof AdminComunicacoesRoute
@@ -535,6 +542,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/redefinir-senha': typeof RedefinirSenhaRoute
   '/vender': typeof VenderRoute
+  '/admin/analytics': typeof AdminAnalyticsRoute
   '/admin/anuncios': typeof AdminAnunciosRouteWithChildren
   '/admin/compradores': typeof AdminCompradoresRoute
   '/admin/comunicacoes': typeof AdminComunicacoesRoute
@@ -611,6 +619,7 @@ export interface FileRoutesById {
   '/vendedor': typeof VendedorRouteWithChildren
   '/vender': typeof VenderRoute
   '/vistoriador': typeof VistoriadorRouteWithChildren
+  '/admin/analytics': typeof AdminAnalyticsRoute
   '/admin/anuncios': typeof AdminAnunciosRouteWithChildren
   '/admin/compradores': typeof AdminCompradoresRoute
   '/admin/comunicacoes': typeof AdminComunicacoesRoute
@@ -688,6 +697,7 @@ export interface FileRouteTypes {
     | '/vendedor'
     | '/vender'
     | '/vistoriador'
+    | '/admin/analytics'
     | '/admin/anuncios'
     | '/admin/compradores'
     | '/admin/comunicacoes'
@@ -758,6 +768,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/redefinir-senha'
     | '/vender'
+    | '/admin/analytics'
     | '/admin/anuncios'
     | '/admin/compradores'
     | '/admin/comunicacoes'
@@ -833,6 +844,7 @@ export interface FileRouteTypes {
     | '/vendedor'
     | '/vender'
     | '/vistoriador'
+    | '/admin/analytics'
     | '/admin/anuncios'
     | '/admin/compradores'
     | '/admin/comunicacoes'
@@ -998,6 +1010,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/admin/'
       preLoaderRoute: typeof AdminIndexRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/analytics': {
+      id: '/admin/analytics'
+      path: '/analytics'
+      fullPath: '/admin/analytics'
+      preLoaderRoute: typeof AdminAnalyticsRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/anuncios': {
@@ -1455,6 +1474,7 @@ const AdminVeiculoIdRouteWithChildren = AdminVeiculoIdRoute._addFileChildren(
 )
 
 interface AdminRouteChildren {
+  AdminAnalyticsRoute: typeof AdminAnalyticsRoute
   AdminAnunciosRoute: typeof AdminAnunciosRouteWithChildren
   AdminCompradoresRoute: typeof AdminCompradoresRoute
   AdminComunicacoesRoute: typeof AdminComunicacoesRoute
@@ -1485,6 +1505,7 @@ interface AdminRouteChildren {
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
+  AdminAnalyticsRoute: AdminAnalyticsRoute,
   AdminAnunciosRoute: AdminAnunciosRouteWithChildren,
   AdminCompradoresRoute: AdminCompradoresRoute,
   AdminComunicacoesRoute: AdminComunicacoesRoute,

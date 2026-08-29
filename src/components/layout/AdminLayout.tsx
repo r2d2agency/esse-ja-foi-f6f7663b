@@ -70,8 +70,23 @@ const MENU_SECTIONS: MenuSection[] = [
         exact: true,
         description: "Resumo da operação",
       },
+      {
+        label: "Gráficos",
+        icon: BarChart3,
+        to: "/admin/analytics",
+        activePrefixes: ["/admin/analytics"],
+        description: "Indicadores e evolução",
+      },
+      {
+        label: "Mapa",
+        icon: MapPin,
+        to: "/admin/mapa",
+        activePrefixes: ["/admin/mapa"],
+        description: "Compradores, vendedores e unidades",
+      },
     ],
   },
+
   {
     label: "1. Compliance",
     items: [
