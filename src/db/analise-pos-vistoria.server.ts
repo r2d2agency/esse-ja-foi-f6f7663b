@@ -411,7 +411,8 @@ export async function responderPropostaVendedor(data: {
       JOIN veiculos v ON v.id = p.veiculo_id
       WHERE p.id = ${data.propostaId}::uuid
         AND p.veiculo_id = ${data.veiculoId}::uuid
-        AND COALESCE(v.perfil_id, v.vendedor_id) = ${data.perfilId}::uuid
+        AND (v.perfil_id IS NULL OR v.perfil_id = ${data.perfilId}::uuid)
+        AND (v.vendedor_id IS NULL OR v.vendedor_id = ${data.perfilId}::uuid)
       FOR UPDATE
     `);
     const proposta = rowsOf(propostaRes)[0];
@@ -446,7 +447,6 @@ export async function responderPropostaVendedor(data: {
       SET status_analise = ${statusVeiculo},
           atualizado_em = now()
       WHERE id = ${data.veiculoId}::uuid
-        AND COALESCE(perfil_id, vendedor_id) = ${data.perfilId}::uuid
     `);
 
     return { ok: true as const, alreadyAnswered: false as const };
