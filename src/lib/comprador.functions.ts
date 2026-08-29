@@ -34,6 +34,7 @@ export const cadastrarCompradorFn = createServerFn({ method: "POST" })
       .parse(data),
   )
   .handler(async ({ data }) => {
+    await ensureSchema();
     const m = await import("@/db/comprador.server");
     return m.cadastrarComprador(data);
   });
