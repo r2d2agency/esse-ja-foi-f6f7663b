@@ -407,7 +407,7 @@ function VistoriaExecucaoPage() {
                 <Button 
                   onClick={() => concluirVistoriaMutation.mutate()}
                   disabled={!declaracao || concluirVistoriaMutation.isPending}
-                  className="h-16 w-full bg-teal-600 text-lg font-black uppercase hover:bg-teal-700"
+                  className="h-16 w-full rounded-2xl bg-accent text-lg font-black uppercase text-accent-foreground hover:bg-accent/90"
                 >
                   {concluirVistoriaMutation.isPending ? "Concluindo..." : "Concluir Vistoria"}
                 </Button>
@@ -419,11 +419,11 @@ function VistoriaExecucaoPage() {
 
       {/* Navegação de Etapas */}
       {checkinRealizado && etapaAtual < ETAPAS.length - 1 && (
-        <footer className="fixed bottom-0 left-0 right-0 z-40 border-t bg-white p-4 lg:left-64">
-          <div className="flex gap-4">
+        <footer className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 p-4 backdrop-blur lg:left-64">
+          <div className="flex gap-3">
             <Button 
               variant="outline" 
-              className="h-14 flex-1 rounded-xl font-bold border-slate-200"
+              className="h-14 flex-1 rounded-2xl font-bold"
               onClick={() => setEtapaAtual(Math.max(1, etapaAtual - 1))}
               disabled={etapaAtual <= 1}
             >
@@ -431,7 +431,7 @@ function VistoriaExecucaoPage() {
               Voltar
             </Button>
             <Button 
-              className="h-14 flex-2 rounded-xl bg-slate-900 font-bold disabled:opacity-50"
+              className="h-14 flex-2 rounded-2xl bg-primary font-bold disabled:opacity-50"
               onClick={() => setEtapaAtual(etapaAtual + 1)}
               disabled={!permiteContinuar()}
               title={!permiteContinuar() ? "Preencha todos os itens obrigatórios para continuar." : undefined}
