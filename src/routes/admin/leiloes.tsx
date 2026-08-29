@@ -16,12 +16,19 @@ export const Route = createFileRoute("/admin/leiloes")({
 });
 
 function AdminLeiloesPage() {
-  const { data: leiloes, isLoading } = useQuery({
+  const { data: leiloes, isLoading, isError, error } = useQuery({
     queryKey: ["admin-leiloes"],
     queryFn: () => getLeiloesAdmin({ data: undefined }),
   });
 
   if (isLoading) return <div className="p-8">Carregando leilões...</div>;
+  if (isError)
+    return (
+      <div className="m-8 rounded-xl border border-red-200 bg-red-50 p-6 text-red-700">
+        <p className="font-bold">Erro ao carregar os leilões.</p>
+        <p className="text-sm break-words">{(error as any)?.message}</p>
+      </div>
+    );
 
   const stats = {
     ativos: leiloes?.filter((l: any) => l.status === 'ATIVO' || l.status === 'PRORROGADO').length || 0,
@@ -90,6 +97,14 @@ function AdminLeiloesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
+                {(!leiloes || leiloes.length === 0) && (
+                  <TableRow>
+                    <TableCell colSpan={8} className="py-10 text-center text-slate-500">
+                      Nenhum leilão criado ainda. Abra o veículo em Veículos → aba Publicação →
+                      canal Leilão para definir início, encerramento e lance inicial.
+                    </TableCell>
+                  </TableRow>
+                )}
                 {leiloes?.map((leilao: any) => (
                   <TableRow key={leilao.id}>
                     <TableCell className="font-bold">{leilao.titulo}</TableCell>

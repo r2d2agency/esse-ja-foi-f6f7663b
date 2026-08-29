@@ -14,7 +14,7 @@ export const Route = createFileRoute("/veiculos/")({
 
 function VitrinePublica() {
   const [menuOpen, setMenuOpen] = useState(false);
-  const { data: veiculos, isLoading } = useQuery({
+  const { data: veiculos, isLoading, isError, error } = useQuery({
     queryKey: ["vitrine-veiculos"],
     queryFn: () => getVitrine({ data: { token: getSessionToken() } }),
   });
@@ -84,7 +84,12 @@ function VitrinePublica() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {[1,2,3].map(i => <div key={i} className="h-96 bg-slate-200 animate-pulse rounded-2xl"></div>)}
               </div>
-            ) : veiculos?.length === 0 ? (
+            ) : isError ? (
+              <div className="bg-white rounded-3xl p-12 text-center shadow-sm border border-red-200">
+                <h2 className="text-2xl font-bold text-slate-900">Não foi possível carregar a vitrine.</h2>
+                <p className="text-slate-500 mt-2 break-words">{(error as any)?.message || "Tente novamente em instantes."}</p>
+              </div>
+            ) : !veiculos || veiculos.length === 0 ? (
               <div className="bg-white rounded-3xl p-12 text-center shadow-sm">
                 <h2 className="text-2xl font-bold text-slate-900">Novas oportunidades estão chegando.</h2>
                 <p className="text-slate-500 mt-2">No momento não há veículos disponíveis. Volte em breve para conferir novas ofertas.</p>
