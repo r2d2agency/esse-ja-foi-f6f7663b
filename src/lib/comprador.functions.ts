@@ -56,6 +56,7 @@ export const salvarEtapaCompradorFn = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     try {
+      await ensureSchema();
       const userId = await userFromToken(data.token);
       const m = await import("@/db/comprador.server");
       const res = await m.salvarEtapaComprador(userId, data.etapa, data.dados);
