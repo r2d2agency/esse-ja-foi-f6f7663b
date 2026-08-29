@@ -150,9 +150,102 @@ function CompradorDashboard() {
           valor="Ver veículos"
           onClick={() => navigate({ to: "/veiculos" })}
         />
-        <QuickCard icon={Heart} titulo="Favoritos" valor={`${favs.length}`} />
-        <QuickCard icon={Clock} titulo="Lembretes" valor={`${lembs.length}`} />
+        <QuickCard
+          icon={Heart}
+          titulo="Favoritos"
+          valor={`${favs.length}`}
+          onClick={() => navigate({ to: "/comprador/interesses" })}
+        />
+        <QuickCard
+          icon={Clock}
+          titulo="Lembretes"
+          valor={`${lembs.length}`}
+          onClick={() => navigate({ to: "/comprador/interesses" })}
+        />
       </div>
+
+      {/* Veículos disponíveis */}
+      <section className="rounded-3xl border border-slate-200 bg-white">
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-6 py-4">
+          <div className="flex items-center gap-2">
+            <Gavel className="h-4 w-4 text-amber-500" />
+            <h2 className="text-xs font-black uppercase tracking-widest text-slate-500">
+              Veículos disponíveis
+            </h2>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Buscar marca ou modelo"
+              className="h-10 w-48 rounded-xl border border-slate-200 px-3 text-sm font-medium text-slate-900 placeholder:text-slate-400"
+            />
+            <button
+              type="button"
+              onClick={() => setSoLeilao((s) => !s)}
+              className={cn(
+                "h-10 rounded-xl border px-3 text-xs font-black uppercase transition-colors",
+                soLeilao
+                  ? "border-amber-300 bg-amber-50 text-amber-700"
+                  : "border-slate-200 text-slate-500 hover:border-teal-300",
+              )}
+            >
+              Só leilão
+            </button>
+            <Button
+              variant="ghost"
+              className="h-10 rounded-xl text-xs font-black uppercase text-teal-700"
+              onClick={() => navigate({ to: "/veiculos" })}
+            >
+              Ver todos
+            </Button>
+          </div>
+        </header>
+        <div className="grid gap-4 p-6 sm:grid-cols-2 lg:grid-cols-3">
+          {vitrineFiltrada.length === 0 && (
+            <p className="col-span-full py-6 text-center text-sm font-medium text-slate-400">
+              Nenhum veículo disponível com esses filtros.
+            </p>
+          )}
+          {vitrineFiltrada.slice(0, 6).map((v: any) => {
+            const emLeilao = !!v.leilao_id;
+            const partida = Number(v.lance_inicial || 0);
+            const atual = Number(v.lance_atual || 0) || partida;
+            return (
+              <button
+                key={v.id}
+                onClick={() => navigate({ to: "/veiculos/$slug", params: { slug: v.slug } })}
+                className="overflow-hidden rounded-2xl border border-slate-200 text-left transition-colors hover:border-teal-300"
+              >
+                <div className="aspect-[4/3] bg-slate-100">
+                  {v.foto_capa ? (
+                    <img src={v.foto_capa} alt={v.modelo} className="h-full w-full object-cover" loading="lazy" />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-xs text-slate-300">Sem foto</div>
+                  )}
+                </div>
+                <div className="p-4">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{v.marca}</p>
+                  <p className="text-sm font-black uppercase text-slate-900">{v.modelo}</p>
+                  {v.valores_ocultos ? (
+                    <p className="mt-3 text-xs font-bold text-slate-500">Preço restrito</p>
+                  ) : emLeilao ? (
+                    <div className="mt-3">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                        Partida {brl(partida)}
+                      </p>
+                      <p className="text-2xl font-black leading-tight text-teal-700 tabular-nums">{brl(atual)}</p>
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-xl font-black text-slate-900">{brl(v.valor_comercial)}</p>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
 
       {/* Notificações */}
       <section className="rounded-3xl border border-slate-200 bg-white">
