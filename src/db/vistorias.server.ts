@@ -1742,10 +1742,11 @@ export async function salvarItemChecklist(data: { laudoId: string; etapa: string
 export async function salvarFotoLaudo(data: { laudoId: string; tipo_foto: string; url: string; metadata?: any }) {
   const d = requireDb();
   await ensureVistoriaSchema();
+  const metadataJson = JSON.stringify(data.metadata ?? {});
 
   await d.execute(sql`
     INSERT INTO laudo_fotos (laudo_id, tipo_foto, url, metadata)
-    VALUES (${data.laudoId}::uuid, ${data.tipo_foto}, ${data.url}, ${JSON.stringify(data.metadata)})
+    VALUES (${data.laudoId}::uuid, ${data.tipo_foto}, ${data.url}, ${metadataJson}::jsonb)
   `);
 
   return { ok: true };

@@ -2,6 +2,11 @@ import { useCallback, useEffect, useState } from "react";
 
 const CHAVE_FILA = "ejf_fila_offline_vistoria";
 
+function chaveDoPayload(payload: any): string {
+  if (payload?.laudoId && payload?.item_id) return `${payload.laudoId}:${payload.item_id}`;
+  return JSON.stringify(payload);
+}
+
 export function useOnline() {
   const [online, setOnline] = useState(true);
   useEffect(() => {
@@ -29,11 +34,23 @@ export function lerFilaOffline(): any[] {
 
 export function enfileirarOffline(payload: any) {
   try {
-    const fila = lerFilaOffline();
+    const chave = chaveDoPayload(payload);
+    const fila = lerFilaOffline().filter((item) => chaveDoPayload(item) !== chave);
     fila.push({ ...payload, _enfileiradoEm: new Date().toISOString() });
     window.localStorage.setItem(CHAVE_FILA, JSON.stringify(fila.slice(-200)));
   } catch {
     /* storage cheio: ignora */
+  }
+}
+
+export function confirmarEnvioOffline(payload: any) {
+  try {
+    const chave = chaveDoPayload(payload);
+    const fila = lerFilaOffline().filter((item) => chaveDoPayload(item) !== chave);
+    if (fila.length) window.localStorage.setItem(CHAVE_FILA, JSON.stringify(fila));
+    else limparFilaOffline();
+  } catch {
+    /* ignore */
   }
 }
 
@@ -59,6 +76,11 @@ export function useFilaOffline(enviar: (payload: any) => Promise<{ ok: boolean }
     setPendentes(lerFilaOffline().length);
   }, []);
 
+  const confirmar = useCallback((payload: any) => {
+    confirmarEnvioOffline(payload);
+    setPendentes(lerFilaOffline().length);
+  }, []);
+
   const sincronizar = useCallback(async () => {
     const fila = lerFilaOffline();
     if (fila.length === 0 || sincronizando) return;
@@ -66,7 +88,8 @@ export function useFilaOffline(enviar: (payload: any) => Promise<{ ok: boolean }
     const restantes: any[] = [];
     for (const item of fila) {
       try {
-        const res = await enviar(item);
+        const { _enfileiradoEm: _ignorado, ...payload } = item;
+        const res = await enviar(payload);
         if (!res?.ok) restantes.push(item);
       } catch {
         restantes.push(item);
@@ -87,5 +110,5 @@ export function useFilaOffline(enviar: (payload: any) => Promise<{ ok: boolean }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [online]);
 
-  return { online, pendentes, sincronizando, enfileirar, sincronizar };
+  return { online, pendentes, sincronizando, enfileirar, confirmar, sincronizar };
 }
