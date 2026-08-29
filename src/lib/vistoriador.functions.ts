@@ -108,6 +108,17 @@ export const salvarFotoLaudoFn = createServerFn({ method: "POST" })
     }
   });
 
+export const getFotosLaudoFn = createServerFn({ method: "GET" })
+  .validator((d) => z.object({ laudoId: z.string() }).parse(d))
+  .handler(async ({ data }) => {
+    const { listarFotosLaudo } = await import("@/db/vistorias.server");
+    try {
+      return { ok: true as const, data: await listarFotosLaudo(data.laudoId) };
+    } catch (err: any) {
+      return { ok: false as const, message: err.message, data: [] };
+    }
+  });
+
 export const concluirVistoriaAppFn = createServerFn({ method: "POST" })
   .validator((d) => z.object({
     laudoId: z.string(),

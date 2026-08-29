@@ -113,6 +113,8 @@ export async function listarVistoriasConcluidasFila() {
 export async function getDetalheAnaliseVistoria(veiculoId: string) {
   const d = requireDb();
   await ensureAnalisePosVistoriaSchema();
+  const { ensureVistoriaSchema } = await import("./vistorias.server");
+  await ensureVistoriaSchema();
   
   const vRes = await d.execute(sql`
     SELECT 
@@ -151,13 +153,65 @@ export async function getDetalheAnaliseVistoria(veiculoId: string) {
   let fotos = [];
   if (vistoria?.laudo_id) {
     try {
-      const checkRes = await d.execute(sql`SELECT * FROM laudo_checklist WHERE laudo_id = ${vistoria.laudo_id}::uuid`);
-      checklist = rowsOf(checkRes) || [];
+      const checkRes = await d.execute(sql`
+        SELECT
+          r.id::text AS id,
+          c.nome AS etapa,
+          i.titulo AS item_chave,
+          i.tipo_item,
+          r.resposta_conformidade,
+          r.resposta_texto,
+          r.resposta_numero,
+          r.resposta_opcoes,
+          CASE
+            WHEN r.resposta_conformidade IS NOT NULL THEN r.resposta_conformidade
+            WHEN r.resposta_texto IS NOT NULL OR r.resposta_numero IS NOT NULL OR r.resposta_opcoes IS NOT NULL THEN 'RESPONDIDO'
+            ELSE 'SEM_RESPOSTA'
+          END AS status,
+          r.observacao,
+          r.foto_url,
+          r.gps_lat,
+          r.gps_lng,
+          r.gps_precisao,
+          r.registrado_em_dispositivo,
+          r.respondido_em
+        FROM laudo_vistoria_respostas r
+        LEFT JOIN vistorias_checklist_categorias c ON c.id = r.categoria_id
+        LEFT JOIN vistorias_checklist_itens i ON i.id = r.item_id
+        WHERE r.laudo_id = ${vistoria.laudo_id}::uuid
+        ORDER BY c.ordem, i.ordem, r.respondido_em
+      `);
+      checklist = rowsOf(checkRes);
+      if (checklist.length === 0) {
+        const legadoRes = await d.execute(sql`
+          SELECT *, NULL::text AS tipo_item, NULL::text AS resposta_conformidade,
+                 NULL::text AS resposta_texto, NULL::numeric AS resposta_numero,
+                 NULL::jsonb AS resposta_opcoes, NULL::double precision AS gps_lat,
+                 NULL::double precision AS gps_lng, NULL::double precision AS gps_precisao,
+                 NULL::timestamptz AS registrado_em_dispositivo,
+                 atualizado_em AS respondido_em
+          FROM laudo_checklist
+          WHERE laudo_id = ${vistoria.laudo_id}::uuid
+          ORDER BY criado_em
+        `);
+        checklist = rowsOf(legadoRes);
+      }
     } catch { checklist = []; }
 
     try {
       const fotoRes = await d.execute(sql`SELECT * FROM laudo_fotos WHERE laudo_id = ${vistoria.laudo_id}::uuid`);
-      fotos = rowsOf(fotoRes) || [];
+      fotos = rowsOf(fotoRes);
+      const fotosChecklist = checklist
+        .filter((item: any) => item.foto_url)
+        .map((item: any) => ({
+          id: `checklist-${item.id}`,
+          url: item.foto_url,
+          tipo_foto: `${item.etapa || "Checklist"} — ${item.item_chave || "Item"}`,
+          criado_em: item.respondido_em,
+          origem: "checklist",
+        }));
+      const urls = new Set(fotos.map((foto: any) => foto.url));
+      fotos = [...fotos, ...fotosChecklist.filter((foto: any) => !urls.has(foto.url))];
     } catch { fotos = []; }
   }
 
