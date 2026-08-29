@@ -142,9 +142,9 @@ export async function getPontosMapa(): Promise<PontoMapa[]> {
       ORDER BY criado_em DESC
       LIMIT 2000
     `);
-    return rowsOf(r).map((x: any) => ({
+    return rowsOf(r).map((x: any): PontoMapa => ({
       id: String(x.id),
-      tipo: x.tipo === "vendedor" ? ("vendedor" as const) : ("comprador" as const),
+      tipo: x.tipo === "vendedor" ? "vendedor" : "comprador",
       nome: String(x.nome ?? "Sem nome"),
       cidade: x.cidade ?? null,
       uf: x.uf ?? null,
@@ -161,9 +161,9 @@ export async function getPontosMapa(): Promise<PontoMapa[]> {
       WHERE COALESCE(ativo, true) = true
       LIMIT 500
     `);
-    return rowsOf(r).map((x: any) => ({
+    return rowsOf(r).map((x: any): PontoMapa => ({
       id: String(x.id),
-      tipo: "unidade" as const,
+      tipo: "unidade",
       nome: String(x.nome ?? "Unidade"),
       cidade: x.cidade ?? null,
       uf: x.uf ?? null,
