@@ -1,7 +1,15 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { db } from "../db";
+import { db, migrateDb } from "../db";
 import { sql } from "drizzle-orm";
+
+async function ensureSchema() {
+  try {
+    await migrateDb();
+  } catch (e: any) {
+    console.error("[admin-compradores] migrateDb error:", e?.message || e);
+  }
+}
 
 export const listarCompradoresFn = createServerFn({ method: "GET" })
   .validator((d: unknown) => z.object({ 
