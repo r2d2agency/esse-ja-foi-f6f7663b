@@ -9,6 +9,7 @@ import {
   RefreshCw, Loader2, Trash2,
 } from "lucide-react";
 import { useAuthStore } from "@/hooks/use-auth";
+import { useFilaOffline } from "@/hooks/use-online";
 import {
   getVistoriaDetalheVistoriadorFn,
   iniciarCheckinFn,
@@ -17,6 +18,7 @@ import {
   getChecklistConfigFn,
   salvarRespostaChecklistFn,
   getRespostasChecklistFn,
+  salvarFotoLaudoFn,
 } from "@/lib/vistoriador.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -192,10 +194,28 @@ function VistoriaExecucaoPage() {
     });
   };
 
+  // Fila offline: se a conexão cair, as respostas ficam salvas no aparelho
+  // e são reenviadas automaticamente quando a internet volta.
+  const filaOffline = useFilaOffline(async (payload: any) => {
+    const r: any = await salvarRespostaChecklistFn({ data: payload });
+    return { ok: !!r?.ok };
+  });
+
   const persistirRespostaMutation = useMutation({
     mutationFn: (payload: any) => salvarRespostaChecklistFn({ data: payload }),
-    onSuccess: (rr: any) => {
-      if (!rr.ok) toast.error((rr as any).message || "Erro ao salvar resposta");
+    onSuccess: (rr: any, payload: any) => {
+      if (!rr.ok) {
+        filaOffline.enfileirar(payload);
+        toast.warning("Sem confirmação do servidor", {
+          description: "A resposta ficou salva no aparelho e será enviada automaticamente.",
+        });
+      }
+    },
+    onError: (_e, payload: any) => {
+      filaOffline.enfileirar(payload);
+      toast.warning("Você está offline", {
+        description: "A resposta ficou salva no aparelho e será enviada quando a internet voltar.",
+      });
     },
   });
 
