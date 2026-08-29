@@ -6,6 +6,9 @@ const SHELL = [
   "/favicon.png",
   "/logo-esse-ja-foi.png",
   "/logo-esse-ja-foi-branco.png",
+  "/icon-192.png",
+  "/icon-512.png",
+  "/favicon.png",
 ];
 
 self.addEventListener("install", (event) => {
