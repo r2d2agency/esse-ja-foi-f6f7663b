@@ -8,11 +8,6 @@ function requireDb() {
 
 export async function ensureAnunciosSchema() {
   const d = requireDb();
-  
-  // Dependência de laudos para a tabela de fotos
-  const { ensureLaudoSchema } = await import("./laudos.server");
-  await ensureLaudoSchema();
-
 
   // Tabela de Anúncios
   await d.execute(sql`
