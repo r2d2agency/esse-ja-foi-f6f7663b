@@ -265,7 +265,63 @@ export async function enviarPropostaVendedor(data: any) {
     WHERE id = ${data.veiculo_id}::uuid
   `);
 
+  // Notificação por e-mail ao vendedor (não bloqueia o envio da proposta)
+  try {
+    const destRes = await d.execute(sql`
+      SELECT p.email, p.nome, v.marca, v.modelo, v.placa
+      FROM veiculos v
+      JOIN profiles p ON p.id = v.perfil_id
+      WHERE v.id = ${data.veiculo_id}::uuid
+      LIMIT 1
+    `);
+    const dest = rowsOf(destRes)[0];
+    if (dest?.email) {
+      const { enviarEmailSimples } = await import("./mail.server");
+      const brl = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+      const primeiroNome = String(dest.nome || "").split(" ")[0] || "vendedor";
+      await enviarEmailSimples(
+        String(dest.email),
+        `Você recebeu uma proposta para o ${dest.marca} ${dest.modelo}`,
+        `
+        <div style="font-family:Arial,sans-serif;color:#0f172a">
+          <h2 style="margin:0 0 8px">Olá, ${primeiroNome}!</h2>
+          <p style="margin:0 0 16px;color:#475569">
+            Concluímos a análise pós-vistoria do seu <b>${dest.marca} ${dest.modelo}</b> (${dest.placa})
+            e enviamos uma proposta para você avaliar.
+          </p>
+          <table style="border-collapse:collapse;margin-bottom:16px">
+            <tr><td style="padding:4px 12px 4px 0;color:#64748b">Valor mínimo de venda</td><td style="padding:4px 0"><b>${brl(valorMinimo)}</b></td></tr>
+            <tr><td style="padding:4px 12px 4px 0;color:#64748b">Comissão</td><td style="padding:4px 0">${brl(comissaoValor)}</td></tr>
+            <tr><td style="padding:4px 12px 4px 0;color:#64748b">Líquido estimado</td><td style="padding:4px 0"><b>${brl(liquido)}</b></td></tr>
+          </table>
+          <p style="margin:0 0 16px;color:#475569">
+            Acesse seu painel para aceitar ou recusar a proposta. A proposta também aparece na tela inicial do seu app.
+          </p>
+          <p style="margin:0;color:#94a3b8;font-size:12px">Esse Já Foi</p>
+        </div>`
+      );
+    }
+  } catch (err) {
+    console.error("[analise-pos-vistoria] Falha ao enviar e-mail de proposta:", err);
+  }
+
   return { ok: true, versao };
+}
+
+export async function listarPropostasPendentesVendedor(perfilId: string) {
+  const d = requireDb();
+  await ensureAnalisePosVistoriaSchema();
+  const res = await d.execute(sql`
+    SELECT DISTINCT ON (p.veiculo_id)
+      p.id, p.veiculo_id, p.versao, p.valor_minimo_acordado, p.comissao_valor,
+      p.valor_liquido_vendedor, p.mensagem_vendedor, p.enviado_em,
+      v.marca, v.modelo, v.placa
+    FROM propostas_veiculo p
+    JOIN veiculos v ON v.id = p.veiculo_id
+    WHERE v.perfil_id = ${perfilId}::uuid AND p.status = 'AGUARDANDO_ACEITE'
+    ORDER BY p.veiculo_id, p.versao DESC
+  `);
+  return rowsOf(res);
 }
 
 export async function solicitarNovaVistoria(data: { veiculoId: string; vistoriaId: string; motivo: string; usuarioId: string }) {

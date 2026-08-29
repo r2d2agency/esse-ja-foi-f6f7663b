@@ -97,6 +97,8 @@ function DashboardVendedor() {
         )}
       </div>
 
+      {user?.id && <CardPropostaVendedor vendedorId={user.id} />}
+
       <CardsEntregaVendedor vendedorId={user?.id} />
 
       <div className="grid gap-4 lg:grid-cols-2 lg:gap-6">
@@ -259,7 +261,6 @@ function DashboardVendedor() {
         </section>
       </div>
 
-      {user?.id && <CardPropostaVendedor vendedorId={user.id} />}
       {user?.id && <CardOfertaVencedora vendedorId={user.id} />}
       {user?.id && <CardVistoriaVendedor vendedorId={user.id} />}
       {user?.id && <CardContratoVendedor vendedorId={user.id} />}
