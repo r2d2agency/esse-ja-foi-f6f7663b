@@ -80,18 +80,24 @@ function DetalheAnaliseVistoriaPage() {
 
   useEffect(() => {
     if (!veiculo) return;
-    setValorReferencia(Number(propostaAtual?.valor_referencia ?? veiculo.valor_interesse_cliente ?? 0));
-    setValorMinimo(Number(propostaAtual?.valor_minimo_acordado ?? 0));
+    const ref = Number(propostaAtual?.valor_referencia ?? veiculo.valor_interesse_cliente ?? 0);
+    const min = Number(propostaAtual?.valor_minimo_acordado ?? 0);
+    setValorReferenciaTxt(ref > 0 ? String(ref) : "");
+    setValorMinimoTxt(min > 0 ? String(min) : "");
     setMensagemVendedor(String(propostaAtual?.mensagem_vendedor ?? ""));
     setObservacaoInterna(String(propostaAtual?.observacao_interna ?? ""));
     if (propostaAtual?.valor_minimo_acordado && propostaAtual?.comissao_valor) {
       const minimo = Number(propostaAtual.valor_minimo_acordado);
       const comissao = Number(propostaAtual.comissao_valor);
       if (minimo > 0) {
-        setComissaoPercent(Number(((comissao / minimo) * 100).toFixed(2)));
+        setComissaoPercentTxt(String(Number(((comissao / minimo) * 100).toFixed(2))));
       }
     }
   }, [veiculo, propostaAtual]);
+
+  const valorMinimo = Number(valorMinimoTxt) || 0;
+  const valorReferencia = Number(valorReferenciaTxt) || 0;
+  const comissaoPercent = Number(comissaoPercentTxt) || 0;
 
   const liquidEstimado = useMemo(() => {
     const comissao = (valorMinimo * comissaoPercent) / 100;
