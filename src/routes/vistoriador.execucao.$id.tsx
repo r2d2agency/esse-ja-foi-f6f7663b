@@ -9,7 +9,7 @@ import {
   RefreshCw, Loader2, Trash2,
 } from "lucide-react";
 import { useAuthStore } from "@/hooks/use-auth";
-import { useFilaOffline } from "@/hooks/use-online";
+import { lerFilaOffline, useFilaOffline } from "@/hooks/use-online";
 import {
   getVistoriaDetalheVistoriadorFn,
   iniciarCheckinFn,
@@ -64,6 +64,7 @@ function VistoriaExecucaoPage() {
   const [declaracao, setDeclaracao] = useState(false);
 
   const [respostasEmMemoria, setRespostasEmMemoria] = useState<Record<string, any>>({});
+  const [salvandoEtapa, setSalvandoEtapa] = useState(false);
 
   const { data: res } = useQuery({
     queryKey: ["vistoria-detalhe", vistoriaId, user?.id],
@@ -132,8 +133,14 @@ function VistoriaExecucaoPage() {
           _respondido: true,
         };
       });
-      respostasRef.current = { ...respostasRef.current, ...map };
-      setRespostasEmMemoria((prev) => ({ ...prev, ...map }));
+      const pendentesLocais = lerFilaOffline()
+        .filter((item: any) => item.laudoId === laudoId && item.item_id)
+        .reduce((acc: Record<string, any>, item: any) => {
+          acc[item.item_id] = { ...item, _respondido: true };
+          return acc;
+        }, {});
+      respostasRef.current = { ...map, ...respostasRef.current, ...pendentesLocais };
+      setRespostasEmMemoria((prev) => ({ ...map, ...prev, ...pendentesLocais }));
       // Retoma a quilometragem já registrada
       const itemKm = Object.values(map).find((r: any) => r.resposta_numero !== null && r.resposta_numero !== undefined) as any;
       if (itemKm && !km) setKm(String(itemKm.resposta_numero));
@@ -217,23 +224,7 @@ function VistoriaExecucaoPage() {
     return { ok: !!r?.ok };
   });
 
-  const persistirRespostaMutation = useMutation({
-    mutationFn: (payload: any) => salvarRespostaChecklistFn({ data: payload }),
-    onSuccess: (rr: any, payload: any) => {
-      if (!rr.ok) {
-        filaOffline.enfileirar(payload);
-        toast.warning("Sem confirmação do servidor", {
-          description: "A resposta ficou salva no aparelho e será enviada automaticamente.",
-        });
-      }
-    },
-    onError: (_e, payload: any) => {
-      filaOffline.enfileirar(payload);
-      toast.warning("Você está offline", {
-        description: "A resposta ficou salva no aparelho e será enviada quando a internet voltar.",
-      });
-    },
-  });
+  const cadeiasEnvioRef = useRef<Record<string, Promise<void>>>({});
 
   // Auditoria: GPS capturado em segundo plano, sem travar o salvamento
   const gpsRef = useRef<{ gps_lat: number | null; gps_lng: number | null; gps_precisao: number | null }>({
@@ -259,9 +250,9 @@ function VistoriaExecucaoPage() {
 
   const timersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
-  const enviarResposta = (item: any, registro: any) => {
-    if (!laudoId) return;
-    persistirRespostaMutation.mutate({
+  const enviarResposta = (item: any, registro: any): Promise<void> => {
+    if (!laudoId) return Promise.resolve();
+    const payload = {
       laudoId,
       vistoriaId,
       item_id: item.id,
@@ -278,7 +269,22 @@ function VistoriaExecucaoPage() {
       resposta_opcoes: registro.resposta_opcoes ?? null,
       observacao: registro.observacao ?? null,
       foto_url: registro.foto_url ?? null,
-    });
+    };
+
+    // Primeiro grava localmente; se a aba fechar durante a requisição, o dado
+    // continua disponível para sincronização na próxima abertura.
+    filaOffline.enfileirar(payload);
+    const anterior = cadeiasEnvioRef.current[item.id] || Promise.resolve();
+    const atual = anterior
+      .catch(() => undefined)
+      .then(async () => {
+        const resposta: any = await salvarRespostaChecklistFn({ data: payload });
+        if (!resposta?.ok) throw new Error(resposta?.message || "Servidor não confirmou o salvamento");
+        filaOffline.confirmar(payload);
+      });
+    cadeiasEnvioRef.current[item.id] = atual;
+    atual.catch(() => undefined);
+    return atual;
   };
 
   const handleSalvarResposta = (item: any, patch: any) => {
@@ -307,25 +313,35 @@ function VistoriaExecucaoPage() {
 
   // Garante o envio de qualquer texto pendente ao sair da tela / fechar o app
   const pendentesRef = useRef<Record<string, any>>({});
-  const enviarPendentes = () => {
+  const enviarPendentes = async () => {
+    const novosEnvios: Array<Promise<void>> = [];
     Object.entries(pendentesRef.current).forEach(([itemId, item]) => {
       if (timersRef.current[itemId]) clearTimeout(timersRef.current[itemId]);
       const registro = respostasRef.current[itemId];
-      if (registro) enviarResposta(item, registro);
+      if (registro) novosEnvios.push(enviarResposta(item, registro));
     });
     pendentesRef.current = {};
+    const emAndamento = Object.values(cadeiasEnvioRef.current);
+    await Promise.allSettled([...novosEnvios, ...emAndamento]);
+  };
+
+  const avancarEtapa = async () => {
+    setSalvandoEtapa(true);
+    await enviarPendentes();
+    setSalvandoEtapa(false);
+    setEtapaAtual((atual) => atual + 1);
   };
 
   useEffect(() => {
     const aoEsconder = () => {
-      if (document.visibilityState === "hidden") enviarPendentes();
+      if (document.visibilityState === "hidden") void enviarPendentes();
     };
     document.addEventListener("visibilitychange", aoEsconder);
     window.addEventListener("pagehide", enviarPendentes);
     return () => {
       document.removeEventListener("visibilitychange", aoEsconder);
       window.removeEventListener("pagehide", enviarPendentes);
-      enviarPendentes();
+      void enviarPendentes();
     };
   });
 
@@ -532,12 +548,11 @@ function VistoriaExecucaoPage() {
             </Button>
             <Button 
               className="h-14 flex-2 rounded-2xl bg-primary font-bold disabled:opacity-50"
-              onClick={() => setEtapaAtual(etapaAtual + 1)}
-              disabled={!permiteContinuar()}
+              onClick={() => void avancarEtapa()}
+              disabled={!permiteContinuar() || salvandoEtapa}
               title={!permiteContinuar() ? "Preencha todos os itens obrigatórios para continuar." : undefined}
             >
-              Continuar
-              <ChevronRight className="ml-2 h-5 w-5" />
+              {salvandoEtapa ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Salvando</> : <>Continuar <ChevronRight className="ml-2 h-5 w-5" /></>}
             </Button>
           </div>
           {!permiteContinuar() && etapaAtual !== 0 && (
@@ -919,10 +934,19 @@ function FotosAnuncio({ laudoId }: { laudoId: string | null }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const anguloAtualRef = useRef<string | null>(null);
   const enviadas = Object.keys(fotos).length;
+  const [cameraMovel, setCameraMovel] = useState(false);
+
+  useEffect(() => {
+    setCameraMovel(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) && "mediaDevices" in navigator);
+  }, []);
 
   const abrirCamera = (angulo: string) => {
     if (!laudoId) {
       toast.error("Faça o check-in antes de enviar fotos.");
+      return;
+    }
+    if (!cameraMovel) {
+      toast.error("Use a câmera do celular", { description: "As fotos do veículo não podem ser carregadas do computador." });
       return;
     }
     anguloAtualRef.current = angulo;
@@ -983,13 +1007,15 @@ function FotosAnuncio({ laudoId }: { laudoId: string | null }) {
               key={angulo}
               type="button"
               onClick={() => abrirCamera(angulo)}
-              disabled={carregando}
+              disabled={carregando || !cameraMovel}
               className={`relative flex aspect-square flex-col items-center justify-center overflow-hidden rounded-2xl border-2 text-center transition-colors ${
                 url
                   ? "border-emerald-300"
                   : carregando
                     ? "border-amber-300 bg-amber-50"
-                    : "border-dashed border-border bg-card active:bg-muted/50"
+                    : !cameraMovel
+                      ? "border-dashed border-border bg-muted/50 opacity-60"
+                      : "border-dashed border-border bg-card active:bg-muted/50"
               }`}
             >
               {url ? (
@@ -1014,7 +1040,11 @@ function FotosAnuncio({ laudoId }: { laudoId: string | null }) {
           );
         })}
       </div>
-      <p className="text-center text-[11px] text-muted-foreground">Toque em um ângulo para abrir a câmera. A foto é comprimida e enviada automaticamente.</p>
+      <p className="text-center text-[11px] text-muted-foreground">
+        {cameraMovel
+          ? "Toque em um ângulo para abrir a câmera. A foto é comprimida e enviada automaticamente."
+          : "Abra esta vistoria no celular para fotografar o veículo. O carregamento pelo computador está bloqueado."}
+      </p>
     </div>
   );
 }
