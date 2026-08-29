@@ -173,6 +173,16 @@ function requireDb() {
   return db;
 }
 
+// O driver postgres-js devolve as linhas como array (sem .rows).
+// Este helper normaliza os dois formatos possíveis.
+function rowsOf(res: any): any[] {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res.rows)) return res.rows;
+  return [];
+}
+
+
 function toMinutes(value: string) {
   const [hora, minuto] = String(value || "00:00").split(":").map(Number);
   return (hora || 0) * 60 + (minuto || 0);
