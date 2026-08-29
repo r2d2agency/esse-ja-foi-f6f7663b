@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate, useParams, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getPropostaVeiculoVendedorFn, responderPropostaVendedorFn } from "@/lib/analise-pos-vistoria.functions";
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Check, X, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { useState } from "react";
-import { Checkbox } from "@/components/ui/checkbox";
+import { useAuth } from "@/hooks/use-auth";
 
 export const Route = createFileRoute("/vendedor/veiculo/$id/proposta")({
   component: PropostaVendedorPage,
@@ -16,10 +16,11 @@ export const Route = createFileRoute("/vendedor/veiculo/$id/proposta")({
 function PropostaVendedorPage() {
   const { id } = Route.useParams() as { id: string };
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
   const getProposta = useServerFn(getPropostaVeiculoVendedorFn);
   const responder = useServerFn(responderPropostaVendedorFn);
-  
-  const [agreed, setAgreed] = useState(false);
+  const [respondendo, setRespondendo] = useState(false);
 
   const { data: res, isLoading } = useQuery({
     queryKey: ["vendedor-proposta", id],
@@ -29,7 +30,8 @@ function PropostaVendedorPage() {
   if (isLoading) return <div className="p-8">Carregando proposta...</div>;
   const veiculo = res?.veiculo as any;
   const proposta = res?.proposta as any;
-  const respondida = proposta && proposta.status !== "AGUARDANDO_ACEITE";
+  const statusProposta = String(proposta?.status || "").trim().toUpperCase();
+  const respondida = ["ACEITA", "RECUSADA", "EXPIRADA", "CANCELADA"].includes(statusProposta);
 
   if (!proposta) {
     return (
@@ -44,22 +46,37 @@ function PropostaVendedorPage() {
   }
 
   const handleAceite = async (aceite: boolean) => {
-    if (aceite && !agreed) {
-      toast.error("Você precisa estar de acordo com as condições.");
+    if (!user?.id) {
+      toast.error("Sua sessão não foi identificada. Entre novamente para responder.");
       return;
     }
 
+    setRespondendo(true);
     const tId = toast.loading(aceite ? "Aceitando proposta..." : "Recusando proposta...");
     try {
-      const resResp = await responder({ data: { veiculo_id: id, proposta_id: proposta.id, aceite } });
+      const resResp = await responder({
+        data: {
+          veiculo_id: id,
+          proposta_id: proposta.id,
+          perfil_id: user.id,
+          aceite,
+        },
+      });
       if (resResp.ok) {
-        toast.success(aceite ? "Proposta aceita!" : "Proposta recusada.", { id: tId });
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["vendedor-proposta", id] }),
+          queryClient.invalidateQueries({ queryKey: ["propostas-pendentes-vendedor", user.id] }),
+          queryClient.invalidateQueries({ queryKey: ["meus-veiculos", user.id] }),
+        ]);
+        toast.success(aceite ? "Proposta aceita! Veículo liberado para preparação do leilão." : "Proposta recusada.", { id: tId });
         navigate({ to: "/vendedor/veiculo/$id", params: { id } });
       } else {
         toast.error((resResp as any).message || "Erro", { id: tId });
       }
     } catch (err) {
-      toast.error("Erro técnico.", { id: tId });
+      toast.error(err instanceof Error ? err.message : "Não foi possível responder à proposta.", { id: tId });
+    } finally {
+      setRespondendo(false);
     }
   };
 
@@ -97,18 +114,11 @@ function PropostaVendedorPage() {
             Esta proposta já foi {proposta.status === "ACEITA" ? "aceita" : "respondida"}.
           </p>
         ) : null}
-        <div className="flex items-center space-x-2">
-          <Checkbox id="terms" checked={agreed} onCheckedChange={(c) => setAgreed(!!c)} />
-          <label htmlFor="terms" className="text-xs font-medium text-slate-600">
-            Li e estou de acordo com as condições apresentadas.
-          </label>
-        </div>
-
         <div className="flex flex-col gap-3">
-          <Button disabled={respondida} onClick={() => handleAceite(true)} className="h-14 bg-teal-600 hover:bg-teal-700 text-white font-bold text-base rounded-2xl">
+          <Button disabled={respondida || respondendo || !user?.id} onClick={() => handleAceite(true)} className="h-14 bg-teal-600 hover:bg-teal-700 text-white font-bold text-base rounded-2xl">
              Aceitar e liberar para leilão
           </Button>
-          <Button disabled={respondida} onClick={() => handleAceite(false)} variant="ghost" className="text-slate-400 hover:text-red-600 font-bold">
+          <Button disabled={respondida || respondendo || !user?.id} onClick={() => handleAceite(false)} variant="ghost" className="text-slate-400 hover:text-red-600 font-bold">
              Não concordo com o valor
           </Button>
         </div>

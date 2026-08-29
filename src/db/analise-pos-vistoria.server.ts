@@ -376,3 +376,64 @@ export async function getPropostaVeiculoVendedor(veiculoId: string) {
 
   return { veiculo, proposta };
 }
+
+export async function responderPropostaVendedor(data: {
+  veiculoId: string;
+  propostaId: string;
+  perfilId: string;
+  aceite: boolean;
+  motivoRecusa?: string;
+  detalhesRecusa?: string;
+  ip?: string;
+}) {
+  const d = requireDb();
+  await ensureAnalisePosVistoriaSchema();
+
+  return d.transaction(async (tx) => {
+    const propostaRes = await tx.execute(sql`
+      SELECT p.id::text AS id, p.status, p.veiculo_id::text AS veiculo_id
+      FROM propostas_veiculo p
+      JOIN veiculos v ON v.id = p.veiculo_id
+      WHERE p.id = ${data.propostaId}::uuid
+        AND p.veiculo_id = ${data.veiculoId}::uuid
+        AND COALESCE(v.perfil_id, v.vendedor_id) = ${data.perfilId}::uuid
+      FOR UPDATE
+    `);
+    const proposta = rowsOf(propostaRes)[0];
+
+    if (!proposta) {
+      return { ok: false as const, message: "Proposta não encontrada para este vendedor." };
+    }
+
+    const statusAtual = String(proposta.status || "").trim().toUpperCase();
+    if (statusAtual === "ACEITA") {
+      return { ok: true as const, alreadyAnswered: true as const };
+    }
+    if (["RECUSADA", "EXPIRADA", "CANCELADA"].includes(statusAtual)) {
+      return { ok: false as const, message: "Esta proposta já foi encerrada e não pode mais ser aceita." };
+    }
+
+    const novoStatus = data.aceite ? "ACEITA" : "RECUSADA";
+    const statusVeiculo = data.aceite ? "PRONTO_PARA_ANUNCIO" : "VALOR_RECUSADO";
+
+    await tx.execute(sql`
+      UPDATE propostas_veiculo
+      SET status = ${novoStatus},
+          respondido_em = now(),
+          motivo_recusa = ${data.motivoRecusa?.trim() || null},
+          detalhes_recusa = ${data.detalhesRecusa?.trim() || null},
+          ip_vendedor = ${data.ip?.trim() || null}
+      WHERE id = ${data.propostaId}::uuid
+    `);
+
+    await tx.execute(sql`
+      UPDATE veiculos
+      SET status_analise = ${statusVeiculo},
+          atualizado_em = now()
+      WHERE id = ${data.veiculoId}::uuid
+        AND COALESCE(perfil_id, vendedor_id) = ${data.perfilId}::uuid
+    `);
+
+    return { ok: true as const, alreadyAnswered: false as const };
+  });
+}
