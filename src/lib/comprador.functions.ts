@@ -99,6 +99,7 @@ export const alternarFavoritoFn = createServerFn({ method: "POST" })
   .validator((d: unknown) => tokenSchema.extend({ anuncioId: z.string().uuid() }).parse(d))
   .handler(async ({ data }) => {
     try {
+      await ensureSchema();
       const userId = await userFromToken(data.token);
       const m = await import("@/db/comprador.server");
       return { ok: true as const, ...(await m.alternarFavorito(userId, data.anuncioId)) };
