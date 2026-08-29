@@ -34,6 +34,21 @@ export async function ensurePublicacaoSchema() {
       UNIQUE (veiculo_id, canal)
     );
   `);
+
+  const alters = [
+    sql`ALTER TABLE publicacao_canais ADD COLUMN IF NOT EXISTS ativo boolean DEFAULT false`,
+    sql`ALTER TABLE publicacao_canais ADD COLUMN IF NOT EXISTS titulo text`,
+    sql`ALTER TABLE publicacao_canais ADD COLUMN IF NOT EXISTS descricao text`,
+    sql`ALTER TABLE publicacao_canais ADD COLUMN IF NOT EXISTS fotos jsonb DEFAULT '[]'`,
+    sql`ALTER TABLE publicacao_canais ADD COLUMN IF NOT EXISTS atualizado_em timestamptz DEFAULT now()`,
+  ];
+  for (const stmt of alters) {
+    try {
+      await d.execute(stmt);
+    } catch {
+      /* segue */
+    }
+  }
 }
 
 export async function listarVeiculosAptosPublicacao() {
