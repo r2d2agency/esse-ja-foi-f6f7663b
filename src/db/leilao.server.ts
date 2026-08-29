@@ -296,18 +296,22 @@ export async function registrarLance(leilaoId: string, compradorId: string, valo
 
 export async function getEstadoLeilao(leilaoId: string) {
   const d = requireDb();
-  
+  await ensureLeilaoSchema();
+
   const lRes = await d.execute(sql`
-    SELECT l.*, a.titulo, a.slug,
+    SELECT l.*,
+      COALESCE(a.titulo, concat_ws(' ', v.marca, v.modelo, v.ano_modelo)) as titulo,
+      a.slug,
       (SELECT json_build_object('valor', val, 'comprador_id', cid, 'data', dta)
        FROM (SELECT valor as val, comprador_id as cid, criado_em as dta FROM lances WHERE leilao_id = l.id ORDER BY valor DESC LIMIT 1) as sub) as ultimo_lance,
       (SELECT count(*)::int FROM lances WHERE leilao_id = l.id) as total_lances,
       (SELECT count(distinct comprador_id)::int FROM lances WHERE leilao_id = l.id) as total_participantes
     FROM leiloes l
-    JOIN anuncios_veiculo a ON l.veiculo_id = a.veiculo_id
+    LEFT JOIN veiculos v ON v.id = l.veiculo_id
+    LEFT JOIN anuncios_veiculo a ON a.veiculo_id = l.veiculo_id
     WHERE l.id = ${leilaoId}::uuid
   `);
-  
+
   const leilao = rowsOf(lRes)[0];
   if (!leilao) return null;
 
@@ -319,9 +323,9 @@ export async function getEstadoLeilao(leilaoId: string) {
     LIMIT 20
   `);
 
-  return { 
-    ...leilao, 
-    historico: rowsOf(historicoRes) || [] 
+  return {
+    ...leilao,
+    historico: rowsOf(historicoRes) || []
   };
 }
 
