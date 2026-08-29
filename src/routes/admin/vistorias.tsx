@@ -2419,6 +2419,26 @@ function AbaChecklistConfigDinamico() {
 
   const refetch = () => queryClient.invalidateQueries({ queryKey: ["admin-checklist-config"] });
 
+  const { data: templatesRes } = useQuery({
+    queryKey: ["admin-checklist-templates"],
+    queryFn: () => import("@/lib/admin-checklist.functions").then((m) => m.listarTemplatesChecklistFn()),
+  });
+
+  const aplicarTemplateMut = useMutation({
+    mutationFn: (templateId: string) =>
+      import("@/lib/admin-checklist.functions").then((m) => m.aplicarTemplateChecklistFn({ data: { templateId } })),
+    onSuccess: async (r: any) => {
+      if (r?.ok) {
+        await refetch();
+        toast.success(`Modelo aplicado: ${r.categoriasCriadas} categorias e ${r.itensCriados} itens adicionados.`);
+      } else {
+        toast.error(r?.message || "Não foi possível aplicar o modelo.");
+      }
+    },
+    onError: (e: any) => toast.error(e?.message || "Não foi possível aplicar o modelo."),
+  });
+
+
   const catSelecionada = categorias.find((c: any) => c.id === catSelecionadaId) || null;
 
   // ========= Mutações ================
@@ -2528,6 +2548,44 @@ function AbaChecklistConfigDinamico() {
             </Badge>
           </CardContent>
         </Card>
+
+        {/* MODELOS PRONTOS DE CHECKLIST */}
+        <Card className="border-slate-200 shadow-none">
+          <CardContent className="p-5 space-y-4">
+            <div>
+              <h3 className="text-sm font-black uppercase tracking-widest text-slate-500">Modelos prontos</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Copie um modelo para dentro do seu checklist e edite livremente depois. Categorias e itens já existentes não são duplicados.
+              </p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {(templatesRes as any)?.ok && (templatesRes as any).data.map((t: any) => (
+                <div key={t.id} className="rounded-2xl border border-slate-200 p-4 flex flex-col gap-2">
+                  <p className="font-bold text-slate-900 leading-tight">{t.nome}</p>
+                  <p className="text-xs text-slate-500 flex-1">{t.descricao}</p>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                    {t.total_categorias} categorias · {t.total_itens} itens
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-teal-200 text-teal-800 hover:bg-teal-50"
+                    disabled={aplicarTemplateMut.isPending}
+                    onClick={() => aplicarTemplateMut.mutate(t.id)}
+                  >
+                    <Plus className="mr-1.5 h-3.5 w-3.5" />
+                    Usar modelo
+                  </Button>
+                </div>
+              ))}
+              {!(templatesRes as any)?.ok && (
+                <p className="text-xs text-slate-400">Carregando modelos...</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+
 
         {checklistErroMsg && (
           <Card className="border-red-200 bg-red-50 shadow-none">

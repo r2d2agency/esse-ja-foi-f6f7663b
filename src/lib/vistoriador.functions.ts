@@ -161,7 +161,12 @@ export const salvarRespostaChecklistFn = createServerFn({ method: "POST" })
     observacao: z.string().optional().nullable(),
     foto_url: z.string().optional().nullable(),
     respondido_por: z.string().optional().nullable(),
+    gps_lat: z.number().optional().nullable(),
+    gps_lng: z.number().optional().nullable(),
+    gps_precisao: z.number().optional().nullable(),
+    registrado_em_dispositivo: z.string().optional().nullable(),
   }).parse(d))
+
   .handler(async ({ data }) => {
     const { salvarRespostaChecklistDinamico } = await import("@/db/vistorias.server");
     try {
