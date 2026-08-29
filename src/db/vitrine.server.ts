@@ -13,6 +13,22 @@ function rowsOf(res: any): any[] {
   return [];
 }
 
+
+async function ensureDependencias() {
+  try {
+    const { ensurePublicacaoSchema } = await import("./publicacao.server");
+    await ensurePublicacaoSchema();
+  } catch (e) { console.error("[vitrine] publicacao schema", e); }
+  try {
+    const { ensureLeilaoSchema } = await import("./leilao.server");
+    await ensureLeilaoSchema();
+  } catch (e) { console.error("[vitrine] leilao schema", e); }
+  try {
+    const { ensureCompradorSchema } = await import("./comprador.server");
+    await ensureCompradorSchema();
+  } catch (e) { console.error("[vitrine] comprador schema", e); }
+}
+
 /** Descobre o nível de acesso comercial do visitante. */
 export async function getAcessoComercial(userId?: string | null) {
   const base = { autenticado: false, pode_ver_valores: false, pode_dar_lances: false, comprador_id: null as string | null };
@@ -34,6 +50,7 @@ export async function getAcessoComercial(userId?: string | null) {
 
 export async function listarAnunciosVitrine(userId?: string | null) {
   const d = requireDb();
+  await ensureDependencias();
   const acesso = await getAcessoComercial(userId);
 
   const res = await d.execute(sql`
@@ -73,6 +90,7 @@ export async function listarAnunciosVitrine(userId?: string | null) {
 
 export async function getDetalheAnuncioPublico(slug: string, userId?: string | null) {
   const d = requireDb();
+  await ensureDependencias();
   const acesso = await getAcessoComercial(userId);
 
   const aRes = await d.execute(sql`
