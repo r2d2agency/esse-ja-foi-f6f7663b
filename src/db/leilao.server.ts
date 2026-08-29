@@ -43,9 +43,39 @@ export async function ensureLeilaoSchema() {
     );
   `);
 
+  // Reconciliação defensiva: tabelas legadas podem não ter todas as colunas
+  const alters = [
+    sql`ALTER TABLE leiloes ADD COLUMN IF NOT EXISTS atualizado_em timestamptz DEFAULT now()`,
+    sql`ALTER TABLE leiloes ADD COLUMN IF NOT EXISTS criado_em timestamptz DEFAULT now()`,
+    sql`ALTER TABLE leiloes ADD COLUMN IF NOT EXISTS motivo_pausa_cancelamento text`,
+    sql`ALTER TABLE leiloes ADD COLUMN IF NOT EXISTS prorrogacao_ativa boolean DEFAULT true`,
+    sql`ALTER TABLE leiloes ADD COLUMN IF NOT EXISTS prorrogacao_janela_segundos integer DEFAULT 120`,
+    sql`ALTER TABLE leiloes ADD COLUMN IF NOT EXISTS prorrogacao_tempo_segundos integer DEFAULT 120`,
+    sql`ALTER TABLE leiloes ADD COLUMN IF NOT EXISTS responsavel_id uuid`,
+    sql`ALTER TABLE leiloes ADD COLUMN IF NOT EXISTS lance_inicial numeric(12,2)`,
+    sql`ALTER TABLE leiloes ADD COLUMN IF NOT EXISTS incremento_minimo numeric(12,2) DEFAULT 500`,
+    sql`ALTER TABLE leiloes ADD COLUMN IF NOT EXISTS inicio_em timestamptz`,
+    sql`ALTER TABLE leiloes ADD COLUMN IF NOT EXISTS fim_em timestamptz`,
+    sql`ALTER TABLE leiloes ADD COLUMN IF NOT EXISTS status text DEFAULT 'RASCUNHO'`,
+    sql`ALTER TABLE lances ADD COLUMN IF NOT EXISTS ip_origem text`,
+    sql`ALTER TABLE lances ADD COLUMN IF NOT EXISTS user_agent text`,
+    sql`ALTER TABLE lances ADD COLUMN IF NOT EXISTS criado_em timestamptz DEFAULT now()`,
+  ];
+  for (const stmt of alters) {
+    try {
+      await d.execute(stmt);
+    } catch {
+      /* coluna/tabela indisponível — segue */
+    }
+  }
+
   // Criar índices para performance em tempo real
-  await d.execute(sql`CREATE INDEX IF NOT EXISTS idx_lances_leilao ON lances(leilao_id, valor DESC);`);
-  await d.execute(sql`CREATE INDEX IF NOT EXISTS idx_leiloes_status_datas ON leiloes(status, inicio_em, fim_em);`);
+  try {
+    await d.execute(sql`CREATE INDEX IF NOT EXISTS idx_lances_leilao ON lances(leilao_id, valor DESC);`);
+    await d.execute(sql`CREATE INDEX IF NOT EXISTS idx_leiloes_status_datas ON leiloes(status, inicio_em, fim_em);`);
+  } catch {
+    /* índices são otimização, não bloqueiam */
+  }
 }
 
 export async function configurarLeilao(data: any) {
