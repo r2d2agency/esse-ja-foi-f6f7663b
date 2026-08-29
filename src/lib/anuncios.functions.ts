@@ -11,8 +11,13 @@ import { sql } from "drizzle-orm";
 
 export const getProntosParaAnuncio = createServerFn({ method: "GET" })
   .handler(async () => {
-    await ensureAnunciosSchema();
-    return listarVeiculosProntosParaAnuncio();
+    try {
+      await ensureAnunciosSchema();
+      return await listarVeiculosProntosParaAnuncio();
+    } catch (e: any) {
+      console.error("[getProntosParaAnuncio] error:", e?.message || e);
+      return [];
+    }
   });
 
 export const getAnunciosAdmin = createServerFn({ method: "GET" })
