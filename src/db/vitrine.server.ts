@@ -24,6 +24,10 @@ async function ensureDependencias() {
     await ensureLeilaoSchema();
   } catch (e) { console.error("[vitrine] leilao schema", e); }
   try {
+    const { ensureAnunciosSchema } = await import("./anuncios.server");
+    await ensureAnunciosSchema();
+  } catch (e) { console.error("[vitrine] anuncios schema", e); }
+  try {
     const { ensureCompradorSchema } = await import("./comprador.server");
     await ensureCompradorSchema();
   } catch (e) { console.error("[vitrine] comprador schema", e); }

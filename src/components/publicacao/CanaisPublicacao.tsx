@@ -9,6 +9,16 @@ import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { UploadFotos } from "./UploadFotos";
 import { getCanaisPublicacaoFn, salvarCanalPublicacaoFn } from "@/lib/publicacao.functions";
+import { getLeilaoVeiculoFn, salvarLeilaoVeiculoFn } from "@/lib/leilao.functions";
+
+/** Converte ISO/UTC para o formato aceito pelo input datetime-local (horário local). */
+function paraInputLocal(valor?: string | null) {
+  if (!valor) return "";
+  const d = new Date(valor);
+  if (isNaN(d.getTime())) return "";
+  const off = d.getTimezoneOffset() * 60000;
+  return new Date(d.getTime() - off).toISOString().slice(0, 16);
+}
 
 const CANAIS = [
   { id: "LEILAO", label: "Leilão", icon: Gavel, desc: "Sala de lances com cronômetro e incremento." },
@@ -22,12 +32,43 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
   const [canalAtivo, setCanalAtivo] = useState<CanalId>("LEILAO");
   const [form, setForm] = useState<any>({ ativo: false, titulo: "", descricao: "", fotos: [] });
   const [salvando, setSalvando] = useState(false);
+  const [leilao, setLeilao] = useState({
+    inicio_em: "",
+    fim_em: "",
+    lance_inicial: "",
+    incremento_minimo: "500",
+    prorrogacao_ativa: true,
+    prorrogacao_janela_minutos: "2",
+    prorrogacao_tempo_minutos: "2",
+  });
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["publicacao-canais", veiculoId],
     queryFn: () => getCanaisPublicacaoFn({ data: { veiculoId } }),
     enabled: !!veiculoId,
   });
+
+  const { data: leilaoRes, refetch: refetchLeilao } = useQuery({
+    queryKey: ["leilao-veiculo", veiculoId],
+    queryFn: () => getLeilaoVeiculoFn({ data: { veiculoId } }),
+    enabled: !!veiculoId,
+  });
+  const leilaoAtual: any = (leilaoRes as any)?.data ?? null;
+
+  useEffect(() => {
+    if (!leilaoAtual) return;
+    setLeilao({
+      inicio_em: paraInputLocal(leilaoAtual.inicio_em),
+      fim_em: paraInputLocal(leilaoAtual.fim_em),
+      lance_inicial: leilaoAtual.lance_inicial ? String(Number(leilaoAtual.lance_inicial)) : "",
+      incremento_minimo: leilaoAtual.incremento_minimo
+        ? String(Number(leilaoAtual.incremento_minimo))
+        : "500",
+      prorrogacao_ativa: leilaoAtual.prorrogacao_ativa !== false,
+      prorrogacao_janela_minutos: String(Math.round((leilaoAtual.prorrogacao_janela_segundos ?? 120) / 60)),
+      prorrogacao_tempo_minutos: String(Math.round((leilaoAtual.prorrogacao_tempo_segundos ?? 120) / 60)),
+    });
+  }, [leilaoRes]);
 
   const payload = (data as any)?.data;
   const canais: any[] = Array.isArray(payload)
@@ -56,6 +97,29 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
       if (!res?.ok) {
         toast.error(res?.message || "Erro ao salvar canal.");
         return;
+      }
+      if (canalAtivo === "LEILAO" && form.ativo) {
+        if (!leilao.inicio_em || !leilao.fim_em || !Number(leilao.lance_inicial)) {
+          toast.error("Preencha início, encerramento e lance inicial do leilão.");
+          return;
+        }
+        const resL: any = await salvarLeilaoVeiculoFn({
+          data: {
+            veiculo_id: veiculoId,
+            inicio_em: new Date(leilao.inicio_em).toISOString(),
+            fim_em: new Date(leilao.fim_em).toISOString(),
+            lance_inicial: Number(leilao.lance_inicial),
+            incremento_minimo: Number(leilao.incremento_minimo || 0),
+            prorrogacao_ativa: leilao.prorrogacao_ativa,
+            prorrogacao_janela_segundos: Math.max(1, Number(leilao.prorrogacao_janela_minutos || 2)) * 60,
+            prorrogacao_tempo_segundos: Math.max(1, Number(leilao.prorrogacao_tempo_minutos || 2)) * 60,
+          },
+        });
+        if (!resL?.ok) {
+          toast.error(resL?.message || "Erro ao salvar o leilão.");
+          return;
+        }
+        refetchLeilao();
       }
       toast.success(`Canal ${canalAtivo.toLowerCase()} atualizado.`);
       refetch();
@@ -134,6 +198,119 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
           value={form.descricao}
           onChange={(e) => setForm({ ...form, descricao: e.target.value })}
         />
+
+        {canalAtivo === "LEILAO" && (
+          <div className="space-y-4 rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-black uppercase tracking-widest text-amber-700">
+                Parâmetros do leilão
+              </p>
+              {leilaoAtual && (
+                <span className="rounded-full bg-amber-600 px-2 py-0.5 text-[10px] font-black uppercase text-white">
+                  {leilaoAtual.status}
+                </span>
+              )}
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-600">Início das ofertas</label>
+                <Input
+                  type="datetime-local"
+                  className="h-11 bg-white"
+                  value={leilao.inicio_em}
+                  onChange={(e) => setLeilao({ ...leilao, inicio_em: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-600">Encerramento</label>
+                <Input
+                  type="datetime-local"
+                  className="h-11 bg-white"
+                  value={leilao.fim_em}
+                  onChange={(e) => setLeilao({ ...leilao, fim_em: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-600">Lance inicial (R$)</label>
+                <Input
+                  inputMode="numeric"
+                  placeholder="45000"
+                  className="h-11 bg-white"
+                  value={leilao.lance_inicial}
+                  onChange={(e) =>
+                    setLeilao({ ...leilao, lance_inicial: e.target.value.replace(/[^\d.]/g, "") })
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-600">Incremento mínimo (R$)</label>
+                <Input
+                  inputMode="numeric"
+                  placeholder="500"
+                  className="h-11 bg-white"
+                  value={leilao.incremento_minimo}
+                  onChange={(e) =>
+                    setLeilao({ ...leilao, incremento_minimo: e.target.value.replace(/[^\d.]/g, "") })
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between rounded-xl bg-white p-3">
+              <div>
+                <p className="text-sm font-bold text-slate-800">Prorrogação automática</p>
+                <p className="text-xs text-slate-500">
+                  Evita lances de última hora (anti-sniping).
+                </p>
+              </div>
+              <Switch
+                checked={leilao.prorrogacao_ativa}
+                onCheckedChange={(v: boolean) => setLeilao({ ...leilao, prorrogacao_ativa: v })}
+              />
+            </div>
+
+            {leilao.prorrogacao_ativa && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-600">
+                    Lance nos últimos (min)
+                  </label>
+                  <Input
+                    inputMode="numeric"
+                    className="h-11 bg-white"
+                    value={leilao.prorrogacao_janela_minutos}
+                    onChange={(e) =>
+                      setLeilao({
+                        ...leilao,
+                        prorrogacao_janela_minutos: e.target.value.replace(/\D/g, ""),
+                      })
+                    }
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-600">Prorroga por (min)</label>
+                  <Input
+                    inputMode="numeric"
+                    className="h-11 bg-white"
+                    value={leilao.prorrogacao_tempo_minutos}
+                    onChange={(e) =>
+                      setLeilao({
+                        ...leilao,
+                        prorrogacao_tempo_minutos: e.target.value.replace(/\D/g, ""),
+                      })
+                    }
+                  />
+                </div>
+              </div>
+            )}
+
+            <p className="text-xs font-medium text-amber-800">
+              Ative o canal e salve para publicar o leilão. Ele fica AGENDADO até a data de início
+              e passa a ATIVO automaticamente.
+            </p>
+          </div>
+        )}
 
         <div className="space-y-3">
           <p className="text-xs font-black uppercase tracking-widest text-slate-400">

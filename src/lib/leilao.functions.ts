@@ -57,3 +57,38 @@ export const getLeiloesAdmin = createServerFn({ method: "GET" })
   .handler(async ({ data: status }) => {
     return listarLeiloesAdmin(status);
   });
+
+export const getLeilaoVeiculoFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) => z.object({ veiculoId: z.string().uuid() }).parse(d))
+  .handler(async ({ data }) => {
+    try {
+      const { getLeilaoPorVeiculo } = await import("@/db/leilao.server");
+      return { ok: true as const, data: await getLeilaoPorVeiculo(data.veiculoId) };
+    } catch (e: any) {
+      return { ok: false as const, message: e?.message || "Erro ao carregar leilão." };
+    }
+  });
+
+export const salvarLeilaoVeiculoFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) =>
+    z
+      .object({
+        veiculo_id: z.string().uuid(),
+        inicio_em: z.string().min(1),
+        fim_em: z.string().min(1),
+        lance_inicial: z.number(),
+        incremento_minimo: z.number(),
+        prorrogacao_ativa: z.boolean().optional(),
+        prorrogacao_janela_segundos: z.number().optional(),
+        prorrogacao_tempo_segundos: z.number().optional(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data }) => {
+    try {
+      const { salvarLeilaoVeiculo } = await import("@/db/leilao.server");
+      return { ok: true as const, data: await salvarLeilaoVeiculo(data) };
+    } catch (e: any) {
+      return { ok: false as const, message: e?.message || "Erro ao salvar leilão." };
+    }
+  });

@@ -130,6 +130,15 @@ export async function salvarCanalPublicacao(data: {
 
   await sincronizarVitrine(data.veiculo_id);
 
+  if (data.canal === "LEILAO" && !data.ativo) {
+    try {
+      const { cancelarLeilaoVeiculo } = await import("./leilao.server");
+      await cancelarLeilaoVeiculo(data.veiculo_id);
+    } catch (e) {
+      console.error("[publicacao] cancelarLeilaoVeiculo", e);
+    }
+  }
+
   return { ok: true as const };
 }
 
@@ -202,8 +211,11 @@ export async function sincronizarVitrine(veiculoId: string) {
         ${ativos[0]?.descricao || null}, ${localizacao}, 'PUBLICADO', now()
       )
     `);
-  } catch (e) {
+  } catch (e: any) {
     console.error("[publicacao] sincronizarVitrine", e);
+    throw new Error(
+      `Canal salvo, mas a publicação na vitrine falhou: ${e?.message || "erro desconhecido"}`,
+    );
   }
 }
 
