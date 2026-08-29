@@ -262,7 +262,33 @@ export async function registrarLance(leilaoId: string, compradorId: string, valo
         `Novo lance de R$ ${Number(valor).toLocaleString("pt-BR")}. Faça uma nova oferta para voltar à liderança.`,
         `/veiculos`,
       );
+
+      // E-mail de lance superado (nunca bloqueia o registro do lance)
+      try {
+        const supRes = await tx.execute(sql`
+          SELECT email, nome FROM profiles WHERE id = ${maiorLanceAnterior.comprador_id}::uuid
+        `);
+        const superado = rowsOf(supRes)[0];
+        if (superado?.email) {
+          const { enviarEmailSimples } = await import("./mail.server");
+          const valorFmt = `R$ ${Number(valor).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
+          await enviarEmailSimples(
+            superado.email,
+            "Seu lance foi superado — Esse Já Foi",
+            `<div style="font-family:Inter,Arial,sans-serif;color:#0f172a">
+               <h2 style="margin:0 0 8px">Seu lance foi superado</h2>
+               <p style="margin:0 0 12px">Olá ${superado.nome || "comprador"}, um novo lance de <strong>${valorFmt}</strong> foi registrado no leilão que você acompanha.</p>
+               <p style="margin:0 0 16px">Faça uma nova oferta para voltar à liderança antes do encerramento.</p>
+               <a href="https://desenvolvimento-r2d2-essejafoi-front.ckilhl.easypanel.host/veiculos"
+                  style="background:#0f766e;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:700">Ver leilão</a>
+             </div>`,
+          );
+        }
+      } catch (e) {
+        console.error("[leilao] falha ao enviar e-mail de lance superado", e);
+      }
     }
+
     if (maiorLanceAnterior) {
       await processarEventoSistema("LANCE_SUPERADO", {
         leilao_id: leilaoId,
@@ -298,19 +324,29 @@ export async function getEstadoLeilao(leilaoId: string) {
   const d = requireDb();
   await ensureLeilaoSchema();
 
+  try {
+    const { ensureAnunciosSchema } = await import("./anuncios.server");
+    await ensureAnunciosSchema();
+  } catch (e) {
+    console.error("[leilao] anuncios schema", e);
+  }
+
+  // Subconsultas correlacionadas escalares — um subselect em FROM não pode
+  // referenciar l.id sem LATERAL, o que quebrava o detalhe do leilão.
   const lRes = await d.execute(sql`
     SELECT l.*,
       COALESCE(a.titulo, concat_ws(' ', v.marca, v.modelo, v.ano_modelo)) as titulo,
       a.slug,
-      (SELECT json_build_object('valor', val, 'comprador_id', cid, 'data', dta)
-       FROM (SELECT valor as val, comprador_id as cid, criado_em as dta FROM lances WHERE leilao_id = l.id ORDER BY valor DESC LIMIT 1) as sub) as ultimo_lance,
-      (SELECT count(*)::int FROM lances WHERE leilao_id = l.id) as total_lances,
-      (SELECT count(distinct comprador_id)::int FROM lances WHERE leilao_id = l.id) as total_participantes
+      (SELECT json_build_object('valor', lc.valor, 'comprador_id', lc.comprador_id, 'data', lc.criado_em)
+         FROM lances lc WHERE lc.leilao_id = l.id ORDER BY lc.valor DESC LIMIT 1) as ultimo_lance,
+      (SELECT count(*)::int FROM lances lc WHERE lc.leilao_id = l.id) as total_lances,
+      (SELECT count(distinct lc.comprador_id)::int FROM lances lc WHERE lc.leilao_id = l.id) as total_participantes
     FROM leiloes l
     LEFT JOIN veiculos v ON v.id = l.veiculo_id
     LEFT JOIN anuncios_veiculo a ON a.veiculo_id = l.veiculo_id
     WHERE l.id = ${leilaoId}::uuid
   `);
+
 
   const leilao = rowsOf(lRes)[0];
   if (!leilao) return null;

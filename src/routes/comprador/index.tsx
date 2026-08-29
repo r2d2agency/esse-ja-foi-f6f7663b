@@ -24,6 +24,8 @@ import {
   listarNotificacoesFn,
   marcarNotificacoesLidasFn,
 } from "@/lib/comprador.functions";
+import { CelebracaoVitoria } from "@/components/comprador/CelebracaoVitoria";
+import { InstalarApp } from "@/components/vistoriador/InstalarApp";
 
 export const Route = createFileRoute("/comprador/")({
   head: () => ({
@@ -116,6 +118,10 @@ function CompradorDashboard() {
     });
   }, [vitrine, busca, soLeilao]);
 
+  const [vitoriaFechada, setVitoriaFechada] = useState(false);
+  const vitoria = notifs.find((n) => n.tipo === "LEILAO_VENCIDO" && !n.lida);
+
+
 
   if (isLoading) {
     return (
@@ -133,6 +139,25 @@ function CompradorDashboard() {
         </h1>
         <p className="font-medium text-slate-500">Seu centro de leilões do Esse Já Foi.</p>
       </div>
+
+      {vitoria && !vitoriaFechada && (
+        <CelebracaoVitoria
+          titulo={vitoria.titulo || "Você venceu o leilão!"}
+          mensagem={vitoria.mensagem}
+          onVer={() => {
+            marcarLidas.mutate();
+            navigate({ to: "/comprador/negociacoes" });
+          }}
+          onFechar={() => {
+            setVitoriaFechada(true);
+            marcarLidas.mutate();
+          }}
+        />
+      )}
+
+      <InstalarApp />
+
+
 
       {/* Status de habilitação */}
       <div
