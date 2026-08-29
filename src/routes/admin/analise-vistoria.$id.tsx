@@ -404,19 +404,19 @@ function DetalheAnaliseVistoriaPage() {
                     <div className="grid gap-4 md:grid-cols-2">
                       <div className="space-y-2">
                         <Label>Valor de referência</Label>
-                        <Input type="number" value={valorReferencia} onChange={(e) => setValorReferencia(Number(e.target.value))} />
+                        <Input type="number" inputMode="decimal" min={0} placeholder="0" value={valorReferenciaTxt} onChange={(e) => setValorReferenciaTxt(e.target.value.replace(/^0+(?=\d)/, ""))} />
                         <p className="text-[10px] text-slate-400">Interesse inicial do vendedor: {formatCurrency(veiculo.valor_interesse_cliente)}</p>
                       </div>
                       <div className="space-y-2">
                         <Label>Valor mínimo acordado</Label>
-                        <Input type="number" value={valorMinimo} onChange={(e) => setValorMinimo(Number(e.target.value))} />
+                        <Input type="number" inputMode="decimal" min={0} placeholder="0" value={valorMinimoTxt} onChange={(e) => setValorMinimoTxt(e.target.value.replace(/^0+(?=\d)/, ""))} />
                       </div>
                     </div>
 
                     <div className="grid gap-4 md:grid-cols-2">
                       <div className="space-y-2">
                         <Label>Comissão da plataforma (%)</Label>
-                        <Input type="number" value={comissaoPercent} onChange={(e) => setComissaoPercent(Number(e.target.value))} />
+                        <Input type="number" inputMode="decimal" min={0} placeholder="0" value={comissaoPercentTxt} onChange={(e) => setComissaoPercentTxt(e.target.value.replace(/^0+(?=\d)/, ""))} />
                       </div>
                       <div className="space-y-2">
                         <Label>Mensagem para o vendedor</Label>
