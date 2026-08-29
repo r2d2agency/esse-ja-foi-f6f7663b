@@ -174,6 +174,12 @@ function CompradoresPage() {
                   <TableCell colSpan={6} className="h-16 bg-slate-50/50" />
                 </TableRow>
               ))
+            ) : res && (res as any).ok === false ? (
+              <TableRow>
+                <TableCell colSpan={6} className="h-32 text-center text-red-500 font-medium">
+                  Erro ao carregar compradores: {(res as any).message || "tente novamente."}
+                </TableCell>
+              </TableRow>
             ) : compradores.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="h-32 text-center text-slate-400 font-medium italic">
