@@ -187,12 +187,11 @@ function VistoriaExecucaoPage() {
     }
   };
 
-  const salvarRespostaLocal = (itemId: string, patch: any) => {
-    setRespostasEmMemoria((prev) => {
-      const curr = prev[itemId] || { item_id: itemId };
-      return { ...prev, [itemId]: { ...curr, ...patch } };
-    });
-  };
+  // Espelho síncrono das respostas (para enviar o registro COMPLETO ao servidor)
+  const respostasRef = useRef<Record<string, any>>({});
+  useEffect(() => {
+    respostasRef.current = respostasEmMemoria;
+  }, [respostasEmMemoria]);
 
   // Fila offline: se a conexão cair, as respostas ficam salvas no aparelho
   // e são reenviadas automaticamente quando a internet volta.
@@ -219,21 +218,32 @@ function VistoriaExecucaoPage() {
     },
   });
 
-  // Auditoria: captura GPS atual (não bloqueia o preenchimento se falhar)
-  const obterGpsAtual = (): Promise<{ gps_lat: number | null; gps_lng: number | null; gps_precisao: number | null }> =>
-    new Promise((resolve) => {
-      if (!("geolocation" in navigator)) return resolve({ gps_lat: null, gps_lng: null, gps_precisao: null });
-      navigator.geolocation.getCurrentPosition(
-        (pos) => resolve({ gps_lat: pos.coords.latitude, gps_lng: pos.coords.longitude, gps_precisao: pos.coords.accuracy }),
-        () => resolve({ gps_lat: null, gps_lng: null, gps_precisao: null }),
-        { enableHighAccuracy: true, timeout: 6000, maximumAge: 60000 },
-      );
-    });
+  // Auditoria: GPS capturado em segundo plano, sem travar o salvamento
+  const gpsRef = useRef<{ gps_lat: number | null; gps_lng: number | null; gps_precisao: number | null }>({
+    gps_lat: null,
+    gps_lng: null,
+    gps_precisao: null,
+  });
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("geolocation" in navigator)) return;
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        gpsRef.current = {
+          gps_lat: pos.coords.latitude,
+          gps_lng: pos.coords.longitude,
+          gps_precisao: pos.coords.accuracy,
+        };
+      },
+      () => null,
+      { enableHighAccuracy: true, maximumAge: 60000, timeout: 15000 },
+    );
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, []);
 
-  const handleSalvarResposta = async (item: any, patch: any) => {
+  const timersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  const enviarResposta = (item: any, registro: any) => {
     if (!laudoId) return;
-    salvarRespostaLocal(item.id, patch);
-    const gps = await obterGpsAtual();
     persistirRespostaMutation.mutate({
       laudoId,
       vistoriaId,
@@ -241,10 +251,43 @@ function VistoriaExecucaoPage() {
       categoria_id: item.categoria_id,
       respondido_por: user?.id || null,
       registrado_em_dispositivo: new Date().toISOString(),
-      ...gps,
-      ...patch,
+      ...gpsRef.current,
+      resposta_conformidade: registro.resposta_conformidade ?? null,
+      resposta_texto: registro.resposta_texto ?? null,
+      resposta_numero:
+        registro.resposta_numero === undefined || registro.resposta_numero === null || registro.resposta_numero === ""
+          ? null
+          : Number(registro.resposta_numero),
+      resposta_opcoes: registro.resposta_opcoes ?? null,
+      observacao: registro.observacao ?? null,
+      foto_url: registro.foto_url ?? null,
     });
   };
+
+  const handleSalvarResposta = (item: any, patch: any) => {
+    if (!laudoId) return;
+    // 1) Atualiza o estado local e o espelho síncrono com o registro COMPLETO
+    const anterior = respostasRef.current[item.id] || { item_id: item.id };
+    const merged = { ...anterior, ...patch, item_id: item.id, _respondido: true };
+    respostasRef.current = { ...respostasRef.current, [item.id]: merged };
+    setRespostasEmMemoria((prev) => ({ ...prev, [item.id]: merged }));
+
+    // 2) Texto usa debounce curto; escolhas e fotos salvam na hora
+    const ehTexto = "observacao" in patch || "resposta_texto" in patch || "resposta_numero" in patch;
+    if (timersRef.current[item.id]) clearTimeout(timersRef.current[item.id]);
+    if (ehTexto) {
+      timersRef.current[item.id] = setTimeout(() => enviarResposta(item, respostasRef.current[item.id]), 700);
+    } else {
+      enviarResposta(item, merged);
+    }
+  };
+
+  // Garante o envio de qualquer texto pendente ao sair da tela / fechar o app
+  useEffect(() => {
+    const timers = timersRef.current;
+    return () => Object.values(timers).forEach((t) => clearTimeout(t));
+  }, []);
+
 
 
   const progress = Math.round((etapaAtual / Math.max(1, ETAPAS.length - 1)) * 100);
