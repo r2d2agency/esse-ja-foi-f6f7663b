@@ -70,6 +70,7 @@ export const enviarCadastroCompradorFn = createServerFn({ method: "POST" })
   .validator((d: unknown) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     try {
+      await ensureSchema();
       const userId = await userFromToken(data.token);
       const m = await import("@/db/comprador.server");
       return await m.enviarCadastroCompradorParaAnalise(userId);
