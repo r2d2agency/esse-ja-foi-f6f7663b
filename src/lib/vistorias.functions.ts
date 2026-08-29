@@ -92,7 +92,7 @@ export const salvarUnidadeCadastroFn = createServerFn({ method: "POST" })
     estado: z.string().min(2).max(2),
     latitude: z.number().optional().nullable(),
     longitude: z.number().optional().nullable(),
-    horario_atendimento: z.record(z.array(z.object({
+    horario_atendimento: z.record(z.string(), z.array(z.object({
       inicio: z.string(),
       fim: z.string(),
     }))).optional().nullable(),
