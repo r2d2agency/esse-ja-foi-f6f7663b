@@ -47,3 +47,12 @@ export const salvarCanalPublicacaoFn = createServerFn({ method: "POST" })
       return { ok: false as const, message: e.message };
     }
   });
+
+export const listarPublicadosVitrineFn = createServerFn({ method: "POST" }).handler(async () => {
+  try {
+    const m = await import("@/db/publicacao.server");
+    return { ok: true as const, data: await m.listarPublicadosVitrine() };
+  } catch (e: any) {
+    return { ok: false as const, message: e.message };
+  }
+});

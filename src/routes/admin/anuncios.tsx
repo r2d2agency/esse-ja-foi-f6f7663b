@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { getProntosParaAnuncio } from "@/lib/anuncios.functions";
+import { listarPublicadosVitrineFn } from "@/lib/publicacao.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -15,6 +16,12 @@ function AnunciosAdminPage() {
     queryKey: ["veiculos-prontos-para-anuncio"],
     queryFn: () => getProntosParaAnuncio(),
   });
+
+  const { data: publicadosRes, isLoading: carregandoPublicados } = useQuery({
+    queryKey: ["publicados-vitrine"],
+    queryFn: () => listarPublicadosVitrineFn(),
+  });
+  const publicados: any[] = (publicadosRes as any)?.data ?? [];
 
   return (
     <div className="p-6 space-y-6">
@@ -73,6 +80,50 @@ function AnunciosAdminPage() {
                       </div>
                       <Button onClick={() => window.location.href = `/admin/anuncios/novo/${v.id}`}>
                         <Plus className="h-4 w-4 mr-2" /> Criar anúncio
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="publicados" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Publicados na vitrine</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {carregandoPublicados ? (
+                <div className="flex items-center justify-center gap-2 py-10 text-slate-500">
+                  <Loader2 className="h-5 w-5 animate-spin" /> Carregando publicações...
+                </div>
+              ) : publicados.length === 0 ? (
+                <div className="py-12 text-center text-slate-500">
+                  <Megaphone className="mx-auto mb-3 h-10 w-10 text-slate-300" />
+                  <p className="text-lg font-medium text-slate-700">Em breve novas oportunidades aqui.</p>
+                  <p className="mt-1 text-sm">Ative um canal na ficha do veículo para publicar.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {publicados.map((p: any, i: number) => (
+                    <div key={`${p.id}-${p.canal}-${i}`} className="flex items-center justify-between rounded-lg border border-slate-200 p-4">
+                      <div className="flex items-center gap-4">
+                        <div className="h-16 w-20 overflow-hidden rounded bg-slate-100">
+                          {Array.isArray(p.fotos) && p.fotos[0] ? (
+                            <img src={p.fotos[0]} alt={`${p.marca} ${p.modelo}`} className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-xs text-slate-400">Sem foto</div>
+                          )}
+                        </div>
+                        <div>
+                          <p className="font-bold text-slate-900">{p.titulo || `${p.marca} ${p.modelo}`}</p>
+                          <p className="text-sm text-slate-500">{p.placa} • {p.ano_modelo} • canal {p.canal}</p>
+                        </div>
+                      </div>
+                      <Button variant="outline" onClick={() => { window.location.href = `/admin/veiculo/${p.id}`; }}>
+                        Abrir ficha
                       </Button>
                     </div>
                   ))}

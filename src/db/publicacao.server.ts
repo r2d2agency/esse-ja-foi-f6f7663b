@@ -128,5 +128,99 @@ export async function salvarCanalPublicacao(data: {
       atualizado_em = now()
   `);
 
+  await sincronizarVitrine(data.veiculo_id);
+
   return { ok: true as const };
+}
+
+/**
+ * Mantém a vitrine pública em dia: se algum canal (ANUNCIO/VITRINE) estiver ativo,
+ * garante um registro publicado em anuncios_veiculo. Caso contrário, pausa.
+ */
+export async function sincronizarVitrine(veiculoId: string) {
+  const d = requireDb();
+  try {
+    const { ensureAnunciosSchema, getProximoCodigoAnuncio } = await import("./anuncios.server");
+    await ensureAnunciosSchema();
+
+    const cRes = await d.execute(sql`
+      SELECT canal, ativo, titulo, descricao FROM publicacao_canais
+      WHERE veiculo_id = ${veiculoId}::uuid AND canal IN ('ANUNCIO','VITRINE')
+    `);
+    const canais = rowsOf(cRes);
+    const ativos = canais.filter((c) => c.ativo);
+
+    const aRes = await d.execute(
+      sql`SELECT id, status FROM anuncios_veiculo WHERE veiculo_id = ${veiculoId}::uuid LIMIT 1`,
+    );
+    const anuncio = rowsOf(aRes)[0];
+
+    if (ativos.length === 0) {
+      if (anuncio) {
+        await d.execute(
+          sql`UPDATE anuncios_veiculo SET status = 'PAUSADO', atualizado_em = now() WHERE id = ${anuncio.id}::uuid`,
+        );
+      }
+      return;
+    }
+
+    const vRes = await d.execute(sql`
+      SELECT marca, modelo, ano_modelo, cidade, uf FROM veiculos WHERE id = ${veiculoId}::uuid
+    `);
+    const v = rowsOf(vRes)[0] || {};
+    const titulo =
+      ativos[0]?.titulo || `${v.marca ?? ""} ${v.modelo ?? ""} ${v.ano_modelo ?? ""}`.trim() || "Veículo";
+    const localizacao = [v.cidade, v.uf].filter(Boolean).join("/") || null;
+
+    if (anuncio) {
+      await d.execute(sql`
+        UPDATE anuncios_veiculo
+        SET status = 'PUBLICADO',
+            titulo = ${titulo},
+            descricao = ${ativos[0]?.descricao || null},
+            localizacao_publica = ${localizacao},
+            publicado_em = COALESCE(publicado_em, now()),
+            atualizado_em = now()
+        WHERE id = ${anuncio.id}::uuid
+      `);
+      return;
+    }
+
+    const codigo = await getProximoCodigoAnuncio();
+    const slug = `${titulo}-${codigo}`
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "");
+
+    await d.execute(sql`
+      INSERT INTO anuncios_veiculo
+        (veiculo_id, codigo_publico, slug, titulo, descricao, localizacao_publica, status, publicado_em)
+      VALUES (
+        ${veiculoId}::uuid, ${codigo}, ${slug}, ${titulo},
+        ${ativos[0]?.descricao || null}, ${localizacao}, 'PUBLICADO', now()
+      )
+    `);
+  } catch (e) {
+    console.error("[publicacao] sincronizarVitrine", e);
+  }
+}
+
+/** Veículos atualmente publicados na vitrine/anúncio (visão admin). */
+export async function listarPublicadosVitrine() {
+  const d = requireDb();
+  await ensurePublicacaoSchema();
+  const res = await d.execute(sql`
+    SELECT v.id, v.placa, v.marca, v.modelo, v.ano_modelo, v.km, v.cor,
+           pc.canal, pc.titulo, pc.fotos, pc.atualizado_em,
+           a.status as anuncio_status, a.slug
+    FROM publicacao_canais pc
+    JOIN veiculos v ON v.id = pc.veiculo_id
+    LEFT JOIN anuncios_veiculo a ON a.veiculo_id = v.id
+    WHERE pc.ativo = true
+    ORDER BY pc.atualizado_em DESC
+    LIMIT 200
+  `);
+  return rowsOf(res);
 }
