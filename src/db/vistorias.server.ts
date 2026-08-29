@@ -2374,23 +2374,29 @@ export async function aplicarTemplateChecklist(templateId: string) {
           ? JSON.stringify(item.opcoes)
           : null;
 
-        await d.execute(sql`
-          INSERT INTO vistorias_checklist_itens (
-            categoria_id, titulo, descricao_ajuda, tipo_item, opcoes,
-            obrigatorio, foto_obrigatoria, permite_observacao, ordem
-          ) VALUES (
-            ${categoriaId}::uuid,
-            ${item.titulo},
-            ${item.descricao_ajuda || null},
-            ${item.tipo_item},
-            ${opcoesJson}::jsonb,
-            ${item.obrigatorio === false ? false : true},
-            ${item.foto_obrigatoria === true ? true : false},
-            ${item.permite_observacao === false ? false : true},
-            ${typeof item.ordem === "number" ? item.ordem : 0}
-          )
-        `);
-        itensCriados += 1;
+        try {
+          await d.execute(sql`
+            INSERT INTO vistorias_checklist_itens (
+              categoria_id, titulo, descricao_ajuda, tipo_item, opcoes,
+              obrigatorio, foto_obrigatoria, permite_observacao, ordem
+            ) VALUES (
+              ${categoriaId}::uuid,
+              ${item.titulo},
+              ${item.descricao_ajuda || null},
+              ${item.tipo_item},
+              ${opcoesJson}::jsonb,
+              ${item.obrigatorio === false ? false : true},
+              ${item.foto_obrigatoria === true ? true : false},
+              ${item.permite_observacao === false ? false : true},
+              ${typeof item.ordem === "number" ? item.ordem : 0}
+            )
+          `);
+          itensCriados += 1;
+        } catch (e: any) {
+          const msg = String(e?.cause?.message || e?.message || "");
+          if (!/duplicate key|unique constraint/i.test(msg)) throw e;
+        }
+
       }
     }
   } catch (e) {
