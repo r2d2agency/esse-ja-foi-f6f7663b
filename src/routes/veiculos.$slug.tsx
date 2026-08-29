@@ -259,17 +259,22 @@ function DetalheVeiculoPublico() {
               ) : anuncio.leilao_id ? (
                 <div className="space-y-6">
                   <div className="bg-white/5 border border-white/10 rounded-3xl p-6 space-y-6">
+                    {erroLeilao && (
+                      <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs font-bold text-amber-300">
+                        Atualização em tempo real indisponível — exibindo os dados mais recentes do anúncio.
+                      </div>
+                    )}
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Valor de partida</div>
-                        <div className="text-xl font-black text-white">
-                          R$ {Number(leilao?.lance_inicial || 0).toLocaleString("pt-BR")}
+                        <div className="text-xl font-black text-white tabular-nums">
+                          R$ {lanceInicial.toLocaleString("pt-BR")}
                         </div>
                       </div>
                       <div className="text-right">
                         <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Tempo Restante</div>
-                        <div className="text-xl font-black text-white flex items-center gap-2 justify-end">
-                          <Clock className="h-4 w-4 text-amber-400" /> {timeLeft}
+                        <div className="text-xl font-black text-amber-400 flex items-center gap-2 justify-end tabular-nums">
+                          <Clock className="h-4 w-4" /> {timeLeft || "—"}
                         </div>
                       </div>
                     </div>
@@ -280,7 +285,7 @@ function DetalheVeiculoPublico() {
                         R$ {lanceAtual.toLocaleString("pt-BR")}
                       </div>
                       <div className="mt-2 text-xs font-medium text-slate-400">
-                        Incremento mínimo: R$ {Number(leilao?.incremento_minimo || 0).toLocaleString("pt-BR")}
+                        Incremento mínimo: R$ {incrementoMinimo.toLocaleString("pt-BR")}
                       </div>
                     </div>
 
@@ -293,20 +298,20 @@ function DetalheVeiculoPublico() {
                     )}
 
                     <div className="grid grid-cols-2 gap-4">
-                      <Button 
+                      <Button
                         onClick={() => darLanceMutation.mutate(proximoLanceMinimo)}
                         disabled={!podeDarLances || darLanceMutation.isPending || leilao?.status === 'ENCERRADO'}
                         className="h-14 bg-teal-600 hover:bg-teal-700 text-white font-black text-xs uppercase rounded-2xl shadow-lg shadow-teal-900/20"
                       >
                         Dar Lance R$ {proximoLanceMinimo.toLocaleString('pt-BR')}
                       </Button>
-                      <Button 
-                        onClick={() => darLanceMutation.mutate(proximoLanceMinimo + Number(leilao?.incremento_minimo || 0))}
+                      <Button
+                        onClick={() => darLanceMutation.mutate(proximoLanceMinimo + incrementoMinimo)}
                         disabled={!podeDarLances || darLanceMutation.isPending || leilao?.status === 'ENCERRADO'}
                         variant="outline"
-                        className="h-14 border-white/10 text-white hover:bg-white/5 font-black text-xs uppercase rounded-2xl"
+                        className="h-14 border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white font-black text-xs uppercase rounded-2xl"
                       >
-                        Lance R$ {(proximoLanceMinimo + Number(leilao?.incremento_minimo || 0)).toLocaleString('pt-BR')}
+                        Lance R$ {(proximoLanceMinimo + incrementoMinimo).toLocaleString('pt-BR')}
                       </Button>
                     </div>
                   </div>
@@ -343,7 +348,7 @@ function DetalheVeiculoPublico() {
                     type="button"
                     variant="outline"
                     onClick={() => favoritoMutation.mutate()}
-                    className="h-12 rounded-2xl border-white/10 text-xs font-black uppercase text-white hover:bg-white/5"
+                    className="h-12 rounded-2xl border-white/20 bg-transparent text-xs font-black uppercase text-white hover:bg-white/10 hover:text-white"
                   >
                     <Heart
                       className={`mr-2 h-4 w-4 ${anuncio.favorito ? "fill-teal-400 text-teal-400" : ""}`}
@@ -354,7 +359,7 @@ function DetalheVeiculoPublico() {
                     type="button"
                     variant="outline"
                     onClick={() => lembreteMutation.mutate()}
-                    className="h-12 rounded-2xl border-white/10 text-xs font-black uppercase text-white hover:bg-white/5"
+                    className="h-12 rounded-2xl border-white/20 bg-transparent text-xs font-black uppercase text-white hover:bg-white/10 hover:text-white"
                   >
                     <BellPlus className="mr-2 h-4 w-4" />
                     {anuncio.lembrete ? "Lembrete ativo" : "Lembrar-me"}
