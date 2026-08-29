@@ -426,7 +426,7 @@ function VistoriaExecucaoPage() {
 
       {/* Navegação de Etapas */}
       {checkinRealizado && etapaAtual < ETAPAS.length - 1 && (
-        <footer className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 p-4 backdrop-blur lg:left-64">
+        <footer className="fixed bottom-24 left-0 right-0 z-40 border-t border-border bg-card/95 p-4 backdrop-blur lg:bottom-0 lg:left-64">
           <div className="flex gap-3">
             <Button 
               variant="outline" 
