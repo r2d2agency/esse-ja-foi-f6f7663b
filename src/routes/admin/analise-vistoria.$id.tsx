@@ -140,8 +140,8 @@ function DetalheAnaliseVistoriaPage() {
           comissao_tipo: "PERCENTUAL",
           comissao_valor: Number(((valorMinimo * comissaoPercent) / 100).toFixed(2)),
           valor_liquido_vendedor: Number(liquidEstimado.toFixed(2)),
-          observacao_interna: observacaoInterna || undefined,
-          mensagem_vendedor: mensagemVendedor || undefined,
+          observacao_interna: observacaoInterna || null,
+          mensagem_vendedor: mensagemVendedor || null,
           usuario_id: user.id,
         },
       });
