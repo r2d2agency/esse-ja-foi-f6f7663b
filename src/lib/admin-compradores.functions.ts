@@ -75,6 +75,7 @@ export const aprovarCompradorFn = createServerFn({ method: "POST" })
     observacao: z.string().optional()
   }).parse(d))
   .handler(async ({ data }) => {
+    await ensureSchema();
     const d = db;
     if (!d) return { ok: false, message: "DB offline" };
 
