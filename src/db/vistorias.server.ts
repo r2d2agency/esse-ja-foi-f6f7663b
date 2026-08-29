@@ -1862,7 +1862,76 @@ export async function ensureChecklistSchema() {
 }
 
 
+// Busca a categoria por nome ignorando maiúsculas, espaços e acentuação; cria só se realmente não existir.
+// Tolera índices únicos existentes no banco (nunca estoura "duplicate key").
+async function obterOuCriarCategoriaChecklist(
+  d: any,
+  cat: { nome: string; descricao?: string | null; ordem?: number | null },
+): Promise<string | undefined> {
+  const nome = (cat.nome || "").trim();
+  if (!nome) return undefined;
+
+  const buscar = async () => {
+    const r = await d.execute(sql`
+      SELECT id::text AS id FROM vistorias_checklist_categorias
+      WHERE lower(btrim(nome)) = lower(btrim(${nome}))
+         OR lower(btrim(nome)) = lower(btrim(normalize(${nome}, NFC)))
+         OR lower(btrim(normalize(nome, NFC))) = lower(btrim(normalize(${nome}, NFC)))
+      ORDER BY criado_em
+      LIMIT 1
+    `);
+    return (r as any).rows?.[0]?.id as string | undefined;
+  };
+
+  let id: string | undefined;
+  try {
+    id = await buscar();
+  } catch {
+    // bancos sem normalize(): compara apenas por lower/btrim
+    const r = await d.execute(sql`
+      SELECT id::text AS id FROM vistorias_checklist_categorias
+      WHERE lower(btrim(nome)) = lower(btrim(${nome})) ORDER BY criado_em LIMIT 1
+    `);
+    id = (r as any).rows?.[0]?.id as string | undefined;
+  }
+
+  if (id) {
+    await d.execute(sql`
+      UPDATE vistorias_checklist_categorias
+      SET ativo = true, atualizado_em = now()
+      WHERE id = ${id}::uuid
+    `);
+    return id;
+  }
+
+  try {
+    const inserida = await d.execute(sql`
+      INSERT INTO vistorias_checklist_categorias (nome, descricao, ordem)
+      VALUES (${nome}, ${cat.descricao || null}, ${typeof cat.ordem === "number" ? cat.ordem : 0})
+      RETURNING id::text AS id
+    `);
+    const novoId = (inserida as any).rows?.[0]?.id as string | undefined;
+    if (novoId) return novoId;
+  } catch (e: any) {
+    const msg = String(e?.cause?.message || e?.message || "");
+    // Índice único no banco: a categoria já existe, então apenas reaproveita
+    if (!/duplicate key|unique constraint/i.test(msg)) throw e;
+  }
+
+  const existente = await d.execute(sql`
+    SELECT id::text AS id FROM vistorias_checklist_categorias
+    WHERE nome = ${nome} OR lower(btrim(nome)) = lower(btrim(${nome}))
+    ORDER BY criado_em LIMIT 1
+  `);
+  const idFinal = (existente as any).rows?.[0]?.id as string | undefined;
+  if (idFinal) {
+    await d.execute(sql`UPDATE vistorias_checklist_categorias SET ativo = true, atualizado_em = now() WHERE id = ${idFinal}::uuid`);
+  }
+  return idFinal;
+}
+
 export async function listarChecklistConfig() {
+
   const d = requireDb();
   await ensureChecklistSchema();
 
