@@ -370,21 +370,7 @@ function VistoriaExecucaoPage() {
         )}
 
         {etapaAtual === ETAPAS.length - 2 && (
-          <div className="space-y-6">
-            <div className="rounded-2xl border bg-white p-5">
-              <h3 className="mb-2 text-xs font-black uppercase tracking-widest text-slate-400">Fotos do Anúncio</h3>
-              <p className="text-xs font-medium text-slate-500">Siga os ângulos indicados para manter o padrão.</p>
-              
-              <div className="mt-6 grid grid-cols-2 gap-4">
-                {["Frente 45°", "Frente", "Lateral Esq", "Lateral Dir", "Traseira 45°", "Traseira", "Interior (dianteiro)", "Interior (traseiro)", "Painel", "Motor", "Porta-malas", "Estepe"].map((f) => (
-                  <div key={f} className="flex aspect-square flex-col items-center justify-center rounded-2xl border bg-slate-50 p-2 text-center">
-                    <Camera className="h-6 w-6 text-slate-400" />
-                    <span className="mt-2 text-[10px] font-bold uppercase tracking-tight text-slate-600">{f}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+          <FotosAnuncio laudoId={laudoId} />
         )}
 
         {etapaAtual === ETAPAS.length - 1 && (
