@@ -76,12 +76,11 @@ function CadastroComprador() {
     documento_contrato_social_url: "",
   });
 
-  const token = () => localStorage.getItem("accessToken") || useAuthToken();
 
   useEffect(() => {
     if (!isAuthenticated) return;
     (async () => {
-      const res: any = await getPerfilCompradorFn({ data: { token: useAuthToken() } });
+      const res: any = await getPerfilCompradorFn({ data: { token: getSessionToken() } });
       if (res?.ok) {
         setForm((f: any) => ({ ...f, ...limparNulos(res.perfil), tipo: res.perfil.tipo_pessoa || "PF" }));
         setProgresso(res.progresso);
@@ -134,7 +133,7 @@ function CadastroComprador() {
     setLoading(true);
     try {
       const res: any = await salvarEtapaCompradorFn({
-        data: { token: useAuthToken(), etapa: proxima, dados },
+        data: { token: getSessionToken(), etapa: proxima, dados },
       });
       if (!res?.ok) return toast.error(res?.message || "Não foi possível salvar.");
       setProgresso(res.progresso);
@@ -147,7 +146,7 @@ function CadastroComprador() {
   async function concluir() {
     setLoading(true);
     try {
-      const res: any = await enviarCadastroCompradorFn({ data: { token: useAuthToken() } });
+      const res: any = await enviarCadastroCompradorFn({ data: { token: getSessionToken() } });
       if (!res?.ok) {
         if (res?.progresso) setProgresso(res.progresso);
         return toast.error(res?.message || "Cadastro incompleto.");
@@ -161,7 +160,7 @@ function CadastroComprador() {
 
   async function subirDoc(tipo: string, campo: string, url: string) {
     setForm((f: any) => ({ ...f, [campo]: url }));
-    await enviarDocumentoCompradorFn({ data: { token: useAuthToken(), tipo, url } });
+    await enviarDocumentoCompradorFn({ data: { token: getSessionToken(), tipo, url } });
   }
 
   return (
@@ -561,7 +560,7 @@ function limparNulos(obj: any) {
   return out;
 }
 
-function useAuthToken() {
+function getSessionToken() {
   if (typeof window === "undefined") return "";
   try {
     const raw = localStorage.getItem("auth-storage");
