@@ -73,6 +73,97 @@ export async function configurarLeilao(data: any) {
   return rowsOf(res)[0];
 }
 
+/** Leilão vigente (ou último) de um veículo. */
+export async function getLeilaoPorVeiculo(veiculoId: string) {
+  const d = requireDb();
+  await ensureLeilaoSchema();
+  await processarCicloLeiloes();
+  const res = await d.execute(sql`
+    SELECT l.*,
+      (SELECT valor FROM lances WHERE leilao_id = l.id ORDER BY valor DESC LIMIT 1) as lance_atual,
+      (SELECT count(*)::int FROM lances WHERE leilao_id = l.id) as qtd_lances
+    FROM leiloes l
+    WHERE l.veiculo_id = ${veiculoId}::uuid
+    ORDER BY (l.status IN ('AGENDADO','ATIVO','PRORROGADO')) DESC, l.criado_em DESC
+    LIMIT 1
+  `);
+  return rowsOf(res)[0] || null;
+}
+
+/** Cria ou atualiza o leilão do veículo com os parâmetros definidos pelo admin. */
+export async function salvarLeilaoVeiculo(data: {
+  veiculo_id: string;
+  inicio_em: string;
+  fim_em: string;
+  lance_inicial: number;
+  incremento_minimo: number;
+  prorrogacao_ativa?: boolean;
+  prorrogacao_janela_segundos?: number;
+  prorrogacao_tempo_segundos?: number;
+}) {
+  const d = requireDb();
+  await ensureLeilaoSchema();
+
+  const inicio = new Date(data.inicio_em);
+  const fim = new Date(data.fim_em);
+  if (isNaN(inicio.getTime()) || isNaN(fim.getTime())) {
+    throw new Error("Informe a data/hora de início e de encerramento.");
+  }
+  if (fim <= inicio) throw new Error("O encerramento precisa ser depois do início.");
+  if (!(data.lance_inicial > 0)) throw new Error("Informe o valor do lance inicial.");
+  if (!(data.incremento_minimo > 0)) throw new Error("Informe o incremento mínimo.");
+
+  const atual = await getLeilaoPorVeiculo(data.veiculo_id);
+  const editavel = atual && ["RASCUNHO", "AGENDADO", "ATIVO", "PRORROGADO", "PAUSADO"].includes(atual.status);
+
+  const status = inicio <= new Date() ? "ATIVO" : "AGENDADO";
+  const prorrogacaoAtiva = data.prorrogacao_ativa ?? true;
+  const janela = data.prorrogacao_janela_segundos ?? 120;
+  const tempo = data.prorrogacao_tempo_segundos ?? 120;
+
+  if (editavel) {
+    if (Number(atual.qtd_lances || 0) > 0 && Number(data.lance_inicial) !== Number(atual.lance_inicial)) {
+      throw new Error("Este leilão já recebeu lances: o lance inicial não pode ser alterado.");
+    }
+    await d.execute(sql`
+      UPDATE leiloes SET
+        inicio_em = ${inicio.toISOString()},
+        fim_em = ${fim.toISOString()},
+        lance_inicial = ${data.lance_inicial},
+        incremento_minimo = ${data.incremento_minimo},
+        prorrogacao_ativa = ${prorrogacaoAtiva},
+        prorrogacao_janela_segundos = ${janela},
+        prorrogacao_tempo_segundos = ${tempo},
+        status = CASE WHEN status IN ('ATIVO','PRORROGADO') THEN status ELSE ${status} END,
+        atualizado_em = now()
+      WHERE id = ${atual.id}::uuid
+    `);
+    return { id: atual.id };
+  }
+
+  const res = await d.execute(sql`
+    INSERT INTO leiloes (
+      veiculo_id, inicio_em, fim_em, lance_inicial, incremento_minimo,
+      prorrogacao_ativa, prorrogacao_janela_segundos, prorrogacao_tempo_segundos, status
+    ) VALUES (
+      ${data.veiculo_id}::uuid, ${inicio.toISOString()}, ${fim.toISOString()},
+      ${data.lance_inicial}, ${data.incremento_minimo},
+      ${prorrogacaoAtiva}, ${janela}, ${tempo}, ${status}
+    ) RETURNING id
+  `);
+  return rowsOf(res)[0];
+}
+
+/** Cancela o leilão vigente do veículo (usado ao desativar o canal de leilão). */
+export async function cancelarLeilaoVeiculo(veiculoId: string, motivo = "Canal de leilão desativado") {
+  const d = requireDb();
+  await ensureLeilaoSchema();
+  await d.execute(sql`
+    UPDATE leiloes SET status = 'CANCELADO', motivo_pausa_cancelamento = ${motivo}, atualizado_em = now()
+    WHERE veiculo_id = ${veiculoId}::uuid AND status IN ('RASCUNHO','AGENDADO','PAUSADO')
+  `);
+}
+
 export async function registrarLance(leilaoId: string, compradorId: string, valor: number, ip?: string, ua?: string) {
   const d = requireDb();
   
@@ -225,14 +316,24 @@ export async function processarCicloLeiloes() {
 
 export async function listarLeiloesAdmin(status?: string) {
   const d = requireDb();
+  await ensureLeilaoSchema();
+  try {
+    const { ensureAnunciosSchema } = await import("./anuncios.server");
+    await ensureAnunciosSchema();
+  } catch (e) {
+    console.error("[leilao] anuncios schema", e);
+  }
+  await processarCicloLeiloes();
   const res = await d.execute(sql`
     SELECT 
       l.*, 
-      a.titulo, a.codigo_publico,
+      COALESCE(a.titulo, concat_ws(' ', v.marca, v.modelo, v.ano_modelo)) as titulo,
+      COALESCE(a.codigo_publico, v.placa) as codigo_publico,
       (SELECT valor FROM lances WHERE leilao_id = l.id ORDER BY valor DESC LIMIT 1) as lance_atual,
       (SELECT count(*) FROM lances WHERE leilao_id = l.id) as qtd_lances
     FROM leiloes l
-    JOIN anuncios_veiculo a ON l.veiculo_id = a.veiculo_id
+    JOIN veiculos v ON v.id = l.veiculo_id
+    LEFT JOIN anuncios_veiculo a ON a.veiculo_id = l.veiculo_id
     ${status ? sql`WHERE l.status = ${status}` : sql``}
     ORDER BY l.criado_em DESC
   `);
