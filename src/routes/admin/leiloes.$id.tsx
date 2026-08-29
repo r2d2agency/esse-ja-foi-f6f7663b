@@ -20,13 +20,14 @@ function AdminLeilaoAcompanhamentoPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const { data: leilao, isLoading } = useQuery({
+  const { data: leilao, isLoading, error } = useQuery({
     queryKey: ["admin-leilao-detalhe", id],
     queryFn: () => getLeilaoInfo({ data: id }),
     refetchInterval: 3000, // Polling a cada 3 segundos para o admin
   });
 
   if (isLoading) return <div className="p-8">Carregando detalhes do leilão...</div>;
+  if (error) return <div className="p-8 text-center text-red-500">Erro ao carregar o leilão: {(error as Error).message}</div>;
   if (!leilao) return <div className="p-8 text-center text-red-500">Leilão não encontrado.</div>;
 
   const lanceAtual = Number(leilao.ultimo_lance?.valor || leilao.lance_inicial);

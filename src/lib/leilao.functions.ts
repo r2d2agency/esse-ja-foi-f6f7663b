@@ -18,7 +18,11 @@ export const initLeilaoModule = createServerFn({ method: "POST" })
 export const getLeilaoInfo = createServerFn({ method: "GET" })
   .validator((id: string) => z.string().uuid().parse(id))
   .handler(async ({ data: leilaoId }) => {
-    await processarCicloLeiloes();
+    try {
+      await processarCicloLeiloes();
+    } catch (e) {
+      console.error("[leilao] ciclo", e);
+    }
     const info = await getEstadoLeilao(leilaoId);
     if (!info) return null;
     return info;
