@@ -33,36 +33,23 @@ export function CardPropostaVendedor({ vendedorId }: { vendedorId: string }) {
             <Badge className="bg-teal-600 text-[10px] uppercase font-bold text-white">{p.placa}</Badge>
           </CardHeader>
           <CardContent className="p-4 pt-0">
-            <div className="flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <p className="text-sm font-bold text-slate-900">
-                  {p.marca} {p.modelo}
-                </p>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  Analisamos a vistoria e enviamos as condições para venda do seu veículo.
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-[10px] font-bold uppercase text-slate-400">Líquido estimado</p>
-                <p className="text-lg font-black text-slate-900">
-                  {formatCurrency(Number(p.valor_liquido_vendedor || 0))}
-                </p>
-              </div>
+            <div className="space-y-1">
+              <p className="text-sm font-bold text-slate-900">
+                {p.marca} {p.modelo}
+              </p>
+              <p className="text-xs text-slate-500">
+                Analisamos a vistoria e enviamos as condições para venda do seu veículo.
+              </p>
             </div>
 
-            <div className="mt-3 grid grid-cols-2 gap-3 rounded-xl bg-white/70 p-3">
-              <div>
-                <p className="text-[10px] font-bold uppercase text-slate-400">Valor mínimo</p>
-                <p className="text-sm font-bold text-slate-700">
-                  {formatCurrency(Number(p.valor_minimo_acordado || 0))}
-                </p>
-              </div>
-              <div className="border-l border-slate-200 pl-3">
-                <p className="text-[10px] font-bold uppercase text-slate-400">Comissão</p>
-                <p className="text-sm font-bold text-slate-700">
-                  {formatCurrency(Number(p.comissao_valor || 0))}
-                </p>
-              </div>
+            <div className="mt-3 rounded-xl bg-white/70 p-3">
+              <p className="text-[10px] font-bold uppercase text-slate-400">Valor inicial base</p>
+              <p className="text-xl font-black text-slate-900">
+                {formatCurrency(Number(p.valor_minimo_acordado || 0))}
+              </p>
+              <p className="mt-1 text-[10px] font-medium text-teal-700">
+                Se você aceitar, o veículo será liberado para leilão.
+              </p>
             </div>
 
             <Button
@@ -71,7 +58,7 @@ export function CardPropostaVendedor({ vendedorId }: { vendedorId: string }) {
               }
               className="mt-4 h-11 w-full rounded-xl bg-teal-600 font-bold text-white hover:bg-teal-700"
             >
-              Ver detalhes e decidir <ArrowRight className="ml-2 h-4 w-4" />
+              Ver proposta e decidir <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </CardContent>
         </Card>

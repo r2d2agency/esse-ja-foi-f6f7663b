@@ -4,7 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { getDetalheAnaliseVistoriaFn, responderPropostaVendedorFn } from "@/lib/analise-pos-vistoria.functions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Check, X, ArrowLeft, DollarSign } from "lucide-react";
+import { Check, X, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -76,26 +76,15 @@ function PropostaVendedorPage() {
       <Card className="border-teal-100 bg-teal-50/30 overflow-hidden">
         <CardContent className="p-8 space-y-6">
           <div className="space-y-1">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Valor mínimo para venda</p>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Valor inicial base</p>
             <p className="text-4xl font-black text-slate-900 text-center">R$ {Number(proposta.valor_minimo_acordado).toLocaleString()}</p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 border-y border-teal-100 py-6">
-            <div className="text-center">
-               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Comissão</p>
-               <p className="text-lg font-bold text-slate-700">R$ {Number(proposta.comissao_valor).toLocaleString()}</p>
-            </div>
-            <div className="text-center border-l border-teal-100">
-               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-teal-600">Líquido estimado</p>
-               <p className="text-lg font-bold text-teal-600">R$ {Number(proposta.valor_liquido_vendedor).toLocaleString()}</p>
-            </div>
-          </div>
-
-          <div className="space-y-4">
+          <div className="space-y-4 border-t border-teal-100 pt-6">
              <h3 className="text-sm font-bold text-slate-900">O que acontece agora?</h3>
              <p className="text-xs text-slate-600 leading-relaxed">
-               Ao aceitar, seu veículo poderá ser preparado para publicação e receber ofertas de compradores verificados. 
-               Você não precisa aceitar uma oferta abaixo das condições acordadas.
+               Ao aceitar, seu veículo será liberado para o leilão. Os compradores verificados poderão fazer lances a partir deste valor inicial.
+               Você não precisa aceitar nenhuma oferta abaixo do valor que você autorizou.
              </p>
           </div>
         </CardContent>
@@ -111,7 +100,7 @@ function PropostaVendedorPage() {
 
         <div className="flex flex-col gap-3">
           <Button onClick={() => handleAceite(true)} className="h-14 bg-teal-600 hover:bg-teal-700 text-white font-bold text-base rounded-2xl">
-             Aceitar e liberar meu veículo
+             Aceitar e liberar para leilão
           </Button>
           <Button onClick={() => handleAceite(false)} variant="ghost" className="text-slate-400 hover:text-red-600 font-bold">
              Não concordo com o valor
