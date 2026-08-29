@@ -953,9 +953,12 @@ function FotosAnuncio({ laudoId }: { laudoId: string | null }) {
   const enviadas = Object.keys(fotos).length;
   const [cameraMovel, setCameraMovel] = useState(false);
 
-  const { data: fotosSalvas } = useQuery({
+  const { data: fotosSalvas } = useQuery<any>({
     queryKey: ["fotos-laudo", laudoId],
-    queryFn: () => laudoId ? getFotosLaudoFn({ data: { laudoId } }) : Promise.resolve({ ok: true, data: [] }),
+    queryFn: async () => {
+      if (!laudoId) return { ok: true, data: [] as any[] };
+      return getFotosLaudoFn({ data: { laudoId } });
+    },
     enabled: !!laudoId,
   });
 
@@ -1086,9 +1089,12 @@ function RevisaoFinal({ categorias, respostas, laudoId }: {
   respostas: Record<string, any>;
   laudoId: string | null;
 }) {
-  const { data: fotosRes } = useQuery({
+  const { data: fotosRes } = useQuery<any>({
     queryKey: ["fotos-laudo", laudoId],
-    queryFn: () => laudoId ? getFotosLaudoFn({ data: { laudoId } }) : Promise.resolve({ ok: true, data: [] }),
+    queryFn: async () => {
+      if (!laudoId) return { ok: true, data: [] as any[] };
+      return getFotosLaudoFn({ data: { laudoId } });
+    },
     enabled: !!laudoId,
   });
   const fotosGerais = fotosRes?.ok ? fotosRes.data : [];
