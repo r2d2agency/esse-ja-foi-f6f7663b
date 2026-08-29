@@ -7,6 +7,7 @@ import { useAuthStore } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { GpsStatus } from "@/components/vistoriador/GpsStatus";
 import { VistoriaCard } from "@/components/vistoriador/VistoriaCard";
+import { InstalarApp } from "@/components/vistoriador/InstalarApp";
 
 export const Route = createFileRoute("/vistoriador/")({
   component: VistoriasHojePage,
@@ -47,6 +48,8 @@ function VistoriasHojePage() {
         </div>
         <Button variant="ghost" size="icon" onClick={logout} aria-label="Sair"><LogOut className="h-5 w-5" /></Button>
       </header>
+
+      <InstalarApp />
 
       <GpsStatus />
 

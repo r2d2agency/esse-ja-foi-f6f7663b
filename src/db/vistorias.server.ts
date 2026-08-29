@@ -1768,6 +1768,14 @@ export async function concluirVistoriaApp(data: { laudoId: string; quilometragem
 // CHECKLIST DINAMICO (Configuracao)
 // ============================================================================
 
+// Extrai a mensagem real do driver (drizzle esconde o motivo em `cause`)
+export function detalharErroDb(e: any): string {
+  const causa = e?.cause || e;
+  const partes = [causa?.message, causa?.detail, causa?.hint].filter(Boolean);
+  const msg = partes.join(" — ");
+  return msg || e?.message || "Erro desconhecido no banco de dados.";
+}
+
 export async function ensureChecklistSchema() {
   const d = requireDb();
   await d.execute(sql`CREATE TABLE IF NOT EXISTS "vistorias_checklist_categorias" (
@@ -1798,8 +1806,8 @@ export async function ensureChecklistSchema() {
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
       "laudo_id" uuid NOT NULL,
       "vistoria_id" uuid NOT NULL,
-      "categoria_id" uuid NOT NULL REFERENCES vistorias_checklist_categorias(id) ON DELETE RESTRICT,
-      "item_id" uuid NOT NULL REFERENCES vistorias_checklist_itens(id) ON DELETE RESTRICT,
+      "categoria_id" uuid NOT NULL,
+      "item_id" uuid NOT NULL,
       "resposta_conformidade" text,
       "resposta_texto" text,
       "resposta_numero" numeric(14,2),
@@ -1809,10 +1817,50 @@ export async function ensureChecklistSchema() {
       "respondido_em" timestamp with time zone DEFAULT now() NOT NULL,
       "respondido_por" uuid
     )`);
+
+  // ------------------------------------------------------------------
+  // HARDENING: bancos antigos podem ter as tabelas com colunas faltando
+  // (CREATE TABLE IF NOT EXISTS nao corrige). Garantimos coluna a coluna.
+  // ------------------------------------------------------------------
+  const alters: string[] = [
+    `ALTER TABLE vistorias_checklist_categorias ADD COLUMN IF NOT EXISTS descricao text`,
+    `ALTER TABLE vistorias_checklist_categorias ADD COLUMN IF NOT EXISTS ordem integer NOT NULL DEFAULT 0`,
+    `ALTER TABLE vistorias_checklist_categorias ADD COLUMN IF NOT EXISTS ativo boolean NOT NULL DEFAULT true`,
+    `ALTER TABLE vistorias_checklist_categorias ADD COLUMN IF NOT EXISTS criado_em timestamp with time zone NOT NULL DEFAULT now()`,
+    `ALTER TABLE vistorias_checklist_categorias ADD COLUMN IF NOT EXISTS atualizado_em timestamp with time zone NOT NULL DEFAULT now()`,
+    `ALTER TABLE vistorias_checklist_itens ADD COLUMN IF NOT EXISTS descricao_ajuda text`,
+    `ALTER TABLE vistorias_checklist_itens ADD COLUMN IF NOT EXISTS tipo_item text NOT NULL DEFAULT 'CONFORMIDADE'`,
+    `ALTER TABLE vistorias_checklist_itens ADD COLUMN IF NOT EXISTS opcoes jsonb`,
+    `ALTER TABLE vistorias_checklist_itens ADD COLUMN IF NOT EXISTS obrigatorio boolean NOT NULL DEFAULT true`,
+    `ALTER TABLE vistorias_checklist_itens ADD COLUMN IF NOT EXISTS foto_obrigatoria boolean NOT NULL DEFAULT false`,
+    `ALTER TABLE vistorias_checklist_itens ADD COLUMN IF NOT EXISTS permite_observacao boolean NOT NULL DEFAULT true`,
+    `ALTER TABLE vistorias_checklist_itens ADD COLUMN IF NOT EXISTS ordem integer NOT NULL DEFAULT 0`,
+    `ALTER TABLE vistorias_checklist_itens ADD COLUMN IF NOT EXISTS ativo boolean NOT NULL DEFAULT true`,
+    `ALTER TABLE vistorias_checklist_itens ADD COLUMN IF NOT EXISTS criado_em timestamp with time zone NOT NULL DEFAULT now()`,
+    `ALTER TABLE vistorias_checklist_itens ADD COLUMN IF NOT EXISTS atualizado_em timestamp with time zone NOT NULL DEFAULT now()`,
+    // Auditoria: GPS + data/hora do preenchimento de cada item
+    `ALTER TABLE laudo_vistoria_respostas ADD COLUMN IF NOT EXISTS observacao text`,
+    `ALTER TABLE laudo_vistoria_respostas ADD COLUMN IF NOT EXISTS foto_url text`,
+    `ALTER TABLE laudo_vistoria_respostas ADD COLUMN IF NOT EXISTS respondido_por uuid`,
+    `ALTER TABLE laudo_vistoria_respostas ADD COLUMN IF NOT EXISTS respondido_em timestamp with time zone NOT NULL DEFAULT now()`,
+    `ALTER TABLE laudo_vistoria_respostas ADD COLUMN IF NOT EXISTS gps_lat double precision`,
+    `ALTER TABLE laudo_vistoria_respostas ADD COLUMN IF NOT EXISTS gps_lng double precision`,
+    `ALTER TABLE laudo_vistoria_respostas ADD COLUMN IF NOT EXISTS gps_precisao double precision`,
+    `ALTER TABLE laudo_vistoria_respostas ADD COLUMN IF NOT EXISTS registrado_em_dispositivo timestamp with time zone`,
+  ];
+  for (const stmt of alters) {
+    try {
+      await d.execute(sql.raw(stmt));
+    } catch (e) {
+      console.warn("[checklist-schema]", stmt, detalharErroDb(e));
+    }
+  }
+
   await d.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_laudo_respostas_unq_laudo_item ON laudo_vistoria_respostas(laudo_id, item_id)`);
   await d.execute(sql`CREATE INDEX IF NOT EXISTS idx_vistorias_checklist_categorias_ordem ON vistorias_checklist_categorias(ordem)`);
   await d.execute(sql`CREATE INDEX IF NOT EXISTS idx_vistorias_checklist_itens_categoria_ordem ON vistorias_checklist_itens(categoria_id, ordem)`);
 }
+
 
 export async function listarChecklistConfig() {
   const d = requireDb();
@@ -1881,7 +1929,7 @@ export async function listarChecklistConfig() {
       } // fim itens
     } // fim categorias
   } catch (e) {
-    console.warn("[seed-checklist] Falha parcial durante seed inteligente:", (e as Error).message || String(e));
+    console.warn("[seed-checklist] Falha parcial durante seed inteligente:", detalharErroDb(e));
   }
 
   const categorias = await d.execute(sql`
@@ -1923,15 +1971,21 @@ export async function adminCriarCategoriaChecklist(data: { nome: string; descric
   const ordemVal = data.ordem && data.ordem > 0 ? data.ordem : 0;
   const existente = await d.execute(sql`SELECT id::text AS id FROM vistorias_checklist_categorias WHERE lower(nome) = lower(${data.nome.trim()}) LIMIT 1`);
   if ((existente as any).rows?.[0]) throw new Error("Já existe uma categoria com esse nome.");
-  const r = await d.execute(sql`
-    INSERT INTO vistorias_checklist_categorias (nome, descricao, ordem)
-    VALUES (${data.nome.trim()}, ${data.descricao || null}, ${ordemVal})
-    RETURNING id::text as id
-  `);
+  let r: any;
+  try {
+    r = await d.execute(sql`
+      INSERT INTO vistorias_checklist_categorias (nome, descricao, ordem)
+      VALUES (${data.nome.trim()}, ${data.descricao || null}, ${ordemVal})
+      RETURNING id::text as id
+    `);
+  } catch (e) {
+    throw new Error(`Não foi possível gravar a categoria: ${detalharErroDb(e)}`);
+  }
   const id = (r as any).rows?.[0]?.id;
   if (!id) throw new Error("A categoria não foi gravada no banco de dados.");
   return { ok: true, id };
 }
+
 
 // Admin: atualizar categoria
 export async function adminAtualizarCategoriaChecklist(data: { id: string; nome?: string; descricao?: string; ordem?: number; ativo?: boolean }) {
@@ -2065,6 +2119,10 @@ export async function salvarRespostaChecklistDinamico(data: {
   observacao?: string | null;
   foto_url?: string | null;
   respondido_por?: string | null;
+  gps_lat?: number | null;
+  gps_lng?: number | null;
+  gps_precisao?: number | null;
+  registrado_em_dispositivo?: string | null;
 }) {
   const d = requireDb();
   await ensureChecklistSchema();
@@ -2081,37 +2139,51 @@ export async function salvarRespostaChecklistDinamico(data: {
   const userIdNorm = data.respondido_por ? normalizarUuid(data.respondido_por) : null;
   const opcoesJson = data.resposta_opcoes ? JSON.stringify(data.resposta_opcoes) : null;
 
-  await d.execute(sql`
-    INSERT INTO laudo_vistoria_respostas (
-      laudo_id, vistoria_id, categoria_id, item_id,
-      resposta_conformidade, resposta_texto, resposta_numero, resposta_opcoes,
-      observacao, foto_url, respondido_por
-    ) VALUES (
-      ${laudoIdNorm}::uuid,
-      ${vistoriaIdNorm}::uuid,
-      ${catIdNorm}::uuid,
-      ${itemIdNorm}::uuid,
-      ${data.resposta_conformidade || null},
-      ${data.resposta_texto || null},
-      ${data.resposta_numero ?? null},
-      ${opcoesJson}::jsonb,
-      ${data.observacao || null},
-      ${data.foto_url || null},
-      ${userIdNorm}::uuid
-    )
-    ON CONFLICT (laudo_id, item_id) DO UPDATE SET
-      resposta_conformidade = EXCLUDED.resposta_conformidade,
-      resposta_texto = EXCLUDED.resposta_texto,
-      resposta_numero = EXCLUDED.resposta_numero,
-      resposta_opcoes = EXCLUDED.resposta_opcoes,
-      observacao = EXCLUDED.observacao,
-      foto_url = EXCLUDED.foto_url,
-      respondido_em = now(),
-      respondido_por = EXCLUDED.respondido_por
-  `);
+  try {
+    await d.execute(sql`
+      INSERT INTO laudo_vistoria_respostas (
+        laudo_id, vistoria_id, categoria_id, item_id,
+        resposta_conformidade, resposta_texto, resposta_numero, resposta_opcoes,
+        observacao, foto_url, respondido_por,
+        gps_lat, gps_lng, gps_precisao, registrado_em_dispositivo
+      ) VALUES (
+        ${laudoIdNorm}::uuid,
+        ${vistoriaIdNorm}::uuid,
+        ${catIdNorm}::uuid,
+        ${itemIdNorm}::uuid,
+        ${data.resposta_conformidade || null},
+        ${data.resposta_texto || null},
+        ${data.resposta_numero ?? null},
+        ${opcoesJson}::jsonb,
+        ${data.observacao || null},
+        ${data.foto_url || null},
+        ${userIdNorm}::uuid,
+        ${data.gps_lat ?? null},
+        ${data.gps_lng ?? null},
+        ${data.gps_precisao ?? null},
+        ${data.registrado_em_dispositivo || null}
+      )
+      ON CONFLICT (laudo_id, item_id) DO UPDATE SET
+        resposta_conformidade = EXCLUDED.resposta_conformidade,
+        resposta_texto = EXCLUDED.resposta_texto,
+        resposta_numero = EXCLUDED.resposta_numero,
+        resposta_opcoes = EXCLUDED.resposta_opcoes,
+        observacao = EXCLUDED.observacao,
+        foto_url = EXCLUDED.foto_url,
+        gps_lat = COALESCE(EXCLUDED.gps_lat, laudo_vistoria_respostas.gps_lat),
+        gps_lng = COALESCE(EXCLUDED.gps_lng, laudo_vistoria_respostas.gps_lng),
+        gps_precisao = COALESCE(EXCLUDED.gps_precisao, laudo_vistoria_respostas.gps_precisao),
+        registrado_em_dispositivo = COALESCE(EXCLUDED.registrado_em_dispositivo, laudo_vistoria_respostas.registrado_em_dispositivo),
+        respondido_em = now(),
+        respondido_por = EXCLUDED.respondido_por
+    `);
+  } catch (e) {
+    throw new Error(`Não foi possível salvar a resposta: ${detalharErroDb(e)}`);
+  }
 
   return { ok: true };
 }
+
 
 export async function listarRespostasChecklistPorLaudo(laudoId: string) {
   const d = requireDb();
@@ -2132,10 +2204,141 @@ export async function listarRespostasChecklistPorLaudo(laudoId: string) {
       resposta_opcoes,
       observacao,
       foto_url,
+      gps_lat,
+      gps_lng,
+      gps_precisao,
+      registrado_em_dispositivo,
       respondido_em
+
     FROM laudo_vistoria_respostas
     WHERE laudo_id = ${idNorm}::uuid
     ORDER BY respondido_em
   `);
   return (r as any).rows || [];
+}
+
+// ============================================================================
+// TEMPLATES DE CHECKLIST (modelos prontos para copiar e depois editar)
+// ============================================================================
+export type TemplateChecklist = {
+  id: string;
+  nome: string;
+  descricao: string;
+  categorias: SeedCategoria[];
+};
+
+function categoriasPadraoPorNome(nomes: string[]): SeedCategoria[] {
+  return nomes
+    .map((n) => SEED_CATEGORIAS_PADRAO.find((c) => c.nome.toLowerCase() === n.toLowerCase()))
+    .filter(Boolean) as SeedCategoria[];
+}
+
+const TEMPLATES_CHECKLIST: TemplateChecklist[] = [
+  {
+    id: "completa",
+    nome: "Vistoria Completa (Padrão EJF)",
+    descricao: "Modelo completo de vistoria veicular: identificação, estrutura, exterior, interior, mecânica, pneus, equipamentos e documentos.",
+    categorias: SEED_CATEGORIAS_PADRAO,
+  },
+  {
+    id: "rapida",
+    nome: "Vistoria Rápida (Triagem)",
+    descricao: "Modelo enxuto para triagem inicial: identificação, exterior e documentos.",
+    categorias: categoriasPadraoPorNome(["Identificação", "Exterior", "Documentos"]),
+  },
+  {
+    id: "mecanica",
+    nome: "Vistoria Mecânica e Estrutural",
+    descricao: "Foco técnico em estrutura, mecânica básica e pneus/rodas.",
+    categorias: categoriasPadraoPorNome(["Identificação", "Estrutura", "Mecânica Básica", "Pneus e Rodas"]),
+  },
+  {
+    id: "cabine",
+    nome: "Vistoria de Cabine e Equipamentos",
+    descricao: "Avaliação de interior, equipamentos e acessórios do veículo.",
+    categorias: categoriasPadraoPorNome(["Identificação", "Interior", "Equipamentos"]),
+  },
+];
+
+export function listarTemplatesChecklist() {
+  return TEMPLATES_CHECKLIST.map((t) => ({
+    id: t.id,
+    nome: t.nome,
+    descricao: t.descricao,
+    total_categorias: t.categorias.length,
+    total_itens: t.categorias.reduce((acc, c) => acc + c.itens.length, 0),
+    categorias: t.categorias.map((c) => ({ nome: c.nome, total_itens: c.itens.length })),
+  }));
+}
+
+export async function aplicarTemplateChecklist(templateId: string) {
+  const d = requireDb();
+  await ensureChecklistSchema();
+
+  const template = TEMPLATES_CHECKLIST.find((t) => t.id === templateId);
+  if (!template) throw new Error("Modelo de checklist não encontrado.");
+
+  let categoriasCriadas = 0;
+  let itensCriados = 0;
+
+  try {
+    const maiorOrdem = await d.execute(sql`SELECT COALESCE(MAX(ordem), 0) AS ordem FROM vistorias_checklist_categorias`);
+    let ordemBase = Number((maiorOrdem as any).rows?.[0]?.ordem || 0);
+
+    for (const cat of template.categorias) {
+      const existente = await d.execute(sql`
+        SELECT id::text AS id FROM vistorias_checklist_categorias
+        WHERE lower(nome) = lower(${cat.nome}) LIMIT 1
+      `);
+      let categoriaId = (existente as any).rows?.[0]?.id as string | undefined;
+
+      if (!categoriaId) {
+        ordemBase += 10;
+        const inserida = await d.execute(sql`
+          INSERT INTO vistorias_checklist_categorias (nome, descricao, ordem)
+          VALUES (${cat.nome}, ${cat.descricao}, ${ordemBase})
+          RETURNING id::text AS id
+        `);
+        categoriaId = (inserida as any).rows?.[0]?.id as string | undefined;
+        if (categoriaId) categoriasCriadas += 1;
+      } else {
+        await d.execute(sql`UPDATE vistorias_checklist_categorias SET ativo = true, atualizado_em = now() WHERE id = ${categoriaId}::uuid`);
+      }
+      if (!categoriaId) continue;
+
+      for (const item of cat.itens) {
+        const jaExiste = await d.execute(sql`
+          SELECT id FROM vistorias_checklist_itens
+          WHERE categoria_id = ${categoriaId}::uuid AND lower(titulo) = lower(${item.titulo}) LIMIT 1
+        `);
+        if ((jaExiste as any).rows?.[0]) continue;
+
+        const opcoesJson = item.opcoes && Array.isArray(item.opcoes) && item.opcoes.length > 0
+          ? JSON.stringify(item.opcoes)
+          : null;
+
+        await d.execute(sql`
+          INSERT INTO vistorias_checklist_itens (
+            categoria_id, titulo, descricao_ajuda, tipo_item, opcoes,
+            obrigatorio, foto_obrigatoria, permite_observacao, ordem
+          ) VALUES (
+            ${categoriaId}::uuid,
+            ${item.titulo},
+            ${item.descricao_ajuda || null},
+            ${item.tipo_item},
+            ${opcoesJson}::jsonb,
+            ${item.obrigatorio === false ? false : true},
+            ${item.foto_obrigatoria === true ? true : false},
+            ${item.permite_observacao === false ? false : true},
+            ${typeof item.ordem === "number" ? item.ordem : 0}
+          )
+        `);
+        itensCriados += 1;
+      }
+    }
+  } catch (e) {
+    throw new Error(`Não foi possível aplicar o modelo: ${detalharErroDb(e)}`);
+  }
+
+  return { ok: true as const, categoriasCriadas, itensCriados };
 }

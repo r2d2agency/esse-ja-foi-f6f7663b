@@ -199,18 +199,33 @@ function VistoriaExecucaoPage() {
     },
   });
 
-  const handleSalvarResposta = (item: any, patch: any) => {
+  // Auditoria: captura GPS atual (não bloqueia o preenchimento se falhar)
+  const obterGpsAtual = (): Promise<{ gps_lat: number | null; gps_lng: number | null; gps_precisao: number | null }> =>
+    new Promise((resolve) => {
+      if (!("geolocation" in navigator)) return resolve({ gps_lat: null, gps_lng: null, gps_precisao: null });
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve({ gps_lat: pos.coords.latitude, gps_lng: pos.coords.longitude, gps_precisao: pos.coords.accuracy }),
+        () => resolve({ gps_lat: null, gps_lng: null, gps_precisao: null }),
+        { enableHighAccuracy: true, timeout: 6000, maximumAge: 60000 },
+      );
+    });
+
+  const handleSalvarResposta = async (item: any, patch: any) => {
     if (!laudoId) return;
     salvarRespostaLocal(item.id, patch);
+    const gps = await obterGpsAtual();
     persistirRespostaMutation.mutate({
       laudoId,
       vistoriaId,
       item_id: item.id,
       categoria_id: item.categoria_id,
       respondido_por: user?.id || null,
+      registrado_em_dispositivo: new Date().toISOString(),
+      ...gps,
       ...patch,
     });
   };
+
 
   const progress = Math.round((etapaAtual / Math.max(1, ETAPAS.length - 1)) * 100);
 

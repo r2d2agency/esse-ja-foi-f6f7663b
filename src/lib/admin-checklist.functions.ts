@@ -109,3 +109,24 @@ export const adminExcluirItemFn = createServerFn({ method: "POST" })
       return { ok: false, message: err.message };
     }
   });
+
+export const listarTemplatesChecklistFn = createServerFn({ method: "GET" })
+  .handler(async () => {
+    const { listarTemplatesChecklist } = await import("@/db/vistorias.server");
+    try {
+      return { ok: true as const, data: listarTemplatesChecklist() };
+    } catch (err: any) {
+      return { ok: false as const, message: err.message };
+    }
+  });
+
+export const aplicarTemplateChecklistFn = createServerFn({ method: "POST" })
+  .validator((d) => z.object({ templateId: z.string().min(1) }).parse(d))
+  .handler(async ({ data }) => {
+    const { aplicarTemplateChecklist } = await import("@/db/vistorias.server");
+    try {
+      return await aplicarTemplateChecklist(data.templateId);
+    } catch (err: any) {
+      return { ok: false as const, message: err.message };
+    }
+  });
