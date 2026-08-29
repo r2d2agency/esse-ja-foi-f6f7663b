@@ -98,6 +98,7 @@ export const solicitarPendenciaCompradorFn = createServerFn({ method: "POST" })
     mensagem: z.string()
   }).parse(d))
   .handler(async ({ data }) => {
+    await ensureSchema();
     const d = db;
     if (!d) return { ok: false, message: "DB offline" };
 
