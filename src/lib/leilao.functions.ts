@@ -28,12 +28,13 @@ export const darLanceFn = createServerFn({ method: "POST" })
   .validator((data: any) => z.object({
     leilaoId: z.string().uuid(),
     valor: z.number().positive(),
-    compradorId: z.string().uuid()
+    token: z.string().min(10)
   }).parse(data))
   .handler(async ({ data }) => {
-    // Para contornar erros de tipo no ServerFnCtx e manter compatibilidade, 
-    // ignoramos o request nos argumentos e tratamos metadados de forma simplificada.
-    return registrarLance(data.leilaoId, data.compradorId, data.valor, "unknown", "unknown");
+    const { verifyToken } = await import("@/db/auth.server");
+    const compradorId = await verifyToken(data.token);
+    if (!compradorId) throw new Error("Sessão expirada. Faça login novamente.");
+    return registrarLance(data.leilaoId, compradorId, data.valor, "unknown", "unknown");
   });
 
 export const salvarConfiguracaoLeilao = createServerFn({ method: "POST" })
