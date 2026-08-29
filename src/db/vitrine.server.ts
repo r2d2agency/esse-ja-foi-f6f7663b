@@ -100,15 +100,30 @@ export async function listarAnunciosVitrine(userId?: string | null) {
     LIMIT 60
   `);
 
+  let favoritos = new Set<string>();
+  if (acesso.comprador_id) {
+    try {
+      const favRes = await d.execute(sql`
+        SELECT anuncio_id FROM comprador_favoritos
+        WHERE comprador_id = ${acesso.comprador_id}::uuid
+      `);
+      favoritos = new Set(rowsOf(favRes).map((f) => String(f.anuncio_id)));
+    } catch (error) {
+      console.error("[vitrine] favoritos", error);
+    }
+  }
+
   return rowsOf(res).map((r) => ({
     ...r,
     titulo: r.vitrine_titulo || r.titulo,
     foto_capa: (Array.isArray(r.vitrine_fotos) && r.vitrine_fotos[0]) || r.foto_capa,
-    // Vitrine pública nunca mostra valores
+    // Valores só aparecem para compradores habilitados
     lance_inicial: acesso.pode_ver_valores ? r.lance_inicial : null,
     lance_atual: acesso.pode_ver_valores ? r.lance_atual : null,
     incremento_minimo: acesso.pode_ver_valores ? r.incremento_minimo : null,
     valores_ocultos: !acesso.pode_ver_valores,
+    pode_dar_lances: acesso.pode_dar_lances,
+    favorito: favoritos.has(String(r.id)),
   }));
 }
 
