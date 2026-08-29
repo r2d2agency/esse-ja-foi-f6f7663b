@@ -2040,9 +2040,14 @@ export async function adminCriarCategoriaChecklist(data: { nome: string; descric
       VALUES (${data.nome.trim()}, ${data.descricao || null}, ${ordemVal})
       RETURNING id::text as id
     `);
-  } catch (e) {
+  } catch (e: any) {
+    const msg = String(e?.cause?.message || e?.message || "");
+    if (/duplicate key|unique constraint/i.test(msg)) {
+      throw new Error(`Já existe uma categoria chamada "${data.nome.trim()}".`);
+    }
     throw new Error(`Não foi possível gravar a categoria: ${detalharErroDb(e)}`);
   }
+
   const id = (r as any).rows?.[0]?.id;
   if (!id) throw new Error("A categoria não foi gravada no banco de dados.");
   return { ok: true, id };
