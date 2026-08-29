@@ -261,7 +261,6 @@ function DashboardVendedor() {
         </section>
       </div>
 
-      {user?.id && <CardPropostaVendedor vendedorId={user.id} />}
       {user?.id && <CardOfertaVencedora vendedorId={user.id} />}
       {user?.id && <CardVistoriaVendedor vendedorId={user.id} />}
       {user?.id && <CardContratoVendedor vendedorId={user.id} />}
