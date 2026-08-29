@@ -115,3 +115,15 @@ export const listarPropostasPendentesVendedorFn = createServerFn({ method: "GET"
       return { ok: false as const, message: err.message, data: [] as any[] };
     }
   });
+
+export const getPropostaVeiculoVendedorFn = createServerFn({ method: "GET" })
+  .validator((d) => z.object({ veiculoId: z.string() }).parse(d))
+  .handler(async ({ data }) => {
+    const { getPropostaVeiculoVendedor } = await import("@/db/analise-pos-vistoria.server");
+    try {
+      const res = await getPropostaVeiculoVendedor(data.veiculoId);
+      return { ok: true as const, ...res };
+    } catch (err: any) {
+      return { ok: false as const, message: err?.message ?? "Erro", veiculo: null as any, proposta: null as any };
+    }
+  });
