@@ -137,7 +137,9 @@ export async function getDetalheAnuncioPublico(slug: string, userId?: string | n
       a.*,
       v.marca, v.modelo, v.ano_fabricacao, v.ano_modelo, v.km, v.cor, v.combustivel, v.cambio,
       pc.titulo as canal_titulo, pc.descricao as canal_descricao, pc.fotos as canal_fotos,
-      l.id as leilao_id, l.status as leilao_status, l.inicio_em, l.fim_em
+      l.id as leilao_id, l.status as leilao_status, l.inicio_em, l.fim_em,
+      l.lance_inicial, l.incremento_minimo,
+      (SELECT max(valor) FROM lances WHERE leilao_id = l.id) as lance_atual
     FROM anuncios_veiculo a
     JOIN veiculos v ON a.veiculo_id = v.id
     LEFT JOIN publicacao_canais pc ON pc.veiculo_id = v.id AND pc.canal = 'VITRINE'
