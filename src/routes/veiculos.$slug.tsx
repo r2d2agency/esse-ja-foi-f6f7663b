@@ -109,6 +109,7 @@ function DetalheVeiculoPublico() {
 
   const [activePhoto, setActivePhoto] = useState(0);
   const [timeLeft, setTimeLeft] = useState("");
+  const [lanceCustom, setLanceCustom] = useState("");
 
   // Fallback: o anúncio público já traz os parâmetros do leilão. Se a consulta
   // em tempo real falhar, usamos esses valores para nunca exibir R$ 0.
