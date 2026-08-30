@@ -244,6 +244,16 @@ export async function registrarLance(leilaoId: string, compradorId: string, valo
       throw new Error(`O próximo lance mínimo é R$ ${lanceMinimoNecessario.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`);
     }
 
+    // O lance deve respeitar o incremento definido pelo admin (múltiplos sobre o lance atual)
+    const incremento = Number(leilao.incremento_minimo);
+    if (incremento > 0) {
+      const diferenca = Number(valor) - Number(valorMaiorLance);
+      const multiplo = diferenca / incremento;
+      if (Math.abs(multiplo - Math.round(multiplo)) > 1e-9) {
+        throw new Error(`O lance deve ser um múltiplo de R$ ${incremento.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} sobre o lance atual.`);
+      }
+    }
+
     // 4. Registrar lance
     const res = await tx.execute(sql`
       INSERT INTO lances (leilao_id, comprador_id, valor, ip_origem, user_agent)
