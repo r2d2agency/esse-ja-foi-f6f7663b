@@ -133,6 +133,25 @@ function DetalheVeiculoPublico() {
   const incrementoMinimo = Number(leilao?.incremento_minimo ?? anuncio.incremento_minimo ?? 0);
   const lanceAtual = Number(leilao?.ultimo_lance?.valor || lanceInicial || 0);
   const proximoLanceMinimo = lanceAtual + incrementoMinimo;
+  const leilaoCarregado = !!(leilao || (anuncio.lance_inicial && anuncio.incremento_minimo));
+  const lancesBloqueados = !leilaoCarregado || !(proximoLanceMinimo > 0) || leilao?.status === 'ENCERRADO';
+
+  const enviarLanceCustom = () => {
+    const valor = Number(lanceCustom.replace(/\./g, "").replace(",", "."));
+    if (!(valor > 0)) {
+      toast.error("Informe um valor de lance válido.");
+      return;
+    }
+    if (valor < proximoLanceMinimo) {
+      toast.error(`O lance mínimo agora é R$ ${proximoLanceMinimo.toLocaleString("pt-BR")}.`);
+      return;
+    }
+    if (incrementoMinimo > 0 && (valor - lanceAtual) % incrementoMinimo !== 0) {
+      toast.error(`O lance deve respeitar o incremento de R$ ${incrementoMinimo.toLocaleString("pt-BR")} sobre o lance atual.`);
+      return;
+    }
+    darLanceMutation.mutate(valor);
+  };
 
   return (
     <div className="min-h-screen bg-white font-sans text-slate-900">
