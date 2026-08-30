@@ -311,19 +311,46 @@ function DetalheVeiculoPublico() {
                     <div className="grid grid-cols-2 gap-4">
                       <Button
                         onClick={() => darLanceMutation.mutate(proximoLanceMinimo)}
-                        disabled={!podeDarLances || darLanceMutation.isPending || leilao?.status === 'ENCERRADO'}
+                        disabled={!podeDarLances || darLanceMutation.isPending || lancesBloqueados}
                         className="h-14 bg-teal-600 hover:bg-teal-700 text-white font-black text-xs uppercase rounded-2xl shadow-lg shadow-teal-900/20"
                       >
                         Dar Lance R$ {proximoLanceMinimo.toLocaleString('pt-BR')}
                       </Button>
                       <Button
                         onClick={() => darLanceMutation.mutate(proximoLanceMinimo + incrementoMinimo)}
-                        disabled={!podeDarLances || darLanceMutation.isPending || leilao?.status === 'ENCERRADO'}
+                        disabled={!podeDarLances || darLanceMutation.isPending || lancesBloqueados}
                         variant="outline"
                         className="h-14 border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white font-black text-xs uppercase rounded-2xl"
                       >
                         Lance R$ {(proximoLanceMinimo + incrementoMinimo).toLocaleString('pt-BR')}
                       </Button>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                        Lance personalizado (múltiplos de R$ {incrementoMinimo.toLocaleString('pt-BR')})
+                      </label>
+                      <div className="flex gap-2">
+                        <div className="relative flex-1">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">R$</span>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={lanceCustom}
+                            onChange={(e) => setLanceCustom(e.target.value.replace(/[^\d.,]/g, ""))}
+                            placeholder={proximoLanceMinimo > 0 ? proximoLanceMinimo.toLocaleString("pt-BR") : "Aguardando dados do leilão"}
+                            className="h-14 w-full rounded-2xl bg-white/5 border border-white/10 pl-11 pr-4 text-lg font-black text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-teal-500 tabular-nums"
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          onClick={enviarLanceCustom}
+                          disabled={!podeDarLances || darLanceMutation.isPending || lancesBloqueados || !lanceCustom.trim()}
+                          className="h-14 px-6 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs uppercase rounded-2xl"
+                        >
+                          Ofertar
+                        </Button>
+                      </div>
                     </div>
                   </div>
 
