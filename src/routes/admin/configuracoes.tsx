@@ -478,6 +478,17 @@ function ConsultaVeicularSection() {
                 ))}
               </div>
             )}
+            {Array.isArray(resultadoTeste.diagnostico) && resultadoTeste.diagnostico.length > 0 && (
+              <div className="space-y-1 rounded-lg bg-white p-3 text-xs text-slate-700">
+                <p className="font-bold text-slate-500">Tentativas de autenticação</p>
+                {resultadoTeste.diagnostico.map((d: any, i: number) => (
+                  <div key={i}>
+                    {d.modo} — HTTP {d.httpStatus || "sem resposta"}: {d.mensagem}
+                  </div>
+                ))}
+              </div>
+            )}
+
             <details className="rounded-lg bg-slate-900 p-3 text-xs text-slate-100">
               <summary className="cursor-pointer font-bold">Ver retorno completo (JSON)</summary>
               <pre className="mt-2 max-h-72 overflow-auto">
