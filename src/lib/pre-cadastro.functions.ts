@@ -91,3 +91,16 @@ export const trocarSenhaPrimeiroAcessoFn = createServerFn({ method: "POST" })
       return { ok: false as const, message: e?.message || "Erro ao definir a senha." };
     }
   });
+
+export const getResumoTermoFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) => z.object({ token: z.string().nullable().optional() }).parse(d))
+  .handler(async ({ data }) => {
+    try {
+      const userId = await userIdFrom(data.token ?? null);
+      if (!userId) return { ok: false as const, message: "Sessão expirada." };
+      const { resumoParaTermo } = await import("@/db/pre-cadastro.server");
+      return { ok: true as const, data: await resumoParaTermo(userId) };
+    } catch (e: any) {
+      return { ok: false as const, message: e?.message || "Erro ao carregar o resumo." };
+    }
+  });
