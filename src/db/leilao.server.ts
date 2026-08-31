@@ -281,9 +281,12 @@ export async function registrarLance(leilaoId: string, compradorId: string, valo
     }
 
     // 4. Registrar lance
+    // Somente as colunas canônicas entram no INSERT. Bancos legados usam
+    // `ip`/`sessao`, enquanto instalações novas podem ter `ip_origem`/
+    // `user_agent`; depender desses campos opcionais impedia o lance inteiro.
     const res = await tx.execute(sql`
-      INSERT INTO lances (leilao_id, comprador_id, valor, ip_origem, user_agent)
-      VALUES (${leilaoId}::uuid, ${compradorId}::uuid, ${valorNum}, ${ip || null}, ${ua || null})
+      INSERT INTO lances (leilao_id, comprador_id, valor)
+      VALUES (${leilaoId}::uuid, ${compradorId}::uuid, ${valorNum})
       RETURNING id
     `);
     const lanceId = rowsOf(res)?.[0]?.id;
