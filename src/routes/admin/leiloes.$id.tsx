@@ -1,16 +1,19 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getLeilaoInfo } from "@/lib/leilao.functions";
+import { getLeilaoInfo, getResumoEncerramentoFn, encerrarLeilaoFn, cancelarLeilaoAdminFn } from "@/lib/leilao.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Gavel, Clock, Users, ArrowLeft, TrendingUp, AlertCircle, History as HistoryIcon } from "lucide-react";
+import { Gavel, Clock, Users, ArrowLeft, AlertCircle, History as HistoryIcon, Trophy } from "lucide-react";
 import { toast } from "sonner";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { formatarTempoRestante } from "@/lib/tempo";
+
 
 
 export const Route = createFileRoute("/admin/leiloes/$id")({
