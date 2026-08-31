@@ -239,14 +239,18 @@ function ConsultaVeicularSection() {
     caminho_consulta: "/api-clientes/consulta",
     produto: "GOLD",
     usuario: "",
+    senha: "",
     api_key: "",
+    auth_modo: "AUTO",
     ativo: false,
   });
   const [chaveMascarada, setChaveMascarada] = useState<string | null>(null);
+  const [temSenha, setTemSenha] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const [placaTeste, setPlacaTeste] = useState("");
   const [testandoPlaca, setTestandoPlaca] = useState(false);
   const [resultadoTeste, setResultadoTeste] = useState<any>(null);
+
 
   useEffect(() => {
     void (async () => {
