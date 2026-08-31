@@ -1,14 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Gavel, Megaphone, Store, Loader2 } from "lucide-react";
+import { Gavel, Megaphone, Store, Loader2, MessageCircle, Copy, RefreshCw, Ban, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { UploadFotos } from "./UploadFotos";
-import { getCanaisPublicacaoFn, salvarCanalPublicacaoFn } from "@/lib/publicacao.functions";
+import {
+  getCanaisPublicacaoFn,
+  salvarCanalPublicacaoFn,
+  regenerarTokenCanalFn,
+  revogarTokenCanalFn,
+  montarMensagemWhatsappFn,
+} from "@/lib/publicacao.functions";
 import { getLeilaoVeiculoFn, salvarLeilaoVeiculoFn } from "@/lib/leilao.functions";
 
 /** Converte ISO/UTC para o formato aceito pelo input datetime-local (horário local). */
@@ -33,6 +39,12 @@ const CANAIS = [
   { id: "LEILAO", label: "Leilão", icon: Gavel, desc: "Sala de lances com cronômetro e incremento." },
   { id: "ANUNCIO", label: "Anúncio", icon: Megaphone, desc: "Peça comercial para divulgação direta." },
   { id: "VITRINE", label: "Vitrine", icon: Store, desc: "Listagem pública, sem exibir valores." },
+  {
+    id: "WHATSAPP",
+    label: "WhatsApp",
+    icon: MessageCircle,
+    desc: "Link privado com token — fora da vitrine.",
+  },
 ] as const;
 
 type CanalId = (typeof CANAIS)[number]["id"];
@@ -41,6 +53,8 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
   const [canalAtivo, setCanalAtivo] = useState<CanalId>("LEILAO");
   const [form, setForm] = useState<any>({ ativo: false, titulo: "", descricao: "", fotos: [] });
   const [salvando, setSalvando] = useState(false);
+  const [tokenOcupado, setTokenOcupado] = useState(false);
+  const [mensagem, setMensagem] = useState("");
   const inicioRef = useRef<HTMLInputElement>(null);
   const fimRef = useRef<HTMLInputElement>(null);
   const lanceInicialRef = useRef<HTMLInputElement>(null);
@@ -172,6 +186,56 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
     }
   }
 
+  const canalWhats = canais.find((c) => c.canal === "WHATSAPP");
+  const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
+  const linkPrivado = canalWhats?.token_acesso ? `${baseUrl}/v/${canalWhats.token_acesso}` : "";
+
+  async function copiar(texto: string, msg: string) {
+    try {
+      await navigator.clipboard.writeText(texto);
+      toast.success(msg);
+    } catch {
+      toast.error("Não foi possível copiar.");
+    }
+  }
+
+  async function gerarLink() {
+    setTokenOcupado(true);
+    try {
+      const res: any = await regenerarTokenCanalFn({ data: { veiculoId } });
+      if (!res?.ok) return toast.error(res?.message || "Erro ao gerar o link.");
+      toast.success("Link privado gerado.");
+      setMensagem("");
+      refetch();
+    } finally {
+      setTokenOcupado(false);
+    }
+  }
+
+  async function revogarLink() {
+    setTokenOcupado(true);
+    try {
+      const res: any = await revogarTokenCanalFn({ data: { veiculoId } });
+      if (!res?.ok) return toast.error(res?.message || "Erro ao revogar o link.");
+      toast.success("Link revogado.");
+      setMensagem("");
+      refetch();
+    } finally {
+      setTokenOcupado(false);
+    }
+  }
+
+  async function gerarMensagem() {
+    setTokenOcupado(true);
+    try {
+      const res: any = await montarMensagemWhatsappFn({ data: { veiculoId, baseUrl } });
+      if (!res?.ok) return toast.error(res?.message || "Erro ao montar a mensagem.");
+      setMensagem(res.data.mensagem);
+    } finally {
+      setTokenOcupado(false);
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="flex justify-center p-10">
@@ -182,7 +246,7 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {CANAIS.map((c) => {
           const cfg = canais.find((x) => x.canal === c.id);
           const ativo = canalAtivo === c.id;
@@ -357,6 +421,90 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
               Ative o canal e salve para publicar o leilão. Ele fica AGENDADO até a data de início
               e passa a ATIVO automaticamente.
             </p>
+          </div>
+        )}
+
+        {canalAtivo === "WHATSAPP" && (
+          <div className="space-y-4 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4">
+            <p className="text-xs font-black uppercase tracking-widest text-emerald-700">
+              Link privado com token
+            </p>
+            <p className="text-xs font-medium text-emerald-800">
+              O veículo não aparece na vitrine. Somente quem receber o link consegue abrir a ficha.
+            </p>
+
+            {canalWhats?.token_acesso && canalWhats?.token_ativo !== false ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 rounded-xl bg-white p-3">
+                  <code className="flex-1 truncate text-xs font-semibold text-slate-700">
+                    {linkPrivado}
+                  </code>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => copiar(linkPrivado, "Link copiado.")}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+                <p className="flex items-center gap-1 text-xs font-semibold text-emerald-800">
+                  <Eye className="h-3 w-3" /> {canalWhats?.visualizacoes ?? 0} visualização(ões)
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={tokenOcupado}
+                    onClick={gerarLink}
+                  >
+                    <RefreshCw className="mr-2 h-4 w-4" /> Gerar novo link
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={tokenOcupado}
+                    onClick={revogarLink}
+                  >
+                    <Ban className="mr-2 h-4 w-4" /> Revogar
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="bg-emerald-600 hover:bg-emerald-700"
+                    disabled={tokenOcupado}
+                    onClick={gerarMensagem}
+                  >
+                    <MessageCircle className="mr-2 h-4 w-4" /> Montar mensagem
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                disabled={tokenOcupado}
+                onClick={gerarLink}
+                className="bg-emerald-600 hover:bg-emerald-700"
+              >
+                {tokenOcupado && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Gerar link privado
+              </Button>
+            )}
+
+            {mensagem && (
+              <div className="space-y-2 rounded-xl bg-white p-3">
+                <Textarea rows={10} value={mensagem} onChange={(e) => setMensagem(e.target.value)} />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => copiar(mensagem, "Mensagem copiada.")}
+                >
+                  <Copy className="mr-2 h-4 w-4" /> Copiar mensagem
+                </Button>
+              </div>
+            )}
           </div>
         )}
 

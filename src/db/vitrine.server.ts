@@ -95,7 +95,8 @@ export async function listarAnunciosVitrine(userId?: string | null) {
       ORDER BY le.inicio_em ASC LIMIT 1
     ) l ON true
     WHERE a.status = 'PUBLICADO'
-      AND (pc.id IS NULL OR pc.ativo = true)
+      AND pc.ativo = true
+
     ORDER BY a.publicado_em DESC NULLS LAST
     LIMIT 60
   `);

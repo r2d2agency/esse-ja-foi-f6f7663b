@@ -5,7 +5,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Save, Settings, BrainCircuit, Mail, Send } from "lucide-react";
+import { Save, Settings, BrainCircuit, Mail, Send, ScanSearch, FileSignature, Loader2, PlugZap } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import {
+  getProvedorConsultaFn,
+  salvarProvedorConsultaFn,
+  testarConexaoConsultaFn,
+} from "@/lib/consulta-veicular.functions";
+import { getTermoVigenteFn, salvarTermoFn } from "@/lib/termos.functions";
 import { listarConfiguracoesFn, salvarConfiguracaoFn, enviarEmailTesteFn } from "@/lib/admin.functions";
 
 
@@ -216,7 +224,205 @@ function ConfiguracoesAdminPage() {
             </Button>
           </div>
         </section>
+
+        <ConsultaVeicularSection />
+        <TermoAdesaoSection />
       </div>
+  );
+}
+
+function ConsultaVeicularSection() {
+  const [form, setForm] = useState({
+    nome: "Company Conferi",
+    base_url: "https://webservice.companyconferi.com.br",
+    caminho_consulta: "/api-clientes/consulta",
+    produto: "GOLD",
+    usuario: "",
+    api_key: "",
+    ativo: false,
+  });
+  const [chaveMascarada, setChaveMascarada] = useState<string | null>(null);
+  const [ocupado, setOcupado] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      const res: any = await getProvedorConsultaFn();
+      const p = res?.data;
+      if (!p) return;
+      setForm((f) => ({
+        ...f,
+        nome: p.nome || f.nome,
+        base_url: p.base_url || f.base_url,
+        caminho_consulta: p.caminho_consulta || f.caminho_consulta,
+        produto: p.produto || f.produto,
+        usuario: p.usuario || "",
+        api_key: "",
+        ativo: !!p.ativo,
+      }));
+      setChaveMascarada(p.chave_mascarada || null);
+    })();
+  }, []);
+
+  async function salvarProvedor() {
+    setOcupado(true);
+    try {
+      const res: any = await salvarProvedorConsultaFn({ data: form });
+      if (!res?.ok) return toast.error(res?.message || "Erro ao salvar o provedor.");
+      toast.success("Módulo de consulta veicular salvo.");
+      const atualizado: any = await getProvedorConsultaFn();
+      setChaveMascarada(atualizado?.data?.chave_mascarada || null);
+      setForm((f) => ({ ...f, api_key: "" }));
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  async function testar() {
+    setOcupado(true);
+    try {
+      const res: any = await testarConexaoConsultaFn();
+      if (res?.ok) toast.success(res.message || "Conexão validada.");
+      else toast.error(res?.message || "Falha na conexão.");
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  return (
+    <section className="space-y-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+          <ScanSearch className="h-5 w-5 text-teal-700" />
+          Consulta veicular (Company Conferi)
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold text-slate-500">Módulo ativo</span>
+          <Switch
+            checked={form.ativo}
+            onCheckedChange={(v: boolean) => setForm({ ...form, ativo: v })}
+          />
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="space-y-2">
+          <Label>URL base da API</Label>
+          <Input
+            value={form.base_url}
+            onChange={(e) => setForm({ ...form, base_url: e.target.value })}
+            placeholder="https://webservice.companyconferi.com.br"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Caminho da consulta</Label>
+          <Input
+            value={form.caminho_consulta}
+            onChange={(e) => setForm({ ...form, caminho_consulta: e.target.value })}
+            placeholder="/api-clientes/consulta"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Produto / pacote</Label>
+          <Input
+            value={form.produto}
+            onChange={(e) => setForm({ ...form, produto: e.target.value })}
+            placeholder="GOLD"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Usuário (se exigido)</Label>
+          <Input
+            value={form.usuario}
+            onChange={(e) => setForm({ ...form, usuario: e.target.value })}
+          />
+        </div>
+        <div className="space-y-2 md:col-span-2">
+          <Label>Chave de acesso</Label>
+          <Input
+            type="password"
+            value={form.api_key}
+            onChange={(e) => setForm({ ...form, api_key: e.target.value })}
+            placeholder={chaveMascarada || "Cole a chave fornecida pelo provedor"}
+          />
+          <p className="text-xs text-slate-500">
+            {chaveMascarada
+              ? `Chave atual: ${chaveMascarada}. Deixe em branco para manter.`
+              : "Nenhuma chave cadastrada ainda."}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex gap-2">
+        <Button className="bg-teal-900" disabled={ocupado} onClick={salvarProvedor}>
+          {ocupado ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+          Salvar módulo
+        </Button>
+        <Button variant="outline" disabled={ocupado} onClick={testar}>
+          <PlugZap className="mr-2 h-4 w-4" /> Testar conexão
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+function TermoAdesaoSection() {
+  const [versao, setVersao] = useState("1.0");
+  const [titulo, setTitulo] = useState("Termo de adesão do vendedor");
+  const [conteudo, setConteudo] = useState("");
+  const [ocupado, setOcupado] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      const res: any = await getTermoVigenteFn();
+      const t = res?.data;
+      if (!t) return;
+      setVersao(t.versao || "1.0");
+      setTitulo(t.titulo || "Termo de adesão do vendedor");
+      setConteudo(t.conteudo || "");
+    })();
+  }, []);
+
+  async function salvarTermoAtual() {
+    if (conteudo.trim().length < 20) return toast.error("Escreva o conteúdo do termo.");
+    setOcupado(true);
+    try {
+      const res: any = await salvarTermoFn({ data: { versao, titulo, conteudo } });
+      if (!res?.ok) return toast.error(res?.message || "Erro ao salvar o termo.");
+      toast.success("Nova versão do termo publicada.");
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  return (
+    <section className="space-y-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+        <FileSignature className="h-5 w-5 text-amber-600" />
+        Termo de adesão do vendedor
+      </div>
+      <div className="grid gap-4 md:grid-cols-3">
+        <div className="space-y-2">
+          <Label>Versão</Label>
+          <Input value={versao} onChange={(e) => setVersao(e.target.value)} />
+        </div>
+        <div className="space-y-2 md:col-span-2">
+          <Label>Título</Label>
+          <Input value={titulo} onChange={(e) => setTitulo(e.target.value)} />
+        </div>
+      </div>
+      <div className="space-y-2">
+        <Label>Conteúdo do termo</Label>
+        <Textarea rows={12} value={conteudo} onChange={(e) => setConteudo(e.target.value)} />
+        <p className="text-xs text-slate-500">
+          Ao salvar, uma nova versão é publicada e passa a ser exigida no primeiro acesso dos
+          vendedores. O aceite registra data, hora, IP e navegador.
+        </p>
+      </div>
+      <Button className="bg-teal-900" disabled={ocupado} onClick={salvarTermoAtual}>
+        {ocupado ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+        Publicar versão do termo
+      </Button>
+    </section>
   );
 }
 

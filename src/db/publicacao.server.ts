@@ -13,11 +13,19 @@ function rowsOf(res: any): any[] {
   return [];
 }
 
-export const CANAIS = ["LEILAO", "ANUNCIO", "VITRINE"] as const;
+export const CANAIS = ["LEILAO", "ANUNCIO", "VITRINE", "WHATSAPP"] as const;
 export type Canal = (typeof CANAIS)[number];
 
 /** Veículo só pode ser publicado depois de aprovado na análise pós-vistoria. */
 export const STATUS_APTOS = ["PRONTO_PARA_ANUNCIO", "ANUNCIADO", "EM_LEILAO"];
+
+function gerarToken() {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
 
 export async function ensurePublicacaoSchema() {
   const d = requireDb();
@@ -41,6 +49,10 @@ export async function ensurePublicacaoSchema() {
     sql`ALTER TABLE publicacao_canais ADD COLUMN IF NOT EXISTS descricao text`,
     sql`ALTER TABLE publicacao_canais ADD COLUMN IF NOT EXISTS fotos jsonb DEFAULT '[]'`,
     sql`ALTER TABLE publicacao_canais ADD COLUMN IF NOT EXISTS atualizado_em timestamptz DEFAULT now()`,
+    sql`ALTER TABLE publicacao_canais ADD COLUMN IF NOT EXISTS token_acesso text`,
+    sql`ALTER TABLE publicacao_canais ADD COLUMN IF NOT EXISTS token_ativo boolean DEFAULT true`,
+    sql`ALTER TABLE publicacao_canais ADD COLUMN IF NOT EXISTS visualizacoes integer DEFAULT 0`,
+    sql`CREATE UNIQUE INDEX IF NOT EXISTS publicacao_canais_token_idx ON publicacao_canais (token_acesso)`,
   ];
   for (const stmt of alters) {
     try {
@@ -50,6 +62,7 @@ export async function ensurePublicacaoSchema() {
     }
   }
 }
+
 
 export async function listarVeiculosAptosPublicacao() {
   const d = requireDb();
@@ -85,7 +98,7 @@ export async function getCanaisPublicacao(veiculoId: string) {
   const apto = STATUS_APTOS.includes(veiculo.status_analise);
 
   const cRes = await d.execute(sql`
-    SELECT canal, ativo, titulo, descricao, fotos, atualizado_em
+    SELECT canal, ativo, titulo, descricao, fotos, atualizado_em, token_acesso, token_ativo, visualizacoes
     FROM publicacao_canais WHERE veiculo_id = ${veiculoId}::uuid
   `);
   const existentes = rowsOf(cRes);
@@ -99,9 +112,13 @@ export async function getCanaisPublicacao(veiculoId: string) {
         titulo: `${veiculo.marca} ${veiculo.modelo} ${veiculo.ano_modelo}`,
         descricao: "",
         fotos: [],
+        token_acesso: null,
+        token_ativo: true,
+        visualizacoes: 0,
       }
     );
   });
+
 
   return { veiculo, apto, canais };
 }
@@ -128,18 +145,23 @@ export async function salvarCanalPublicacao(data: {
     );
   }
 
+  // Canais privados (WhatsApp) ganham um token de acesso próprio na primeira ativação.
+  const tokenNovo = data.canal === "WHATSAPP" && data.ativo ? gerarToken() : null;
+
   await d.execute(sql`
-    INSERT INTO publicacao_canais (veiculo_id, canal, ativo, titulo, descricao, fotos)
+    INSERT INTO publicacao_canais (veiculo_id, canal, ativo, titulo, descricao, fotos, token_acesso, token_ativo)
     VALUES (
       ${data.veiculo_id}::uuid, ${data.canal}, ${data.ativo},
       ${data.titulo || null}, ${data.descricao || null},
-      ${JSON.stringify(data.fotos || [])}::jsonb
+      ${JSON.stringify(data.fotos || [])}::jsonb,
+      ${tokenNovo}, true
     )
     ON CONFLICT (veiculo_id, canal) DO UPDATE SET
       ativo = EXCLUDED.ativo,
       titulo = EXCLUDED.titulo,
       descricao = EXCLUDED.descricao,
       fotos = EXCLUDED.fotos,
+      token_acesso = COALESCE(publicacao_canais.token_acesso, EXCLUDED.token_acesso),
       atualizado_em = now()
   `);
 
@@ -157,9 +179,119 @@ export async function salvarCanalPublicacao(data: {
   return { ok: true as const };
 }
 
+/** Gera (ou regenera) o token do link privado do WhatsApp. */
+export async function regenerarTokenCanal(veiculoId: string, canal: Canal = "WHATSAPP") {
+  const d = requireDb();
+  await ensurePublicacaoSchema();
+  const token = gerarToken();
+  await d.execute(sql`
+    INSERT INTO publicacao_canais (veiculo_id, canal, ativo, token_acesso, token_ativo)
+    VALUES (${veiculoId}::uuid, ${canal}, true, ${token}, true)
+    ON CONFLICT (veiculo_id, canal) DO UPDATE SET
+      token_acesso = ${token}, token_ativo = true, visualizacoes = 0, atualizado_em = now()
+  `);
+  return { ok: true as const, token };
+}
+
+/** Revoga o link privado sem apagar o histórico do canal. */
+export async function revogarTokenCanal(veiculoId: string, canal: Canal = "WHATSAPP") {
+  const d = requireDb();
+  await ensurePublicacaoSchema();
+  await d.execute(sql`
+    UPDATE publicacao_canais SET token_ativo = false, atualizado_em = now()
+    WHERE veiculo_id = ${veiculoId}::uuid AND canal = ${canal}
+  `);
+  return { ok: true as const };
+}
+
+/** Ficha do veículo acessível apenas por quem tem o link com token. */
+export async function getVeiculoPorToken(token: string) {
+  const d = requireDb();
+  await ensurePublicacaoSchema();
+
+  const canal = rowsOf(
+    await d.execute(sql`
+      SELECT * FROM publicacao_canais
+      WHERE token_acesso = ${token} AND token_ativo = true AND ativo = true
+      LIMIT 1
+    `),
+  )[0];
+  if (!canal) return null;
+
+  const veiculo = rowsOf(
+    await d.execute(sql`
+      SELECT v.id, v.placa, v.marca, v.modelo, v.versao, v.ano_fabricacao, v.ano_modelo,
+             v.km, v.cor, v.cambio, v.combustivel, v.cidade, v.uf, v.fotos
+      FROM veiculos v WHERE v.id = ${canal.veiculo_id}::uuid
+    `),
+  )[0];
+  if (!veiculo) return null;
+
+  await d.execute(
+    sql`UPDATE publicacao_canais SET visualizacoes = COALESCE(visualizacoes,0) + 1 WHERE id = ${canal.id}::uuid`,
+  );
+
+  const fotosCanal = Array.isArray(canal.fotos) ? canal.fotos : [];
+  const fotosVeiculo = Array.isArray(veiculo.fotos)
+    ? veiculo.fotos.map((f: any) => (typeof f === "string" ? f : f?.url)).filter(Boolean)
+    : [];
+
+  return {
+    veiculo,
+    titulo: canal.titulo || `${veiculo.marca} ${veiculo.modelo} ${veiculo.ano_modelo}`,
+    descricao: canal.descricao || "",
+    fotos: fotosCanal.length ? fotosCanal : fotosVeiculo,
+  };
+}
+
+/** Texto pronto (com emojis) para envio via WhatsApp / Meta API. */
+export async function montarMensagemWhatsapp(veiculoId: string, baseUrl: string) {
+  const d = requireDb();
+  await ensurePublicacaoSchema();
+
+  const canal = rowsOf(
+    await d.execute(sql`
+      SELECT * FROM publicacao_canais WHERE veiculo_id = ${veiculoId}::uuid AND canal = 'WHATSAPP' LIMIT 1
+    `),
+  )[0];
+  if (!canal?.token_acesso || canal.token_ativo === false) {
+    throw new Error("Ative o canal WhatsApp e gere o link privado antes de montar a mensagem.");
+  }
+
+  const v = rowsOf(
+    await d.execute(sql`
+      SELECT marca, modelo, versao, ano_fabricacao, ano_modelo, km, cor, cambio, combustivel, cidade, uf, fotos
+      FROM veiculos WHERE id = ${veiculoId}::uuid
+    `),
+  )[0];
+  if (!v) throw new Error("Veículo não encontrado.");
+
+  const fotosCanal = Array.isArray(canal.fotos) ? canal.fotos : [];
+  const fotosVeiculo = Array.isArray(v.fotos)
+    ? v.fotos.map((f: any) => (typeof f === "string" ? f : f?.url)).filter(Boolean)
+    : [];
+  const fotoCapa = fotosCanal[0] || fotosVeiculo[0] || null;
+
+  const link = `${baseUrl.replace(/\/+$/, "")}/v/${canal.token_acesso}`;
+  const km = v.km ? `${Number(v.km).toLocaleString("pt-BR")} km` : "KM não informado";
+  const linhas = [
+    `🚗 *${canal.titulo || `${v.marca} ${v.modelo}`}*`,
+    `📅 ${v.ano_fabricacao}/${v.ano_modelo}  •  🛣️ ${km}`,
+    `⚙️ ${v.cambio || "Câmbio n/d"}  •  ⛽ ${v.combustivel || "Combustível n/d"}  •  🎨 ${v.cor || "Cor n/d"}`,
+    v.cidade ? `📍 ${v.cidade}${v.uf ? `/${v.uf}` : ""}` : null,
+    "",
+    canal.descricao ? `${canal.descricao}` : "✅ Veículo vistoriado pela ESSE JÁ FOI.",
+    "",
+    `🔗 Veja as fotos e a ficha completa: ${link}`,
+    "🔒 Link exclusivo — este veículo não está na vitrine pública.",
+  ].filter(Boolean);
+
+  return { mensagem: linhas.join("\n"), link, foto_capa: fotoCapa };
+}
+
 /**
- * Mantém a vitrine pública em dia: se algum canal (ANUNCIO/VITRINE) estiver ativo,
- * garante um registro publicado em anuncios_veiculo. Caso contrário, pausa.
+ * Mantém a vitrine pública em dia: só o canal VITRINE publica o veículo na
+ * listagem aberta. Os demais canais (anúncio direto, WhatsApp) não expõem o carro.
  */
 export async function sincronizarVitrine(veiculoId: string) {
   const d = requireDb();
@@ -169,8 +301,9 @@ export async function sincronizarVitrine(veiculoId: string) {
 
     const cRes = await d.execute(sql`
       SELECT canal, ativo, titulo, descricao FROM publicacao_canais
-      WHERE veiculo_id = ${veiculoId}::uuid AND canal IN ('ANUNCIO','VITRINE')
+      WHERE veiculo_id = ${veiculoId}::uuid AND canal = 'VITRINE'
     `);
+
     const canais = rowsOf(cRes);
     const ativos = canais.filter((c) => c.ativo);
 
