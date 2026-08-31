@@ -75,7 +75,10 @@ export function LaudosVeiculo({ veiculoId }: { veiculoId: string }) {
       fd.append("file", file);
       const res = await fetch("/api/public/upload", { method: "POST", body: fd });
       const json = await res.json().catch(() => null);
-      if (!json?.url) return toast.error("Falha ao enviar o arquivo.");
+      if (!json?.url) {
+        toast.error("Falha ao enviar o arquivo.");
+        return;
+      }
       setForm((f) => ({ ...f, arquivo_url: json.url, arquivo_nome: file.name }));
       toast.success("Arquivo carregado. Complete os dados e salve.");
     } finally {
@@ -84,13 +87,19 @@ export function LaudosVeiculo({ veiculoId }: { veiculoId: string }) {
   }
 
   async function salvar() {
-    if (!form.arquivo_url) return toast.error("Envie o arquivo do laudo (PDF ou imagem).");
+    if (!form.arquivo_url) {
+      toast.error("Envie o arquivo do laudo (PDF ou imagem).");
+      return;
+    }
     setEnviando(true);
     try {
       const res: any = await salvarLaudoExternoFn({
         data: { token: getSessionToken(), veiculo_id: veiculoId, ...form },
       });
-      if (!res?.ok) return toast.error(res?.message || "Erro ao salvar o laudo.");
+      if (!res?.ok) {
+        toast.error(res?.message || "Erro ao salvar o laudo.");
+        return;
+      }
       toast.success("Laudo vinculado ao veículo.");
       setForm({
         tipo: "CAUTELAR",
@@ -110,7 +119,10 @@ export function LaudosVeiculo({ veiculoId }: { veiculoId: string }) {
 
   async function remover(id: string) {
     const res: any = await removerLaudoExternoFn({ data: { id } });
-    if (!res?.ok) return toast.error(res?.message || "Erro ao remover.");
+    if (!res?.ok) {
+      toast.error(res?.message || "Erro ao remover.");
+      return;
+    }
     toast.success("Laudo removido.");
     refetch();
   }
@@ -121,7 +133,10 @@ export function LaudosVeiculo({ veiculoId }: { veiculoId: string }) {
       const res: any = await consultarLaudoVeiculoFn({
         data: { token: getSessionToken(), veiculoId },
       });
-      if (!res?.ok) return toast.error(res?.message || "Não foi possível consultar.");
+      if (!res?.ok) {
+        toast.error(res?.message || "Não foi possível consultar.");
+        return;
+      }
       toast.success("Consulta realizada e vinculada ao veículo.");
       refetchConsultas();
     } finally {

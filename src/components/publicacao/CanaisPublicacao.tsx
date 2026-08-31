@@ -203,7 +203,10 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
     setTokenOcupado(true);
     try {
       const res: any = await regenerarTokenCanalFn({ data: { veiculoId } });
-      if (!res?.ok) return toast.error(res?.message || "Erro ao gerar o link.");
+      if (!res?.ok) {
+        toast.error(res?.message || "Erro ao gerar o link.");
+        return;
+      }
       toast.success("Link privado gerado.");
       setMensagem("");
       refetch();
@@ -216,7 +219,10 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
     setTokenOcupado(true);
     try {
       const res: any = await revogarTokenCanalFn({ data: { veiculoId } });
-      if (!res?.ok) return toast.error(res?.message || "Erro ao revogar o link.");
+      if (!res?.ok) {
+        toast.error(res?.message || "Erro ao revogar o link.");
+        return;
+      }
       toast.success("Link revogado.");
       setMensagem("");
       refetch();
@@ -229,7 +235,10 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
     setTokenOcupado(true);
     try {
       const res: any = await montarMensagemWhatsappFn({ data: { veiculoId, baseUrl } });
-      if (!res?.ok) return toast.error(res?.message || "Erro ao montar a mensagem.");
+      if (!res?.ok) {
+        toast.error(res?.message || "Erro ao montar a mensagem.");
+        return;
+      }
       setMensagem(res.data.mensagem);
     } finally {
       setTokenOcupado(false);

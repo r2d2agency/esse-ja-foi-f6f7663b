@@ -267,7 +267,10 @@ function ConsultaVeicularSection() {
     setOcupado(true);
     try {
       const res: any = await salvarProvedorConsultaFn({ data: form });
-      if (!res?.ok) return toast.error(res?.message || "Erro ao salvar o provedor.");
+      if (!res?.ok) {
+        toast.error(res?.message || "Erro ao salvar o provedor.");
+        return;
+      }
       toast.success("Módulo de consulta veicular salvo.");
       const atualizado: any = await getProvedorConsultaFn();
       setChaveMascarada(atualizado?.data?.chave_mascarada || null);
@@ -383,11 +386,17 @@ function TermoAdesaoSection() {
   }, []);
 
   async function salvarTermoAtual() {
-    if (conteudo.trim().length < 20) return toast.error("Escreva o conteúdo do termo.");
+    if (conteudo.trim().length < 20) {
+      toast.error("Escreva o conteúdo do termo.");
+      return;
+    }
     setOcupado(true);
     try {
       const res: any = await salvarTermoFn({ data: { versao, titulo, conteudo } });
-      if (!res?.ok) return toast.error(res?.message || "Erro ao salvar o termo.");
+      if (!res?.ok) {
+        toast.error(res?.message || "Erro ao salvar o termo.");
+        return;
+      }
       toast.success("Nova versão do termo publicada.");
     } finally {
       setOcupado(false);

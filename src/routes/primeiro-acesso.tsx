@@ -70,14 +70,23 @@ function PrimeiroAcessoPage() {
   }, [status]);
 
   async function salvarSenha() {
-    if (senha.length < 8) return toast.error("A senha precisa ter ao menos 8 caracteres.");
-    if (senha !== confirmar) return toast.error("As senhas não conferem.");
+    if (senha.length < 8) {
+      toast.error("A senha precisa ter ao menos 8 caracteres.");
+      return;
+    }
+    if (senha !== confirmar) {
+      toast.error("As senhas não conferem.");
+      return;
+    }
     setSalvando(true);
     try {
       const res: any = await trocarSenhaPrimeiroAcessoFn({
         data: { token: getSessionToken(), novaSenha: senha },
       });
-      if (!res?.ok) return toast.error(res?.message || "Não foi possível salvar a senha.");
+      if (!res?.ok) {
+        toast.error(res?.message || "Não foi possível salvar a senha.");
+        return;
+      }
       toast.success("Senha definida com sucesso.");
       const novo: any = await refetch();
       const st = novo?.data?.data;
@@ -89,14 +98,23 @@ function PrimeiroAcessoPage() {
   }
 
   async function aceitar() {
-    if (!concorda) return toast.error("Marque a confirmação de leitura do termo.");
-    if (assinatura.trim().length < 3) return toast.error("Digite seu nome completo como assinatura.");
+    if (!concorda) {
+      toast.error("Marque a confirmação de leitura do termo.");
+      return;
+    }
+    if (assinatura.trim().length < 3) {
+      toast.error("Digite seu nome completo como assinatura.");
+      return;
+    }
     setSalvando(true);
     try {
       const res: any = await aceitarTermoFn({
         data: { token: getSessionToken(), assinatura: assinatura.trim() },
       });
-      if (!res?.ok) return toast.error(res?.message || "Não foi possível registrar o aceite.");
+      if (!res?.ok) {
+        toast.error(res?.message || "Não foi possível registrar o aceite.");
+        return;
+      }
       toast.success("Termo aceito e registrado.");
       navigate({ to: "/vendedor" });
     } finally {

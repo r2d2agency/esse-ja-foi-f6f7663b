@@ -219,14 +219,23 @@ function PreCadastroDialog() {
   });
 
   async function salvar() {
-    if (form.nome.trim().length < 3) return toast.error("Informe o nome completo.");
-    if (!form.email.includes("@")) return toast.error("Informe um e-mail válido.");
+    if (form.nome.trim().length < 3) {
+      toast.error("Informe o nome completo.");
+      return;
+    }
+    if (!form.email.includes("@")) {
+      toast.error("Informe um e-mail válido.");
+      return;
+    }
     setSalvando(true);
     try {
       const res: any = await criarVendedorInternoFn({
         data: { token: getSessionToken(), ...form },
       });
-      if (!res?.ok) return toast.error(res?.message || "Não foi possível criar o vendedor.");
+      if (!res?.ok) {
+        toast.error(res?.message || "Não foi possível criar o vendedor.");
+        return;
+      }
       setSenhaGerada({
         email: form.email,
         senha: res.senha,
