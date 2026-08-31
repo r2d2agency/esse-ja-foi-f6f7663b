@@ -296,11 +296,47 @@ export async function registrarLance(leilaoId: string, compradorId: string, valo
     // no schema novo para que o mesmo INSERT funcione em todas as instalações.
     // Campos opcionais de rastreio (`ip`/`sessao` ou `ip_origem`/`user_agent`)
     // ficam fora daqui porque seus nomes variam entre versões.
-    const res = await tx.execute(sql`
-      INSERT INTO lances (id, leilao_id, comprador_id, valor, valido, criado_em)
-      VALUES (gen_random_uuid(), ${leilaoId}::uuid, ${compradorId}::uuid, ${valorNum}, true, now())
-      RETURNING id
-    `);
+    // O UUID é criado na aplicação para não depender da extensão/função
+    // gen_random_uuid() estar liberada ao usuário do PostgreSQL em produção.
+    const novoLanceId = crypto.randomUUID();
+    let res;
+    try {
+      res = await tx.execute(sql`
+        INSERT INTO lances (id, leilao_id, comprador_id, valor, valido, criado_em)
+        VALUES (${novoLanceId}::uuid, ${leilaoId}::uuid, ${compradorId}::uuid, ${valorNum}, true, CURRENT_TIMESTAMP)
+        RETURNING id
+      `);
+    } catch (error: any) {
+      const codigo = typeof error?.code === "string" ? error.code : "";
+      const detalhe = typeof error?.detail === "string" ? error.detail : "";
+      const restricao = typeof error?.constraint_name === "string"
+        ? error.constraint_name
+        : typeof error?.constraint === "string"
+          ? error.constraint
+          : "";
+
+      console.error("[leilao] INSERT de lance rejeitado", {
+        codigo,
+        restricao,
+        detalhe,
+        leilaoId,
+        compradorId,
+      });
+
+      if (codigo === "42501") {
+        throw new Error("O banco bloqueou a gravação do lance por permissão. Reinicie o backend para aplicar a reconciliação do módulo de leilão.");
+      }
+      if (codigo === "23503") {
+        throw new Error("O leilão ou o cadastro do comprador não existe mais. Atualize a página e entre novamente.");
+      }
+      if (codigo === "23502") {
+        throw new Error(`O banco exige um campo legado para registrar o lance${detalhe ? `: ${detalhe}` : "."}`);
+      }
+      if (codigo === "23514") {
+        throw new Error(`O lance não atende a uma regra do banco${restricao ? ` (${restricao})` : ""}.`);
+      }
+      throw error;
+    }
     const lanceId = rowsOf(res)?.[0]?.id;
 
     const { processarEventoSistema } = await import("./automacoes-motor.server");
