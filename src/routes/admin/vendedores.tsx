@@ -3,18 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { listarVendedoresFn } from "@/lib/vendedores-compliance.functions";
 import { useEffect, useState } from "react";
-import { Search, ChevronRight, UserPlus, Loader2, Copy } from "lucide-react";
-import { toast } from "sonner";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { getSessionToken } from "@/lib/session";
-import { criarVendedorInternoFn } from "@/lib/pre-cadastro.functions";
+import { Search, ChevronRight } from "lucide-react";
+import { WizardPreCadastro } from "@/components/vendedor/WizardPreCadastro";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -80,7 +70,7 @@ function VendedoresPage() {
           <h1 className="text-2xl font-black text-slate-950 uppercase tracking-tight">Vendedores</h1>
           <p className="text-slate-500 font-medium">Gestão de cadastro e compliance da rede Esse Já Foi.</p>
         </div>
-        <PreCadastroDialog />
+        <WizardPreCadastro />
       </div>
 
       <div className="flex flex-col gap-4">
@@ -201,151 +191,5 @@ function VendedoresPage() {
         </Table>
       </div>
     </div>
-  );
-}
-
-function PreCadastroDialog() {
-  const [aberto, setAberto] = useState(false);
-  const [salvando, setSalvando] = useState(false);
-  const [senhaGerada, setSenhaGerada] = useState<{ email: string; senha: string; emailEnviado: boolean } | null>(null);
-  const [form, setForm] = useState({
-    nome: "",
-    email: "",
-    cpf: "",
-    cnpj: "",
-    whatsapp: "",
-    cidade: "",
-    uf: "",
-  });
-
-  async function salvar() {
-    if (form.nome.trim().length < 3) {
-      toast.error("Informe o nome completo.");
-      return;
-    }
-    if (!form.email.includes("@")) {
-      toast.error("Informe um e-mail válido.");
-      return;
-    }
-    setSalvando(true);
-    try {
-      const res: any = await criarVendedorInternoFn({
-        data: { token: getSessionToken(), ...form },
-      });
-      if (!res?.ok) {
-        toast.error(res?.message || "Não foi possível criar o vendedor.");
-        return;
-      }
-      setSenhaGerada({
-        email: form.email,
-        senha: res.senha,
-        emailEnviado: !!res.emailEnviado,
-      });
-      toast.success("Vendedor criado com senha temporária.");
-    } finally {
-      setSalvando(false);
-    }
-  }
-
-  function fechar() {
-    setAberto(false);
-    setSenhaGerada(null);
-    setForm({ nome: "", email: "", cpf: "", cnpj: "", whatsapp: "", cidade: "", uf: "" });
-    window.location.reload();
-  }
-
-  return (
-    <Dialog open={aberto} onOpenChange={(v: boolean) => (v ? setAberto(true) : fechar())}>
-      <DialogTrigger asChild>
-        <Button className="h-11 bg-teal-600 font-bold hover:bg-teal-700">
-          <UserPlus className="mr-2 h-4 w-4" /> Pré-cadastro interno
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle className="font-black uppercase tracking-tight">
-            Pré-cadastro de vendedor
-          </DialogTitle>
-        </DialogHeader>
-
-        {senhaGerada ? (
-          <div className="space-y-4">
-            <p className="text-sm text-slate-600">
-              Conta criada para <strong>{senhaGerada.email}</strong>. O vendedor entra com a senha
-              temporária, troca a senha e assina o termo no primeiro acesso — sem passar por
-              aprovação de compliance.
-            </p>
-            <div className="flex items-center gap-2 rounded-xl bg-slate-100 p-3">
-              <code className="flex-1 font-black tracking-widest text-slate-900">
-                {senhaGerada.senha}
-              </code>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  navigator.clipboard.writeText(senhaGerada.senha);
-                  toast.success("Senha copiada.");
-                }}
-              >
-                <Copy className="h-4 w-4" />
-              </Button>
-            </div>
-            <p className="text-xs font-semibold text-slate-500">
-              {senhaGerada.emailEnviado
-                ? "E-mail com a senha enviado ao vendedor."
-                : "Não foi possível enviar o e-mail — repasse a senha manualmente."}
-            </p>
-            <Button onClick={fechar} className="w-full bg-teal-600 font-bold hover:bg-teal-700">
-              Concluir
-            </Button>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {[
-              { k: "nome", label: "Nome completo / Razão social" },
-              { k: "email", label: "E-mail" },
-              { k: "cpf", label: "CPF" },
-              { k: "cnpj", label: "CNPJ (opcional)" },
-              { k: "whatsapp", label: "WhatsApp" },
-            ].map((c) => (
-              <div key={c.k} className="space-y-1">
-                <Label className="text-xs font-bold text-slate-600">{c.label}</Label>
-                <Input
-                  className="h-11"
-                  value={(form as any)[c.k]}
-                  onChange={(e) => setForm({ ...form, [c.k]: e.target.value })}
-                />
-              </div>
-            ))}
-            <div className="grid grid-cols-3 gap-3">
-              <div className="col-span-2 space-y-1">
-                <Label className="text-xs font-bold text-slate-600">Cidade</Label>
-                <Input
-                  className="h-11"
-                  value={form.cidade}
-                  onChange={(e) => setForm({ ...form, cidade: e.target.value })}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs font-bold text-slate-600">UF</Label>
-                <Input
-                  className="h-11 uppercase"
-                  maxLength={2}
-                  value={form.uf}
-                  onChange={(e) => setForm({ ...form, uf: e.target.value.toUpperCase() })}
-                />
-              </div>
-            </div>
-            <Button
-              onClick={salvar}
-              disabled={salvando}
-              className="h-12 w-full bg-teal-600 font-bold hover:bg-teal-700"
-            >
-              {salvando && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Criar e gerar senha
-            </Button>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
   );
 }

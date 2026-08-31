@@ -18,6 +18,8 @@ export const criarVendedorInternoFn = createServerFn({ method: "POST" })
         email: z.string().email(),
         cpf: opcional,
         cnpj: opcional,
+        rg: opcional,
+        data_nascimento: opcional,
         tipo_pessoa: opcional,
         whatsapp: opcional,
         telefone: opcional,
@@ -28,15 +30,20 @@ export const criarVendedorInternoFn = createServerFn({ method: "POST" })
         bairro: opcional,
         cidade: opcional,
         uf: opcional,
+        doc_cnh_frente: z.string().nullable().optional(),
+        doc_cnh_verso: z.string().nullable().optional(),
+        doc_comprovante: z.string().nullable().optional(),
+        doc_selfie: z.string().nullable().optional(),
       })
       .parse(d),
   )
+
   .handler(async ({ data }) => {
     try {
       const criadoPor = await userIdFrom(data.token ?? null);
       const { criarVendedorInterno } = await import("@/db/pre-cadastro.server");
       const { token: _t, ...dados } = data;
-      const res = await criarVendedorInterno(dados, criadoPor);
+      const res = await criarVendedorInterno(dados as any, criadoPor);
       return { ok: true as const, ...res };
     } catch (e: any) {
       return { ok: false as const, message: e?.message || "Erro ao criar o vendedor." };
@@ -82,5 +89,18 @@ export const trocarSenhaPrimeiroAcessoFn = createServerFn({ method: "POST" })
       return { ok: true as const };
     } catch (e: any) {
       return { ok: false as const, message: e?.message || "Erro ao definir a senha." };
+    }
+  });
+
+export const getResumoTermoFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) => z.object({ token: z.string().nullable().optional() }).parse(d))
+  .handler(async ({ data }) => {
+    try {
+      const userId = await userIdFrom(data.token ?? null);
+      if (!userId) return { ok: false as const, message: "Sessão expirada." };
+      const { resumoParaTermo } = await import("@/db/pre-cadastro.server");
+      return { ok: true as const, data: await resumoParaTermo(userId) };
+    } catch (e: any) {
+      return { ok: false as const, message: e?.message || "Erro ao carregar o resumo." };
     }
   });

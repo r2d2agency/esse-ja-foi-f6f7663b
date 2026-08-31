@@ -31,6 +31,8 @@ export type PreCadastroInput = {
   telefone?: string | undefined;
   tipo_pessoa?: string | undefined;
   cnpj?: string | undefined;
+  data_nascimento?: string | undefined;
+  rg?: string | undefined;
   cep?: string | undefined;
   endereco?: string | undefined;
   numero?: string | undefined;
@@ -38,6 +40,10 @@ export type PreCadastroInput = {
   bairro?: string | undefined;
   cidade?: string | undefined;
   uf?: string | undefined;
+  doc_cnh_frente?: string | undefined;
+  doc_cnh_verso?: string | undefined;
+  doc_comprovante?: string | undefined;
+  doc_selfie?: string | undefined;
 };
 
 async function garantirSchemas() {
@@ -53,7 +59,18 @@ async function garantirSchemas() {
   await ensureVendedoresSchema();
   const { ensureTermosSchema } = await import("./termos.server");
   await ensureTermosSchema();
+  const d = requireDb();
+  await d.execute(sql`
+    ALTER TABLE profiles
+    ADD COLUMN IF NOT EXISTS data_nascimento text,
+    ADD COLUMN IF NOT EXISTS rg text,
+    ADD COLUMN IF NOT EXISTS documento_cnh_url text,
+    ADD COLUMN IF NOT EXISTS documento_cnh_verso_url text,
+    ADD COLUMN IF NOT EXISTS documento_comprovante_endereco_url text,
+    ADD COLUMN IF NOT EXISTS documento_selfie_url text;
+  `);
 }
+
 
 /**
  * Cria (ou reativa) um vendedor cadastrado internamente pela administração.
@@ -78,21 +95,29 @@ export async function criarVendedorInterno(dados: PreCadastroInput, criadoPor?: 
   const inserido = rowsOf(
     await d.execute(sql`
       INSERT INTO profiles (
-        nome, email, cpf, cnpj, tipo_pessoa, whatsapp, telefone,
+        nome, email, cpf, cnpj, tipo_pessoa, whatsapp, telefone, data_nascimento, rg,
         cep, endereco, numero, complemento, bairro, cidade, uf,
+        documento_cnh_url, documento_cnh_verso_url, documento_comprovante_endereco_url, documento_selfie_url,
+        documento_cnh_status, documento_cnh_verso_status, documento_comprovante_endereco_status, documento_selfie_status,
         role, ativo, senha_hash, senha_temporaria, origem_cadastro,
-        cadastro_completo, status_compliance, verificado
+        cadastro_completo, status_compliance, verificado, compliance_data_analise
       ) VALUES (
         ${dados.nome}, ${email}, ${dados.cpf || null}, ${dados.cnpj || null},
         ${dados.tipo_pessoa || "PF"}, ${dados.whatsapp || null}, ${dados.telefone || dados.whatsapp || null},
+        ${dados.data_nascimento || null}, ${dados.rg || null},
         ${dados.cep || null}, ${dados.endereco || null}, ${dados.numero || null},
         ${dados.complemento || null}, ${dados.bairro || null}, ${dados.cidade || null}, ${dados.uf || null},
+        ${dados.doc_cnh_frente || null}, ${dados.doc_cnh_verso || null},
+        ${dados.doc_comprovante || null}, ${dados.doc_selfie || null},
+        ${dados.doc_cnh_frente ? "APROVADO" : "PENDENTE"}, ${dados.doc_cnh_verso ? "APROVADO" : "PENDENTE"},
+        ${dados.doc_comprovante ? "APROVADO" : "PENDENTE"}, ${dados.doc_selfie ? "APROVADO" : "PENDENTE"},
         'vendedor'::text::app_role, true, ${hash}, true, 'INTERNO',
-        true, 'DISPENSADO', true
+        true, 'DISPENSADO', true, now()
       )
       RETURNING id
     `),
   )[0];
+
 
   const perfilId = String(inserido.id);
 
@@ -197,4 +222,36 @@ export async function definirNovaSenha(perfilId: string, novaSenha: string) {
     WHERE id = ${perfilId}::uuid
   `);
   return { ok: true as const };
+}
+
+/** Resumo do vendedor + veículos, exibido antes da assinatura do termo. */
+export async function resumoParaTermo(perfilId: string) {
+  const d = requireDb();
+  await garantirSchemas();
+  const perfil = rowsOf(
+    await d.execute(sql`
+      SELECT nome, email, cpf, cnpj, tipo_pessoa, whatsapp, telefone, data_nascimento,
+             cep, endereco, numero, complemento, bairro, cidade, uf,
+             documento_cnh_url, documento_cnh_verso_url,
+             documento_comprovante_endereco_url, documento_selfie_url
+      FROM profiles WHERE id = ${perfilId}::uuid LIMIT 1
+    `),
+  )[0];
+
+  let veiculos: any[] = [];
+  try {
+    veiculos = rowsOf(
+      await d.execute(sql`
+        SELECT id, placa, marca, modelo, versao, ano_fabricacao, ano_modelo, cor, km,
+               combustivel, cambio, valor_interesse_cliente, valor_fipe, cidade, uf, fotos
+        FROM veiculos
+        WHERE perfil_id = ${perfilId}::uuid OR vendedor_id = ${perfilId}::uuid
+        ORDER BY criado_em DESC
+      `),
+    );
+  } catch (e) {
+    console.error("[pre-cadastro] resumo veiculos", e);
+  }
+
+  return { perfil: perfil || null, veiculos };
 }

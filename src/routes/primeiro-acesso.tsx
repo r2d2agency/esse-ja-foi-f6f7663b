@@ -13,6 +13,7 @@ import { getSessionToken } from "@/lib/session";
 import {
   getStatusPrimeiroAcessoFn,
   trocarSenhaPrimeiroAcessoFn,
+  getResumoTermoFn,
 } from "@/lib/pre-cadastro.functions";
 import { getTermoVigenteFn, aceitarTermoFn } from "@/lib/termos.functions";
 
@@ -50,6 +51,10 @@ function PrimeiroAcessoPage() {
     queryKey: ["primeiro-acesso"],
     queryFn: () => getStatusPrimeiroAcessoFn({ data: { token: getSessionToken() } }),
   });
+  const { data: resumoRes } = useQuery({
+    queryKey: ["resumo-termo"],
+    queryFn: () => getResumoTermoFn({ data: { token: getSessionToken() } }),
+  });
   const { data: termoRes } = useQuery({
     queryKey: ["termo-vigente"],
     queryFn: () => getTermoVigenteFn(),
@@ -57,6 +62,7 @@ function PrimeiroAcessoPage() {
 
   const status: any = (statusRes as any)?.ok ? (statusRes as any).data : null;
   const termo: any = (termoRes as any)?.data ?? null;
+  const resumo: any = (resumoRes as any)?.ok ? (resumoRes as any).data : null;
 
   useEffect(() => {
     if (!status) return;
@@ -189,6 +195,8 @@ function PrimeiroAcessoPage() {
               <FileSignature className="h-5 w-5 text-teal-700" />
               {termo?.titulo || "Termo de adesão do vendedor"}
             </div>
+            {resumo?.perfil && <ResumoCadastro resumo={resumo} />}
+
             <div className="max-h-80 overflow-y-auto whitespace-pre-wrap rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-relaxed text-slate-700">
               {termo?.conteudo || "Carregando o termo..."}
             </div>
@@ -224,6 +232,68 @@ function PrimeiroAcessoPage() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function ResumoCadastro({ resumo }: { resumo: any }) {
+  const p = resumo.perfil || {};
+  const veiculos: any[] = resumo.veiculos || [];
+  const linha = (label: string, valor: any) =>
+    valor ? (
+      <div className="flex justify-between gap-4 py-1">
+        <span className="text-slate-500">{label}</span>
+        <span className="text-right font-semibold text-slate-900">{valor}</span>
+      </div>
+    ) : null;
+
+  return (
+    <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50/60 p-4 text-sm">
+      <p className="text-xs font-black uppercase tracking-widest text-slate-500">
+        Resumo do seu cadastro
+      </p>
+      <div className="rounded-xl bg-white p-3">
+        {linha("Nome", p.nome)}
+        {linha("E-mail", p.email)}
+        {linha("CPF / CNPJ", p.cpf || p.cnpj)}
+        {linha("WhatsApp", p.whatsapp || p.telefone)}
+        {linha(
+          "Endereço",
+          [p.endereco, p.numero, p.bairro, p.cidade, p.uf].filter(Boolean).join(", "),
+        )}
+      </div>
+
+      {veiculos.length > 0 && (
+        <div className="space-y-3">
+          <p className="text-xs font-black uppercase tracking-widest text-slate-500">
+            Veículo(s) incluídos neste termo
+          </p>
+          {veiculos.map((v) => (
+            <div key={v.id} className="rounded-xl bg-white p-3">
+              {linha("Veículo", `${v.marca} ${v.modelo} ${v.versao || ""}`.trim())}
+              {linha("Placa", v.placa)}
+              {linha(
+                "Ano",
+                v.ano_fabricacao ? `${v.ano_fabricacao}/${v.ano_modelo || v.ano_fabricacao}` : null,
+              )}
+              {linha("Cor", v.cor)}
+              {linha("KM", v.km ? Number(v.km).toLocaleString("pt-BR") : null)}
+              {linha("Câmbio", v.cambio)}
+              {linha("Combustível", v.combustivel)}
+              {linha(
+                "Valor pretendido",
+                v.valor_interesse_cliente
+                  ? Number(v.valor_interesse_cliente).toLocaleString("pt-BR", {
+                      style: "currency",
+                      currency: "BRL",
+                    })
+                  : null,
+              )}
+              {linha("Localização", [v.cidade, v.uf].filter(Boolean).join(" - "))}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
