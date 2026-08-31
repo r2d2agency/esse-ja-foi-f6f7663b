@@ -347,9 +347,14 @@ export async function getEstadoLeilao(leilaoId: string) {
     console.error("[leilao] anuncios schema", e);
   }
 
+  // A tabela anuncios_veiculo pode não existir no banco do cliente:
+  // detecta e monta a query com ou sem o JOIN.
+  const temAnuncios = await tabelaExiste(d, "anuncios_veiculo");
+
   // Subconsultas correlacionadas escalares — um subselect em FROM não pode
   // referenciar l.id sem LATERAL, o que quebrava o detalhe do leilão.
-  const lRes = await d.execute(sql`
+  const lRes = temAnuncios
+    ? await d.execute(sql`
     SELECT l.*,
       COALESCE(a.titulo, concat_ws(' ', v.marca, v.modelo, v.ano_modelo)) as titulo,
       a.slug,
