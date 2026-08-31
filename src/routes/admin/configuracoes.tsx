@@ -12,6 +12,7 @@ import {
   getProvedorConsultaFn,
   salvarProvedorConsultaFn,
   testarConexaoConsultaFn,
+  testarConsultaPlacaFn,
 } from "@/lib/consulta-veicular.functions";
 import { getTermoVigenteFn, salvarTermoFn } from "@/lib/termos.functions";
 import { listarConfiguracoesFn, salvarConfiguracaoFn, enviarEmailTesteFn } from "@/lib/admin.functions";
@@ -243,6 +244,9 @@ function ConsultaVeicularSection() {
   });
   const [chaveMascarada, setChaveMascarada] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
+  const [placaTeste, setPlacaTeste] = useState("");
+  const [testandoPlaca, setTestandoPlaca] = useState(false);
+  const [resultadoTeste, setResultadoTeste] = useState<any>(null);
 
   useEffect(() => {
     void (async () => {
