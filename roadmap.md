@@ -1,4 +1,4 @@
 # Roadmap
 
-- [ ] Pré-cadastro interno: enviar e-mail de acesso do vendedor só no final do wizard (após veículo/consulta), com botão "Concluir e enviar acesso".
-- [ ] Company Conferi: opção de teste com placa digitável na tela de configuração, exibindo o resultado da consulta para validação.
+- [x] Pré-cadastro interno: e-mail de acesso do vendedor só no final do wizard (botão "Concluir e enviar acesso").
+- [x] Company Conferi: teste de consulta com placa digitável em Configurações, com resumo e JSON completo do retorno.
