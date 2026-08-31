@@ -44,7 +44,7 @@ function AdminLeilaoAcompanhamentoPage() {
   const encerrar = useMutation({
     mutationFn: () => encerrarLeilaoFn({ data: { leilaoId: id } }),
     onSuccess: (res: any) => {
-      if (!res?.ok) return toast.error(res?.message || "Não foi possível encerrar o leilão.");
+      if (!res?.ok) { toast.error(res?.message || "Não foi possível encerrar o leilão."); return; }
       const r = res.data?.resultado;
       if (r === "ENCERRADO_COM_VENCEDOR") {
         toast.success(`Leilão encerrado. Negociação ${res.data?.codigo} criada e comprador notificado.`);
@@ -64,7 +64,7 @@ function AdminLeilaoAcompanhamentoPage() {
   const cancelar = useMutation({
     mutationFn: () => cancelarLeilaoAdminFn({ data: { leilaoId: id, motivo: motivo.trim() } }),
     onSuccess: (res: any) => {
-      if (!res?.ok) return toast.error(res?.message || "Não foi possível cancelar o leilão.");
+      if (!res?.ok) { toast.error(res?.message || "Não foi possível cancelar o leilão."); return; }
       toast.success("Leilão cancelado.");
       setDialogCancelar(false);
       setMotivo("");
