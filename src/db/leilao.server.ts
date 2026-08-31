@@ -428,9 +428,11 @@ export async function listarLeiloesAdmin(status?: string) {
     console.error("[leilao] anuncios schema", e);
   }
   await processarCicloLeiloes();
-  const res = await d.execute(sql`
-    SELECT 
-      l.*, 
+  const temAnuncios = await tabelaExiste(d, "anuncios_veiculo");
+  const res = temAnuncios
+    ? await d.execute(sql`
+    SELECT
+      l.*,
       COALESCE(a.titulo, concat_ws(' ', v.marca, v.modelo, v.ano_modelo)) as titulo,
       COALESCE(a.codigo_publico, v.placa) as codigo_publico,
       (SELECT valor FROM lances WHERE leilao_id = l.id ORDER BY valor DESC LIMIT 1) as lance_atual,
@@ -440,8 +442,29 @@ export async function listarLeiloesAdmin(status?: string) {
     LEFT JOIN anuncios_veiculo a ON a.veiculo_id = l.veiculo_id
     ${status ? sql`WHERE l.status = ${status}` : sql``}
     ORDER BY l.criado_em DESC
+  `)
+    : await d.execute(sql`
+    SELECT
+      l.*,
+      concat_ws(' ', v.marca, v.modelo, v.ano_modelo) as titulo,
+      v.placa as codigo_publico,
+      (SELECT valor FROM lances WHERE leilao_id = l.id ORDER BY valor DESC LIMIT 1) as lance_atual,
+      (SELECT count(*) FROM lances WHERE leilao_id = l.id) as qtd_lances
+    FROM leiloes l
+    JOIN veiculos v ON v.id = l.veiculo_id
+    ${status ? sql`WHERE l.status = ${status}` : sql``}
+    ORDER BY l.criado_em DESC
   `);
   return rowsOf(res) || res;
+}
+
+async function tabelaExiste(d: any, nome: string): Promise<boolean> {
+  try {
+    const res = await d.execute(sql`SELECT to_regclass(${"public." + nome}) as t`);
+    return !!rowsOf(res)[0]?.t;
+  } catch {
+    return false;
+  }
 }
 
 // O driver postgres-js devolve as linhas como array (sem .rows).
