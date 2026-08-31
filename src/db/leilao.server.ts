@@ -43,6 +43,15 @@ export async function ensureLeilaoSchema() {
     );
   `);
 
+  // Este projeto usa sessão própria e valida o comprador no servidor antes do
+  // INSERT. Bancos importados podem conservar policies baseadas em auth.uid(),
+  // que sempre é NULL na conexão PostgreSQL da aplicação e bloqueia os lances.
+  await d.execute(sql`DROP POLICY IF EXISTS "Compradores insert lance if approved" ON public.lances`);
+  await d.execute(sql`DROP POLICY IF EXISTS "Compradores view their own lances" ON public.lances`);
+  await d.execute(sql`ALTER TABLE public.lances DISABLE ROW LEVEL SECURITY`);
+  await d.execute(sql`DROP POLICY IF EXISTS "Admins manage leiloes" ON public.leiloes`);
+  await d.execute(sql`ALTER TABLE public.leiloes DISABLE ROW LEVEL SECURITY`);
+
   // Reconciliação defensiva: tabelas legadas podem não ter todas as colunas
   const alters = [
     sql`ALTER TABLE leiloes ADD COLUMN IF NOT EXISTS atualizado_em timestamptz DEFAULT now()`,
