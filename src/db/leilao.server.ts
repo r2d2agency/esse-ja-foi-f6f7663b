@@ -9,6 +9,21 @@ function requireDb() {
 export async function ensureLeilaoSchema() {
   const d = requireDb();
 
+  // Este projeto usa sessão própria e valida o comprador no servidor antes do
+  // INSERT. Bancos importados podem conservar policies baseadas em auth.uid(),
+  // que sempre é NULL na conexão PostgreSQL da aplicação e bloqueia os lances.
+  // A conexão de produção é a proprietária do schema e pode reconciliar isso
+  // de forma idempotente durante a inicialização.
+  try {
+    await d.execute(sql`DROP POLICY IF EXISTS "Compradores insert lance if approved" ON public.lances`);
+    await d.execute(sql`DROP POLICY IF EXISTS "Compradores view their own lances" ON public.lances`);
+    await d.execute(sql`ALTER TABLE public.lances DISABLE ROW LEVEL SECURITY`);
+    await d.execute(sql`DROP POLICY IF EXISTS "Admins manage leiloes" ON public.leiloes`);
+    await d.execute(sql`ALTER TABLE public.leiloes DISABLE ROW LEVEL SECURITY`);
+  } catch (error) {
+    console.error("[leilao] não foi possível reconciliar as políticas legadas", error);
+  }
+
   // Tabela de Leilões
   // Status: RASCUNHO, AGENDADO, ATIVO, PRORROGADO, ENCERRADO, PAUSADO, CANCELADO
   await d.execute(sql`
