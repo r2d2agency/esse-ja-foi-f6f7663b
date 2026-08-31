@@ -264,10 +264,13 @@ function ConsultaVeicularSection() {
         caminho_consulta: p.caminho_consulta || f.caminho_consulta,
         produto: p.produto || f.produto,
         usuario: p.usuario || "",
+        senha: "",
         api_key: "",
+        auth_modo: p.auth_modo || "AUTO",
         ativo: !!p.ativo,
       }));
       setChaveMascarada(p.chave_mascarada || null);
+      setTemSenha(!!p.tem_senha);
     })();
   }, []);
 
@@ -282,7 +285,8 @@ function ConsultaVeicularSection() {
       toast.success("Módulo de consulta veicular salvo.");
       const atualizado: any = await getProvedorConsultaFn();
       setChaveMascarada(atualizado?.data?.chave_mascarada || null);
-      setForm((f) => ({ ...f, api_key: "" }));
+      setTemSenha(!!atualizado?.data?.tem_senha);
+      setForm((f) => ({ ...f, api_key: "", senha: "" }));
     } finally {
       setOcupado(false);
     }
@@ -292,12 +296,14 @@ function ConsultaVeicularSection() {
     setOcupado(true);
     try {
       const res: any = await testarConexaoConsultaFn();
+      setResultadoTeste(res);
       if (res?.ok) toast.success(res.message || "Conexão validada.");
       else toast.error(res?.message || "Falha na conexão.");
     } finally {
       setOcupado(false);
     }
   }
+
 
   async function testarPlaca() {
     const placa = placaTeste.toUpperCase().replace(/\W/g, "");
