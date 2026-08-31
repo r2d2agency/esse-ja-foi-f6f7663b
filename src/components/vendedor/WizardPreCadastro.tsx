@@ -130,20 +130,20 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
   }
 
   async function criarVendedor() {
-    if (dados.nome.trim().length < 3) return toast.error("Informe o nome completo.");
-    if (!dados.email.includes("@")) return toast.error("Informe um e-mail válido.");
+    if (dados.nome.trim().length < 3) { toast.error("Informe o nome completo."); return; }
+    if (!dados.email.includes("@")) { toast.error("Informe um e-mail válido."); return; }
     if (dados.tipo_pessoa === "PF" && !dados.cpf.trim())
-      return toast.error("Informe o CPF do vendedor.");
+      { toast.error("Informe o CPF do vendedor."); return; }
     if (!docs.doc_cnh_frente || !docs.doc_cnh_verso)
-      return toast.error("Envie a CNH (frente e verso).");
-    if (!docs.doc_comprovante) return toast.error("Envie o comprovante de residência.");
+      { toast.error("Envie a CNH (frente e verso)."); return; }
+    if (!docs.doc_comprovante) { toast.error("Envie o comprovante de residência."); return; }
 
     setSalvando(true);
     try {
       const res: any = await criarVendedorInternoFn({
         data: { token: getSessionToken(), ...dados, ...docs } as any,
       });
-      if (!res?.ok) return toast.error(res?.message || "Não foi possível criar o vendedor.");
+      if (!res?.ok) { toast.error(res?.message || "Não foi possível criar o vendedor."); return; }
       setPerfilId(res.perfilId);
       setSenha({ senha: res.senha, emailEnviado: !!res.emailEnviado });
       toast.success("Pré-cadastro concluído. Agora cadastre o veículo.");
@@ -155,9 +155,9 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
 
   async function salvarVeiculo() {
     if (!perfilId) return;
-    if (veiculo.placa.replace(/\W/g, "").length < 7) return toast.error("Informe a placa.");
+    if (veiculo.placa.replace(/\W/g, "").length < 7) { toast.error("Informe a placa."); return; }
     if (veiculo.marca.trim().length < 2 || veiculo.modelo.trim().length < 2)
-      return toast.error("Informe marca e modelo.");
+      { toast.error("Informe marca e modelo."); return; }
 
     setSalvando(true);
     try {
@@ -188,7 +188,7 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
         } as any,
       });
       const id = res?.id || res?.data?.id;
-      if (!id) return toast.error(res?.message || "Não foi possível salvar o veículo.");
+      if (!id) { toast.error(res?.message || "Não foi possível salvar o veículo."); return; }
       setVeiculoId(id);
       toast.success("Veículo vinculado ao vendedor.");
       setEtapa(4);
@@ -206,7 +206,7 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
       const res: any = await consultarLaudoVeiculoFn({
         data: { token: getSessionToken(), veiculoId },
       });
-      if (!res?.ok) return toast.error(res?.message || "Falha na consulta.");
+      if (!res?.ok) { toast.error(res?.message || "Falha na consulta."); return; }
       setConsulta(res);
       toast.success("Consulta realizada.");
     } finally {
