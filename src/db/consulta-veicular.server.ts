@@ -369,92 +369,51 @@ export async function listarConsultasVeiculo(veiculoId: string) {
 
 export async function testarConexaoProvedor() {
   const prov = await getProvedorComChave();
-  const url = `${String(prov.base_url).replace(/\/+$/, "")}${prov.caminho_consulta || "/consulta"}`;
-  try {
-    const resp = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${prov.api_key}`,
-        "x-api-key": String(prov.api_key),
-      },
-      body: JSON.stringify({ placa: "TESTE000", produto: prov.produto }),
-    });
-    if (resp.status === 401 || resp.status === 403) {
-      return { ok: false as const, message: "Chave de acesso recusada pelo provedor." };
-    }
+  const r = await executarConsulta(prov, { placa: "TESTE000" });
+  if (r.ok) {
     return {
       ok: true as const,
-      message: `Conexão estabelecida (HTTP ${resp.status}). O endpoint respondeu.`,
+      message: `Conexão estabelecida (HTTP ${r.httpStatus}).`,
+      diagnostico: r.diagnostico,
     };
-  } catch (e: any) {
-    return { ok: false as const, message: e?.message || "Não foi possível alcançar o endpoint." };
   }
+  const naoAutorizado = r.diagnostico.some((d) => d.httpStatus === 401 || d.httpStatus === 403);
+  return {
+    ok: false as const,
+    message: naoAutorizado
+      ? `Credenciais recusadas pelo provedor. ${r.erro}`
+      : r.erro || "Não foi possível alcançar o endpoint.",
+    diagnostico: r.diagnostico,
+  };
 }
 
 /**
  * Consulta de teste por placa digitada (tela de configurações).
- * Não grava nada no banco — serve apenas para validar chave/endpoint e inspecionar o retorno.
+ * Não grava nada no banco — serve apenas para validar credenciais/endpoint e inspecionar o retorno.
  */
 export async function consultarPlacaAvulsa(placa: string) {
   const prov = await getProvedorComChave();
   const placaLimpa = placa.toUpperCase().replace(/\W/g, "");
   if (placaLimpa.length !== 7) throw new Error("Informe uma placa válida (7 caracteres).");
 
-  const url = `${String(prov.base_url).replace(/\/+$/, "")}${prov.caminho_consulta || "/consulta"}`;
-  const corpo = {
-    placa: placaLimpa,
-    produto: prov.produto || "GOLD",
-    usuario: prov.usuario || undefined,
-  };
-
-  let payload: any = null;
-  let httpStatus = 0;
-  try {
-    const resp = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        Authorization: `Bearer ${prov.api_key}`,
-        "x-api-key": String(prov.api_key),
-      },
-      body: JSON.stringify(corpo),
-    });
-    httpStatus = resp.status;
-    const texto = await resp.text();
-    try {
-      payload = JSON.parse(texto);
-    } catch {
-      payload = { raw: texto };
-    }
-    if (!resp.ok) {
-      const msg =
-        primeiro(payload, ["mensagem", "message", "erro", "error"]) ||
-        `O provedor respondeu com erro ${resp.status}.`;
-      return {
-        ok: false as const,
-        httpStatus,
-        message: String(msg),
-        resumo: null,
-        resposta: payload,
-      };
-    }
-  } catch (e: any) {
+  const r = await executarConsulta(prov, { placa: placaLimpa });
+  if (!r.ok) {
     return {
       ok: false as const,
-      httpStatus: 0,
-      message: e?.message || "Falha de comunicação com o provedor.",
+      httpStatus: r.httpStatus,
+      message: r.erro || "Falha de comunicação com o provedor.",
       resumo: null,
-      resposta: null,
+      resposta: r.payload,
+      diagnostico: r.diagnostico,
     };
   }
-
   return {
     ok: true as const,
-    httpStatus,
+    httpStatus: r.httpStatus,
     message: "Consulta concluída.",
-    resumo: resumirRetorno(payload),
-    resposta: payload,
+    resumo: resumirRetorno(r.payload),
+    resposta: r.payload,
+    diagnostico: r.diagnostico,
   };
 }
+
