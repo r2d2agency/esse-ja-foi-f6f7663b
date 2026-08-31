@@ -57,6 +57,9 @@ export async function ensureLeilaoSchema() {
     sql`ALTER TABLE leiloes ADD COLUMN IF NOT EXISTS inicio_em timestamptz`,
     sql`ALTER TABLE leiloes ADD COLUMN IF NOT EXISTS fim_em timestamptz`,
     sql`ALTER TABLE leiloes ADD COLUMN IF NOT EXISTS status text DEFAULT 'RASCUNHO'`,
+    sql`ALTER TABLE lances ADD COLUMN IF NOT EXISTS leilao_id uuid`,
+    sql`ALTER TABLE lances ADD COLUMN IF NOT EXISTS comprador_id uuid`,
+    sql`ALTER TABLE lances ADD COLUMN IF NOT EXISTS valor numeric(12,2)`,
     sql`ALTER TABLE lances ADD COLUMN IF NOT EXISTS ip_origem text`,
     sql`ALTER TABLE lances ADD COLUMN IF NOT EXISTS user_agent text`,
     sql`ALTER TABLE lances ADD COLUMN IF NOT EXISTS criado_em timestamptz DEFAULT now()`,
@@ -207,7 +210,20 @@ export async function registrarLance(leilaoId: string, compradorId: string, valo
   return await d.transaction(async (tx) => {
     // 1. Validar leilão e buscar estado atual
     const lRes = await tx.execute(sql`
-      SELECT * FROM leiloes WHERE id = ${leilaoId}::uuid FOR UPDATE
+      SELECT l.*,
+        (
+          SELECT json_build_object(
+            'valor', NULLIF(to_jsonb(lc)->>'valor', '')::numeric,
+            'comprador_id', NULLIF(to_jsonb(lc)->>'comprador_id', '')
+          )
+          FROM lances lc
+          WHERE NULLIF(to_jsonb(lc)->>'leilao_id', '')::uuid = l.id
+          ORDER BY NULLIF(to_jsonb(lc)->>'valor', '')::numeric DESC NULLS LAST
+          LIMIT 1
+        ) AS maior_lance
+      FROM leiloes l
+      WHERE l.id = ${leilaoId}::uuid
+      FOR UPDATE OF l
     `);
     const leilao = rowsOf(lRes)[0];
 
@@ -223,8 +239,12 @@ export async function registrarLance(leilaoId: string, compradorId: string, valo
 
     // 2. Validar comprador: precisa estar ativo, com cadastro completo e compliance APROVADO
     const cRes = await tx.execute(sql`
-      SELECT role, ativo, cadastro_completo, status_compliance
-      FROM profiles WHERE id = ${compradorId}::uuid
+      SELECT
+        p.role,
+        p.ativo,
+        COALESCE((to_jsonb(p)->>'cadastro_completo')::boolean, false) AS cadastro_completo,
+        COALESCE(to_jsonb(p)->>'status_compliance', 'NAO_ENVIADO') AS status_compliance
+      FROM profiles p WHERE p.id = ${compradorId}::uuid
     `);
     const comprador = rowsOf(cRes)[0];
 
@@ -238,22 +258,22 @@ export async function registrarLance(leilaoId: string, compradorId: string, valo
       throw new Error("Seu cadastro ainda está em análise. Você será avisado quando for aprovado.");
     }
 
-    // 3. Buscar maior lance atual
-    const maxRes = await tx.execute(sql`
-      SELECT valor, comprador_id FROM lances WHERE leilao_id = ${leilaoId}::uuid ORDER BY valor DESC LIMIT 1
-    `);
-    const maiorLanceAnterior = rowsOf(maxRes)[0];
+    // 3. O maior lance é lido junto ao bloqueio do leilão. Além de reduzir uma
+    // consulta, isso mantém compatibilidade com instalações que vieram de schemas antigos.
+    const maiorLanceAnterior = leilao.maior_lance && typeof leilao.maior_lance === "object"
+      ? leilao.maior_lance
+      : null;
     const valorMaiorLance = maiorLanceAnterior?.valor || leilao.lance_inicial;
     const lanceMinimoNecessario = Number(valorMaiorLance) + Number(leilao.incremento_minimo);
 
-    if (valor < lanceMinimoNecessario) {
+    if (valorNum < lanceMinimoNecessario) {
       throw new Error(`O próximo lance mínimo é R$ ${lanceMinimoNecessario.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`);
     }
 
     // O lance deve respeitar o incremento definido pelo admin (múltiplos sobre o lance atual)
     const incremento = Number(leilao.incremento_minimo);
     if (incremento > 0) {
-      const diferenca = Number(valor) - Number(valorMaiorLance);
+      const diferenca = valorNum - Number(valorMaiorLance);
       const multiplo = diferenca / incremento;
       if (Math.abs(multiplo - Math.round(multiplo)) > 1e-9) {
         throw new Error(`O lance deve ser um múltiplo de R$ ${incremento.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} sobre o lance atual.`);
@@ -263,7 +283,7 @@ export async function registrarLance(leilaoId: string, compradorId: string, valo
     // 4. Registrar lance
     const res = await tx.execute(sql`
       INSERT INTO lances (leilao_id, comprador_id, valor, ip_origem, user_agent)
-      VALUES (${leilaoId}::uuid, ${compradorId}::uuid, ${valor}, ${ip || null}, ${ua || null})
+      VALUES (${leilaoId}::uuid, ${compradorId}::uuid, ${valorNum}, ${ip || null}, ${ua || null})
       RETURNING id
     `);
     const lanceId = rowsOf(res)?.[0]?.id;
