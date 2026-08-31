@@ -169,12 +169,26 @@ function AdminLeilaoAcompanhamentoPage() {
               <CardTitle className="text-xs font-black uppercase text-slate-500">Controles do Leilão</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <Button className="w-full bg-amber-600 hover:bg-amber-700 font-bold text-xs uppercase" variant="secondary">
-                Pausar Leilão
+              <Button
+                className="w-full bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs uppercase"
+                disabled={encerrado || cancelado}
+                onClick={() => setDialogEncerrar(true)}
+              >
+                <Gavel className="h-4 w-4 mr-2" /> Encerrar Leilão
               </Button>
-              <Button className="w-full text-red-600 hover:text-red-700 hover:bg-red-50 font-bold text-xs uppercase border-red-100" variant="outline">
+              <Button
+                className="w-full text-red-600 hover:text-red-700 hover:bg-red-50 font-bold text-xs uppercase border-red-100"
+                variant="outline"
+                disabled={encerrado || cancelado}
+                onClick={() => setDialogCancelar(true)}
+              >
                 Cancelar Leilão
               </Button>
+              {(encerrado || cancelado) && (
+                <p className="text-[11px] font-bold uppercase text-slate-400">
+                  Leilão {leilao.status.toLowerCase()} — controles indisponíveis.
+                </p>
+              )}
               <div className="pt-4 mt-4 border-t border-slate-200">
                 <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">
                   <AlertCircle className="h-3.5 w-3.5" /> Prorrogação Ativa
@@ -185,6 +199,7 @@ function AdminLeilaoAcompanhamentoPage() {
               </div>
             </CardContent>
           </Card>
+
 
           <Card className="border-slate-200 shadow-none">
             <CardHeader>
