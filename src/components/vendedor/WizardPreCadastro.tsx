@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FileUpload } from "@/components/onboarding/FileUpload";
 import { getSessionToken } from "@/lib/session";
-import { criarVendedorInternoFn } from "@/lib/pre-cadastro.functions";
+import { criarVendedorInternoFn, reenviarSenhaTemporariaFn } from "@/lib/pre-cadastro.functions";
 import { cadastrarMeuVeiculoFn } from "@/lib/vendedor.functions";
 import {
   getProvedorConsultaFn,
@@ -141,11 +141,11 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
     setSalvando(true);
     try {
       const res: any = await criarVendedorInternoFn({
-        data: { token: getSessionToken(), ...dados, ...docs } as any,
+        data: { token: getSessionToken(), ...dados, ...docs, enviarAcesso: false } as any,
       });
       if (!res?.ok) { toast.error(res?.message || "Não foi possível criar o vendedor."); return; }
       setPerfilId(res.perfilId);
-      setSenha({ senha: res.senha, emailEnviado: !!res.emailEnviado });
+      setSenha({ senha: res.senha, emailEnviado: false });
       toast.success("Pré-cadastro concluído. Agora cadastre o veículo.");
       setEtapa(3);
     } finally {
@@ -209,6 +209,20 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
       if (!res?.ok) { toast.error(res?.message || "Falha na consulta."); return; }
       setConsulta(res);
       toast.success("Consulta realizada.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function enviarAcesso() {
+    if (!perfilId) return;
+    setSalvando(true);
+    try {
+      const res: any = await reenviarSenhaTemporariaFn({ data: { perfilId } });
+      if (!res?.ok) { toast.error(res?.message || "Não foi possível enviar o acesso."); return; }
+      setSenha({ senha: res.senha, emailEnviado: !!res.emailEnviado });
+      if (res.emailEnviado) toast.success("Acesso enviado por e-mail ao vendedor.");
+      else toast.warning("Senha gerada, mas o e-mail falhou — repasse manualmente.");
     } finally {
       setSalvando(false);
     }
