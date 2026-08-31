@@ -76,7 +76,11 @@ async function garantirSchemas() {
  * Cria (ou reativa) um vendedor cadastrado internamente pela administração.
  * O perfil já nasce dispensado das etapas de compliance do app e com senha temporária.
  */
-export async function criarVendedorInterno(dados: PreCadastroInput, criadoPor?: string | null) {
+export async function criarVendedorInterno(
+  dados: PreCadastroInput,
+  criadoPor?: string | null,
+  opcoes?: { enviarAcesso?: boolean },
+) {
   const d = requireDb();
   await garantirSchemas();
 
@@ -135,9 +139,14 @@ export async function criarVendedorInterno(dados: PreCadastroInput, criadoPor?: 
     console.error("[pre-cadastro] historico", e);
   }
 
+  // O e-mail de acesso só é disparado no final do fluxo (após veículo/consulta),
+  // para que o termo e o resumo façam sentido no primeiro acesso do vendedor.
+  if (opcoes?.enviarAcesso === false) {
+    return { perfilId, senha, emailEnviado: false, emailPendente: true, emailErro: null };
+  }
   const envio = await enviarSenhaTemporaria(email, dados.nome, senha);
 
-  return { perfilId, senha, emailEnviado: envio.ok, emailErro: envio.erro };
+  return { perfilId, senha, emailEnviado: envio.ok, emailPendente: false, emailErro: envio.erro };
 }
 
 export async function enviarSenhaTemporaria(email: string, nome: string, senha: string) {

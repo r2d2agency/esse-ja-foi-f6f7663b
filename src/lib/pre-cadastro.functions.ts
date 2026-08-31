@@ -34,6 +34,7 @@ export const criarVendedorInternoFn = createServerFn({ method: "POST" })
         doc_cnh_verso: z.string().nullable().optional(),
         doc_comprovante: z.string().nullable().optional(),
         doc_selfie: z.string().nullable().optional(),
+        enviarAcesso: z.boolean().optional(),
       })
       .parse(d),
   )
@@ -42,8 +43,10 @@ export const criarVendedorInternoFn = createServerFn({ method: "POST" })
     try {
       const criadoPor = await userIdFrom(data.token ?? null);
       const { criarVendedorInterno } = await import("@/db/pre-cadastro.server");
-      const { token: _t, ...dados } = data;
-      const res = await criarVendedorInterno(dados as any, criadoPor);
+      const { token: _t, enviarAcesso, ...dados } = data;
+      const res = await criarVendedorInterno(dados as any, criadoPor, {
+        enviarAcesso: enviarAcesso !== false,
+      });
       return { ok: true as const, ...res };
     } catch (e: any) {
       return { ok: false as const, message: e?.message || "Erro ao criar o vendedor." };

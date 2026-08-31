@@ -12,6 +12,7 @@ import {
   getProvedorConsultaFn,
   salvarProvedorConsultaFn,
   testarConexaoConsultaFn,
+  testarConsultaPlacaFn,
 } from "@/lib/consulta-veicular.functions";
 import { getTermoVigenteFn, salvarTermoFn } from "@/lib/termos.functions";
 import { listarConfiguracoesFn, salvarConfiguracaoFn, enviarEmailTesteFn } from "@/lib/admin.functions";
@@ -243,6 +244,9 @@ function ConsultaVeicularSection() {
   });
   const [chaveMascarada, setChaveMascarada] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
+  const [placaTeste, setPlacaTeste] = useState("");
+  const [testandoPlaca, setTestandoPlaca] = useState(false);
+  const [resultadoTeste, setResultadoTeste] = useState<any>(null);
 
   useEffect(() => {
     void (async () => {
@@ -288,6 +292,24 @@ function ConsultaVeicularSection() {
       else toast.error(res?.message || "Falha na conexão.");
     } finally {
       setOcupado(false);
+    }
+  }
+
+  async function testarPlaca() {
+    const placa = placaTeste.toUpperCase().replace(/\W/g, "");
+    if (placa.length !== 7) {
+      toast.error("Informe uma placa válida (7 caracteres).");
+      return;
+    }
+    setTestandoPlaca(true);
+    setResultadoTeste(null);
+    try {
+      const res: any = await testarConsultaPlacaFn({ data: { placa } });
+      setResultadoTeste(res);
+      if (res?.ok) toast.success("Consulta de teste concluída.");
+      else toast.error(res?.message || "Falha na consulta de teste.");
+    } finally {
+      setTestandoPlaca(false);
     }
   }
 
@@ -363,6 +385,68 @@ function ConsultaVeicularSection() {
         <Button variant="outline" disabled={ocupado} onClick={testar}>
           <PlugZap className="mr-2 h-4 w-4" /> Testar conexão
         </Button>
+      </div>
+
+      <div className="space-y-3 rounded-xl border border-dashed border-teal-300 bg-teal-50/40 p-4">
+        <p className="text-sm font-bold text-slate-800">
+          Testar consulta com uma placa real
+        </p>
+        <p className="text-xs text-slate-500">
+          Digite uma placa para executar uma consulta de verdade no provedor e validar o retorno.
+          Nada é gravado no cadastro de veículos. Salve o módulo antes de testar.
+        </p>
+        <div className="flex gap-2">
+          <Input
+            className="max-w-[180px] uppercase"
+            placeholder="ABC1D23"
+            value={placaTeste}
+            onChange={(e) => setPlacaTeste(e.target.value.toUpperCase())}
+            maxLength={8}
+          />
+          <Button
+            variant="outline"
+            className="border-teal-600 text-teal-700"
+            disabled={testandoPlaca || ocupado}
+            onClick={testarPlaca}
+          >
+            {testandoPlaca ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <ScanSearch className="mr-2 h-4 w-4" />
+            )}
+            Consultar placa
+          </Button>
+        </div>
+
+        {resultadoTeste && (
+          <div className="space-y-2">
+            <p
+              className={`text-xs font-bold ${
+                resultadoTeste.ok ? "text-teal-700" : "text-red-600"
+              }`}
+            >
+              {resultadoTeste.ok ? "Consulta concluída" : "Falha na consulta"}
+              {resultadoTeste.httpStatus ? ` — HTTP ${resultadoTeste.httpStatus}` : ""}
+              {resultadoTeste.message ? `: ${resultadoTeste.message}` : ""}
+            </p>
+            {resultadoTeste.resumo && (
+              <div className="grid gap-1 rounded-lg bg-white p-3 text-xs text-slate-700 md:grid-cols-2">
+                {Object.entries(resultadoTeste.resumo).map(([k, v]) => (
+                  <div key={k}>
+                    <span className="font-bold text-slate-500">{k}:</span>{" "}
+                    {v == null ? "—" : typeof v === "object" ? JSON.stringify(v) : String(v)}
+                  </div>
+                ))}
+              </div>
+            )}
+            <details className="rounded-lg bg-slate-900 p-3 text-xs text-slate-100">
+              <summary className="cursor-pointer font-bold">Ver retorno completo (JSON)</summary>
+              <pre className="mt-2 max-h-72 overflow-auto">
+                {JSON.stringify(resultadoTeste.resposta ?? resultadoTeste, null, 2)}
+              </pre>
+            </details>
+          </div>
+        )}
       </div>
     </section>
   );

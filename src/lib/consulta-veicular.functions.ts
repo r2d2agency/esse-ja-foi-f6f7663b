@@ -48,6 +48,19 @@ export const testarConexaoConsultaFn = createServerFn({ method: "POST" }).handle
   }
 });
 
+export const testarConsultaPlacaFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) =>
+    z.object({ placa: z.string().trim().min(7, "Informe a placa.") }).parse(d),
+  )
+  .handler(async ({ data }) => {
+    try {
+      const m = await import("@/db/consulta-veicular.server");
+      return await m.consultarPlacaAvulsa(data.placa);
+    } catch (e: any) {
+      return { ok: false as const, message: e?.message || "Erro ao consultar a placa." };
+    }
+  });
+
 export const consultarLaudoVeiculoFn = createServerFn({ method: "POST" })
   .validator((d: unknown) =>
     z.object({ token: z.string().nullable().optional(), veiculoId: z.string().uuid() }).parse(d),

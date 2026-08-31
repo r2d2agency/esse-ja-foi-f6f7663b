@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FileUpload } from "@/components/onboarding/FileUpload";
 import { getSessionToken } from "@/lib/session";
-import { criarVendedorInternoFn } from "@/lib/pre-cadastro.functions";
+import { criarVendedorInternoFn, reenviarSenhaTemporariaFn } from "@/lib/pre-cadastro.functions";
 import { cadastrarMeuVeiculoFn } from "@/lib/vendedor.functions";
 import {
   getProvedorConsultaFn,
@@ -141,11 +141,11 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
     setSalvando(true);
     try {
       const res: any = await criarVendedorInternoFn({
-        data: { token: getSessionToken(), ...dados, ...docs } as any,
+        data: { token: getSessionToken(), ...dados, ...docs, enviarAcesso: false } as any,
       });
       if (!res?.ok) { toast.error(res?.message || "Não foi possível criar o vendedor."); return; }
       setPerfilId(res.perfilId);
-      setSenha({ senha: res.senha, emailEnviado: !!res.emailEnviado });
+      setSenha({ senha: res.senha, emailEnviado: false });
       toast.success("Pré-cadastro concluído. Agora cadastre o veículo.");
       setEtapa(3);
     } finally {
@@ -209,6 +209,20 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
       if (!res?.ok) { toast.error(res?.message || "Falha na consulta."); return; }
       setConsulta(res);
       toast.success("Consulta realizada.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function enviarAcesso() {
+    if (!perfilId) return;
+    setSalvando(true);
+    try {
+      const res: any = await reenviarSenhaTemporariaFn({ data: { perfilId } });
+      if (!res?.ok) { toast.error(res?.message || "Não foi possível enviar o acesso."); return; }
+      setSenha({ senha: res.senha, emailEnviado: !!res.emailEnviado });
+      if (res.emailEnviado) toast.success("Acesso enviado por e-mail ao vendedor.");
+      else toast.warning("Senha gerada, mas o e-mail falhou — repasse manualmente.");
     } finally {
       setSalvando(false);
     }
@@ -459,35 +473,49 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
             {senha && (
               <div className="space-y-3 rounded-2xl border border-teal-200 bg-teal-50/50 p-4">
                 <p className="text-sm text-slate-700">
-                  Senha temporária de <strong>{dados.email}</strong>. No primeiro acesso o vendedor
-                  troca a senha e assina o termo com o resumo do cadastro e do veículo.
+                  Acesso de <strong>{dados.email}</strong>. O envio acontece{" "}
+                  <strong>somente agora, no final do cadastro</strong> — assim o vendedor já entra,
+                  troca a senha e assina o termo vendo o resumo completo dos dados e do veículo.
                 </p>
-                <div className="flex items-center gap-2 rounded-xl bg-white p-3">
-                  <code className="flex-1 font-black tracking-widest text-slate-900">
-                    {senha.senha}
-                  </code>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      navigator.clipboard.writeText(senha.senha);
-                      toast.success("Senha copiada.");
-                    }}
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                </div>
                 <p className="text-xs font-semibold text-slate-500">
                   {senha.emailEnviado
-                    ? "E-mail com a senha enviado ao vendedor."
-                    : "Não foi possível enviar o e-mail — repasse a senha manualmente."}
+                    ? "E-mail com o acesso enviado ao vendedor."
+                    : "Acesso ainda não enviado. Conclua para disparar o e-mail."}
                 </p>
+                {senha.emailEnviado && (
+                  <div className="flex items-center gap-2 rounded-xl bg-white p-3">
+                    <code className="flex-1 font-black tracking-widest text-slate-900">
+                      {senha.senha}
+                    </code>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        navigator.clipboard.writeText(senha.senha);
+                        toast.success("Senha copiada.");
+                      }}
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
 
-            <Button onClick={fechar} className="h-12 w-full bg-teal-600 font-bold hover:bg-teal-700">
-              Concluir
-            </Button>
+            {senha && !senha.emailEnviado ? (
+              <Button
+                onClick={enviarAcesso}
+                disabled={salvando}
+                className="h-12 w-full bg-teal-600 font-bold hover:bg-teal-700"
+              >
+                {salvando && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Concluir e enviar acesso ao vendedor
+              </Button>
+            ) : (
+              <Button onClick={fechar} className="h-12 w-full bg-teal-600 font-bold hover:bg-teal-700">
+                Concluir
+              </Button>
+            )}
           </div>
         )}
       </DialogContent>
