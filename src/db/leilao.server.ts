@@ -366,7 +366,20 @@ export async function getEstadoLeilao(leilaoId: string) {
     LEFT JOIN veiculos v ON v.id = l.veiculo_id
     LEFT JOIN anuncios_veiculo a ON a.veiculo_id = l.veiculo_id
     WHERE l.id = ${leilaoId}::uuid
+  `)
+    : await d.execute(sql`
+    SELECT l.*,
+      concat_ws(' ', v.marca, v.modelo, v.ano_modelo) as titulo,
+      NULL::text as slug,
+      (SELECT json_build_object('valor', lc.valor, 'comprador_id', lc.comprador_id, 'data', lc.criado_em)
+         FROM lances lc WHERE lc.leilao_id = l.id ORDER BY lc.valor DESC LIMIT 1) as ultimo_lance,
+      (SELECT count(*)::int FROM lances lc WHERE lc.leilao_id = l.id) as total_lances,
+      (SELECT count(distinct lc.comprador_id)::int FROM lances lc WHERE lc.leilao_id = l.id) as total_participantes
+    FROM leiloes l
+    LEFT JOIN veiculos v ON v.id = l.veiculo_id
+    WHERE l.id = ${leilaoId}::uuid
   `);
+
 
 
   const leilao = rowsOf(lRes)[0];
