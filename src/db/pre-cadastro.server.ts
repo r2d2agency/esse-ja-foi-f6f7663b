@@ -95,21 +95,29 @@ export async function criarVendedorInterno(dados: PreCadastroInput, criadoPor?: 
   const inserido = rowsOf(
     await d.execute(sql`
       INSERT INTO profiles (
-        nome, email, cpf, cnpj, tipo_pessoa, whatsapp, telefone,
+        nome, email, cpf, cnpj, tipo_pessoa, whatsapp, telefone, data_nascimento, rg,
         cep, endereco, numero, complemento, bairro, cidade, uf,
+        documento_cnh_url, documento_cnh_verso_url, documento_comprovante_endereco_url, documento_selfie_url,
+        documento_cnh_status, documento_cnh_verso_status, documento_comprovante_endereco_status, documento_selfie_status,
         role, ativo, senha_hash, senha_temporaria, origem_cadastro,
-        cadastro_completo, status_compliance, verificado
+        cadastro_completo, status_compliance, verificado, compliance_data_analise
       ) VALUES (
         ${dados.nome}, ${email}, ${dados.cpf || null}, ${dados.cnpj || null},
         ${dados.tipo_pessoa || "PF"}, ${dados.whatsapp || null}, ${dados.telefone || dados.whatsapp || null},
+        ${dados.data_nascimento || null}, ${dados.rg || null},
         ${dados.cep || null}, ${dados.endereco || null}, ${dados.numero || null},
         ${dados.complemento || null}, ${dados.bairro || null}, ${dados.cidade || null}, ${dados.uf || null},
+        ${dados.doc_cnh_frente || null}, ${dados.doc_cnh_verso || null},
+        ${dados.doc_comprovante || null}, ${dados.doc_selfie || null},
+        ${dados.doc_cnh_frente ? "APROVADO" : "PENDENTE"}, ${dados.doc_cnh_verso ? "APROVADO" : "PENDENTE"},
+        ${dados.doc_comprovante ? "APROVADO" : "PENDENTE"}, ${dados.doc_selfie ? "APROVADO" : "PENDENTE"},
         'vendedor'::text::app_role, true, ${hash}, true, 'INTERNO',
-        true, 'DISPENSADO', true
+        true, 'DISPENSADO', true, now()
       )
       RETURNING id
     `),
   )[0];
+
 
   const perfilId = String(inserido.id);
 
