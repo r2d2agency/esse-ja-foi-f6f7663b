@@ -134,10 +134,19 @@ function AdminLeilaoAcompanhamentoPage() {
                   <TableRow key={idx} className={idx === 0 ? "bg-teal-50/50" : ""}>
                     <TableCell className="text-xs font-mono">{format(new Date(lance.criado_em), "HH:mm:ss", { locale: ptBR })}</TableCell>
                     <TableCell>
-                      <div className="flex flex-col">
-                        <span className="text-sm font-bold text-slate-700">Comprador ID: {lance.comprador_id.substring(0,8)}</span>
-                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">Ver perfil no admin</span>
-                      </div>
+                      <Link
+                        to="/admin/comprador/$id"
+                        params={{ id: lance.comprador_id }}
+                        className="flex flex-col group"
+                      >
+                        <span className="text-sm font-bold text-slate-700 group-hover:text-teal-700 group-hover:underline">
+                          {lance.comprador_nome || "Comprador"}
+                        </span>
+                        <span className="text-[11px] text-slate-500 font-medium">
+                          {lance.comprador_whatsapp || lance.comprador_email || "Contato não informado"}
+                        </span>
+                        <span className="text-[10px] text-teal-600 font-bold uppercase tracking-tight">Ver perfil do comprador</span>
+                      </Link>
                     </TableCell>
                     <TableCell className="font-mono font-bold text-teal-700">R$ {Number(lance.valor).toLocaleString('pt-BR')}</TableCell>
                     <TableCell className="text-right">
