@@ -106,6 +106,35 @@ export async function ensureLeilaoSchema() {
     END $$;
   `);
 
+  // Há instalações em que a referência do comprador tinha outro nome e era
+  // NOT NULL. Ao adicionar `comprador_id`, a coluna antiga continuou exigida
+  // e todo INSERT novo falhava (o detalhe aparece como o 3º valor NULL).
+  // A aplicação usa somente `comprador_id`; aposentamos a obrigatoriedade das
+  // referências UUID legadas para profiles sem apagar o histórico existente.
+  await d.execute(sql`
+    DO $$
+    DECLARE legacy_column text;
+    BEGIN
+      FOR legacy_column IN
+        SELECT DISTINCT a.attname
+        FROM pg_constraint c
+        JOIN pg_class t ON t.oid = c.conrelid
+        JOIN pg_namespace n ON n.oid = t.relnamespace
+        JOIN pg_class referenced_table ON referenced_table.oid = c.confrelid
+        JOIN unnest(c.conkey) AS key(attnum) ON true
+        JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = key.attnum
+        WHERE n.nspname = 'public'
+          AND t.relname = 'lances'
+          AND c.contype = 'f'
+          AND referenced_table.relname = 'profiles'
+          AND a.attname <> 'comprador_id'
+          AND a.attnotnull
+      LOOP
+        EXECUTE format('ALTER TABLE public.lances ALTER COLUMN %I DROP NOT NULL', legacy_column);
+      END LOOP;
+    END $$;
+  `);
+
   // Criar índices para performance em tempo real
   try {
     await d.execute(sql`CREATE INDEX IF NOT EXISTS idx_lances_leilao ON lances(leilao_id, valor DESC);`);
@@ -340,10 +369,16 @@ export async function registrarLance(leilaoId: string, compradorId: string, valo
         : typeof dbError?.constraint === "string"
           ? dbError.constraint
           : "";
+      const coluna = typeof dbError?.column_name === "string"
+        ? dbError.column_name
+        : typeof dbError?.column === "string"
+          ? dbError.column
+          : "";
 
       console.error("[leilao] INSERT de lance rejeitado", {
         codigo,
         restricao,
+        coluna,
         detalhe,
         leilaoId,
         compradorId,
@@ -356,7 +391,7 @@ export async function registrarLance(leilaoId: string, compradorId: string, valo
         throw new Error("O leilão ou o cadastro do comprador não existe mais. Atualize a página e entre novamente.");
       }
       if (codigo === "23502") {
-        throw new Error(`O banco exige um campo legado para registrar o lance${detalhe ? `: ${detalhe}` : "."}`);
+        throw new Error(`O banco exige o campo legado ${coluna || "não identificado"} para registrar o lance${detalhe ? `: ${detalhe}` : "."}`);
       }
       if (codigo === "23514") {
         throw new Error(`O lance não atende a uma regra do banco${restricao ? ` (${restricao})` : ""}.`);
