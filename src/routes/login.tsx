@@ -61,7 +61,19 @@ function LoginPage() {
       localStorage.setItem("refreshToken", accessToken);
       toast.success(`Bem-vindo, ${user.nome}!`);
 
+      try {
+        const { getStatusPrimeiroAcessoFn } = await import("@/lib/pre-cadastro.functions");
+        const st: any = await getStatusPrimeiroAcessoFn({ data: { token: accessToken } });
+        if (st?.ok && (st.data.precisaTrocarSenha || st.data.precisaAceitarTermo)) {
+          navigate({ to: "/primeiro-acesso" });
+          return;
+        }
+      } catch {
+        /* segue para o painel padrão */
+      }
+
       switch (user.role) {
+
         case "admin":
         case "operacao":
           navigate({ to: "/admin" });

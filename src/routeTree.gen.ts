@@ -15,6 +15,7 @@ import { Route as CadastroRouteImport } from './routes/cadastro'
 import { Route as CompradorRouteImport } from './routes/comprador'
 import { Route as EsqueciMinhaSenhaRouteImport } from './routes/esqueci-minha-senha'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as PrimeiroAcessoRouteImport } from './routes/primeiro-acesso'
 import { Route as RedefinirSenhaRouteImport } from './routes/redefinir-senha'
 import { Route as VeiculosRouteImport } from './routes/veiculos'
 import { Route as VendedorRouteImport } from './routes/vendedor'
@@ -45,6 +46,7 @@ import { Route as CompradorDocumentosRouteImport } from './routes/comprador/docu
 import { Route as CompradorInteressesRouteImport } from './routes/comprador/interesses'
 import { Route as CompradorNegociacoesRouteImport } from './routes/comprador/negociacoes'
 import { Route as CompradorPerfilRouteImport } from './routes/comprador/perfil'
+import { Route as VTokenRouteImport } from './routes/v.$token'
 import { Route as VeiculosIndexRouteImport } from './routes/veiculos.index'
 import { Route as VeiculosSlugRouteImport } from './routes/veiculos.$slug'
 import { Route as VendedorIndexRouteImport } from './routes/vendedor.index'
@@ -112,6 +114,11 @@ const EsqueciMinhaSenhaRoute = EsqueciMinhaSenhaRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrimeiroAcessoRoute = PrimeiroAcessoRouteImport.update({
+  id: '/primeiro-acesso',
+  path: '/primeiro-acesso',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RedefinirSenhaRoute = RedefinirSenhaRouteImport.update({
@@ -263,6 +270,11 @@ const CompradorPerfilRoute = CompradorPerfilRouteImport.update({
   id: '/perfil',
   path: '/perfil',
   getParentRoute: () => CompradorRoute,
+} as any)
+const VTokenRoute = VTokenRouteImport.update({
+  id: '/v/$token',
+  path: '/v/$token',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const VeiculosIndexRoute = VeiculosIndexRouteImport.update({
   id: '/',
@@ -466,6 +478,7 @@ export interface FileRoutesByFullPath {
   '/comprador': typeof CompradorRouteWithChildren
   '/esqueci-minha-senha': typeof EsqueciMinhaSenhaRoute
   '/login': typeof LoginRoute
+  '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/redefinir-senha': typeof RedefinirSenhaRoute
   '/veiculos': typeof VeiculosRouteWithChildren
   '/vendedor': typeof VendedorRouteWithChildren
@@ -494,6 +507,7 @@ export interface FileRoutesByFullPath {
   '/comprador/interesses': typeof CompradorInteressesRoute
   '/comprador/negociacoes': typeof CompradorNegociacoesRoute
   '/comprador/perfil': typeof CompradorPerfilRoute
+  '/v/$token': typeof VTokenRoute
   '/veiculos/$slug': typeof VeiculosSlugRoute
   '/vendedor/boas-vindas': typeof VendedorBoasVindasRoute
   '/vendedor/cadastrar': typeof VendedorCadastrarRoute
@@ -540,6 +554,7 @@ export interface FileRoutesByTo {
   '/cadastro': typeof CadastroRoute
   '/esqueci-minha-senha': typeof EsqueciMinhaSenhaRoute
   '/login': typeof LoginRoute
+  '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/redefinir-senha': typeof RedefinirSenhaRoute
   '/vender': typeof VenderRoute
   '/admin/analytics': typeof AdminAnalyticsRoute
@@ -565,6 +580,7 @@ export interface FileRoutesByTo {
   '/comprador/interesses': typeof CompradorInteressesRoute
   '/comprador/negociacoes': typeof CompradorNegociacoesRoute
   '/comprador/perfil': typeof CompradorPerfilRoute
+  '/v/$token': typeof VTokenRoute
   '/veiculos/$slug': typeof VeiculosSlugRoute
   '/vendedor/boas-vindas': typeof VendedorBoasVindasRoute
   '/vendedor/cadastrar': typeof VendedorCadastrarRoute
@@ -614,6 +630,7 @@ export interface FileRoutesById {
   '/comprador': typeof CompradorRouteWithChildren
   '/esqueci-minha-senha': typeof EsqueciMinhaSenhaRoute
   '/login': typeof LoginRoute
+  '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/redefinir-senha': typeof RedefinirSenhaRoute
   '/veiculos': typeof VeiculosRouteWithChildren
   '/vendedor': typeof VendedorRouteWithChildren
@@ -642,6 +659,7 @@ export interface FileRoutesById {
   '/comprador/interesses': typeof CompradorInteressesRoute
   '/comprador/negociacoes': typeof CompradorNegociacoesRoute
   '/comprador/perfil': typeof CompradorPerfilRoute
+  '/v/$token': typeof VTokenRoute
   '/veiculos/$slug': typeof VeiculosSlugRoute
   '/vendedor/boas-vindas': typeof VendedorBoasVindasRoute
   '/vendedor/cadastrar': typeof VendedorCadastrarRoute
@@ -692,6 +710,7 @@ export interface FileRouteTypes {
     | '/comprador'
     | '/esqueci-minha-senha'
     | '/login'
+    | '/primeiro-acesso'
     | '/redefinir-senha'
     | '/veiculos'
     | '/vendedor'
@@ -720,6 +739,7 @@ export interface FileRouteTypes {
     | '/comprador/interesses'
     | '/comprador/negociacoes'
     | '/comprador/perfil'
+    | '/v/$token'
     | '/veiculos/$slug'
     | '/vendedor/boas-vindas'
     | '/vendedor/cadastrar'
@@ -766,6 +786,7 @@ export interface FileRouteTypes {
     | '/cadastro'
     | '/esqueci-minha-senha'
     | '/login'
+    | '/primeiro-acesso'
     | '/redefinir-senha'
     | '/vender'
     | '/admin/analytics'
@@ -791,6 +812,7 @@ export interface FileRouteTypes {
     | '/comprador/interesses'
     | '/comprador/negociacoes'
     | '/comprador/perfil'
+    | '/v/$token'
     | '/veiculos/$slug'
     | '/vendedor/boas-vindas'
     | '/vendedor/cadastrar'
@@ -839,6 +861,7 @@ export interface FileRouteTypes {
     | '/comprador'
     | '/esqueci-minha-senha'
     | '/login'
+    | '/primeiro-acesso'
     | '/redefinir-senha'
     | '/veiculos'
     | '/vendedor'
@@ -867,6 +890,7 @@ export interface FileRouteTypes {
     | '/comprador/interesses'
     | '/comprador/negociacoes'
     | '/comprador/perfil'
+    | '/v/$token'
     | '/veiculos/$slug'
     | '/vendedor/boas-vindas'
     | '/vendedor/cadastrar'
@@ -916,11 +940,13 @@ export interface RootRouteChildren {
   CompradorRoute: typeof CompradorRouteWithChildren
   EsqueciMinhaSenhaRoute: typeof EsqueciMinhaSenhaRoute
   LoginRoute: typeof LoginRoute
+  PrimeiroAcessoRoute: typeof PrimeiroAcessoRoute
   RedefinirSenhaRoute: typeof RedefinirSenhaRoute
   VeiculosRoute: typeof VeiculosRouteWithChildren
   VendedorRoute: typeof VendedorRouteWithChildren
   VenderRoute: typeof VenderRoute
   VistoriadorRoute: typeof VistoriadorRouteWithChildren
+  VTokenRoute: typeof VTokenRoute
   ApiPublicUploadRoute: typeof ApiPublicUploadRoute
   ApiPublicWebhooksPagamentosRoute: typeof ApiPublicWebhooksPagamentosRoute
   ApiPublicWebhooksWhatsappRoute: typeof ApiPublicWebhooksWhatsappRoute
@@ -968,6 +994,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/primeiro-acesso': {
+      id: '/primeiro-acesso'
+      path: '/primeiro-acesso'
+      fullPath: '/primeiro-acesso'
+      preLoaderRoute: typeof PrimeiroAcessoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/redefinir-senha': {
@@ -1179,6 +1212,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/comprador/perfil'
       preLoaderRoute: typeof CompradorPerfilRouteImport
       parentRoute: typeof CompradorRoute
+    }
+    '/v/$token': {
+      id: '/v/$token'
+      path: '/v/$token'
+      fullPath: '/v/$token'
+      preLoaderRoute: typeof VTokenRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/veiculos/': {
       id: '/veiculos/'
@@ -1653,11 +1693,13 @@ const rootRouteChildren: RootRouteChildren = {
   CompradorRoute: CompradorRouteWithChildren,
   EsqueciMinhaSenhaRoute: EsqueciMinhaSenhaRoute,
   LoginRoute: LoginRoute,
+  PrimeiroAcessoRoute: PrimeiroAcessoRoute,
   RedefinirSenhaRoute: RedefinirSenhaRoute,
   VeiculosRoute: VeiculosRouteWithChildren,
   VendedorRoute: VendedorRouteWithChildren,
   VenderRoute: VenderRoute,
   VistoriadorRoute: VistoriadorRouteWithChildren,
+  VTokenRoute: VTokenRoute,
   ApiPublicUploadRoute: ApiPublicUploadRoute,
   ApiPublicWebhooksPagamentosRoute: ApiPublicWebhooksPagamentosRoute,
   ApiPublicWebhooksWhatsappRoute: ApiPublicWebhooksWhatsappRoute,
