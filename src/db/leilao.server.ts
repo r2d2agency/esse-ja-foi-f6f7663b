@@ -83,6 +83,29 @@ export async function ensureLeilaoSchema() {
     }
   }
 
+  // O histórico precisa aceitar vários lances do mesmo comprador no mesmo
+  // leilão. Algumas bases antigas criaram UNIQUE(leilao_id, comprador_id),
+  // o que faz o segundo lance falhar mesmo com todos os campos corretos.
+  await d.execute(sql`
+    DO $$
+    DECLARE constraint_name text;
+    BEGIN
+      FOR constraint_name IN
+        SELECT c.conname
+        FROM pg_constraint c
+        JOIN pg_class t ON t.oid = c.conrelid
+        JOIN pg_namespace n ON n.oid = t.relnamespace
+        WHERE n.nspname = 'public'
+          AND t.relname = 'lances'
+          AND c.contype = 'u'
+          AND pg_get_constraintdef(c.oid) ILIKE '%leilao_id%'
+          AND pg_get_constraintdef(c.oid) ILIKE '%comprador_id%'
+      LOOP
+        EXECUTE format('ALTER TABLE public.lances DROP CONSTRAINT %I', constraint_name);
+      END LOOP;
+    END $$;
+  `);
+
   // Criar índices para performance em tempo real
   try {
     await d.execute(sql`CREATE INDEX IF NOT EXISTS idx_lances_leilao ON lances(leilao_id, valor DESC);`);
@@ -307,12 +330,15 @@ export async function registrarLance(leilaoId: string, compradorId: string, valo
         RETURNING id
       `);
     } catch (error: any) {
-      const codigo = typeof error?.code === "string" ? error.code : "";
-      const detalhe = typeof error?.detail === "string" ? error.detail : "";
-      const restricao = typeof error?.constraint_name === "string"
-        ? error.constraint_name
-        : typeof error?.constraint === "string"
-          ? error.constraint
+      // O Drizzle encapsula o PostgresError em `cause`; ler somente o erro
+      // externo escondia justamente o código e a constraint que falharam.
+      const dbError = error?.cause ?? error;
+      const codigo = typeof dbError?.code === "string" ? dbError.code : "";
+      const detalhe = typeof dbError?.detail === "string" ? dbError.detail : "";
+      const restricao = typeof dbError?.constraint_name === "string"
+        ? dbError.constraint_name
+        : typeof dbError?.constraint === "string"
+          ? dbError.constraint
           : "";
 
       console.error("[leilao] INSERT de lance rejeitado", {
@@ -335,7 +361,12 @@ export async function registrarLance(leilaoId: string, compradorId: string, valo
       if (codigo === "23514") {
         throw new Error(`O lance não atende a uma regra do banco${restricao ? ` (${restricao})` : ""}.`);
       }
-      throw error;
+      if (codigo === "23505") {
+        throw new Error(`A estrutura antiga do banco impediu mais de um lance do comprador${restricao ? ` (${restricao})` : ""}. Reinicie o backend para aplicar a correção.`);
+      }
+      throw new Error(
+        `Não foi possível registrar o lance${codigo ? ` (banco ${codigo})` : ""}${restricao ? ` — ${restricao}` : ""}${detalhe ? `: ${detalhe}` : "."}`,
+      );
     }
     const lanceId = rowsOf(res)?.[0]?.id;
 
