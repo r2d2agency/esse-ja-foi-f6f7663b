@@ -517,9 +517,11 @@ export async function getEstadoLeilao(leilaoId: string) {
   if (!leilao) return null;
 
   const historicoRes = await d.execute(sql`
-    SELECT valor, criado_em, comprador_id
-    FROM lances
-    WHERE leilao_id = ${leilaoId}::uuid
+    SELECT lc.valor, lc.criado_em, lc.comprador_id,
+           p.nome as comprador_nome, p.whatsapp as comprador_whatsapp, p.email as comprador_email
+    FROM lances lc
+    LEFT JOIN profiles p ON p.id = lc.comprador_id
+    WHERE lc.leilao_id = ${leilaoId}::uuid
     ORDER BY valor DESC
     LIMIT 20
   `);
