@@ -297,8 +297,8 @@ export async function registrarLance(leilaoId: string, compradorId: string, valo
     // Campos opcionais de rastreio (`ip`/`sessao` ou `ip_origem`/`user_agent`)
     // ficam fora daqui porque seus nomes variam entre versões.
     const res = await tx.execute(sql`
-      INSERT INTO lances (leilao_id, comprador_id, valor, valido)
-      VALUES (${leilaoId}::uuid, ${compradorId}::uuid, ${valorNum}, true)
+      INSERT INTO lances (id, leilao_id, comprador_id, valor, valido, criado_em)
+      VALUES (gen_random_uuid(), ${leilaoId}::uuid, ${compradorId}::uuid, ${valorNum}, true, now())
       RETURNING id
     `);
     const lanceId = rowsOf(res)?.[0]?.id;
