@@ -18,6 +18,8 @@ export const criarVendedorInternoFn = createServerFn({ method: "POST" })
         email: z.string().email(),
         cpf: opcional,
         cnpj: opcional,
+        rg: opcional,
+        data_nascimento: opcional,
         tipo_pessoa: opcional,
         whatsapp: opcional,
         telefone: opcional,
@@ -28,9 +30,14 @@ export const criarVendedorInternoFn = createServerFn({ method: "POST" })
         bairro: opcional,
         cidade: opcional,
         uf: opcional,
+        doc_cnh_frente: z.string().nullable().optional(),
+        doc_cnh_verso: z.string().nullable().optional(),
+        doc_comprovante: z.string().nullable().optional(),
+        doc_selfie: z.string().nullable().optional(),
       })
       .parse(d),
   )
+
   .handler(async ({ data }) => {
     try {
       const criadoPor = await userIdFrom(data.token ?? null);
