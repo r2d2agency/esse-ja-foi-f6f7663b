@@ -59,6 +59,11 @@ export async function ensureConsultaVeicularSchema() {
   await d.execute(sql`
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS consulta_habilitada boolean DEFAULT false;
   `);
+  await d.execute(sql`ALTER TABLE consulta_provedores ADD COLUMN IF NOT EXISTS senha text;`);
+  await d.execute(
+    sql`ALTER TABLE consulta_provedores ADD COLUMN IF NOT EXISTS auth_modo text DEFAULT 'AUTO';`,
+  );
+
 
   const existe = rowsOf(
     await d.execute(sql`SELECT id FROM consulta_provedores WHERE slug = ${PROVEDOR_PADRAO.slug}`),
@@ -93,8 +98,10 @@ export async function getProvedorConsulta() {
     caminho_consulta: p.caminho_consulta,
     produto: p.produto,
     usuario: p.usuario,
+    auth_modo: p.auth_modo || "AUTO",
     ativo: !!p.ativo,
     tem_chave: !!p.api_key,
+    tem_senha: !!p.senha,
     chave_mascarada: mascarar(p.api_key),
     atualizado_em: p.atualizado_em,
   };
@@ -106,12 +113,15 @@ export async function salvarProvedorConsulta(data: {
   caminho_consulta?: string | undefined;
   produto?: string | undefined;
   usuario?: string | undefined;
+  senha?: string | undefined;
   api_key?: string | undefined;
+  auth_modo?: string | undefined;
   ativo: boolean;
 }) {
   const d = requireDb();
   await ensureConsultaVeicularSchema();
   const trocaChave = typeof data.api_key === "string" && data.api_key.trim().length > 0;
+  const trocaSenha = typeof data.senha === "string" && data.senha.trim().length > 0;
   await d.execute(sql`
     UPDATE consulta_provedores SET
       nome = ${data.nome || PROVEDOR_PADRAO.nome},
@@ -119,7 +129,9 @@ export async function salvarProvedorConsulta(data: {
       caminho_consulta = ${data.caminho_consulta || PROVEDOR_PADRAO.caminho_consulta},
       produto = ${data.produto || PROVEDOR_PADRAO.produto},
       usuario = ${data.usuario || null},
+      auth_modo = ${data.auth_modo || "AUTO"},
       ${trocaChave ? sql`api_key = ${data.api_key!.trim()},` : sql``}
+      ${trocaSenha ? sql`senha = ${data.senha!.trim()},` : sql``}
       ativo = ${data.ativo},
       atualizado_em = now()
     WHERE slug = ${PROVEDOR_PADRAO.slug}
@@ -135,9 +147,135 @@ async function getProvedorComChave() {
   )[0];
   if (!p) throw new Error("Provedor de consulta não configurado.");
   if (!p.ativo) throw new Error("O módulo de consulta veicular está desativado.");
-  if (!p.api_key) throw new Error("Informe a chave de acesso do provedor antes de consultar.");
+  if (!p.api_key && !(p.usuario && p.senha)) {
+    throw new Error("Informe a chave de acesso ou o usuário e a senha do provedor antes de consultar.");
+  }
   return p;
 }
+
+type Tentativa = {
+  label: string;
+  headers: Record<string, string>;
+  body: string;
+};
+
+function b64(s: string) {
+  // eslint-disable-next-line n/no-deprecated-api
+  return typeof btoa === "function" ? btoa(s) : Buffer.from(s, "utf8").toString("base64");
+}
+
+/**
+ * Monta as variações de autenticação aceitas por webservices do tipo Company Conferi.
+ * Em modo AUTO tentamos as combinações mais comuns até uma responder sem 401/403.
+ */
+function montarTentativas(prov: any, dados: Record<string, any>): Tentativa[] {
+  const usuario = prov.usuario ? String(prov.usuario) : "";
+  const senha = prov.senha ? String(prov.senha) : "";
+  const chave = prov.api_key ? String(prov.api_key) : "";
+  const base = { ...dados, produto: prov.produto || "GOLD" };
+  const jsonHeaders = { "Content-Type": "application/json", Accept: "application/json" };
+
+  const corpoCredenciais = JSON.stringify({
+    ...base,
+    usuario: usuario || undefined,
+    login: usuario || undefined,
+    senha: senha || undefined,
+    password: senha || undefined,
+    token: chave || undefined,
+    chave: chave || undefined,
+  });
+  const corpoSimples = JSON.stringify({ ...base, usuario: usuario || undefined });
+  const form = new URLSearchParams();
+  Object.entries({
+    ...base,
+    usuario,
+    senha,
+    token: chave,
+  }).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== "") form.append(k, String(v));
+  });
+
+  const tentativas: Record<string, Tentativa> = {
+    CORPO: {
+      label: "Usuário e senha no corpo (JSON)",
+      headers: jsonHeaders,
+      body: corpoCredenciais,
+    },
+    FORM: {
+      label: "Usuário e senha em formulário (x-www-form-urlencoded)",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+      body: form.toString(),
+    },
+    BASIC: {
+      label: "Basic auth (usuário:senha)",
+      headers: { ...jsonHeaders, Authorization: `Basic ${b64(`${usuario}:${senha || chave}`)}` },
+      body: corpoSimples,
+    },
+    BEARER: {
+      label: "Bearer token",
+      headers: { ...jsonHeaders, Authorization: `Bearer ${chave}` },
+      body: corpoSimples,
+    },
+    APIKEY: {
+      label: "Cabeçalho x-api-key",
+      headers: { ...jsonHeaders, "x-api-key": chave },
+      body: corpoSimples,
+    },
+  };
+
+  const modo = String(prov.auth_modo || "AUTO").toUpperCase();
+  if (modo !== "AUTO" && tentativas[modo]) return [tentativas[modo]!];
+
+  const ordem: string[] = [];
+  if (usuario && senha) ordem.push("CORPO", "FORM", "BASIC");
+  if (chave) ordem.push("BEARER", "APIKEY", "CORPO");
+  return [...new Set(ordem)].map((k) => tentativas[k]!).filter(Boolean);
+}
+
+function parse(texto: string) {
+  try {
+    return JSON.parse(texto);
+  } catch {
+    return { raw: texto };
+  }
+}
+
+/** Executa as tentativas até obter sucesso; devolve diagnóstico de todas. */
+async function executarConsulta(prov: any, dados: Record<string, any>) {
+  const url = `${String(prov.base_url).replace(/\/+$/, "")}${prov.caminho_consulta || "/consulta"}`;
+  const tentativas = montarTentativas(prov, dados);
+  const diagnostico: { modo: string; httpStatus: number; mensagem: string }[] = [];
+  let ultima: { ok: boolean; httpStatus: number; payload: any; erro: string | null } | null = null;
+
+  for (const t of tentativas) {
+    try {
+      const resp = await fetch(url, { method: "POST", headers: t.headers, body: t.body });
+      const payload = parse(await resp.text());
+      const msg =
+        primeiro(payload, ["mensagem", "message", "erro", "error", "descricao"]) ||
+        (resp.ok ? "OK" : `HTTP ${resp.status}`);
+      diagnostico.push({ modo: t.label, httpStatus: resp.status, mensagem: String(msg).slice(0, 300) });
+      if (resp.ok) {
+        return { ok: true as const, httpStatus: resp.status, payload, erro: null, diagnostico };
+      }
+      ultima = { ok: false, httpStatus: resp.status, payload, erro: String(msg) };
+      if (resp.status !== 401 && resp.status !== 403 && resp.status !== 400) break;
+    } catch (e: any) {
+      const erro = e?.message || "Falha de comunicação com o provedor.";
+      diagnostico.push({ modo: t.label, httpStatus: 0, mensagem: erro });
+      ultima = { ok: false, httpStatus: 0, payload: null, erro };
+    }
+  }
+
+  return {
+    ok: false as const,
+    httpStatus: ultima?.httpStatus ?? 0,
+    payload: ultima?.payload ?? null,
+    erro: ultima?.erro ?? "Não foi possível autenticar no provedor.",
+    diagnostico,
+  };
+}
+
 
 function primeiro(obj: any, chaves: string[]) {
   for (const k of chaves) {
@@ -175,47 +313,20 @@ export async function consultarLaudoVeiculo(veiculoId: string, criadoPor?: strin
     throw new Error("Cadastre a placa ou o chassi do veículo antes de consultar.");
   }
 
-  const url = `${String(prov.base_url).replace(/\/+$/, "")}${prov.caminho_consulta || "/consulta"}`;
-  const corpo = {
+  const r = await executarConsulta(prov, {
     placa: veiculo.placa || undefined,
     chassi: veiculo.chassi || undefined,
     renavam: veiculo.renavam || undefined,
-    produto: prov.produto || "GOLD",
-    usuario: prov.usuario || undefined,
-  };
+  });
 
-  let status = "ERRO";
-  let payload: any = null;
-  let erro: string | null = null;
+  const payload = r.payload;
+  const erro = r.ok ? null : r.erro;
+  const status = r.ok
+    ? "CONCLUIDA"
+    : r.httpStatus === 401 || r.httpStatus === 403
+      ? "NAO_AUTORIZADO"
+      : "ERRO";
 
-  try {
-    const resp = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        Authorization: `Bearer ${prov.api_key}`,
-        "x-api-key": String(prov.api_key),
-      },
-      body: JSON.stringify(corpo),
-    });
-    const texto = await resp.text();
-    try {
-      payload = JSON.parse(texto);
-    } catch {
-      payload = { raw: texto };
-    }
-    if (!resp.ok) {
-      erro =
-        primeiro(payload, ["mensagem", "message", "erro", "error"]) ||
-        `O provedor respondeu com erro ${resp.status}.`;
-      status = resp.status === 401 || resp.status === 403 ? "NAO_AUTORIZADO" : "ERRO";
-    } else {
-      status = "CONCLUIDA";
-    }
-  } catch (e: any) {
-    erro = e?.message || "Falha de comunicação com o provedor.";
-  }
 
   const resumo = status === "CONCLUIDA" ? resumirRetorno(payload) : {};
 
@@ -258,92 +369,51 @@ export async function listarConsultasVeiculo(veiculoId: string) {
 
 export async function testarConexaoProvedor() {
   const prov = await getProvedorComChave();
-  const url = `${String(prov.base_url).replace(/\/+$/, "")}${prov.caminho_consulta || "/consulta"}`;
-  try {
-    const resp = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${prov.api_key}`,
-        "x-api-key": String(prov.api_key),
-      },
-      body: JSON.stringify({ placa: "TESTE000", produto: prov.produto }),
-    });
-    if (resp.status === 401 || resp.status === 403) {
-      return { ok: false as const, message: "Chave de acesso recusada pelo provedor." };
-    }
+  const r = await executarConsulta(prov, { placa: "TESTE000" });
+  if (r.ok) {
     return {
       ok: true as const,
-      message: `Conexão estabelecida (HTTP ${resp.status}). O endpoint respondeu.`,
+      message: `Conexão estabelecida (HTTP ${r.httpStatus}).`,
+      diagnostico: r.diagnostico,
     };
-  } catch (e: any) {
-    return { ok: false as const, message: e?.message || "Não foi possível alcançar o endpoint." };
   }
+  const naoAutorizado = r.diagnostico.some((d) => d.httpStatus === 401 || d.httpStatus === 403);
+  return {
+    ok: false as const,
+    message: naoAutorizado
+      ? `Credenciais recusadas pelo provedor. ${r.erro}`
+      : r.erro || "Não foi possível alcançar o endpoint.",
+    diagnostico: r.diagnostico,
+  };
 }
 
 /**
  * Consulta de teste por placa digitada (tela de configurações).
- * Não grava nada no banco — serve apenas para validar chave/endpoint e inspecionar o retorno.
+ * Não grava nada no banco — serve apenas para validar credenciais/endpoint e inspecionar o retorno.
  */
 export async function consultarPlacaAvulsa(placa: string) {
   const prov = await getProvedorComChave();
   const placaLimpa = placa.toUpperCase().replace(/\W/g, "");
   if (placaLimpa.length !== 7) throw new Error("Informe uma placa válida (7 caracteres).");
 
-  const url = `${String(prov.base_url).replace(/\/+$/, "")}${prov.caminho_consulta || "/consulta"}`;
-  const corpo = {
-    placa: placaLimpa,
-    produto: prov.produto || "GOLD",
-    usuario: prov.usuario || undefined,
-  };
-
-  let payload: any = null;
-  let httpStatus = 0;
-  try {
-    const resp = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        Authorization: `Bearer ${prov.api_key}`,
-        "x-api-key": String(prov.api_key),
-      },
-      body: JSON.stringify(corpo),
-    });
-    httpStatus = resp.status;
-    const texto = await resp.text();
-    try {
-      payload = JSON.parse(texto);
-    } catch {
-      payload = { raw: texto };
-    }
-    if (!resp.ok) {
-      const msg =
-        primeiro(payload, ["mensagem", "message", "erro", "error"]) ||
-        `O provedor respondeu com erro ${resp.status}.`;
-      return {
-        ok: false as const,
-        httpStatus,
-        message: String(msg),
-        resumo: null,
-        resposta: payload,
-      };
-    }
-  } catch (e: any) {
+  const r = await executarConsulta(prov, { placa: placaLimpa });
+  if (!r.ok) {
     return {
       ok: false as const,
-      httpStatus: 0,
-      message: e?.message || "Falha de comunicação com o provedor.",
+      httpStatus: r.httpStatus,
+      message: r.erro || "Falha de comunicação com o provedor.",
       resumo: null,
-      resposta: null,
+      resposta: r.payload,
+      diagnostico: r.diagnostico,
     };
   }
-
   return {
     ok: true as const,
-    httpStatus,
+    httpStatus: r.httpStatus,
     message: "Consulta concluída.",
-    resumo: resumirRetorno(payload),
-    resposta: payload,
+    resumo: resumirRetorno(r.payload),
+    resposta: r.payload,
+    diagnostico: r.diagnostico,
   };
 }
+

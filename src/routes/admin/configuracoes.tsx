@@ -239,14 +239,18 @@ function ConsultaVeicularSection() {
     caminho_consulta: "/api-clientes/consulta",
     produto: "GOLD",
     usuario: "",
+    senha: "",
     api_key: "",
+    auth_modo: "AUTO",
     ativo: false,
   });
   const [chaveMascarada, setChaveMascarada] = useState<string | null>(null);
+  const [temSenha, setTemSenha] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const [placaTeste, setPlacaTeste] = useState("");
   const [testandoPlaca, setTestandoPlaca] = useState(false);
   const [resultadoTeste, setResultadoTeste] = useState<any>(null);
+
 
   useEffect(() => {
     void (async () => {
@@ -260,10 +264,13 @@ function ConsultaVeicularSection() {
         caminho_consulta: p.caminho_consulta || f.caminho_consulta,
         produto: p.produto || f.produto,
         usuario: p.usuario || "",
+        senha: "",
         api_key: "",
+        auth_modo: p.auth_modo || "AUTO",
         ativo: !!p.ativo,
       }));
       setChaveMascarada(p.chave_mascarada || null);
+      setTemSenha(!!p.tem_senha);
     })();
   }, []);
 
@@ -278,7 +285,8 @@ function ConsultaVeicularSection() {
       toast.success("Módulo de consulta veicular salvo.");
       const atualizado: any = await getProvedorConsultaFn();
       setChaveMascarada(atualizado?.data?.chave_mascarada || null);
-      setForm((f) => ({ ...f, api_key: "" }));
+      setTemSenha(!!atualizado?.data?.tem_senha);
+      setForm((f) => ({ ...f, api_key: "", senha: "" }));
     } finally {
       setOcupado(false);
     }
@@ -288,12 +296,14 @@ function ConsultaVeicularSection() {
     setOcupado(true);
     try {
       const res: any = await testarConexaoConsultaFn();
+      setResultadoTeste(res);
       if (res?.ok) toast.success(res.message || "Conexão validada.");
       else toast.error(res?.message || "Falha na conexão.");
     } finally {
       setOcupado(false);
     }
   }
+
 
   async function testarPlaca() {
     const placa = placaTeste.toUpperCase().replace(/\W/g, "");
@@ -355,14 +365,42 @@ function ConsultaVeicularSection() {
           />
         </div>
         <div className="space-y-2">
-          <Label>Usuário (se exigido)</Label>
+          <Label>Usuário da API</Label>
           <Input
             value={form.usuario}
             onChange={(e) => setForm({ ...form, usuario: e.target.value })}
+            placeholder="usuário fornecido pela Company Conferi"
           />
         </div>
-        <div className="space-y-2 md:col-span-2">
-          <Label>Chave de acesso</Label>
+        <div className="space-y-2">
+          <Label>Senha da API</Label>
+          <Input
+            type="password"
+            value={form.senha}
+            onChange={(e) => setForm({ ...form, senha: e.target.value })}
+            placeholder={temSenha ? "•••••••• (salva)" : "senha fornecida pelo provedor"}
+          />
+          <p className="text-xs text-slate-500">
+            {temSenha ? "Senha cadastrada. Deixe em branco para manter." : "Nenhuma senha cadastrada."}
+          </p>
+        </div>
+        <div className="space-y-2">
+          <Label>Modo de autenticação</Label>
+          <select
+            className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+            value={form.auth_modo}
+            onChange={(e) => setForm({ ...form, auth_modo: e.target.value })}
+          >
+            <option value="AUTO">Automático (testa as combinações)</option>
+            <option value="CORPO">Usuário e senha no corpo (JSON)</option>
+            <option value="FORM">Usuário e senha em formulário</option>
+            <option value="BASIC">Basic auth (usuário:senha)</option>
+            <option value="BEARER">Bearer token</option>
+            <option value="APIKEY">Cabeçalho x-api-key</option>
+          </select>
+        </div>
+        <div className="space-y-2">
+          <Label>Chave / token de acesso (se houver)</Label>
           <Input
             type="password"
             value={form.api_key}
@@ -375,6 +413,7 @@ function ConsultaVeicularSection() {
               : "Nenhuma chave cadastrada ainda."}
           </p>
         </div>
+
       </div>
 
       <div className="flex gap-2">
@@ -439,6 +478,17 @@ function ConsultaVeicularSection() {
                 ))}
               </div>
             )}
+            {Array.isArray(resultadoTeste.diagnostico) && resultadoTeste.diagnostico.length > 0 && (
+              <div className="space-y-1 rounded-lg bg-white p-3 text-xs text-slate-700">
+                <p className="font-bold text-slate-500">Tentativas de autenticação</p>
+                {resultadoTeste.diagnostico.map((d: any, i: number) => (
+                  <div key={i}>
+                    {d.modo} — HTTP {d.httpStatus || "sem resposta"}: {d.mensagem}
+                  </div>
+                ))}
+              </div>
+            )}
+
             <details className="rounded-lg bg-slate-900 p-3 text-xs text-slate-100">
               <summary className="cursor-pointer font-bold">Ver retorno completo (JSON)</summary>
               <pre className="mt-2 max-h-72 overflow-auto">
