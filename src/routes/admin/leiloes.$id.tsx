@@ -273,6 +273,78 @@ function AdminLeilaoAcompanhamentoPage() {
           </Card>
         </div>
       </div>
+
+      <Dialog open={dialogEncerrar} onOpenChange={setDialogEncerrar}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 uppercase font-black tracking-tight">
+              <Trophy className="h-5 w-5 text-amber-500" /> Confirmar encerramento
+            </DialogTitle>
+            <DialogDescription>
+              Ao confirmar, o maior lance atual será declarado vencedor, a negociação será criada e o comprador notificado.
+            </DialogDescription>
+          </DialogHeader>
+
+          {carregandoResumo && !maiorLance ? (
+            <p className="text-sm text-slate-500">Carregando maior lance...</p>
+          ) : maiorLance ? (
+            <div className="rounded-lg border border-teal-200 bg-teal-50 p-4 space-y-1">
+              <p className="text-[11px] font-black uppercase tracking-widest text-teal-700">Vencedor proposto</p>
+              <p className="text-2xl font-black text-slate-900">
+                R$ {Number(maiorLance.valor).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+              </p>
+              <p className="text-sm font-bold text-slate-800">{maiorLance.nome || "Comprador"}</p>
+              <p className="text-xs text-slate-600">{maiorLance.whatsapp || maiorLance.email || "Contato não informado"}</p>
+              <p className="text-[11px] text-slate-500 font-medium">
+                Lance registrado em {format(new Date(maiorLance.criado_em), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 font-medium">
+              Nenhum lance registrado. O leilão será encerrado sem vencedor.
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogEncerrar(false)}>Voltar</Button>
+            <Button
+              className="bg-teal-700 hover:bg-teal-800 text-white font-bold uppercase text-xs"
+              disabled={encerrar.isPending}
+              onClick={() => encerrar.mutate()}
+            >
+              {encerrar.isPending ? "Encerrando..." : "Confirmar vencedor e encerrar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={dialogCancelar} onOpenChange={setDialogCancelar}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="uppercase font-black tracking-tight">Cancelar leilão</DialogTitle>
+            <DialogDescription>
+              O leilão será cancelado sem vencedor e sem criação de negociação. Informe o motivo para auditoria.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={motivo}
+            onChange={(e) => setMotivo(e.target.value)}
+            placeholder="Motivo do cancelamento"
+            rows={3}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogCancelar(false)}>Voltar</Button>
+            <Button
+              variant="destructive"
+              disabled={cancelar.isPending || motivo.trim().length < 3}
+              onClick={() => cancelar.mutate()}
+            >
+              {cancelar.isPending ? "Cancelando..." : "Cancelar leilão"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
+
   );
 }
