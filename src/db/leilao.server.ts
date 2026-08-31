@@ -196,7 +196,13 @@ export async function cancelarLeilaoVeiculo(veiculoId: string, motivo = "Canal d
 
 export async function registrarLance(leilaoId: string, compradorId: string, valor: number, ip?: string, ua?: string) {
   const d = requireDb();
-  
+  await ensureLeilaoSchema();
+
+  const valorNum = Number(valor);
+  if (!Number.isFinite(valorNum) || valorNum <= 0) {
+    throw new Error("Informe um valor de lance válido maior que zero.");
+  }
+
   // Usar transação para garantir atomicidade e evitar lances simultâneos com mesmo valor ou menores
   return await d.transaction(async (tx) => {
     // 1. Validar leilão e buscar estado atual
