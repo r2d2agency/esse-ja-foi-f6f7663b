@@ -280,3 +280,70 @@ export async function testarConexaoProvedor() {
     return { ok: false as const, message: e?.message || "Não foi possível alcançar o endpoint." };
   }
 }
+
+/**
+ * Consulta de teste por placa digitada (tela de configurações).
+ * Não grava nada no banco — serve apenas para validar chave/endpoint e inspecionar o retorno.
+ */
+export async function consultarPlacaAvulsa(placa: string) {
+  const prov = await getProvedorComChave();
+  const placaLimpa = placa.toUpperCase().replace(/\W/g, "");
+  if (placaLimpa.length !== 7) throw new Error("Informe uma placa válida (7 caracteres).");
+
+  const url = `${String(prov.base_url).replace(/\/+$/, "")}${prov.caminho_consulta || "/consulta"}`;
+  const corpo = {
+    placa: placaLimpa,
+    produto: prov.produto || "GOLD",
+    usuario: prov.usuario || undefined,
+  };
+
+  let payload: any = null;
+  let httpStatus = 0;
+  try {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Authorization: `Bearer ${prov.api_key}`,
+        "x-api-key": String(prov.api_key),
+      },
+      body: JSON.stringify(corpo),
+    });
+    httpStatus = resp.status;
+    const texto = await resp.text();
+    try {
+      payload = JSON.parse(texto);
+    } catch {
+      payload = { raw: texto };
+    }
+    if (!resp.ok) {
+      const msg =
+        primeiro(payload, ["mensagem", "message", "erro", "error"]) ||
+        `O provedor respondeu com erro ${resp.status}.`;
+      return {
+        ok: false as const,
+        httpStatus,
+        message: String(msg),
+        resumo: null,
+        resposta: payload,
+      };
+    }
+  } catch (e: any) {
+    return {
+      ok: false as const,
+      httpStatus: 0,
+      message: e?.message || "Falha de comunicação com o provedor.",
+      resumo: null,
+      resposta: null,
+    };
+  }
+
+  return {
+    ok: true as const,
+    httpStatus,
+    message: "Consulta concluída.",
+    resumo: resumirRetorno(payload),
+    resposta: payload,
+  };
+}
