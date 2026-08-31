@@ -1,16 +1,19 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getLeilaoInfo } from "@/lib/leilao.functions";
+import { getLeilaoInfo, getResumoEncerramentoFn, encerrarLeilaoFn, cancelarLeilaoAdminFn } from "@/lib/leilao.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Gavel, Clock, Users, ArrowLeft, TrendingUp, AlertCircle, History as HistoryIcon } from "lucide-react";
+import { Gavel, Clock, Users, ArrowLeft, AlertCircle, History as HistoryIcon, Trophy } from "lucide-react";
 import { toast } from "sonner";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { formatarTempoRestante } from "@/lib/tempo";
+
 
 
 export const Route = createFileRoute("/admin/leiloes/$id")({
@@ -28,12 +31,58 @@ function AdminLeilaoAcompanhamentoPage() {
     refetchInterval: 3000, // Polling a cada 3 segundos para o admin
   });
 
+  const [dialogEncerrar, setDialogEncerrar] = useState(false);
+  const [dialogCancelar, setDialogCancelar] = useState(false);
+  const [motivo, setMotivo] = useState("");
+
+  const { data: resumo, isFetching: carregandoResumo } = useQuery({
+    queryKey: ["admin-leilao-resumo-encerramento", id, dialogEncerrar],
+    queryFn: () => getResumoEncerramentoFn({ data: { leilaoId: id } }),
+    enabled: dialogEncerrar,
+  });
+
+  const encerrar = useMutation({
+    mutationFn: () => encerrarLeilaoFn({ data: { leilaoId: id } }),
+    onSuccess: (res: any) => {
+      if (!res?.ok) { toast.error(res?.message || "Não foi possível encerrar o leilão."); return; }
+      const r = res.data?.resultado;
+      if (r === "ENCERRADO_COM_VENCEDOR") {
+        toast.success(`Leilão encerrado. Negociação ${res.data?.codigo} criada e comprador notificado.`);
+      } else if (r === "ENCERRADO_SEM_MINIMO") {
+        toast.warning("Leilão encerrado: o maior lance não atingiu o valor mínimo acordado.");
+      } else if (r === "ENCERRADO_SEM_OFERTAS") {
+        toast.warning("Leilão encerrado sem ofertas válidas.");
+      } else {
+        toast.success("Leilão encerrado.");
+      }
+      setDialogEncerrar(false);
+      queryClient.invalidateQueries({ queryKey: ["admin-leilao-detalhe", id] });
+    },
+    onError: (e: any) => toast.error(e?.message || "Erro ao encerrar o leilão."),
+  });
+
+  const cancelar = useMutation({
+    mutationFn: () => cancelarLeilaoAdminFn({ data: { leilaoId: id, motivo: motivo.trim() } }),
+    onSuccess: (res: any) => {
+      if (!res?.ok) { toast.error(res?.message || "Não foi possível cancelar o leilão."); return; }
+      toast.success("Leilão cancelado.");
+      setDialogCancelar(false);
+      setMotivo("");
+      queryClient.invalidateQueries({ queryKey: ["admin-leilao-detalhe", id] });
+    },
+    onError: (e: any) => toast.error(e?.message || "Erro ao cancelar o leilão."),
+  });
+
   if (isLoading) return <div className="p-8">Carregando detalhes do leilão...</div>;
   if (error) return <div className="p-8 text-center text-red-500">Erro ao carregar o leilão: {(error as Error).message}</div>;
   if (!leilao) return <div className="p-8 text-center text-red-500">Leilão não encontrado.</div>;
 
   const lanceAtual = Number(leilao.ultimo_lance?.valor || leilao.lance_inicial);
   const fimEm = new Date(leilao.fim_em);
+  const encerrado = leilao.status === "ENCERRADO";
+  const cancelado = leilao.status === "CANCELADO";
+  const maiorLance = (resumo as any)?.data?.maior_lance || null;
+
 
   return (
     <div className="p-8 space-y-8 max-w-7xl mx-auto">
@@ -169,12 +218,26 @@ function AdminLeilaoAcompanhamentoPage() {
               <CardTitle className="text-xs font-black uppercase text-slate-500">Controles do Leilão</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <Button className="w-full bg-amber-600 hover:bg-amber-700 font-bold text-xs uppercase" variant="secondary">
-                Pausar Leilão
+              <Button
+                className="w-full bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs uppercase"
+                disabled={encerrado || cancelado}
+                onClick={() => setDialogEncerrar(true)}
+              >
+                <Gavel className="h-4 w-4 mr-2" /> Encerrar Leilão
               </Button>
-              <Button className="w-full text-red-600 hover:text-red-700 hover:bg-red-50 font-bold text-xs uppercase border-red-100" variant="outline">
+              <Button
+                className="w-full text-red-600 hover:text-red-700 hover:bg-red-50 font-bold text-xs uppercase border-red-100"
+                variant="outline"
+                disabled={encerrado || cancelado}
+                onClick={() => setDialogCancelar(true)}
+              >
                 Cancelar Leilão
               </Button>
+              {(encerrado || cancelado) && (
+                <p className="text-[11px] font-bold uppercase text-slate-400">
+                  Leilão {leilao.status.toLowerCase()} — controles indisponíveis.
+                </p>
+              )}
               <div className="pt-4 mt-4 border-t border-slate-200">
                 <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">
                   <AlertCircle className="h-3.5 w-3.5" /> Prorrogação Ativa
@@ -185,6 +248,7 @@ function AdminLeilaoAcompanhamentoPage() {
               </div>
             </CardContent>
           </Card>
+
 
           <Card className="border-slate-200 shadow-none">
             <CardHeader>
@@ -209,6 +273,78 @@ function AdminLeilaoAcompanhamentoPage() {
           </Card>
         </div>
       </div>
+
+      <Dialog open={dialogEncerrar} onOpenChange={setDialogEncerrar}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 uppercase font-black tracking-tight">
+              <Trophy className="h-5 w-5 text-amber-500" /> Confirmar encerramento
+            </DialogTitle>
+            <DialogDescription>
+              Ao confirmar, o maior lance atual será declarado vencedor, a negociação será criada e o comprador notificado.
+            </DialogDescription>
+          </DialogHeader>
+
+          {carregandoResumo && !maiorLance ? (
+            <p className="text-sm text-slate-500">Carregando maior lance...</p>
+          ) : maiorLance ? (
+            <div className="rounded-lg border border-teal-200 bg-teal-50 p-4 space-y-1">
+              <p className="text-[11px] font-black uppercase tracking-widest text-teal-700">Vencedor proposto</p>
+              <p className="text-2xl font-black text-slate-900">
+                R$ {Number(maiorLance.valor).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+              </p>
+              <p className="text-sm font-bold text-slate-800">{maiorLance.nome || "Comprador"}</p>
+              <p className="text-xs text-slate-600">{maiorLance.whatsapp || maiorLance.email || "Contato não informado"}</p>
+              <p className="text-[11px] text-slate-500 font-medium">
+                Lance registrado em {format(new Date(maiorLance.criado_em), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 font-medium">
+              Nenhum lance registrado. O leilão será encerrado sem vencedor.
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogEncerrar(false)}>Voltar</Button>
+            <Button
+              className="bg-teal-700 hover:bg-teal-800 text-white font-bold uppercase text-xs"
+              disabled={encerrar.isPending}
+              onClick={() => encerrar.mutate()}
+            >
+              {encerrar.isPending ? "Encerrando..." : "Confirmar vencedor e encerrar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={dialogCancelar} onOpenChange={setDialogCancelar}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="uppercase font-black tracking-tight">Cancelar leilão</DialogTitle>
+            <DialogDescription>
+              O leilão será cancelado sem vencedor e sem criação de negociação. Informe o motivo para auditoria.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={motivo}
+            onChange={(e) => setMotivo(e.target.value)}
+            placeholder="Motivo do cancelamento"
+            rows={3}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogCancelar(false)}>Voltar</Button>
+            <Button
+              variant="destructive"
+              disabled={cancelar.isPending || motivo.trim().length < 3}
+              onClick={() => cancelar.mutate()}
+            >
+              {cancelar.isPending ? "Cancelando..." : "Cancelar leilão"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
+
   );
 }

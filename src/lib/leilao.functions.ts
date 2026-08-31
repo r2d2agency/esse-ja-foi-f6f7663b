@@ -96,3 +96,38 @@ export const salvarLeilaoVeiculoFn = createServerFn({ method: "POST" })
       return { ok: false as const, message: e?.message || "Erro ao salvar leilão." };
     }
   });
+
+export const getResumoEncerramentoFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) => z.object({ leilaoId: z.string().uuid() }).parse(d))
+  .handler(async ({ data }) => {
+    try {
+      const { resumoEncerramentoLeilao } = await import("@/db/leilao.server");
+      return { ok: true as const, data: await resumoEncerramentoLeilao(data.leilaoId) };
+    } catch (e: any) {
+      return { ok: false as const, message: e?.message || "Erro ao carregar o resumo do leilão." };
+    }
+  });
+
+export const encerrarLeilaoFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) => z.object({ leilaoId: z.string().uuid() }).parse(d))
+  .handler(async ({ data }) => {
+    try {
+      const { encerrarLeilaoAgora } = await import("@/db/leilao.server");
+      return { ok: true as const, data: await encerrarLeilaoAgora(data.leilaoId) };
+    } catch (e: any) {
+      return { ok: false as const, message: e?.message || "Erro ao encerrar o leilão." };
+    }
+  });
+
+export const cancelarLeilaoAdminFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) =>
+    z.object({ leilaoId: z.string().uuid(), motivo: z.string().min(3, "Informe o motivo do cancelamento.") }).parse(d),
+  )
+  .handler(async ({ data }) => {
+    try {
+      const { cancelarLeilaoAdmin } = await import("@/db/leilao.server");
+      return { ok: true as const, data: await cancelarLeilaoAdmin(data.leilaoId, data.motivo) };
+    } catch (e: any) {
+      return { ok: false as const, message: e?.message || "Erro ao cancelar o leilão." };
+    }
+  });
