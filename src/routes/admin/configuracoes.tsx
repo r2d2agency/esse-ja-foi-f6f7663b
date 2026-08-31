@@ -392,11 +392,16 @@ function ConsultaVeicularSection() {
             onChange={(e) => setForm({ ...form, auth_modo: e.target.value })}
           >
             <option value="AUTO">Automático (testa as combinações)</option>
+            <option value="XML">XML Conferi (usuário/senha em atributos)</option>
+            <option value="XMLTAG">XML Conferi (usuário/senha em elementos)</option>
+            <option value="XMLFORM">XML Conferi em campo de formulário (xml=)</option>
+            <option value="QUERY">Parâmetros na URL (GET)</option>
             <option value="CORPO">Usuário e senha no corpo (JSON)</option>
             <option value="FORM">Usuário e senha em formulário</option>
             <option value="BASIC">Basic auth (usuário:senha)</option>
             <option value="BEARER">Bearer token</option>
             <option value="APIKEY">Cabeçalho x-api-key</option>
+
           </select>
         </div>
         <div className="space-y-2">
