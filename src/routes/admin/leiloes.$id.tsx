@@ -31,12 +31,58 @@ function AdminLeilaoAcompanhamentoPage() {
     refetchInterval: 3000, // Polling a cada 3 segundos para o admin
   });
 
+  const [dialogEncerrar, setDialogEncerrar] = useState(false);
+  const [dialogCancelar, setDialogCancelar] = useState(false);
+  const [motivo, setMotivo] = useState("");
+
+  const { data: resumo, isFetching: carregandoResumo } = useQuery({
+    queryKey: ["admin-leilao-resumo-encerramento", id, dialogEncerrar],
+    queryFn: () => getResumoEncerramentoFn({ data: { leilaoId: id } }),
+    enabled: dialogEncerrar,
+  });
+
+  const encerrar = useMutation({
+    mutationFn: () => encerrarLeilaoFn({ data: { leilaoId: id } }),
+    onSuccess: (res: any) => {
+      if (!res?.ok) return toast.error(res?.message || "Não foi possível encerrar o leilão.");
+      const r = res.data?.resultado;
+      if (r === "ENCERRADO_COM_VENCEDOR") {
+        toast.success(`Leilão encerrado. Negociação ${res.data?.codigo} criada e comprador notificado.`);
+      } else if (r === "ENCERRADO_SEM_MINIMO") {
+        toast.warning("Leilão encerrado: o maior lance não atingiu o valor mínimo acordado.");
+      } else if (r === "ENCERRADO_SEM_OFERTAS") {
+        toast.warning("Leilão encerrado sem ofertas válidas.");
+      } else {
+        toast.success("Leilão encerrado.");
+      }
+      setDialogEncerrar(false);
+      queryClient.invalidateQueries({ queryKey: ["admin-leilao-detalhe", id] });
+    },
+    onError: (e: any) => toast.error(e?.message || "Erro ao encerrar o leilão."),
+  });
+
+  const cancelar = useMutation({
+    mutationFn: () => cancelarLeilaoAdminFn({ data: { leilaoId: id, motivo: motivo.trim() } }),
+    onSuccess: (res: any) => {
+      if (!res?.ok) return toast.error(res?.message || "Não foi possível cancelar o leilão.");
+      toast.success("Leilão cancelado.");
+      setDialogCancelar(false);
+      setMotivo("");
+      queryClient.invalidateQueries({ queryKey: ["admin-leilao-detalhe", id] });
+    },
+    onError: (e: any) => toast.error(e?.message || "Erro ao cancelar o leilão."),
+  });
+
   if (isLoading) return <div className="p-8">Carregando detalhes do leilão...</div>;
   if (error) return <div className="p-8 text-center text-red-500">Erro ao carregar o leilão: {(error as Error).message}</div>;
   if (!leilao) return <div className="p-8 text-center text-red-500">Leilão não encontrado.</div>;
 
   const lanceAtual = Number(leilao.ultimo_lance?.valor || leilao.lance_inicial);
   const fimEm = new Date(leilao.fim_em);
+  const encerrado = leilao.status === "ENCERRADO";
+  const cancelado = leilao.status === "CANCELADO";
+  const maiorLance = (resumo as any)?.data?.maior_lance || null;
+
 
   return (
     <div className="p-8 space-y-8 max-w-7xl mx-auto">
