@@ -439,9 +439,28 @@ function primeiro(obj: any, chaves: string[]) {
   return null;
 }
 
+/** Achata a resposta XML da Conferi em um objeto plano nome → valor. */
+function achatarConferi(payload: any): Record<string, any> {
+  const plano: Record<string, any> = {};
+  const visitar = (node: any) => {
+    if (!node || typeof node !== "object") return;
+    if (Array.isArray(node)) return node.forEach(visitar);
+    if (node.nome && node.valor !== undefined) plano[String(node.nome).toLowerCase()] = node.valor;
+    for (const [k, v] of Object.entries(node)) {
+      if (k === "raw") continue;
+      if (v && typeof v === "object") visitar(v);
+      else if (typeof v === "string" && k !== "#text") plano[k.toLowerCase()] ??= v;
+    }
+  };
+  visitar(payload?.conferi ?? payload);
+  return plano;
+}
+
 /** Mapeamento tolerante: cobre variações comuns de nomes de campo do retorno. */
 export function resumirRetorno(payload: any) {
-  const raiz = payload?.retorno ?? payload?.data ?? payload?.resultado ?? payload;
+  const base = payload?.retorno ?? payload?.data ?? payload?.resultado ?? payload;
+  const raiz = payload?.conferi ? { ...achatarConferi(payload), ...base } : base;
+
   return {
     protocolo: primeiro(raiz, ["protocolo", "ticket", "id_consulta", "idConsulta", "numero_protocolo"]),
     situacao: primeiro(raiz, ["situacao", "situacao_veiculo", "status_veiculo"]),
