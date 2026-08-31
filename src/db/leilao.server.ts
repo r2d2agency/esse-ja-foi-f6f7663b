@@ -347,9 +347,14 @@ export async function getEstadoLeilao(leilaoId: string) {
     console.error("[leilao] anuncios schema", e);
   }
 
+  // A tabela anuncios_veiculo pode não existir no banco do cliente:
+  // detecta e monta a query com ou sem o JOIN.
+  const temAnuncios = await tabelaExiste(d, "anuncios_veiculo");
+
   // Subconsultas correlacionadas escalares — um subselect em FROM não pode
   // referenciar l.id sem LATERAL, o que quebrava o detalhe do leilão.
-  const lRes = await d.execute(sql`
+  const lRes = temAnuncios
+    ? await d.execute(sql`
     SELECT l.*,
       COALESCE(a.titulo, concat_ws(' ', v.marca, v.modelo, v.ano_modelo)) as titulo,
       a.slug,
@@ -361,7 +366,20 @@ export async function getEstadoLeilao(leilaoId: string) {
     LEFT JOIN veiculos v ON v.id = l.veiculo_id
     LEFT JOIN anuncios_veiculo a ON a.veiculo_id = l.veiculo_id
     WHERE l.id = ${leilaoId}::uuid
+  `)
+    : await d.execute(sql`
+    SELECT l.*,
+      concat_ws(' ', v.marca, v.modelo, v.ano_modelo) as titulo,
+      NULL::text as slug,
+      (SELECT json_build_object('valor', lc.valor, 'comprador_id', lc.comprador_id, 'data', lc.criado_em)
+         FROM lances lc WHERE lc.leilao_id = l.id ORDER BY lc.valor DESC LIMIT 1) as ultimo_lance,
+      (SELECT count(*)::int FROM lances lc WHERE lc.leilao_id = l.id) as total_lances,
+      (SELECT count(distinct lc.comprador_id)::int FROM lances lc WHERE lc.leilao_id = l.id) as total_participantes
+    FROM leiloes l
+    LEFT JOIN veiculos v ON v.id = l.veiculo_id
+    WHERE l.id = ${leilaoId}::uuid
   `);
+
 
 
   const leilao = rowsOf(lRes)[0];
@@ -410,9 +428,11 @@ export async function listarLeiloesAdmin(status?: string) {
     console.error("[leilao] anuncios schema", e);
   }
   await processarCicloLeiloes();
-  const res = await d.execute(sql`
-    SELECT 
-      l.*, 
+  const temAnuncios = await tabelaExiste(d, "anuncios_veiculo");
+  const res = temAnuncios
+    ? await d.execute(sql`
+    SELECT
+      l.*,
       COALESCE(a.titulo, concat_ws(' ', v.marca, v.modelo, v.ano_modelo)) as titulo,
       COALESCE(a.codigo_publico, v.placa) as codigo_publico,
       (SELECT valor FROM lances WHERE leilao_id = l.id ORDER BY valor DESC LIMIT 1) as lance_atual,
@@ -422,8 +442,29 @@ export async function listarLeiloesAdmin(status?: string) {
     LEFT JOIN anuncios_veiculo a ON a.veiculo_id = l.veiculo_id
     ${status ? sql`WHERE l.status = ${status}` : sql``}
     ORDER BY l.criado_em DESC
+  `)
+    : await d.execute(sql`
+    SELECT
+      l.*,
+      concat_ws(' ', v.marca, v.modelo, v.ano_modelo) as titulo,
+      v.placa as codigo_publico,
+      (SELECT valor FROM lances WHERE leilao_id = l.id ORDER BY valor DESC LIMIT 1) as lance_atual,
+      (SELECT count(*) FROM lances WHERE leilao_id = l.id) as qtd_lances
+    FROM leiloes l
+    JOIN veiculos v ON v.id = l.veiculo_id
+    ${status ? sql`WHERE l.status = ${status}` : sql``}
+    ORDER BY l.criado_em DESC
   `);
   return rowsOf(res) || res;
+}
+
+async function tabelaExiste(d: any, nome: string): Promise<boolean> {
+  try {
+    const res = await d.execute(sql`SELECT to_regclass(${"public." + nome}) as t`);
+    return !!rowsOf(res)[0]?.t;
+  } catch {
+    return false;
+  }
 }
 
 // O driver postgres-js devolve as linhas como array (sem .rows).
