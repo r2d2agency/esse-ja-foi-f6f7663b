@@ -156,7 +156,9 @@ async function getProvedorComChave() {
 type Tentativa = {
   label: string;
   headers: Record<string, string>;
-  body: string;
+  body?: string;
+  method?: "POST" | "GET";
+  url?: string;
 };
 
 function b64(s: string) {
@@ -164,16 +166,43 @@ function b64(s: string) {
   return typeof btoa === "function" ? btoa(s) : Buffer.from(s, "utf8").toString("base64");
 }
 
+function esc(v: any) {
+  return String(v ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 /**
  * Monta as variações de autenticação aceitas por webservices do tipo Company Conferi.
- * Em modo AUTO tentamos as combinações mais comuns até uma responder sem 401/403.
+ * O webservice da Conferi é XML: o pedido vai em <conferi><solicitacao usuario senha .../></conferi>.
  */
-function montarTentativas(prov: any, dados: Record<string, any>): Tentativa[] {
+function montarTentativas(prov: any, dados: Record<string, any>, urlBase: string): Tentativa[] {
   const usuario = prov.usuario ? String(prov.usuario) : "";
   const senha = prov.senha ? String(prov.senha) : "";
   const chave = prov.api_key ? String(prov.api_key) : "";
   const base = { ...dados, produto: prov.produto || "GOLD" };
   const jsonHeaders = { "Content-Type": "application/json", Accept: "application/json" };
+  const xmlHeaders = { "Content-Type": "application/xml; charset=UTF-8", Accept: "application/xml" };
+
+  const parametros = Object.entries(dados)
+    .filter(([, v]) => v !== undefined && v !== null && v !== "")
+    .map(([k, v]) => `<parametro nome="${esc(k)}" valor="${esc(v)}"/>`)
+    .join("");
+
+  const xmlAttr =
+    `<?xml version="1.0" encoding="UTF-8"?>` +
+    `<conferi><solicitacao acao="2" usuario="${esc(usuario)}" senha="${esc(senha || chave)}" ` +
+    `chave="${esc(chave)}" produto="${esc(prov.produto || "GOLD")}"/>` +
+    `<parametros>${parametros}</parametros></conferi>`;
+
+  const xmlTag =
+    `<?xml version="1.0" encoding="UTF-8"?>` +
+    `<conferi><solicitacao acao="2"><usuario>${esc(usuario)}</usuario>` +
+    `<senha>${esc(senha || chave)}</senha><chave>${esc(chave)}</chave>` +
+    `<produto>${esc(prov.produto || "GOLD")}</produto></solicitacao>` +
+    `<parametros>${parametros}</parametros></conferi>`;
 
   const corpoCredenciais = JSON.stringify({
     ...base,
@@ -186,16 +215,38 @@ function montarTentativas(prov: any, dados: Record<string, any>): Tentativa[] {
   });
   const corpoSimples = JSON.stringify({ ...base, usuario: usuario || undefined });
   const form = new URLSearchParams();
-  Object.entries({
-    ...base,
-    usuario,
-    senha,
-    token: chave,
-  }).forEach(([k, v]) => {
+  Object.entries({ ...base, usuario, senha, token: chave }).forEach(([k, v]) => {
     if (v !== undefined && v !== null && v !== "") form.append(k, String(v));
   });
 
+  const query = new URLSearchParams();
+  Object.entries({ ...dados, usuario, senha: senha || chave, chave, produto: prov.produto })
+    .forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== "") query.append(k, String(v));
+    });
+
   const tentativas: Record<string, Tentativa> = {
+    XML: {
+      label: "XML Conferi (usuário/senha em atributos)",
+      headers: xmlHeaders,
+      body: xmlAttr,
+    },
+    XMLTAG: {
+      label: "XML Conferi (usuário/senha em elementos)",
+      headers: xmlHeaders,
+      body: xmlTag,
+    },
+    XMLFORM: {
+      label: "XML Conferi enviado em campo de formulário (xml=)",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/xml" },
+      body: new URLSearchParams({ xml: xmlAttr }).toString(),
+    },
+    QUERY: {
+      label: "Parâmetros na URL (GET)",
+      headers: { Accept: "application/xml, application/json" },
+      method: "GET",
+      url: `${urlBase}?${query.toString()}`,
+    },
     CORPO: {
       label: "Usuário e senha no corpo (JSON)",
       headers: jsonHeaders,
@@ -226,40 +277,142 @@ function montarTentativas(prov: any, dados: Record<string, any>): Tentativa[] {
   const modo = String(prov.auth_modo || "AUTO").toUpperCase();
   if (modo !== "AUTO" && tentativas[modo]) return [tentativas[modo]!];
 
-  const ordem: string[] = [];
+  const ordem: string[] = ["XML", "XMLTAG", "XMLFORM", "QUERY"];
   if (usuario && senha) ordem.push("CORPO", "FORM", "BASIC");
   if (chave) ordem.push("BEARER", "APIKEY", "CORPO");
   return [...new Set(ordem)].map((k) => tentativas[k]!).filter(Boolean);
 }
 
-function parse(texto: string) {
-  try {
-    return JSON.parse(texto);
-  } catch {
-    return { raw: texto };
+/** Conversor XML → objeto simples (sem DOMParser, compatível com o runtime do servidor). */
+function xmlParaObjeto(xml: string): any {
+  const root: any = {};
+  const pilha: any[] = [root];
+  const re = /<\?[^>]*\?>|<!--[\s\S]*?-->|<\/([\w:.-]+)\s*>|<([\w:.-]+)((?:\s+[\w:.-]+\s*=\s*"[^"]*")*)\s*(\/?)>|([^<]+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(xml))) {
+    const [, fechamento, abertura, attrsRaw, autoFecha, texto] = m;
+    const atual = pilha[pilha.length - 1];
+    if (fechamento) {
+      if (pilha.length > 1) pilha.pop();
+    } else if (abertura) {
+      const node: any = {};
+      const attrRe = /([\w:.-]+)\s*=\s*"([^"]*)"/g;
+      let a: RegExpExecArray | null;
+      while ((a = attrRe.exec(attrsRaw || ""))) node[a[1]!] = a[2];
+      const existente = atual[abertura];
+      if (existente === undefined) atual[abertura] = node;
+      else if (Array.isArray(existente)) existente.push(node);
+      else atual[abertura] = [existente, node];
+      if (!autoFecha) pilha.push(node);
+    } else if (texto && texto.trim()) {
+      const t = texto.trim();
+      if (Object.keys(atual).length === 0) {
+        (atual as any)["#text"] = t;
+      } else {
+        (atual as any)["#text"] = ((atual as any)["#text"] || "") + t;
+      }
+    }
   }
+  return root;
+}
+
+function parse(texto: string) {
+  const t = texto.trim();
+  if (t.startsWith("{") || t.startsWith("[")) {
+    try {
+      return JSON.parse(t);
+    } catch {
+      /* segue para XML/raw */
+    }
+  }
+  if (t.startsWith("<")) {
+    try {
+      const obj = xmlParaObjeto(t);
+      return { ...obj, raw: t };
+    } catch {
+      return { raw: t };
+    }
+  }
+  try {
+    return JSON.parse(t);
+  } catch {
+    return { raw: t };
+  }
+}
+
+const PADROES_FALHA = [
+  "falha de autentica",
+  "falha na autentica",
+  "nao autenticado",
+  "não autenticado",
+  "usuario ou senha",
+  "usuário ou senha",
+  "acesso negado",
+  "credenciais",
+  "unauthorized",
+  "invalid token",
+  "token invalido",
+  "token inválido",
+];
+
+function mensagemDoRetorno(payload: any): string | null {
+  const direto = primeiro(payload, [
+    "mensagem",
+    "message",
+    "erro",
+    "error",
+    "descricao",
+    "conferi.solicitacao.mensagem",
+    "conferi.mensagem",
+    "conferi.erro.#text",
+    "solicitacao.mensagem",
+  ]);
+  if (direto) return String(direto);
+  return null;
+}
+
+/** Detecta erro lógico devolvido com HTTP 200 (caso típico da Conferi). */
+function falhaLogica(payload: any): string | null {
+  const msg = mensagemDoRetorno(payload);
+  if (msg) {
+    const norm = msg.toLowerCase();
+    if (PADROES_FALHA.some((p) => norm.includes(p))) return msg;
+  }
+  const raw = typeof payload?.raw === "string" ? payload.raw.toLowerCase() : "";
+  if (raw) {
+    const achou = PADROES_FALHA.find((p) => raw.includes(p));
+    if (achou) return msg || "Falha de autenticação informada pelo provedor.";
+  }
+  return null;
 }
 
 /** Executa as tentativas até obter sucesso; devolve diagnóstico de todas. */
 async function executarConsulta(prov: any, dados: Record<string, any>) {
   const url = `${String(prov.base_url).replace(/\/+$/, "")}${prov.caminho_consulta || "/consulta"}`;
-  const tentativas = montarTentativas(prov, dados);
+  const tentativas = montarTentativas(prov, dados, url);
   const diagnostico: { modo: string; httpStatus: number; mensagem: string }[] = [];
   let ultima: { ok: boolean; httpStatus: number; payload: any; erro: string | null } | null = null;
 
   for (const t of tentativas) {
     try {
-      const resp = await fetch(url, { method: "POST", headers: t.headers, body: t.body });
+      const method = t.method || "POST";
+      const init: RequestInit = { method, headers: t.headers };
+      if (method !== "GET" && t.body !== undefined) init.body = t.body;
+      const resp = await fetch(t.url || url, init);
       const payload = parse(await resp.text());
+      const falha = resp.ok ? falhaLogica(payload) : null;
       const msg =
-        primeiro(payload, ["mensagem", "message", "erro", "error", "descricao"]) ||
-        (resp.ok ? "OK" : `HTTP ${resp.status}`);
-      diagnostico.push({ modo: t.label, httpStatus: resp.status, mensagem: String(msg).slice(0, 300) });
-      if (resp.ok) {
+        falha || mensagemDoRetorno(payload) || (resp.ok ? "OK" : `HTTP ${resp.status}`);
+      diagnostico.push({
+        modo: t.label,
+        httpStatus: resp.status,
+        mensagem: String(msg).slice(0, 300),
+      });
+      if (resp.ok && !falha) {
         return { ok: true as const, httpStatus: resp.status, payload, erro: null, diagnostico };
       }
       ultima = { ok: false, httpStatus: resp.status, payload, erro: String(msg) };
-      if (resp.status !== 401 && resp.status !== 403 && resp.status !== 400) break;
+      if (!resp.ok && ![400, 401, 403, 404, 405, 415, 500].includes(resp.status)) break;
     } catch (e: any) {
       const erro = e?.message || "Falha de comunicação com o provedor.";
       diagnostico.push({ modo: t.label, httpStatus: 0, mensagem: erro });
@@ -275,6 +428,7 @@ async function executarConsulta(prov: any, dados: Record<string, any>) {
     diagnostico,
   };
 }
+
 
 
 function primeiro(obj: any, chaves: string[]) {
