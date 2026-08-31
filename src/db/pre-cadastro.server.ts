@@ -223,3 +223,35 @@ export async function definirNovaSenha(perfilId: string, novaSenha: string) {
   `);
   return { ok: true as const };
 }
+
+/** Resumo do vendedor + veículos, exibido antes da assinatura do termo. */
+export async function resumoParaTermo(perfilId: string) {
+  const d = requireDb();
+  await garantirSchemas();
+  const perfil = rowsOf(
+    await d.execute(sql`
+      SELECT nome, email, cpf, cnpj, tipo_pessoa, whatsapp, telefone, data_nascimento,
+             cep, endereco, numero, complemento, bairro, cidade, uf,
+             documento_cnh_url, documento_cnh_verso_url,
+             documento_comprovante_endereco_url, documento_selfie_url
+      FROM profiles WHERE id = ${perfilId}::uuid LIMIT 1
+    `),
+  )[0];
+
+  let veiculos: any[] = [];
+  try {
+    veiculos = rowsOf(
+      await d.execute(sql`
+        SELECT id, placa, marca, modelo, versao, ano_fabricacao, ano_modelo, cor, km,
+               combustivel, cambio, valor_interesse_cliente, valor_fipe, cidade, uf, fotos
+        FROM veiculos
+        WHERE perfil_id = ${perfilId}::uuid OR vendedor_id = ${perfilId}::uuid
+        ORDER BY criado_em DESC
+      `),
+    );
+  } catch (e) {
+    console.error("[pre-cadastro] resumo veiculos", e);
+  }
+
+  return { perfil: perfil || null, veiculos };
+}
