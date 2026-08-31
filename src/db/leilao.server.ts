@@ -109,26 +109,20 @@ export async function ensureLeilaoSchema() {
   // Há instalações em que a referência do comprador tinha outro nome e era
   // NOT NULL. Ao adicionar `comprador_id`, a coluna antiga continuou exigida
   // e todo INSERT novo falhava (o detalhe aparece como o 3º valor NULL).
-  // A aplicação usa somente `comprador_id`; aposentamos a obrigatoriedade das
-  // referências UUID legadas para profiles sem apagar o histórico existente.
+  // A aplicação usa somente os campos canônicos abaixo; aposentamos apenas a
+  // obrigatoriedade de colunas extras, sem apagar o histórico existente.
   await d.execute(sql`
     DO $$
     DECLARE legacy_column text;
     BEGIN
       FOR legacy_column IN
-        SELECT DISTINCT a.attname
-        FROM pg_constraint c
-        JOIN pg_class t ON t.oid = c.conrelid
-        JOIN pg_namespace n ON n.oid = t.relnamespace
-        JOIN pg_class referenced_table ON referenced_table.oid = c.confrelid
-        JOIN unnest(c.conkey) AS key(attnum) ON true
-        JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = key.attnum
-        WHERE n.nspname = 'public'
-          AND t.relname = 'lances'
-          AND c.contype = 'f'
-          AND referenced_table.relname = 'profiles'
-          AND a.attname <> 'comprador_id'
-          AND a.attnotnull
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'lances'
+          AND is_nullable = 'NO'
+          AND column_default IS NULL
+          AND column_name NOT IN ('id', 'leilao_id', 'comprador_id', 'valor', 'valido', 'criado_em')
       LOOP
         EXECUTE format('ALTER TABLE public.lances ALTER COLUMN %I DROP NOT NULL', legacy_column);
       END LOOP;
