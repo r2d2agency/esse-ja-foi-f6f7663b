@@ -365,14 +365,42 @@ function ConsultaVeicularSection() {
           />
         </div>
         <div className="space-y-2">
-          <Label>Usuário (se exigido)</Label>
+          <Label>Usuário da API</Label>
           <Input
             value={form.usuario}
             onChange={(e) => setForm({ ...form, usuario: e.target.value })}
+            placeholder="usuário fornecido pela Company Conferi"
           />
         </div>
-        <div className="space-y-2 md:col-span-2">
-          <Label>Chave de acesso</Label>
+        <div className="space-y-2">
+          <Label>Senha da API</Label>
+          <Input
+            type="password"
+            value={form.senha}
+            onChange={(e) => setForm({ ...form, senha: e.target.value })}
+            placeholder={temSenha ? "•••••••• (salva)" : "senha fornecida pelo provedor"}
+          />
+          <p className="text-xs text-slate-500">
+            {temSenha ? "Senha cadastrada. Deixe em branco para manter." : "Nenhuma senha cadastrada."}
+          </p>
+        </div>
+        <div className="space-y-2">
+          <Label>Modo de autenticação</Label>
+          <select
+            className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+            value={form.auth_modo}
+            onChange={(e) => setForm({ ...form, auth_modo: e.target.value })}
+          >
+            <option value="AUTO">Automático (testa as combinações)</option>
+            <option value="CORPO">Usuário e senha no corpo (JSON)</option>
+            <option value="FORM">Usuário e senha em formulário</option>
+            <option value="BASIC">Basic auth (usuário:senha)</option>
+            <option value="BEARER">Bearer token</option>
+            <option value="APIKEY">Cabeçalho x-api-key</option>
+          </select>
+        </div>
+        <div className="space-y-2">
+          <Label>Chave / token de acesso (se houver)</Label>
           <Input
             type="password"
             value={form.api_key}
@@ -385,6 +413,7 @@ function ConsultaVeicularSection() {
               : "Nenhuma chave cadastrada ainda."}
           </p>
         </div>
+
       </div>
 
       <div className="flex gap-2">
