@@ -31,6 +31,8 @@ export type PreCadastroInput = {
   telefone?: string | undefined;
   tipo_pessoa?: string | undefined;
   cnpj?: string | undefined;
+  data_nascimento?: string | undefined;
+  rg?: string | undefined;
   cep?: string | undefined;
   endereco?: string | undefined;
   numero?: string | undefined;
@@ -38,6 +40,10 @@ export type PreCadastroInput = {
   bairro?: string | undefined;
   cidade?: string | undefined;
   uf?: string | undefined;
+  doc_cnh_frente?: string | undefined;
+  doc_cnh_verso?: string | undefined;
+  doc_comprovante?: string | undefined;
+  doc_selfie?: string | undefined;
 };
 
 async function garantirSchemas() {
@@ -53,7 +59,18 @@ async function garantirSchemas() {
   await ensureVendedoresSchema();
   const { ensureTermosSchema } = await import("./termos.server");
   await ensureTermosSchema();
+  const d = requireDb();
+  await d.execute(sql`
+    ALTER TABLE profiles
+    ADD COLUMN IF NOT EXISTS data_nascimento text,
+    ADD COLUMN IF NOT EXISTS rg text,
+    ADD COLUMN IF NOT EXISTS documento_cnh_url text,
+    ADD COLUMN IF NOT EXISTS documento_cnh_verso_url text,
+    ADD COLUMN IF NOT EXISTS documento_comprovante_endereco_url text,
+    ADD COLUMN IF NOT EXISTS documento_selfie_url text;
+  `);
 }
+
 
 /**
  * Cria (ou reativa) um vendedor cadastrado internamente pela administração.
