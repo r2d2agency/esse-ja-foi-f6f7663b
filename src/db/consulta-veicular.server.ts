@@ -313,47 +313,20 @@ export async function consultarLaudoVeiculo(veiculoId: string, criadoPor?: strin
     throw new Error("Cadastre a placa ou o chassi do veículo antes de consultar.");
   }
 
-  const url = `${String(prov.base_url).replace(/\/+$/, "")}${prov.caminho_consulta || "/consulta"}`;
-  const corpo = {
+  const r = await executarConsulta(prov, {
     placa: veiculo.placa || undefined,
     chassi: veiculo.chassi || undefined,
     renavam: veiculo.renavam || undefined,
-    produto: prov.produto || "GOLD",
-    usuario: prov.usuario || undefined,
-  };
+  });
 
-  let status = "ERRO";
-  let payload: any = null;
-  let erro: string | null = null;
+  const payload = r.payload;
+  const erro = r.ok ? null : r.erro;
+  const status = r.ok
+    ? "CONCLUIDA"
+    : r.httpStatus === 401 || r.httpStatus === 403
+      ? "NAO_AUTORIZADO"
+      : "ERRO";
 
-  try {
-    const resp = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        Authorization: `Bearer ${prov.api_key}`,
-        "x-api-key": String(prov.api_key),
-      },
-      body: JSON.stringify(corpo),
-    });
-    const texto = await resp.text();
-    try {
-      payload = JSON.parse(texto);
-    } catch {
-      payload = { raw: texto };
-    }
-    if (!resp.ok) {
-      erro =
-        primeiro(payload, ["mensagem", "message", "erro", "error"]) ||
-        `O provedor respondeu com erro ${resp.status}.`;
-      status = resp.status === 401 || resp.status === 403 ? "NAO_AUTORIZADO" : "ERRO";
-    } else {
-      status = "CONCLUIDA";
-    }
-  } catch (e: any) {
-    erro = e?.message || "Falha de comunicação com o provedor.";
-  }
 
   const resumo = status === "CONCLUIDA" ? resumirRetorno(payload) : {};
 
