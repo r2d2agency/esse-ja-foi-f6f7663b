@@ -16,6 +16,7 @@ import {
   montarMensagemWhatsappFn,
 } from "@/lib/publicacao.functions";
 import { getLeilaoVeiculoFn, salvarLeilaoVeiculoFn } from "@/lib/leilao.functions";
+import { getAceitePorVeiculoFn } from "@/lib/termos.functions";
 
 /** Converte ISO/UTC para o formato aceito pelo input datetime-local (horário local). */
 function paraInputLocal(valor?: string | null) {
@@ -96,6 +97,13 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
       prorrogacao_tempo_minutos: String(Math.round((leilaoAtual.prorrogacao_tempo_segundos ?? 120) / 60)),
     });
   }, [leilaoRes]);
+
+  const { data: aceiteRes } = useQuery({
+    queryKey: ["aceite-termo-veiculo", veiculoId],
+    queryFn: () => getAceitePorVeiculoFn({ data: { veiculoId } }),
+    enabled: !!veiculoId,
+  });
+  const aceite: any = (aceiteRes as any)?.data ?? null;
 
   const payload = (data as any)?.data;
   const canais: any[] = Array.isArray(payload)
@@ -255,6 +263,20 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
 
   return (
     <div className="space-y-6">
+      {aceite && (
+        <div className="rounded-2xl border border-teal-200 bg-teal-50/70 p-4">
+          <p className="text-xs font-black uppercase tracking-widest text-teal-700">
+            Termo de adesão aceito
+          </p>
+          <p className="mt-1 text-sm font-bold text-slate-800">
+            {aceite.nome || aceite.assinatura} — {new Date(aceite.aceito_em).toLocaleString("pt-BR")}
+          </p>
+          <p className="text-xs font-medium text-slate-500">
+            Versão {aceite.versao} • IP {aceite.ip || "n/d"} • {aceite.user_agent || "navegador n/d"}
+          </p>
+        </div>
+      )}
+
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {CANAIS.map((c) => {
           const cfg = canais.find((x) => x.canal === c.id);
