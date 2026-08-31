@@ -254,6 +254,71 @@ export async function cancelarLeilaoVeiculo(veiculoId: string, motivo = "Canal d
   `);
 }
 
+/** Resumo usado no popup de confirmação de encerramento manual. */
+export async function resumoEncerramentoLeilao(leilaoId: string) {
+  const d = requireDb();
+  await ensureLeilaoSchema();
+  const res = await d.execute(sql`
+    SELECT l.id, l.status, l.fim_em, l.lance_inicial,
+      concat_ws(' ', v.marca, v.modelo, v.ano_modelo) as titulo,
+      (SELECT count(*)::int FROM lances lc WHERE lc.leilao_id = l.id) as total_lances,
+      (SELECT json_build_object(
+          'valor', lc.valor, 'criado_em', lc.criado_em, 'comprador_id', lc.comprador_id,
+          'nome', p.nome, 'whatsapp', p.whatsapp, 'email', p.email)
+        FROM lances lc LEFT JOIN profiles p ON p.id = lc.comprador_id
+        WHERE lc.leilao_id = l.id
+        ORDER BY lc.valor DESC, lc.criado_em ASC LIMIT 1) as maior_lance
+    FROM leiloes l
+    LEFT JOIN veiculos v ON v.id = l.veiculo_id
+    WHERE l.id = ${leilaoId}::uuid
+  `);
+  return rowsOf(res)[0] || null;
+}
+
+/**
+ * Encerra o leilão imediatamente: antecipa o fim, marca como ENCERRADO e
+ * delega o fechamento definitivo (ranking, vencedor, negociação, notificações).
+ */
+export async function encerrarLeilaoAgora(leilaoId: string, responsavelId?: string | null) {
+  const d = requireDb();
+  await ensureLeilaoSchema();
+
+  const atual = rowsOf(await d.execute(sql`SELECT status FROM leiloes WHERE id = ${leilaoId}::uuid`))[0];
+  if (!atual) throw new Error("Leilão não encontrado.");
+  if (atual.status === "CANCELADO") throw new Error("Leilão cancelado não pode ser encerrado.");
+
+  await d.execute(sql`
+    UPDATE leiloes
+    SET status = 'ENCERRADO', fim_em = LEAST(fim_em, now()), atualizado_em = now()
+    WHERE id = ${leilaoId}::uuid
+  `);
+  if (responsavelId) {
+    try {
+      await d.execute(sql`UPDATE leiloes SET responsavel_id = ${responsavelId}::uuid WHERE id = ${leilaoId}::uuid`);
+    } catch {
+      /* coluna opcional em bases legadas */
+    }
+  }
+
+  const { ensureNegociacoesSchema, fecharLeilao } = await import("./negociacoes.server");
+  await ensureNegociacoesSchema();
+  return fecharLeilao(leilaoId);
+}
+
+/** Cancela um leilão a partir do painel administrativo. */
+export async function cancelarLeilaoAdmin(leilaoId: string, motivo: string) {
+  const d = requireDb();
+  await ensureLeilaoSchema();
+  const atual = rowsOf(await d.execute(sql`SELECT status FROM leiloes WHERE id = ${leilaoId}::uuid`))[0];
+  if (!atual) throw new Error("Leilão não encontrado.");
+  if (atual.status === "ENCERRADO") throw new Error("Leilão já encerrado não pode ser cancelado.");
+  await d.execute(sql`
+    UPDATE leiloes SET status = 'CANCELADO', motivo_pausa_cancelamento = ${motivo}, atualizado_em = now()
+    WHERE id = ${leilaoId}::uuid
+  `);
+  return { ok: true as const };
+}
+
 export async function registrarLance(leilaoId: string, compradorId: string, valor: number, ip?: string, ua?: string) {
   const d = requireDb();
   await ensureLeilaoSchema();
