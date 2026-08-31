@@ -37,6 +37,7 @@ export async function ensureLeilaoSchema() {
       leilao_id uuid NOT NULL REFERENCES leiloes(id) ON DELETE CASCADE,
       comprador_id uuid NOT NULL REFERENCES profiles(id),
       valor numeric(12,2) NOT NULL,
+      valido boolean NOT NULL DEFAULT true,
       criado_em timestamptz DEFAULT now(),
       ip_origem text,
       user_agent text
@@ -69,6 +70,7 @@ export async function ensureLeilaoSchema() {
     sql`ALTER TABLE lances ADD COLUMN IF NOT EXISTS leilao_id uuid`,
     sql`ALTER TABLE lances ADD COLUMN IF NOT EXISTS comprador_id uuid`,
     sql`ALTER TABLE lances ADD COLUMN IF NOT EXISTS valor numeric(12,2)`,
+    sql`ALTER TABLE lances ADD COLUMN IF NOT EXISTS valido boolean NOT NULL DEFAULT true`,
     sql`ALTER TABLE lances ADD COLUMN IF NOT EXISTS ip_origem text`,
     sql`ALTER TABLE lances ADD COLUMN IF NOT EXISTS user_agent text`,
     sql`ALTER TABLE lances ADD COLUMN IF NOT EXISTS criado_em timestamptz DEFAULT now()`,
@@ -290,12 +292,13 @@ export async function registrarLance(leilaoId: string, compradorId: string, valo
     }
 
     // 4. Registrar lance
-    // Somente as colunas canônicas entram no INSERT. Bancos legados usam
-    // `ip`/`sessao`, enquanto instalações novas podem ter `ip_origem`/
-    // `user_agent`; depender desses campos opcionais impedia o lance inteiro.
+    // `valido` existe como NOT NULL em bancos legados. Ele também é mantido
+    // no schema novo para que o mesmo INSERT funcione em todas as instalações.
+    // Campos opcionais de rastreio (`ip`/`sessao` ou `ip_origem`/`user_agent`)
+    // ficam fora daqui porque seus nomes variam entre versões.
     const res = await tx.execute(sql`
-      INSERT INTO lances (leilao_id, comprador_id, valor)
-      VALUES (${leilaoId}::uuid, ${compradorId}::uuid, ${valorNum})
+      INSERT INTO lances (leilao_id, comprador_id, valor, valido)
+      VALUES (${leilaoId}::uuid, ${compradorId}::uuid, ${valorNum}, true)
       RETURNING id
     `);
     const lanceId = rowsOf(res)?.[0]?.id;
