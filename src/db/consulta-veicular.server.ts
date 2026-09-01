@@ -200,23 +200,66 @@ function montarTentativas(prov: any, dados: Record<string, any>, urlBase: string
   const jsonHeaders = { "Content-Type": "application/json", Accept: "application/json" };
   const xmlHeaders = { "Content-Type": "application/xml; charset=UTF-8", Accept: "application/xml" };
 
-  const parametros = Object.entries(dados)
-    .filter(([, v]) => v !== undefined && v !== null && v !== "")
-    .map(([k, v]) => `<parametro nome="${esc(k)}" valor="${esc(v)}"/>`)
-    .join("");
+  const entradas = Object.entries(dados).filter(
+    ([, v]) => v !== undefined && v !== null && v !== "",
+  );
 
-  const xmlAttr =
+  const paramsTag = (upper: boolean) =>
+    entradas
+      .map(
+        ([k, v]) =>
+          `<parametro nome="${esc(upper ? k.toUpperCase() : k)}" valor="${esc(v)}"/>`,
+      )
+      .join("");
+  const paramsElem = (upper: boolean) =>
+    entradas
+      .map(([k, v]) => {
+        const nome = upper ? k.toUpperCase() : k;
+        return `<${nome}>${esc(v)}</${nome}>`;
+      })
+      .join("");
+  const paramsAttr = entradas.map(([k, v]) => `${k}="${esc(v)}"`).join(" ");
+
+  const envelope = (acao: string, solicitacaoExtra: string, corpoParametros: string) =>
     `<?xml version="1.0" encoding="UTF-8"?>` +
-    `<conferi><solicitacao acao="2" usuario="${esc(usuario)}" senha="${esc(senha || chave)}" ` +
-    `chave="${esc(chave)}" produto="${esc(prov.produto || "GOLD")}"/>` +
-    `<parametros>${parametros}</parametros></conferi>`;
+    `<conferi><solicitacao acao="${acao}" usuario="${esc(usuario)}" senha="${esc(senha || chave)}" ` +
+    `chave="${esc(chave)}" produto="${esc(prov.produto || "GOLD")}"${solicitacaoExtra ? " " + solicitacaoExtra : ""}/>` +
+    `<parametros>${corpoParametros}</parametros></conferi>`;
+
+  const xmlAttr = envelope("2", "", paramsTag(false));
 
   const xmlTag =
     `<?xml version="1.0" encoding="UTF-8"?>` +
     `<conferi><solicitacao acao="2"><usuario>${esc(usuario)}</usuario>` +
     `<senha>${esc(senha || chave)}</senha><chave>${esc(chave)}</chave>` +
     `<produto>${esc(prov.produto || "GOLD")}</produto></solicitacao>` +
-    `<parametros>${parametros}</parametros></conferi>`;
+    `<parametros>${paramsTag(false)}</parametros></conferi>`;
+
+  /** Variações do formato dos parâmetros aceitas por diferentes contratos Conferi. */
+  const variacoesXml: { label: string; body: string }[] = [
+    { label: "XML Conferi (parâmetro nome/valor, acao=2)", body: xmlAttr },
+    {
+      label: "XML Conferi (parâmetro NOME/VALOR maiúsculo, acao=2)",
+      body: envelope("2", "", paramsTag(true)),
+    },
+    {
+      label: "XML Conferi (parâmetros como elementos, acao=2)",
+      body: envelope("2", "", paramsElem(false)),
+    },
+    {
+      label: "XML Conferi (parâmetros como elementos maiúsculos, acao=2)",
+      body: envelope("2", "", paramsElem(true)),
+    },
+    {
+      label: "XML Conferi (parâmetros na tag solicitacao, acao=2)",
+      body: envelope("2", paramsAttr, ""),
+    },
+    { label: "XML Conferi (parâmetro nome/valor, acao=1)", body: envelope("1", "", paramsTag(false)) },
+    {
+      label: "XML Conferi (parâmetros na tag solicitacao, acao=1)",
+      body: envelope("1", paramsAttr, ""),
+    },
+  ];
 
   const corpoCredenciais = JSON.stringify({
     ...base,
@@ -255,6 +298,7 @@ function montarTentativas(prov: any, dados: Record<string, any>, urlBase: string
       headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/xml" },
       body: new URLSearchParams({ xml: xmlAttr }).toString(),
     },
+
     QUERY: {
       label: "Parâmetros na URL (GET)",
       headers: { Accept: "application/xml, application/json" },
@@ -288,14 +332,26 @@ function montarTentativas(prov: any, dados: Record<string, any>, urlBase: string
     },
   };
 
+  const variantes: Tentativa[] = variacoesXml.flatMap((v) => [
+    { label: v.label, headers: xmlHeaders, body: v.body },
+    {
+      label: `${v.label} · em formulário xml=`,
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/xml" },
+      body: new URLSearchParams({ xml: v.body }).toString(),
+    },
+  ]);
+
   const modo = String(prov.auth_modo || "AUTO").toUpperCase();
+  if (modo.startsWith("XML")) return [tentativas[modo]!, ...variantes].filter(Boolean);
   if (modo !== "AUTO" && tentativas[modo]) return [tentativas[modo]!];
 
   const ordem: string[] = ["XML", "XMLTAG", "XMLFORM", "QUERY"];
   if (usuario && senha) ordem.push("CORPO", "FORM", "BASIC");
   if (chave) ordem.push("BEARER", "APIKEY", "CORPO");
-  return [...new Set(ordem)].map((k) => tentativas[k]!).filter(Boolean);
+  const basicas = [...new Set(ordem)].map((k) => tentativas[k]!).filter(Boolean);
+  return [...basicas, ...variantes];
 }
+
 
 /** Conversor XML → objeto simples (sem DOMParser, compatível com o runtime do servidor). */
 function xmlParaObjeto(xml: string): any {
@@ -367,6 +423,22 @@ const PADROES_FALHA = [
   "invalid token",
   "token invalido",
   "token inválido",
+  "dados incorretos",
+  "dados invalidos",
+  "dados inválidos",
+  "parametro invalido",
+  "parâmetro inválido",
+  "parametros invalidos",
+  "requisicao invalida",
+  "requisição inválida",
+  "sem saldo",
+  "sem permissao",
+  "sem permissão",
+  "produto invalido",
+  "produto inválido",
+  "consulta nao autorizada",
+  "erro na solicitacao",
+  "erro na solicitação",
 ];
 
 function mensagemDoRetorno(payload: any): string | null {
@@ -392,13 +464,19 @@ function falhaLogica(payload: any): string | null {
     const norm = msg.toLowerCase();
     if (PADROES_FALHA.some((p) => norm.includes(p))) return msg;
   }
+  // A Conferi devolve acao="3" quando recusa a solicitação (dados/produto/credenciais).
+  const acao = primeiro(payload, ["conferi.solicitacao.acao", "solicitacao.acao", "acao"]);
+  if (acao && !["1", "2", "0"].includes(String(acao))) {
+    return msg || `Solicitação recusada pelo provedor (acao=${acao}).`;
+  }
   const raw = typeof payload?.raw === "string" ? payload.raw.toLowerCase() : "";
   if (raw) {
     const achou = PADROES_FALHA.find((p) => raw.includes(p));
-    if (achou) return msg || "Falha de autenticação informada pelo provedor.";
+    if (achou) return msg || "Falha informada pelo provedor.";
   }
   return null;
 }
+
 
 /** Executa as tentativas até obter sucesso; devolve diagnóstico de todas. */
 async function executarConsulta(prov: any, dados: Record<string, any>) {
