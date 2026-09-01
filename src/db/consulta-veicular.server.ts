@@ -58,6 +58,20 @@ export async function ensureConsultaVeicularSchema() {
   `);
   await d.execute(sql`
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS consulta_habilitada boolean DEFAULT false;
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS chassi text;
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS renavam text;
+  `);
+  // Compatibilidade: alguns cadastros legados gravaram o chassi em chassi_parcial.
+  await d.execute(sql`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'veiculos' AND column_name = 'chassi_parcial'
+      ) THEN
+        UPDATE veiculos SET chassi = chassi_parcial WHERE chassi IS NULL AND chassi_parcial IS NOT NULL;
+      END IF;
+    END $$;
   `);
   await d.execute(sql`ALTER TABLE consulta_provedores ADD COLUMN IF NOT EXISTS senha text;`);
   await d.execute(
@@ -476,6 +490,7 @@ export function resumirRetorno(payload: any) {
 
 export async function consultarLaudoVeiculo(veiculoId: string, criadoPor?: string | null) {
   const d = requireDb();
+  await ensureConsultaVeicularSchema();
   const prov = await getProvedorComChave();
 
   const veiculo = rowsOf(
