@@ -4,6 +4,7 @@ import { Menu, X, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LogoEsf } from "@/components/shared/LogoEsf";
+import { abrirConfiguracoesCookies } from "@/lib/cookies-consent";
 import heroVender from "@/assets/hero-car.jpg";
 
 export const Route = createFileRoute("/vender")({
