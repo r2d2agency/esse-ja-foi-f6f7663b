@@ -92,8 +92,10 @@ function DetalheAnaliseVistoriaPage() {
       if (minimo > 0) {
         setComissaoPercentTxt(String(Number(((comissao / minimo) * 100).toFixed(2))));
       }
+    } else if (comissaoPadrao?.percentual != null) {
+      setComissaoPercentTxt(String(comissaoPadrao.percentual));
     }
-  }, [veiculo, propostaAtual]);
+  }, [veiculo, propostaAtual, comissaoPadrao]);
 
   const valorMinimo = Number(valorMinimoTxt) || 0;
   const valorReferencia = Number(valorReferenciaTxt) || 0;
