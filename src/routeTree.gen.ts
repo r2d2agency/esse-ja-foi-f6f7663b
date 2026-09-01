@@ -15,6 +15,7 @@ import { Route as CadastroRouteImport } from './routes/cadastro'
 import { Route as CompradorRouteImport } from './routes/comprador'
 import { Route as EsqueciMinhaSenhaRouteImport } from './routes/esqueci-minha-senha'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as PoliticaDePrivacidadeRouteImport } from './routes/politica-de-privacidade'
 import { Route as PrimeiroAcessoRouteImport } from './routes/primeiro-acesso'
 import { Route as RedefinirSenhaRouteImport } from './routes/redefinir-senha'
 import { Route as VeiculosRouteImport } from './routes/veiculos'
@@ -114,6 +115,11 @@ const EsqueciMinhaSenhaRoute = EsqueciMinhaSenhaRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PoliticaDePrivacidadeRoute = PoliticaDePrivacidadeRouteImport.update({
+  id: '/politica-de-privacidade',
+  path: '/politica-de-privacidade',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PrimeiroAcessoRoute = PrimeiroAcessoRouteImport.update({
@@ -478,6 +484,7 @@ export interface FileRoutesByFullPath {
   '/comprador': typeof CompradorRouteWithChildren
   '/esqueci-minha-senha': typeof EsqueciMinhaSenhaRoute
   '/login': typeof LoginRoute
+  '/politica-de-privacidade': typeof PoliticaDePrivacidadeRoute
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/redefinir-senha': typeof RedefinirSenhaRoute
   '/veiculos': typeof VeiculosRouteWithChildren
@@ -554,6 +561,7 @@ export interface FileRoutesByTo {
   '/cadastro': typeof CadastroRoute
   '/esqueci-minha-senha': typeof EsqueciMinhaSenhaRoute
   '/login': typeof LoginRoute
+  '/politica-de-privacidade': typeof PoliticaDePrivacidadeRoute
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/redefinir-senha': typeof RedefinirSenhaRoute
   '/vender': typeof VenderRoute
@@ -630,6 +638,7 @@ export interface FileRoutesById {
   '/comprador': typeof CompradorRouteWithChildren
   '/esqueci-minha-senha': typeof EsqueciMinhaSenhaRoute
   '/login': typeof LoginRoute
+  '/politica-de-privacidade': typeof PoliticaDePrivacidadeRoute
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/redefinir-senha': typeof RedefinirSenhaRoute
   '/veiculos': typeof VeiculosRouteWithChildren
@@ -710,6 +719,7 @@ export interface FileRouteTypes {
     | '/comprador'
     | '/esqueci-minha-senha'
     | '/login'
+    | '/politica-de-privacidade'
     | '/primeiro-acesso'
     | '/redefinir-senha'
     | '/veiculos'
@@ -786,6 +796,7 @@ export interface FileRouteTypes {
     | '/cadastro'
     | '/esqueci-minha-senha'
     | '/login'
+    | '/politica-de-privacidade'
     | '/primeiro-acesso'
     | '/redefinir-senha'
     | '/vender'
@@ -861,6 +872,7 @@ export interface FileRouteTypes {
     | '/comprador'
     | '/esqueci-minha-senha'
     | '/login'
+    | '/politica-de-privacidade'
     | '/primeiro-acesso'
     | '/redefinir-senha'
     | '/veiculos'
@@ -940,6 +952,7 @@ export interface RootRouteChildren {
   CompradorRoute: typeof CompradorRouteWithChildren
   EsqueciMinhaSenhaRoute: typeof EsqueciMinhaSenhaRoute
   LoginRoute: typeof LoginRoute
+  PoliticaDePrivacidadeRoute: typeof PoliticaDePrivacidadeRoute
   PrimeiroAcessoRoute: typeof PrimeiroAcessoRoute
   RedefinirSenhaRoute: typeof RedefinirSenhaRoute
   VeiculosRoute: typeof VeiculosRouteWithChildren
@@ -994,6 +1007,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/politica-de-privacidade': {
+      id: '/politica-de-privacidade'
+      path: '/politica-de-privacidade'
+      fullPath: '/politica-de-privacidade'
+      preLoaderRoute: typeof PoliticaDePrivacidadeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/primeiro-acesso': {
@@ -1693,6 +1713,7 @@ const rootRouteChildren: RootRouteChildren = {
   CompradorRoute: CompradorRouteWithChildren,
   EsqueciMinhaSenhaRoute: EsqueciMinhaSenhaRoute,
   LoginRoute: LoginRoute,
+  PoliticaDePrivacidadeRoute: PoliticaDePrivacidadeRoute,
   PrimeiroAcessoRoute: PrimeiroAcessoRoute,
   RedefinirSenhaRoute: RedefinirSenhaRoute,
   VeiculosRoute: VeiculosRouteWithChildren,
