@@ -15,6 +15,7 @@ import { Route as CadastroRouteImport } from './routes/cadastro'
 import { Route as CompradorRouteImport } from './routes/comprador'
 import { Route as EsqueciMinhaSenhaRouteImport } from './routes/esqueci-minha-senha'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as PoliticaDeCookiesRouteImport } from './routes/politica-de-cookies'
 import { Route as PoliticaDePrivacidadeRouteImport } from './routes/politica-de-privacidade'
 import { Route as PrimeiroAcessoRouteImport } from './routes/primeiro-acesso'
 import { Route as RedefinirSenhaRouteImport } from './routes/redefinir-senha'
@@ -115,6 +116,11 @@ const EsqueciMinhaSenhaRoute = EsqueciMinhaSenhaRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PoliticaDeCookiesRoute = PoliticaDeCookiesRouteImport.update({
+  id: '/politica-de-cookies',
+  path: '/politica-de-cookies',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PoliticaDePrivacidadeRoute = PoliticaDePrivacidadeRouteImport.update({
@@ -484,6 +490,7 @@ export interface FileRoutesByFullPath {
   '/comprador': typeof CompradorRouteWithChildren
   '/esqueci-minha-senha': typeof EsqueciMinhaSenhaRoute
   '/login': typeof LoginRoute
+  '/politica-de-cookies': typeof PoliticaDeCookiesRoute
   '/politica-de-privacidade': typeof PoliticaDePrivacidadeRoute
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/redefinir-senha': typeof RedefinirSenhaRoute
@@ -561,6 +568,7 @@ export interface FileRoutesByTo {
   '/cadastro': typeof CadastroRoute
   '/esqueci-minha-senha': typeof EsqueciMinhaSenhaRoute
   '/login': typeof LoginRoute
+  '/politica-de-cookies': typeof PoliticaDeCookiesRoute
   '/politica-de-privacidade': typeof PoliticaDePrivacidadeRoute
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/redefinir-senha': typeof RedefinirSenhaRoute
@@ -638,6 +646,7 @@ export interface FileRoutesById {
   '/comprador': typeof CompradorRouteWithChildren
   '/esqueci-minha-senha': typeof EsqueciMinhaSenhaRoute
   '/login': typeof LoginRoute
+  '/politica-de-cookies': typeof PoliticaDeCookiesRoute
   '/politica-de-privacidade': typeof PoliticaDePrivacidadeRoute
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/redefinir-senha': typeof RedefinirSenhaRoute
@@ -719,6 +728,7 @@ export interface FileRouteTypes {
     | '/comprador'
     | '/esqueci-minha-senha'
     | '/login'
+    | '/politica-de-cookies'
     | '/politica-de-privacidade'
     | '/primeiro-acesso'
     | '/redefinir-senha'
@@ -796,6 +806,7 @@ export interface FileRouteTypes {
     | '/cadastro'
     | '/esqueci-minha-senha'
     | '/login'
+    | '/politica-de-cookies'
     | '/politica-de-privacidade'
     | '/primeiro-acesso'
     | '/redefinir-senha'
@@ -872,6 +883,7 @@ export interface FileRouteTypes {
     | '/comprador'
     | '/esqueci-minha-senha'
     | '/login'
+    | '/politica-de-cookies'
     | '/politica-de-privacidade'
     | '/primeiro-acesso'
     | '/redefinir-senha'
@@ -952,6 +964,7 @@ export interface RootRouteChildren {
   CompradorRoute: typeof CompradorRouteWithChildren
   EsqueciMinhaSenhaRoute: typeof EsqueciMinhaSenhaRoute
   LoginRoute: typeof LoginRoute
+  PoliticaDeCookiesRoute: typeof PoliticaDeCookiesRoute
   PoliticaDePrivacidadeRoute: typeof PoliticaDePrivacidadeRoute
   PrimeiroAcessoRoute: typeof PrimeiroAcessoRoute
   RedefinirSenhaRoute: typeof RedefinirSenhaRoute
@@ -1007,6 +1020,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/politica-de-cookies': {
+      id: '/politica-de-cookies'
+      path: '/politica-de-cookies'
+      fullPath: '/politica-de-cookies'
+      preLoaderRoute: typeof PoliticaDeCookiesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/politica-de-privacidade': {
@@ -1713,6 +1733,7 @@ const rootRouteChildren: RootRouteChildren = {
   CompradorRoute: CompradorRouteWithChildren,
   EsqueciMinhaSenhaRoute: EsqueciMinhaSenhaRoute,
   LoginRoute: LoginRoute,
+  PoliticaDeCookiesRoute: PoliticaDeCookiesRoute,
   PoliticaDePrivacidadeRoute: PoliticaDePrivacidadeRoute,
   PrimeiroAcessoRoute: PrimeiroAcessoRoute,
   RedefinirSenhaRoute: RedefinirSenhaRoute,
