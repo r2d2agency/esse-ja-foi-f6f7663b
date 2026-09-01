@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Save, Settings, BrainCircuit, Mail, Send, ScanSearch, FileSignature, Loader2, PlugZap } from "lucide-react";
+import { Save, Settings, BrainCircuit, Mail, Send, ScanSearch, FileSignature, Loader2, PlugZap, Percent } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -16,6 +16,7 @@ import {
 } from "@/lib/consulta-veicular.functions";
 import { getTermoVigenteFn, salvarTermoFn } from "@/lib/termos.functions";
 import { listarConfiguracoesFn, salvarConfiguracaoFn, enviarEmailTesteFn } from "@/lib/admin.functions";
+import { getComissaoPadraoFn, setComissaoPadraoFn } from "@/lib/relatorios.functions";
 
 
 export const Route = createFileRoute("/admin/configuracoes")({
