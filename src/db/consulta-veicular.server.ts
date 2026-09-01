@@ -423,6 +423,22 @@ const PADROES_FALHA = [
   "invalid token",
   "token invalido",
   "token inválido",
+  "dados incorretos",
+  "dados invalidos",
+  "dados inválidos",
+  "parametro invalido",
+  "parâmetro inválido",
+  "parametros invalidos",
+  "requisicao invalida",
+  "requisição inválida",
+  "sem saldo",
+  "sem permissao",
+  "sem permissão",
+  "produto invalido",
+  "produto inválido",
+  "consulta nao autorizada",
+  "erro na solicitacao",
+  "erro na solicitação",
 ];
 
 function mensagemDoRetorno(payload: any): string | null {
@@ -448,13 +464,19 @@ function falhaLogica(payload: any): string | null {
     const norm = msg.toLowerCase();
     if (PADROES_FALHA.some((p) => norm.includes(p))) return msg;
   }
+  // A Conferi devolve acao="3" quando recusa a solicitação (dados/produto/credenciais).
+  const acao = primeiro(payload, ["conferi.solicitacao.acao", "solicitacao.acao", "acao"]);
+  if (acao && !["1", "2", "0"].includes(String(acao))) {
+    return msg || `Solicitação recusada pelo provedor (acao=${acao}).`;
+  }
   const raw = typeof payload?.raw === "string" ? payload.raw.toLowerCase() : "";
   if (raw) {
     const achou = PADROES_FALHA.find((p) => raw.includes(p));
-    if (achou) return msg || "Falha de autenticação informada pelo provedor.";
+    if (achou) return msg || "Falha informada pelo provedor.";
   }
   return null;
 }
+
 
 /** Executa as tentativas até obter sucesso; devolve diagnóstico de todas. */
 async function executarConsulta(prov: any, dados: Record<string, any>) {
