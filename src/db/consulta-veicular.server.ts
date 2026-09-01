@@ -332,14 +332,26 @@ function montarTentativas(prov: any, dados: Record<string, any>, urlBase: string
     },
   };
 
+  const variantes: Tentativa[] = variacoesXml.flatMap((v) => [
+    { label: v.label, headers: xmlHeaders, body: v.body },
+    {
+      label: `${v.label} · em formulário xml=`,
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/xml" },
+      body: new URLSearchParams({ xml: v.body }).toString(),
+    },
+  ]);
+
   const modo = String(prov.auth_modo || "AUTO").toUpperCase();
+  if (modo.startsWith("XML")) return [tentativas[modo]!, ...variantes].filter(Boolean);
   if (modo !== "AUTO" && tentativas[modo]) return [tentativas[modo]!];
 
   const ordem: string[] = ["XML", "XMLTAG", "XMLFORM", "QUERY"];
   if (usuario && senha) ordem.push("CORPO", "FORM", "BASIC");
   if (chave) ordem.push("BEARER", "APIKEY", "CORPO");
-  return [...new Set(ordem)].map((k) => tentativas[k]!).filter(Boolean);
+  const basicas = [...new Set(ordem)].map((k) => tentativas[k]!).filter(Boolean);
+  return [...basicas, ...variantes];
 }
+
 
 /** Conversor XML → objeto simples (sem DOMParser, compatível com o runtime do servidor). */
 function xmlParaObjeto(xml: string): any {
