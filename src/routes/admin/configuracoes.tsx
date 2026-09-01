@@ -473,16 +473,7 @@ function ConsultaVeicularSection() {
               {resultadoTeste.httpStatus ? ` — HTTP ${resultadoTeste.httpStatus}` : ""}
               {resultadoTeste.message ? `: ${resultadoTeste.message}` : ""}
             </p>
-            {resultadoTeste.resumo && (
-              <div className="grid gap-1 rounded-lg bg-white p-3 text-xs text-slate-700 md:grid-cols-2">
-                {Object.entries(resultadoTeste.resumo).map(([k, v]) => (
-                  <div key={k}>
-                    <span className="font-bold text-slate-500">{k}:</span>{" "}
-                    {v == null ? "—" : typeof v === "object" ? JSON.stringify(v) : String(v)}
-                  </div>
-                ))}
-              </div>
-            )}
+            {resultadoTeste.resumo && <PainelResultadoConsulta resumo={resultadoTeste.resumo} />}
             {Array.isArray(resultadoTeste.diagnostico) && resultadoTeste.diagnostico.length > 0 && (
               <div className="space-y-1 rounded-lg bg-white p-3 text-xs text-slate-700">
                 <p className="font-bold text-slate-500">Tentativas de autenticação</p>
