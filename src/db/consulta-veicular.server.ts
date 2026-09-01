@@ -475,7 +475,7 @@ export function resumirRetorno(payload: any) {
   const base = payload?.retorno ?? payload?.data ?? payload?.resultado ?? payload;
   const raiz = payload?.conferi ? { ...achatarConferi(payload), ...base } : base;
 
-  return {
+  const resumo = {
     protocolo: primeiro(raiz, ["protocolo", "ticket", "id_consulta", "idConsulta", "numero_protocolo"]),
     situacao: primeiro(raiz, ["situacao", "situacao_veiculo", "status_veiculo"]),
     roubo_furto: primeiro(raiz, ["roubo_furto", "rouboFurto", "indicio_roubo_furto", "ocorrencia_roubo"]),
@@ -486,6 +486,22 @@ export function resumirRetorno(payload: any) {
     renajud: primeiro(raiz, ["renajud", "restricao_judicial"]),
     documento_url: primeiro(raiz, ["url_pdf", "pdf", "link_pdf", "arquivo", "url_laudo", "documento"]),
   };
+
+  // Quando o provedor devolve campos com nomes fora do mapeamento,
+  // expõe os demais campos achatados para a tela de teste/diagnóstico.
+  const conhecidos = new Set(Object.keys(resumo));
+  const extras: Record<string, any> = {};
+  if (raiz && typeof raiz === "object") {
+    for (const [k, v] of Object.entries(raiz)) {
+      const chave = String(k).toLowerCase();
+      if (conhecidos.has(chave) || chave === "raw" || chave === "#text") continue;
+      if (v === null || v === undefined || v === "") continue;
+      if (typeof v === "object") continue;
+      extras[chave] = v;
+    }
+  }
+  const tudoNulo = Object.values(resumo).every((v) => v === null || v === undefined || v === "");
+  return { ...resumo, ...(tudoNulo && Object.keys(extras).length > 0 ? { extras } : {}) };
 }
 
 export async function consultarLaudoVeiculo(veiculoId: string, criadoPor?: string | null) {

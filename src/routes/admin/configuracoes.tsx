@@ -473,16 +473,7 @@ function ConsultaVeicularSection() {
               {resultadoTeste.httpStatus ? ` — HTTP ${resultadoTeste.httpStatus}` : ""}
               {resultadoTeste.message ? `: ${resultadoTeste.message}` : ""}
             </p>
-            {resultadoTeste.resumo && (
-              <div className="grid gap-1 rounded-lg bg-white p-3 text-xs text-slate-700 md:grid-cols-2">
-                {Object.entries(resultadoTeste.resumo).map(([k, v]) => (
-                  <div key={k}>
-                    <span className="font-bold text-slate-500">{k}:</span>{" "}
-                    {v == null ? "—" : typeof v === "object" ? JSON.stringify(v) : String(v)}
-                  </div>
-                ))}
-              </div>
-            )}
+            {resultadoTeste.resumo && <PainelResultadoConsulta resumo={resultadoTeste.resumo} />}
             {Array.isArray(resultadoTeste.diagnostico) && resultadoTeste.diagnostico.length > 0 && (
               <div className="space-y-1 rounded-lg bg-white p-3 text-xs text-slate-700">
                 <p className="font-bold text-slate-500">Tentativas de autenticação</p>
@@ -504,6 +495,94 @@ function ConsultaVeicularSection() {
         )}
       </div>
     </section>
+  );
+}
+
+const ITENS_RISCO: { chave: string; rotulo: string }[] = [
+  { chave: "roubo_furto", rotulo: "Roubo / Furto" },
+  { chave: "sinistro", rotulo: "Sinistro" },
+  { chave: "leilao", rotulo: "Histórico de leilão" },
+  { chave: "restricoes", rotulo: "Restrições" },
+  { chave: "renajud", rotulo: "Renajud (judicial)" },
+  { chave: "debitos", rotulo: "Débitos" },
+];
+
+const PADROES_NEGATIVO = ["nada consta", "nao consta", "não consta", "sem registro", "negativ", "nao", "não", "nenhum", "0", "false", "inexistente", "sem restricao", "sem restrição"];
+
+function classificarItem(valor: any): "positivo" | "negativo" | "neutro" {
+  if (valor === null || valor === undefined || valor === "") return "neutro";
+  const norm = String(typeof valor === "object" ? JSON.stringify(valor) : valor).toLowerCase().trim();
+  if (!norm) return "neutro";
+  if (PADROES_NEGATIVO.some((p) => norm === p || norm.startsWith(p))) return "negativo";
+  return "positivo";
+}
+
+function PainelResultadoConsulta({ resumo }: { resumo: Record<string, any> }) {
+  const extras = (resumo.extras ?? null) as Record<string, any> | null;
+  return (
+    <div className="space-y-3">
+      <div className="grid gap-2 md:grid-cols-3">
+        {ITENS_RISCO.map(({ chave, rotulo }) => {
+          const valor = resumo[chave];
+          const estado = classificarItem(valor);
+          const estilo =
+            estado === "positivo"
+              ? "border-red-300 bg-red-50 text-red-800"
+              : estado === "negativo"
+                ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+                : "border-slate-200 bg-white text-slate-500";
+          return (
+            <div key={chave} className={`rounded-lg border p-3 ${estilo}`}>
+              <p className="text-xs font-bold uppercase tracking-wide">{rotulo}</p>
+              <p className="mt-1 text-sm font-semibold">
+                {estado === "neutro"
+                  ? "Não informado"
+                  : estado === "negativo"
+                    ? "Nada encontrado"
+                    : String(typeof valor === "object" ? JSON.stringify(valor) : valor)}
+              </p>
+              {estado === "negativo" && valor != null && String(valor).toLowerCase() !== "nada encontrado" && (
+                <p className="mt-0.5 text-[11px] opacity-70">{String(valor)}</p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {(resumo.protocolo || resumo.situacao || resumo.documento_url) && (
+        <div className="grid gap-1 rounded-lg bg-white p-3 text-xs text-slate-700 md:grid-cols-2">
+          {resumo.protocolo && (
+            <div>
+              <span className="font-bold text-slate-500">Protocolo:</span> {String(resumo.protocolo)}
+            </div>
+          )}
+          {resumo.situacao && (
+            <div>
+              <span className="font-bold text-slate-500">Situação:</span> {String(resumo.situacao)}
+            </div>
+          )}
+          {resumo.documento_url && (
+            <div className="md:col-span-2">
+              <span className="font-bold text-slate-500">Documento:</span>{" "}
+              <a href={String(resumo.documento_url)} target="_blank" rel="noreferrer" className="text-teal-700 underline">
+                {String(resumo.documento_url)}
+              </a>
+            </div>
+          )}
+        </div>
+      )}
+      {extras && Object.keys(extras).length > 0 && (
+        <div className="grid gap-1 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-slate-700 md:grid-cols-2">
+          <p className="font-bold text-amber-800 md:col-span-2">
+            Campos retornados pelo provedor (fora do mapeamento padrão)
+          </p>
+          {Object.entries(extras).map(([k, v]) => (
+            <div key={k}>
+              <span className="font-bold text-slate-500">{k}:</span> {String(v)}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
