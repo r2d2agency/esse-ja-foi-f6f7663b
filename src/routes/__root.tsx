@@ -56,6 +56,7 @@ function RootLayout() {
             <Outlet />
           </div>
           <Toaster richColors position="top-right" />
+          <ConsentimentoCookies />
         </QueryClientProvider>
         <Scripts />
       </body>
