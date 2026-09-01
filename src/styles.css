@@ -24,6 +24,11 @@
   --color-ember: var(--ember);
   --color-ember-foreground: var(--ember-foreground);
   --color-surface: var(--surface);
+  --color-navy: var(--navy);
+  --color-navy-dark: var(--navy-dark);
+  --color-turquoise: var(--turquoise);
+  --color-turquoise-dark: var(--turquoise-dark);
+  --color-mist: var(--mist);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -79,6 +84,11 @@
   --primary-foreground: oklch(0.98 0.005 240);
   --ember: oklch(0.7 0.15 75);
   --ember-foreground: oklch(1 0 0);
+  --navy: #0c162c;
+  --navy-dark: #080e1c;
+  --turquoise: #00b8a9;
+  --turquoise-dark: #00897e;
+  --mist: #f5f7fa;
   --secondary: oklch(0.95 0.008 240);
   --secondary-foreground: oklch(0.25 0.04 240);
   --muted: oklch(0.955 0.008 240);
