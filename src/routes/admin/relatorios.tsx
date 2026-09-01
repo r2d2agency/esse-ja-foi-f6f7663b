@@ -150,6 +150,10 @@ function RelatoriosPage() {
         <TabsContent value="vendas" className="space-y-8">
           <SalesTab dataInicio={dataInicio} dataFim={dataFim} />
         </TabsContent>
+
+        <TabsContent value="comissoes" className="space-y-8">
+          <ComissoesTab />
+        </TabsContent>
       </Tabs>
     </div>
   );
