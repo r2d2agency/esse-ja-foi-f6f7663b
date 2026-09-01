@@ -103,6 +103,9 @@ function RelatoriosPage() {
           <TabsTrigger value="vendas" className="gap-2">
             <TrendingUp className="h-4 w-4" /> Vendas
           </TabsTrigger>
+          <TabsTrigger value="comissoes" className="gap-2">
+            <DollarSign className="h-4 w-4" /> Comissões
+          </TabsTrigger>
           <TabsTrigger value="veiculos" className="gap-2">
             <Car className="h-4 w-4" /> Veículos
           </TabsTrigger>
