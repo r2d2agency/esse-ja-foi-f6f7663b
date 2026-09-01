@@ -270,9 +270,78 @@ function ConfiguracoesAdminPage() {
           </div>
         </section>
 
+        <ComissaoSection />
         <ConsultaVeicularSection />
         <TermoAdesaoSection />
       </div>
+  );
+}
+
+function ComissaoSection() {
+  const [percentTxt, setPercentTxt] = useState("");
+  const [carregando, setCarregando] = useState(true);
+  const [salvando, setSalvando] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res: any = await getComissaoPadraoFn();
+        setPercentTxt(String(res?.percentual ?? 5));
+      } finally {
+        setCarregando(false);
+      }
+    })();
+  }, []);
+
+  async function salvarComissao() {
+    const valor = Number(String(percentTxt).replace(",", "."));
+    if (!Number.isFinite(valor) || valor < 0 || valor > 100) {
+      toast.error("Informe um percentual entre 0 e 100.");
+      return;
+    }
+    setSalvando(true);
+    try {
+      const res: any = await setComissaoPadraoFn({ data: { percentual: valor } });
+      if (res?.ok) toast.success("Comissão padrão da plataforma atualizada.");
+      else toast.error(res?.message || "Erro ao salvar a comissão.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <section className="space-y-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+        <Percent className="h-5 w-5 text-teal-700" />
+        Comissão da plataforma
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="space-y-2">
+          <Label>Comissão padrão sobre a venda (%)</Label>
+          <Input
+            type="number"
+            inputMode="decimal"
+            min={0}
+            max={100}
+            step={0.1}
+            disabled={carregando}
+            value={percentTxt}
+            onChange={(e) => setPercentTxt(e.target.value)}
+          />
+          <p className="text-xs text-slate-500">
+            Percentual padrão que a Esse Já Foi recebe sobre cada venda. Ele é sugerido automaticamente no
+            fechamento comercial de cada veículo (Análise pós-vistoria), onde ainda pode ser ajustado caso a caso.
+            Os totais de comissão a receber e recebidos aparecem em Relatórios &rarr; Comissões.
+          </p>
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <Button className="bg-teal-900" onClick={() => void salvarComissao()} disabled={salvando || carregando}>
+          {salvando ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+          Salvar comissão
+        </Button>
+      </div>
+    </section>
   );
 }
 
