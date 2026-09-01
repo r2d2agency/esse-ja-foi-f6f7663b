@@ -21,6 +21,7 @@ import {
 import { useAuth } from '@/hooks/use-auth';
 import { LogoEsf } from '@/components/shared/LogoEsf';
 import landingHeroAsset from '@/assets/esse-ja-foi-hero.webp.asset.json';
+import { abrirConfiguracoesCookies } from '@/lib/cookies-consent';
 
 export const Route = createFileRoute('/')({
   head: () => ({
