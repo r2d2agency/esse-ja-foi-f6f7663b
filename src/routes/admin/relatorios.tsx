@@ -1,10 +1,9 @@
-import { createFileRoute, Outlet } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 
 import { useState, useEffect } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { getRelatoriosGeraisFn, getRelatoriosVendasFn, getRelatorioComissoesFn, setComissaoPadraoFn } from "@/lib/relatorios.functions";
-import { toast } from "sonner";
+import { getRelatoriosGeraisFn, getRelatoriosVendasFn, getRelatorioComissoesFn } from "@/lib/relatorios.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -252,9 +251,6 @@ function FunnelStep({ label, value, total }: any) {
 
 function ComissoesTab() {
   const carregar = useServerFn(getRelatorioComissoesFn);
-  const salvarPadrao = useServerFn(setComissaoPadraoFn);
-  const queryClient = useQueryClient();
-  const [percentTxt, setPercentTxt] = useState("");
 
   const { data, isLoading } = useQuery({
     queryKey: ["relatorio-comissoes"],
@@ -263,20 +259,6 @@ function ComissoesTab() {
 
   const resumo = data?.ok ? data.data?.resumo : undefined;
   const lista: any[] = (data?.ok ? data.data?.lista : []) || [];
-  const padrao = data?.ok ? data.data?.percentualPadrao : undefined;
-
-  useEffect(() => {
-    if (padrao != null && percentTxt === "") setPercentTxt(String(padrao));
-  }, [padrao]);
-
-  const salvar = useMutation({
-    mutationFn: async () => salvarPadrao({ data: { percentual: Number(percentTxt) || 0 } }),
-    onSuccess: () => {
-      toast.success("Comissão padrão atualizada.");
-      queryClient.invalidateQueries({ queryKey: ["relatorio-comissoes"] });
-    },
-    onError: () => toast.error("Não foi possível salvar a comissão padrão."),
-  });
 
   return (
     <div className="space-y-8">
@@ -288,31 +270,9 @@ function ComissoesTab() {
       </div>
 
       <Card className="border-slate-200 shadow-none">
-        <CardHeader>
-          <CardTitle className="text-sm font-black uppercase tracking-wider text-slate-500">Comissão padrão da plataforma</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="w-40">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Percentual (%)</p>
-              <Input
-                type="number"
-                inputMode="decimal"
-                min={0}
-                max={100}
-                value={percentTxt}
-                onChange={(e) => setPercentTxt(e.target.value)}
-              />
-            </div>
-            <Button onClick={() => salvar.mutate()} disabled={salvar.isPending} className="bg-slate-950 hover:bg-slate-900 text-white font-bold">
-              {salvar.isPending ? "Salvando..." : "Salvar padrão"}
-            </Button>
-          </div>
+        <CardContent className="p-4">
           <p className="text-xs text-slate-500">
-            Esse percentual é sugerido automaticamente na proposta de cada veículo (Análise pós-vistoria &rarr; Fechamento comercial),
-            onde você pode ajustar a comissão caso a caso. O valor calculado ali é o que alimenta estes relatórios.
-          </p>
-          <p className="text-xs text-slate-500">
+            O percentual padrão de comissão é configurado em <strong>Admin &rarr; Configurações &rarr; Comissão da plataforma</strong> e pode ser ajustado caso a caso no fechamento comercial de cada veículo.
             Comissão prevista em propostas ativas: <strong>{formatCurrency(Number(resumo?.comissao_prevista || 0))}</strong> em {resumo?.qtd_veiculos || 0} veículo(s).
           </p>
         </CardContent>
