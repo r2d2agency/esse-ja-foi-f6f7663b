@@ -104,3 +104,115 @@ function rowsOf(res: any): any[] {
   if (Array.isArray(res.rows)) return res.rows;
   return [];
 }
+
+/** Configuração da comissão padrão da plataforma (%) */
+async function ensureComissaoConfig() {
+  if (!db) return;
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS financeiro_configuracoes (
+      chave text PRIMARY KEY,
+      valor text NOT NULL,
+      descricao text,
+      atualizado_em timestamptz DEFAULT now()
+    );
+  `);
+  await db.execute(sql`
+    INSERT INTO financeiro_configuracoes (chave, valor, descricao)
+    VALUES ('comissao_padrao_percentual', '5', 'Percentual padrão de comissão da plataforma por venda.')
+    ON CONFLICT (chave) DO NOTHING;
+  `);
+}
+
+export async function getComissaoPadrao(): Promise<number> {
+  if (!db) return 5;
+  await ensureComissaoConfig();
+  const res = await db.execute(sql`SELECT valor FROM financeiro_configuracoes WHERE chave = 'comissao_padrao_percentual'`);
+  const v = Number(rowsOf(res)?.[0]?.valor);
+  return Number.isFinite(v) && v > 0 ? v : 5;
+}
+
+export async function setComissaoPadrao(percentual: number) {
+  if (!db) return { ok: false as const };
+  await ensureComissaoConfig();
+  await db.execute(sql`
+    INSERT INTO financeiro_configuracoes (chave, valor, descricao, atualizado_em)
+    VALUES ('comissao_padrao_percentual', ${String(percentual)}, 'Percentual padrão de comissão da plataforma por venda.', now())
+    ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor, atualizado_em = now()
+  `);
+  return { ok: true as const };
+}
+
+/** Comissões: a receber, recebidas e previstas */
+export async function getRelatorioComissoes() {
+  if (!db) return null;
+
+  let repassesOk = true;
+  let resumo: any = {};
+  try {
+    const res = await db.execute(sql`
+      SELECT
+        COALESCE(SUM(valor_comissao) FILTER (WHERE status = 'CONCLUIDO'), 0)::numeric as comissao_recebida_total,
+        COALESCE(SUM(valor_comissao) FILTER (WHERE status <> 'CONCLUIDO'), 0)::numeric as comissao_a_receber,
+        COALESCE(SUM(valor_comissao) FILTER (WHERE status = 'CONCLUIDO' AND date_trunc('month', COALESCE(concluido_em, atualizado_em)) = date_trunc('month', now())), 0)::numeric as comissao_recebida_mes,
+        COALESCE(SUM(valor_comissao) FILTER (WHERE status <> 'CONCLUIDO' AND date_trunc('month', criado_em) = date_trunc('month', now())), 0)::numeric as comissao_a_receber_mes,
+        COUNT(*) FILTER (WHERE status <> 'CONCLUIDO')::int as qtd_pendentes,
+        COUNT(*) FILTER (WHERE status = 'CONCLUIDO')::int as qtd_concluidas
+      FROM repasses
+    `);
+    resumo = rowsOf(res)?.[0] || {};
+  } catch {
+    repassesOk = false;
+  }
+
+  let previsto: any = {};
+  try {
+    const res = await db.execute(sql`
+      SELECT
+        COALESCE(SUM(pv.comissao_valor), 0)::numeric as comissao_prevista,
+        COUNT(*)::int as qtd_veiculos
+      FROM propostas_veiculo pv
+      JOIN veiculos v ON v.id = pv.veiculo_id
+      WHERE pv.comissao_valor IS NOT NULL
+    `);
+    previsto = rowsOf(res)?.[0] || {};
+  } catch {
+    previsto = {};
+  }
+
+  let lista: any[] = [];
+  if (repassesOk) {
+    try {
+      const res = await db.execute(sql`
+        SELECT r.id, r.status, r.valor_venda::numeric, r.valor_comissao::numeric, r.valor_liquido::numeric,
+               r.comissao_regra, r.criado_em, r.concluido_em,
+               n.codigo as negociacao_codigo,
+               (v.marca || ' ' || v.modelo) as veiculo,
+               vend.nome as vendedor_nome
+        FROM repasses r
+        JOIN negociacoes n ON n.id = r.negociacao_id
+        LEFT JOIN veiculos v ON v.id = n.veiculo_id
+        LEFT JOIN profiles vend ON vend.id = r.vendedor_id
+        ORDER BY r.criado_em DESC
+        LIMIT 100
+      `);
+      lista = rowsOf(res) || [];
+    } catch {
+      lista = [];
+    }
+  }
+
+  return {
+    percentualPadrao: await getComissaoPadrao(),
+    resumo: {
+      comissao_recebida_total: Number(resumo.comissao_recebida_total || 0),
+      comissao_recebida_mes: Number(resumo.comissao_recebida_mes || 0),
+      comissao_a_receber: Number(resumo.comissao_a_receber || 0),
+      comissao_a_receber_mes: Number(resumo.comissao_a_receber_mes || 0),
+      qtd_pendentes: Number(resumo.qtd_pendentes || 0),
+      qtd_concluidas: Number(resumo.qtd_concluidas || 0),
+      comissao_prevista: Number(previsto.comissao_prevista || 0),
+      qtd_veiculos: Number(previsto.qtd_veiculos || 0),
+    },
+    lista,
+  };
+}

@@ -1,9 +1,10 @@
 import { createFileRoute, Outlet } from "@tanstack/react-router";
 
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { getRelatoriosGeraisFn, getRelatoriosVendasFn } from "@/lib/relatorios.functions";
+import { getRelatoriosGeraisFn, getRelatoriosVendasFn, getRelatorioComissoesFn, setComissaoPadraoFn } from "@/lib/relatorios.functions";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -103,6 +104,9 @@ function RelatoriosPage() {
           <TabsTrigger value="vendas" className="gap-2">
             <TrendingUp className="h-4 w-4" /> Vendas
           </TabsTrigger>
+          <TabsTrigger value="comissoes" className="gap-2">
+            <DollarSign className="h-4 w-4" /> Comissões
+          </TabsTrigger>
           <TabsTrigger value="veiculos" className="gap-2">
             <Car className="h-4 w-4" /> Veículos
           </TabsTrigger>
@@ -146,6 +150,10 @@ function RelatoriosPage() {
 
         <TabsContent value="vendas" className="space-y-8">
           <SalesTab dataInicio={dataInicio} dataFim={dataFim} />
+        </TabsContent>
+
+        <TabsContent value="comissoes" className="space-y-8">
+          <ComissoesTab />
         </TabsContent>
       </Tabs>
     </div>
@@ -238,6 +246,124 @@ function FunnelStep({ label, value, total }: any) {
       <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
         <div className="h-full bg-teal-500 rounded-full" style={{ width: `${percent}%` }} />
       </div>
+    </div>
+  );
+}
+
+function ComissoesTab() {
+  const carregar = useServerFn(getRelatorioComissoesFn);
+  const salvarPadrao = useServerFn(setComissaoPadraoFn);
+  const queryClient = useQueryClient();
+  const [percentTxt, setPercentTxt] = useState("");
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["relatorio-comissoes"],
+    queryFn: () => carregar(),
+  });
+
+  const resumo = data?.ok ? data.data?.resumo : undefined;
+  const lista: any[] = (data?.ok ? data.data?.lista : []) || [];
+  const padrao = data?.ok ? data.data?.percentualPadrao : undefined;
+
+  useEffect(() => {
+    if (padrao != null && percentTxt === "") setPercentTxt(String(padrao));
+  }, [padrao]);
+
+  const salvar = useMutation({
+    mutationFn: async () => salvarPadrao({ data: { percentual: Number(percentTxt) || 0 } }),
+    onSuccess: () => {
+      toast.success("Comissão padrão atualizada.");
+      queryClient.invalidateQueries({ queryKey: ["relatorio-comissoes"] });
+    },
+    onError: () => toast.error("Não foi possível salvar a comissão padrão."),
+  });
+
+  return (
+    <div className="space-y-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard label="A receber neste mês" value={resumo?.comissao_a_receber_mes} isCurrency loading={isLoading} />
+        <StatCard label="Recebido neste mês" value={resumo?.comissao_recebida_mes} isCurrency loading={isLoading} />
+        <StatCard label="Total a receber" value={resumo?.comissao_a_receber} isCurrency loading={isLoading} />
+        <StatCard label="Total recebido" value={resumo?.comissao_recebida_total} isCurrency loading={isLoading} />
+      </div>
+
+      <Card className="border-slate-200 shadow-none">
+        <CardHeader>
+          <CardTitle className="text-sm font-black uppercase tracking-wider text-slate-500">Comissão padrão da plataforma</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="w-40">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Percentual (%)</p>
+              <Input
+                type="number"
+                inputMode="decimal"
+                min={0}
+                max={100}
+                value={percentTxt}
+                onChange={(e) => setPercentTxt(e.target.value)}
+              />
+            </div>
+            <Button onClick={() => salvar.mutate()} disabled={salvar.isPending} className="bg-slate-950 hover:bg-slate-900 text-white font-bold">
+              {salvar.isPending ? "Salvando..." : "Salvar padrão"}
+            </Button>
+          </div>
+          <p className="text-xs text-slate-500">
+            Esse percentual é sugerido automaticamente na proposta de cada veículo (Análise pós-vistoria &rarr; Fechamento comercial),
+            onde você pode ajustar a comissão caso a caso. O valor calculado ali é o que alimenta estes relatórios.
+          </p>
+          <p className="text-xs text-slate-500">
+            Comissão prevista em propostas ativas: <strong>{formatCurrency(Number(resumo?.comissao_prevista || 0))}</strong> em {resumo?.qtd_veiculos || 0} veículo(s).
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card className="border-slate-200 shadow-none">
+        <CardHeader>
+          <CardTitle className="text-sm font-black uppercase tracking-wider text-slate-500">Comissões por venda</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-slate-50">
+                <TableHead>Data</TableHead>
+                <TableHead>Negociação</TableHead>
+                <TableHead>Veículo</TableHead>
+                <TableHead>Vendedor</TableHead>
+                <TableHead>Regra</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Venda</TableHead>
+                <TableHead className="text-right">Comissão</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                <TableRow><TableCell colSpan={8} className="text-center p-8 text-slate-400">Carregando...</TableCell></TableRow>
+              ) : lista.length === 0 ? (
+                <TableRow><TableCell colSpan={8} className="text-center p-8 text-slate-400">Nenhuma comissão registrada ainda.</TableCell></TableRow>
+              ) : lista.map((item: any) => (
+                <TableRow key={item.id}>
+                  <TableCell className="text-xs">{formatDate(item.concluido_em || item.criado_em)}</TableCell>
+                  <TableCell className="font-mono text-xs">{item.negociacao_codigo}</TableCell>
+                  <TableCell className="font-bold text-xs">{item.veiculo || "—"}</TableCell>
+                  <TableCell className="text-xs">{item.vendedor_nome || "—"}</TableCell>
+                  <TableCell className="text-xs">{item.comissao_regra || "—"}</TableCell>
+                  <TableCell>
+                    <span className={cn(
+                      "text-[10px] font-black uppercase px-2 py-1 rounded-full",
+                      item.status === "CONCLUIDO" ? "bg-teal-50 text-teal-700" : "bg-amber-50 text-amber-700"
+                    )}>
+                      {item.status === "CONCLUIDO" ? "Recebida" : "A receber"}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-right font-bold text-xs">{formatCurrency(Number(item.valor_venda))}</TableCell>
+                  <TableCell className="text-right font-bold text-xs text-teal-600">{formatCurrency(Number(item.valor_comissao))}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
     </div>
   );
 }

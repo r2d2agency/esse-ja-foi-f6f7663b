@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getDetalheAnaliseVistoriaFn, enviarPropostaVendedorFn, solicitarNovaVistoriaFn } from "@/lib/analise-pos-vistoria.functions";
+import { getComissaoPadraoFn } from "@/lib/relatorios.functions";
 import { useAuth } from "@/hooks/use-auth";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -65,6 +66,12 @@ function DetalheAnaliseVistoriaPage() {
   const enviarProposta = useServerFn(enviarPropostaVendedorFn);
   const solicitarNovaVistoria = useServerFn(solicitarNovaVistoriaFn);
 
+  const getComissaoPadrao = useServerFn(getComissaoPadraoFn);
+  const { data: comissaoPadrao } = useQuery({
+    queryKey: ["comissao-padrao"],
+    queryFn: () => getComissaoPadrao(),
+  });
+
   const { data: res, isLoading, refetch } = useQuery({
     queryKey: ["admin-analise-vistoria", id],
     queryFn: () => getDetalhe({ data: { veiculoId: id } }),
@@ -92,8 +99,10 @@ function DetalheAnaliseVistoriaPage() {
       if (minimo > 0) {
         setComissaoPercentTxt(String(Number(((comissao / minimo) * 100).toFixed(2))));
       }
+    } else if (comissaoPadrao?.percentual != null) {
+      setComissaoPercentTxt(String(comissaoPadrao.percentual));
     }
-  }, [veiculo, propostaAtual]);
+  }, [veiculo, propostaAtual, comissaoPadrao]);
 
   const valorMinimo = Number(valorMinimoTxt) || 0;
   const valorReferencia = Number(valorReferenciaTxt) || 0;
