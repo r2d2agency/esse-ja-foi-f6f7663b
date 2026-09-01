@@ -20,8 +20,25 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { LogoEsf } from '@/components/shared/LogoEsf';
+import landingHeroAsset from '@/assets/esse-ja-foi-hero.webp.asset.json';
 
 export const Route = createFileRoute('/')({
+  head: () => ({
+    meta: [
+      { title: 'Esse Já Foi — Compra e venda de veículos' },
+      {
+        name: 'description',
+        content: 'Venda ou compre veículos vistoriados com negociação digital, documentação garantida e pagamento seguro.',
+      },
+      { property: 'og:title', content: 'Esse Já Foi — Compra e venda de veículos' },
+      {
+        property: 'og:description',
+        content: 'Veículos vistoriados, negociação digital e pagamento seguro em uma única plataforma.',
+      },
+      { property: 'og:type', content: 'website' },
+      { name: 'twitter:card', content: 'summary_large_image' },
+    ],
+  }),
   component: LandingPage,
 });
 
@@ -207,9 +224,14 @@ function LandingPage() {
         </div>
 
         {/* Background Decor */}
-        <div className="absolute top-0 right-0 w-1/2 h-full opacity-20 pointer-events-none">
-          <div className="absolute inset-0 bg-gradient-to-l from-turquoise/20 to-transparent" />
-          <div className="w-full h-full bg-[url('https://images.unsplash.com/photo-1503376780353-7e6692767b70?q=80&w=2070')] bg-cover bg-center grayscale" />
+        <div className="pointer-events-none absolute inset-0">
+          <img
+            src={landingHeroAsset.url}
+            alt=""
+            aria-hidden="true"
+            className="h-full w-full object-cover object-center opacity-60"
+          />
+          <div className="absolute inset-0 bg-gradient-to-r from-navy via-navy/90 to-navy/20" />
         </div>
       </section>
 
