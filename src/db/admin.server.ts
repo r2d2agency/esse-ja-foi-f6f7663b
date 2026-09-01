@@ -113,15 +113,19 @@ export async function ensureAdminTables(silent = true) {
 
 
     // Sementes iniciais
+    const { PROMPT_IA_DOCUMENTOS_PADRAO } = await import("./ia-documentos.server");
     await d.execute(sql`
       INSERT INTO configuracoes_sistema (chave, valor, descricao)
-      VALUES 
+      VALUES
         ('smtp_host', '', 'Host do servidor SMTP'),
         ('smtp_port', '587', 'Porta do servidor SMTP'),
         ('smtp_user', '', 'Usuário do servidor SMTP'),
         ('smtp_pass', '', 'Senha do servidor SMTP'),
         ('openai_api_key', '', 'Chave de API da OpenAI'),
-        ('openai_model', 'gpt-4o', 'Modelo da OpenAI a ser utilizado')
+        ('openai_model', 'gpt-4o', 'Modelo da OpenAI a ser utilizado (precisa suportar visão)'),
+        ('ia_analise_documentos_ativa', 'true', 'Analisar automaticamente os documentos do vendedor com IA ao serem enviados'),
+        ('ia_auto_reprovar', 'true', 'Reprovar automaticamente um documento quando a IA tiver certeza (alta/média confiança) de que não confere'),
+        (${'ia_prompt_documentos'}, ${PROMPT_IA_DOCUMENTOS_PADRAO}, 'Prompt de sistema usado pela IA para validar CNH, CRLV, comprovante e selfie do vendedor')
       ON CONFLICT (chave) DO NOTHING;
     `);
     if (!silent && process.env['NODE_ENV'] === 'development') console.log("[admin.server] Tabelas admin OK.");

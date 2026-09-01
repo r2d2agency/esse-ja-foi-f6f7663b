@@ -194,32 +194,75 @@ function ConfiguracoesAdminPage() {
 
         <section className="space-y-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
-            <BrainCircuit className="h-5 w-5 text-amber-600" />
+            <BrainCircuit className="h-5 w-5 text-teal-700" />
             Inteligência Artificial (OpenAI)
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label>Chave de API OpenAI</Label>
-              <Input 
+              <Input
                 type="password"
-                value={getConfig("openai_api_key")} 
+                value={getConfig("openai_api_key")}
                 onChange={(e) => setConfig("openai_api_key", e.target.value)}
-                placeholder="sk-..." 
+                placeholder="sk-..."
               />
             </div>
             <div className="space-y-2">
               <Label>Modelo</Label>
-              <Input 
-                value={getConfig("openai_model")} 
+              <Input
+                value={getConfig("openai_model")}
                 onChange={(e) => setConfig("openai_model", e.target.value)}
-                placeholder="gpt-4o" 
+                placeholder="gpt-4o"
+              />
+              <p className="text-xs text-slate-500">Precisa ser um modelo com suporte a visão (ex: gpt-4o), pois a IA lê a imagem do documento.</p>
+            </div>
+          </div>
+
+          <div className="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm font-semibold text-slate-900">Análise automática de documentos do vendedor</p>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-slate-800">Analisar documentos automaticamente</p>
+                <p className="text-xs text-slate-500">Ao enviar CNH, CRLV, comprovante ou selfie, a IA confere se o tipo do documento bate com o esperado.</p>
+              </div>
+              <Switch
+                checked={getConfig("ia_analise_documentos_ativa") !== "false"}
+                onCheckedChange={(v: boolean) => setConfig("ia_analise_documentos_ativa", v ? "true" : "false")}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-slate-800">Reprovar automaticamente quando a IA tiver certeza</p>
+                <p className="text-xs text-slate-500">Se desativado, a IA só sinaliza a divergência para o admin decidir — não abre pendência sozinha.</p>
+              </div>
+              <Switch
+                checked={getConfig("ia_auto_reprovar") !== "false"}
+                onCheckedChange={(v: boolean) => setConfig("ia_auto_reprovar", v ? "true" : "false")}
               />
             </div>
           </div>
+
+          <div className="space-y-2">
+            <Label>Prompt da IA para análise de documentos</Label>
+            <Textarea
+              rows={14}
+              className="font-mono text-xs"
+              value={getConfig("ia_prompt_documentos")}
+              onChange={(e) => setConfig("ia_prompt_documentos", e.target.value)}
+            />
+            <p className="text-xs text-slate-500">
+              Esse texto é enviado como instrução do sistema para a IA antes de cada análise. Ajuste o comportamento
+              (ex: nível de rigor, o que aceitar ou não) editando este prompt.
+            </p>
+          </div>
+
           <div className="flex gap-2">
             <Button className="bg-teal-900" onClick={() => {
               void salvar("openai_api_key", getConfig("openai_api_key"));
               void salvar("openai_model", getConfig("openai_model"));
+              void salvar("ia_analise_documentos_ativa", getConfig("ia_analise_documentos_ativa") !== "false" ? "true" : "false");
+              void salvar("ia_auto_reprovar", getConfig("ia_auto_reprovar") !== "false" ? "true" : "false");
+              void salvar("ia_prompt_documentos", getConfig("ia_prompt_documentos"));
             }}>
               <Save className="mr-2 h-4 w-4" /> Salvar Configurações IA
             </Button>

@@ -336,7 +336,11 @@ function DetalheVendedorPage() {
               { label: "CRLV", tipo: "crlv", url: perfil.documento_crlv_url, status: perfil.documento_crlv_status },
               { label: "Comprovante de residência", tipo: "comprovante_endereco", url: perfil.documento_comprovante_endereco_url, status: perfil.documento_comprovante_endereco_status },
               { label: "Selfie c/ Doc", tipo: "selfie", url: perfil.documento_selfie_url, status: perfil.documento_selfie_status }
-            ].map((doc) => (
+            ].map((doc) => {
+              const ia = perfil.ia_analise_documentos?.[doc.tipo] as
+                | { tipoDetectado: string; confere: boolean; confianca: string; motivo: string }
+                | undefined;
+              return (
               <Card key={doc.tipo} className="overflow-hidden">
                 <div className="aspect-video bg-slate-100 flex items-center justify-center relative group">
                   {doc.url ? (
@@ -360,6 +364,19 @@ function DetalheVendedorPage() {
                     <span className="font-semibold">{doc.label}</span>
                     <Badge variant={doc.status === 'APROVADO' ? 'default' : 'outline'}>{doc.status}</Badge>
                   </div>
+                  {ia && (
+                    <div
+                      className={`mb-4 rounded-lg border p-2 text-xs ${
+                        ia.confere ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-red-200 bg-red-50 text-red-800"
+                      }`}
+                    >
+                      <p className="font-bold">
+                        {ia.confere ? "IA: documento confere" : "IA: possível divergência"} · confiança {ia.confianca}
+                      </p>
+                      <p className="opacity-80">Detectado: {ia.tipoDetectado}</p>
+                      <p className="opacity-80">{ia.motivo}</p>
+                    </div>
+                  )}
                   {doc.url && (
                     <div className="flex gap-2">
                       <Button
@@ -386,7 +403,8 @@ function DetalheVendedorPage() {
                   )}
                 </CardContent>
               </Card>
-            ))}
+              );
+            })}
           </div>
         </TabsContent>
 

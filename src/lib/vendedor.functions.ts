@@ -320,7 +320,7 @@ export const atualizarPerfilVendedorFn = createServerFn({ method: "POST" })
 
     if (setClauses.length > 0) {
       setClauses.push(sql`atualizado_em = now()`);
-      
+
       const setClause = sql.join(setClauses, sql`, `);
       await db.execute(sql`
         UPDATE profiles SET ${setClause} WHERE id = ${data.perfilId}::uuid
@@ -335,8 +335,23 @@ export const atualizarPerfilVendedorFn = createServerFn({ method: "POST" })
           AND documento_tipo IN (${sql.join(documentosReenviados.map((tipo) => sql`${tipo}`), sql`, `)})
           AND status IN ('PENDENTE', 'REPROVADO')
       `);
+
+      // Roda depois de limpar as pendências antigas: se a IA reprovar de novo,
+      // a pendência recém-criada por ela não pode ser apagada pela limpeza acima.
+      try {
+        const { analisarDocumentosVendedor } = await import("@/db/ia-documentos.server");
+        await analisarDocumentosVendedor(data.perfilId, {
+          cnh_frente: data.cnhUrl,
+          cnh_verso: data.cnhVersoUrl,
+          crlv: data.crlvUrl,
+          selfie: data.selfieUrl,
+          comprovante_endereco: data.comprovanteEnderecoUrl,
+        });
+      } catch (e) {
+        console.error("[vendedor.functions] Erro ao acionar análise por IA:", e);
+      }
     }
-    
+
     return { ok: true as const };
   });
 

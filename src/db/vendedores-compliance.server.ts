@@ -24,7 +24,8 @@ export async function ensureVendedoresSchema() {
     ADD COLUMN IF NOT EXISTS compliance_data_analise timestamptz,
     ADD COLUMN IF NOT EXISTS verificado boolean DEFAULT false,
     ADD COLUMN IF NOT EXISTS compliance_responsavel_id uuid,
-    ADD COLUMN IF NOT EXISTS status_compliance text DEFAULT 'PENDENTE';
+    ADD COLUMN IF NOT EXISTS status_compliance text DEFAULT 'PENDENTE',
+    ADD COLUMN IF NOT EXISTS ia_analise_documentos jsonb DEFAULT '{}'::jsonb;
   `);
 
 
@@ -207,11 +208,11 @@ const DOCUMENT_STATUS_COLUMNS: Record<string, string[]> = {
   selfie: ['documento_selfie_status'],
 };
 
-export async function registrarAcaoCompliance(vendedorId: string, autorId: string, acao: string, detalhe?: string) {
+export async function registrarAcaoCompliance(vendedorId: string, autorId: string | null, acao: string, detalhe?: string) {
   const d = requireDb();
   await d.execute(sql`
     INSERT INTO compliance_historico (vendedor_id, autor_id, acao, detalhe)
-    VALUES (${vendedorId}::uuid, ${autorId}::uuid, ${acao}, ${detalhe || null});
+    VALUES (${vendedorId}::uuid, ${autorId ? sql`${autorId}::uuid` : sql`NULL`}, ${acao}, ${detalhe || null});
   `);
 }
 
@@ -235,7 +236,7 @@ export async function atualizarStatusDocumento(
   vendedorId: string,
   documentoTipo: string,
   status: string,
-  autorId: string,
+  autorId: string | null,
   motivo?: string,
   observacao?: string,
 ) {
@@ -287,6 +288,70 @@ export async function atualizarStatusDocumento(
   ].filter(Boolean).join(' ');
   await registrarAcaoCompliance(vendedorId, autorId, `DOC_${status}`, detalhe);
   return { ok: true };
+}
+
+export type ResultadoAnaliseIA = {
+  tipoDetectado: string;
+  confere: boolean;
+  confianca: "alta" | "media" | "baixa";
+  motivo: string;
+};
+
+/**
+ * Persiste o veredito da IA sobre um documento e, quando configurado para
+ * reprovar automaticamente e a IA tiver certeza, já abre a pendência —
+ * sem exigir a ação manual do admin.
+ */
+export async function salvarAnaliseIA(
+  vendedorId: string,
+  documentoTipo: string,
+  resultado: ResultadoAnaliseIA,
+  autoReprovar: boolean,
+) {
+  const d = requireDb();
+  const tipo = documentoTipo.toLowerCase();
+  if (!DOCUMENT_STATUS_COLUMNS[tipo]) {
+    throw new RegraNegocioError("Tipo de documento inválido.", 400);
+  }
+
+  await d.execute(sql`
+    UPDATE profiles
+    SET ia_analise_documentos = jsonb_set(
+      COALESCE(ia_analise_documentos, '{}'::jsonb),
+      ${sql.raw(`'{${tipo}}'`)},
+      ${JSON.stringify({ ...resultado, analisadoEm: new Date().toISOString() })}::jsonb,
+      true
+    )
+    WHERE id = ${vendedorId}::uuid;
+  `);
+
+  if (!resultado.confere) {
+    if (autoReprovar && resultado.confianca !== "baixa") {
+      await atualizarStatusDocumento(
+        vendedorId,
+        tipo,
+        "REPROVADO",
+        null,
+        resultado.motivo,
+        `Reprovado automaticamente pela IA (confiança ${resultado.confianca}). Documento detectado: ${resultado.tipoDetectado}.`,
+      );
+      return;
+    }
+    await registrarAcaoCompliance(
+      vendedorId,
+      null,
+      "IA_SINALIZOU_DIVERGENCIA",
+      `A IA identificou possível divergência no documento ${tipo.toUpperCase()} (confiança ${resultado.confianca}): ${resultado.motivo}`,
+    );
+    return;
+  }
+
+  await registrarAcaoCompliance(
+    vendedorId,
+    null,
+    "IA_ANALISOU_DOCUMENTO",
+    `IA validou o documento ${tipo.toUpperCase()} (confiança ${resultado.confianca}): ${resultado.motivo}`,
+  );
 }
 
 export async function aprovarVendedorCompliance(vendedorId: string, autorId: string) {
