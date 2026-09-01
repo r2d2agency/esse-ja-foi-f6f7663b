@@ -397,6 +397,21 @@ function LandingPage() {
             <a href="#faq" className="hover:text-turquoise transition-colors">FAQ</a>
             <Link to="/login" className="hover:text-turquoise transition-colors">Entrar</Link>
           </div>
+          <div className="flex justify-center flex-wrap gap-6 text-sm mb-6">
+            <Link to="/politica-de-privacidade" className="hover:text-turquoise transition-colors">
+              Política de Privacidade
+            </Link>
+            <Link to="/politica-de-cookies" className="hover:text-turquoise transition-colors">
+              Política de Cookies
+            </Link>
+            <button
+              type="button"
+              onClick={abrirConfiguracoesCookies}
+              className="hover:text-turquoise transition-colors"
+            >
+              Configurações de Cookies
+            </button>
+          </div>
           <p className="text-sm text-center">© 2026 Esse Já Foi - Todos os direitos reservados.</p>
         </div>
       </footer>
