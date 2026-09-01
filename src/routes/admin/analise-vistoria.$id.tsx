@@ -65,6 +65,12 @@ function DetalheAnaliseVistoriaPage() {
   const enviarProposta = useServerFn(enviarPropostaVendedorFn);
   const solicitarNovaVistoria = useServerFn(solicitarNovaVistoriaFn);
 
+  const getComissaoPadrao = useServerFn(getComissaoPadraoFn);
+  const { data: comissaoPadrao } = useQuery({
+    queryKey: ["comissao-padrao"],
+    queryFn: () => getComissaoPadrao(),
+  });
+
   const { data: res, isLoading, refetch } = useQuery({
     queryKey: ["admin-analise-vistoria", id],
     queryFn: () => getDetalhe({ data: { veiculoId: id } }),
