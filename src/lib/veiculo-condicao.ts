@@ -29,8 +29,6 @@ export type CondicaoVeiculo = {
   interior: string;
   pneus: string;
   acidente: string;
-  leilao: string;
-  sinistro: string;
   restricao: string;
   historicoObs: string;
   chaveReserva: string;
@@ -51,8 +49,6 @@ export const CONDICAO_INICIAL: CondicaoVeiculo = {
   interior: "",
   pneus: "",
   acidente: "",
-  leilao: "",
-  sinistro: "",
   restricao: "",
   historicoObs: "",
   chaveReserva: "",

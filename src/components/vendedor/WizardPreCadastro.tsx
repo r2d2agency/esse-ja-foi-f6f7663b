@@ -509,13 +509,12 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
 
               <div className="space-y-5 border-t border-slate-100 pt-6">
                 <p className="text-sm text-slate-500">
-                  Essas informações serão verificadas durante a análise do veículo.
+                  Sinistro e histórico de leilão são verificados pela consulta veicular
+                  (Company Conferi) na etapa seguinte — não precisa perguntar aqui.
                 </p>
                 <OpcaoBotoes label="Já sofreu acidente?" opcoes={["Não", "Sim", "Não sei"]} value={condicao.acidente} onChange={(v) => setCondicaoCampo({ acidente: v })} colunas={3} />
-                <OpcaoBotoes label="Já passou por leilão?" opcoes={["Não", "Sim", "Não sei"]} value={condicao.leilao} onChange={(v) => setCondicaoCampo({ leilao: v })} colunas={3} />
-                <OpcaoBotoes label="Possui sinistro conhecido?" opcoes={["Não", "Sim", "Não sei"]} value={condicao.sinistro} onChange={(v) => setCondicaoCampo({ sinistro: v })} colunas={3} />
                 <OpcaoBotoes label="Possui alguma restrição conhecida?" opcoes={["Não", "Sim", "Não sei"]} value={condicao.restricao} onChange={(v) => setCondicaoCampo({ restricao: v })} colunas={3} />
-                {[condicao.acidente, condicao.leilao, condicao.sinistro, condicao.restricao].includes("Sim") && (
+                {[condicao.acidente, condicao.restricao].includes("Sim") && (
                   <Textarea
                     placeholder="Complemente o histórico se necessário"
                     value={condicao.historicoObs}
