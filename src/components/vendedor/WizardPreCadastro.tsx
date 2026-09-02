@@ -13,7 +13,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { FileUpload } from "@/components/onboarding/FileUpload";
+import { FotoSlot } from "@/components/veiculo/FotoSlot";
+import { OpcaoBotoes } from "@/components/veiculo/OpcaoBotoes";
 import { getSessionToken } from "@/lib/session";
 import { criarVendedorInternoFn, reenviarSenhaTemporariaFn } from "@/lib/pre-cadastro.functions";
 import { cadastrarMeuVeiculoFn } from "@/lib/vendedor.functions";
@@ -23,6 +26,12 @@ import {
 } from "@/lib/consulta-veicular.functions";
 import { buscarCep } from "@/lib/viacep";
 import { maskDocumento, maskTelefone, maskCep, maskData, maskPlaca, maskKm, maskMoeda } from "@/lib/brasil";
+import {
+  FOTOS_VEICULO,
+  CONDICAO_INICIAL,
+  serializarCondicao,
+  type CondicaoVeiculo,
+} from "@/lib/veiculo-condicao";
 import { cn } from "@/lib/utils";
 
 type Etapa = 1 | 2 | 3 | 4;
@@ -92,7 +101,12 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
     uf: "",
   });
   const [crlv, setCrlv] = useState<string | null>(null);
-  const [fotos, setFotos] = useState<(string | null)[]>([null, null, null, null]);
+  const [fotos, setFotos] = useState<Record<string, string | null>>(
+    Object.fromEntries(FOTOS_VEICULO.map((f) => [f.id, null])),
+  );
+  const [condicao, setCondicao] = useState<CondicaoVeiculo>(CONDICAO_INICIAL);
+  const setCondicaoCampo = (patch: Partial<CondicaoVeiculo>) =>
+    setCondicao((c) => ({ ...c, ...patch }));
 
   const { data: provedorRes } = useQuery({
     queryKey: ["provedor-consulta"],
@@ -186,7 +200,8 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
           cidade: veiculo.cidade || undefined,
           uf: veiculo.uf || undefined,
           documento_crlv_url: crlv,
-          fotos: fotos.filter(Boolean) as string[],
+          fotos: Object.values(fotos).filter(Boolean) as string[],
+          observacoes: serializarCondicao(condicao),
           status: "AGUARDANDO_APROVACAO",
         } as any,
       });
@@ -414,17 +429,129 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
               <Campo label="UF" valor={veiculo.uf} onChange={(v) => setVeiculo({ ...veiculo, uf: v.toUpperCase().slice(0, 2) })} />
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="space-y-5 border-t border-slate-100 pt-6">
+              <p className="text-sm font-bold text-slate-900">Condição do veículo</p>
+              <p className="text-xs text-slate-500">
+                As mesmas perguntas que o vendedor responderia no cadastro dele — aqui preenchidas
+                pelo operador com base no que foi observado no veículo.
+              </p>
+
+              <OpcaoBotoes
+                label="O veículo está funcionando normalmente?"
+                opcoes={["Sim", "Não", "Possui algum problema"]}
+                value={condicao.funcionamento}
+                onChange={(v) => setCondicaoCampo({ funcionamento: v })}
+                colunas={3}
+              />
+              {condicao.funcionamento && condicao.funcionamento !== "Sim" && (
+                <Textarea
+                  placeholder="Conte brevemente o que acontece"
+                  value={condicao.funcionamentoObs}
+                  onChange={(e) => setCondicaoCampo({ funcionamentoObs: e.target.value })}
+                  className="rounded-xl"
+                />
+              )}
+
+              <OpcaoBotoes
+                label="Existe algum problema conhecido no motor?"
+                opcoes={["Não", "Sim", "Não sei"]}
+                value={condicao.motor}
+                onChange={(v) => setCondicaoCampo({ motor: v })}
+                colunas={3}
+              />
+              {condicao.motor === "Sim" && (
+                <Textarea
+                  placeholder="Qual problema?"
+                  value={condicao.motorObs}
+                  onChange={(e) => setCondicaoCampo({ motorObs: e.target.value })}
+                  className="rounded-xl"
+                />
+              )}
+
+              <OpcaoBotoes
+                label="Existe algum problema conhecido no câmbio?"
+                opcoes={["Não", "Sim", "Não sei"]}
+                value={condicao.cambioProblema}
+                onChange={(v) => setCondicaoCampo({ cambioProblema: v })}
+                colunas={3}
+              />
+
+              <OpcaoBotoes
+                label="Como está a lataria?"
+                opcoes={["Excelente", "Boa", "Pequenos detalhes", "Possui avarias"]}
+                value={condicao.lataria}
+                onChange={(v) => setCondicaoCampo({ lataria: v })}
+                colunas={2}
+              />
+              {condicao.lataria === "Possui avarias" && (
+                <Textarea
+                  placeholder="Conte brevemente"
+                  value={condicao.latariaObs}
+                  onChange={(e) => setCondicaoCampo({ latariaObs: e.target.value })}
+                  className="rounded-xl"
+                />
+              )}
+
+              <OpcaoBotoes
+                label="Como está o interior do veículo?"
+                opcoes={["Excelente", "Bom", "Sinais de uso", "Possui avarias"]}
+                value={condicao.interior}
+                onChange={(v) => setCondicaoCampo({ interior: v })}
+                colunas={2}
+              />
+              <OpcaoBotoes
+                label="Como estão os pneus?"
+                opcoes={["Bons", "Meia vida", "Substituição", "Não sei"]}
+                value={condicao.pneus}
+                onChange={(v) => setCondicaoCampo({ pneus: v })}
+                colunas={2}
+              />
+
+              <div className="space-y-5 border-t border-slate-100 pt-6">
+                <p className="text-sm text-slate-500">
+                  Essas informações serão verificadas durante a análise do veículo.
+                </p>
+                <OpcaoBotoes label="Já sofreu acidente?" opcoes={["Não", "Sim", "Não sei"]} value={condicao.acidente} onChange={(v) => setCondicaoCampo({ acidente: v })} colunas={3} />
+                <OpcaoBotoes label="Já passou por leilão?" opcoes={["Não", "Sim", "Não sei"]} value={condicao.leilao} onChange={(v) => setCondicaoCampo({ leilao: v })} colunas={3} />
+                <OpcaoBotoes label="Possui sinistro conhecido?" opcoes={["Não", "Sim", "Não sei"]} value={condicao.sinistro} onChange={(v) => setCondicaoCampo({ sinistro: v })} colunas={3} />
+                <OpcaoBotoes label="Possui alguma restrição conhecida?" opcoes={["Não", "Sim", "Não sei"]} value={condicao.restricao} onChange={(v) => setCondicaoCampo({ restricao: v })} colunas={3} />
+                {[condicao.acidente, condicao.leilao, condicao.sinistro, condicao.restricao].includes("Sim") && (
+                  <Textarea
+                    placeholder="Complemente o histórico se necessário"
+                    value={condicao.historicoObs}
+                    onChange={(e) => setCondicaoCampo({ historicoObs: e.target.value })}
+                    className="rounded-xl"
+                  />
+                )}
+              </div>
+
+              <div className="space-y-5 border-t border-slate-100 pt-6">
+                <OpcaoBotoes label="Chave reserva?" opcoes={["Sim", "Não"]} value={condicao.chaveReserva} onChange={(v) => setCondicaoCampo({ chaveReserva: v })} />
+                <OpcaoBotoes label="Manual?" opcoes={["Sim", "Não"]} value={condicao.manual} onChange={(v) => setCondicaoCampo({ manual: v })} />
+                <OpcaoBotoes label="Estepe?" opcoes={["Sim", "Não"]} value={condicao.estepe} onChange={(v) => setCondicaoCampo({ estepe: v })} />
+                <OpcaoBotoes label="Possui acessórios adicionais?" opcoes={["Sim", "Não"]} value={condicao.acessorios} onChange={(v) => setCondicaoCampo({ acessorios: v })} />
+                {condicao.acessorios === "Sim" && (
+                  <Textarea
+                    placeholder="Quais acessórios?"
+                    value={condicao.acessoriosQuais}
+                    onChange={(e) => setCondicaoCampo({ acessoriosQuais: e.target.value })}
+                    className="rounded-xl"
+                  />
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-3 border-t border-slate-100 pt-6">
+              <p className="text-sm font-bold text-slate-900">Documentos e fotos do veículo</p>
               <FileUpload label="CRLV-e do veículo" value={crlv} onChange={setCrlv} />
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {fotos.map((f, i) => (
-                  <FileUpload
-                    key={i}
-                    label={`Foto ${i + 1}`}
-                    value={f}
-                    onChange={(u) =>
-                      setFotos((atual) => atual.map((v, idx) => (idx === i ? u : v)))
-                    }
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {FOTOS_VEICULO.map((f) => (
+                  <FotoSlot
+                    key={f.id}
+                    label={f.label}
+                    dica={f.dica}
+                    value={fotos[f.id] || null}
+                    onChange={(url) => setFotos((atual) => ({ ...atual, [f.id]: url }))}
                   />
                 ))}
               </div>
