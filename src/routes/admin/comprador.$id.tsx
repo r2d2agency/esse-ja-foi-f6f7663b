@@ -1,11 +1,13 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { obterDetalheCompradorFn, aprovarCompradorFn, solicitarPendenciaCompradorFn } from "@/lib/admin-compradores.functions";
+import { reenviarSenhaTemporariaFn } from "@/lib/pre-cadastro.functions";
+import { gerenciarUsuarioFn, excluirPerfilFn } from "@/lib/admin.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, User, Building2, CheckCircle2, AlertTriangle, Eye, FileText } from "lucide-react";
+import { ArrowLeft, User, Building2, CheckCircle2, AlertTriangle, Eye, FileText, KeyRound, Ban, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -26,6 +28,7 @@ export const Route = createFileRoute("/admin/comprador/$id")({
 
 function DetalheCompradorPage() {
   const { id } = Route.useParams();
+  const navigate = useNavigate();
   const [selectedDoc, setSelectedDoc] = useState<{ url: string; tipo: string } | null>(null);
   const [showPendenciaDialog, setShowPendenciaDialog] = useState(false);
   const [campoPendencia, setCampoPendencia] = useState("documentacao");
@@ -34,6 +37,9 @@ function DetalheCompradorPage() {
   const loadComprador = useServerFn(obterDetalheCompradorFn);
   const aprovar = useServerFn(aprovarCompradorFn);
   const solicitarPendencia = useServerFn(solicitarPendenciaCompradorFn);
+  const reenviarSenha = useServerFn(reenviarSenhaTemporariaFn);
+  const gerenciarUsuario = useServerFn(gerenciarUsuarioFn);
+  const excluirPerfil = useServerFn(excluirPerfilFn);
 
   const { data: res, refetch } = useQuery({
     queryKey: ["admin-comprador", id],
@@ -85,6 +91,58 @@ function DetalheCompradorPage() {
     }
   };
 
+  const handleReenviarSenha = async () => {
+    if (!window.confirm(`Gerar uma nova senha temporária e reenviar o acesso para ${comprador.email}?`)) return;
+    const loading = toast.loading("Reenviando acesso...");
+    try {
+      const resp: any = await reenviarSenha({ data: { perfilId: id } });
+      if (!resp?.ok) throw new Error(resp?.message || "Erro ao reenviar acesso.");
+      if (resp.emailEnviado) toast.success("Nova senha gerada e enviada por e-mail.");
+      else toast.warning(`Senha gerada (${resp.senha}), mas o e-mail falhou: ${resp.emailErro || "motivo desconhecido"} — repasse manualmente.`);
+    } catch (e: any) {
+      toast.error(e.message || "Erro ao reenviar acesso.");
+    } finally {
+      toast.dismiss(loading);
+    }
+  };
+
+  const handleToggleAtivo = async () => {
+    const bloquear = comprador.ativo !== false;
+    const acao = bloquear ? "bloquear o acesso de" : "reativar o acesso de";
+    if (!window.confirm(`Deseja realmente ${acao} ${comprador.nome}?`)) return;
+    const loading = toast.loading(bloquear ? "Bloqueando acesso..." : "Reativando acesso...");
+    try {
+      const resp: any = await gerenciarUsuario({ data: { id, ativo: !bloquear } });
+      if (!resp?.ok) throw new Error(resp?.message || "Erro ao alterar o acesso.");
+      toast.success(bloquear ? "Acesso bloqueado." : "Acesso reativado.");
+      refetch();
+    } catch (e: any) {
+      toast.error(e.message || "Erro ao alterar o acesso.");
+    } finally {
+      toast.dismiss(loading);
+    }
+  };
+
+  const handleExcluir = async () => {
+    if (!window.confirm(`Excluir definitivamente o cadastro de ${comprador.nome}? Essa ação não pode ser desfeita.`)) return;
+    const confirmacao = window.prompt('Para confirmar, digite EXCLUIR (tudo em maiúsculas):');
+    if (confirmacao !== "EXCLUIR") {
+      toast.info("Exclusão cancelada.");
+      return;
+    }
+    const loading = toast.loading("Excluindo cadastro...");
+    try {
+      const resp: any = await excluirPerfil({ data: { id } });
+      if (!resp?.ok) throw new Error(resp?.message || "Erro ao excluir.");
+      toast.success("Cadastro excluído.");
+      navigate({ to: "/admin/compradores" });
+    } catch (e: any) {
+      toast.error(e.message || "Erro ao excluir.");
+    } finally {
+      toast.dismiss(loading);
+    }
+  };
+
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-5xl mx-auto">
 
@@ -96,8 +154,9 @@ function DetalheCompradorPage() {
       <div className="grid md:grid-cols-3 gap-6">
         <Card className="md:col-span-2">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="flex flex-wrap items-center gap-2">
               {comprador.tipo_pessoa === 'PJ' ? <Building2 /> : <User />} {comprador.nome}
+              {comprador.ativo === false && <Badge variant="destructive">Acesso bloqueado</Badge>}
             </CardTitle>
           </CardHeader>
           <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
@@ -121,8 +180,8 @@ function DetalheCompradorPage() {
               <CheckCircle2 className="mr-2 h-4 w-4" /> Aprovar Comprador
             </Button>
             
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               className="w-full border-red-200 text-red-600 hover:bg-red-50 font-bold"
               onClick={() => setShowPendenciaDialog(true)}
             >
@@ -131,6 +190,23 @@ function DetalheCompradorPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="border-slate-200 shadow-none">
+        <CardHeader>
+          <CardTitle className="text-xs font-black uppercase text-slate-400">Gestão de acesso</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-2 p-6 pt-0">
+          <Button variant="outline" size="sm" onClick={handleReenviarSenha}>
+            <KeyRound className="mr-1.5 h-3.5 w-3.5" /> Reenviar senha
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleToggleAtivo}>
+            <Ban className="mr-1.5 h-3.5 w-3.5" /> {comprador.ativo === false ? "Reativar acesso" : "Bloquear acesso"}
+          </Button>
+          <Button variant="outline" size="sm" className="text-red-600 hover:bg-red-50" onClick={handleExcluir}>
+            <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Excluir cadastro
+          </Button>
+        </CardContent>
+      </Card>
 
       <Card className="border-slate-200 shadow-none">
         <CardHeader className="border-b border-slate-100 bg-slate-50/50">

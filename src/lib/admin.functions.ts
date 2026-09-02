@@ -87,6 +87,18 @@ export const gerenciarUsuarioFn = createServerFn({ method: "POST" })
   });
 
 
+export const excluirPerfilFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data }) => {
+    const m = await import("@/db/admin.server");
+    try {
+      await m.excluirPerfil(data.id);
+      return { ok: true as const };
+    } catch (e: any) {
+      return { ok: false as const, message: e.message };
+    }
+  });
+
 export const listarConfiguracoesFn = createServerFn({ method: "GET" })
   .handler(async () => {
     const m = await import("@/db/admin.server");

@@ -1,14 +1,16 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 const BackofficeLayout = ({ children }: { children: React.ReactNode }) => <>{children}</>;
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { 
-  obterDetalheVendedorFn, 
+import {
+  obterDetalheVendedorFn,
   assumirAnaliseFn,
   atualizarStatusDocumentoFn,
   aprovarVendedorComplianceFn,
   solicitarPendenciaComplianceFn
 } from "@/lib/vendedores-compliance.functions";
+import { reenviarSenhaTemporariaFn } from "@/lib/pre-cadastro.functions";
+import { gerenciarUsuarioFn, excluirPerfilFn } from "@/lib/admin.functions";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -45,7 +47,10 @@ import {
   AlertTriangle,
   ChevronRight,
   UserCheck,
-  FileSignature
+  FileSignature,
+  KeyRound,
+  Ban,
+  Trash2,
 } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
@@ -78,6 +83,7 @@ export const Route = createFileRoute("/admin/vendedor/$id")({
 function DetalheVendedorPage() {
   const { id } = Route.useParams();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("resumo");
   const [selectedDoc, setSelectedDoc] = useState<{ url: string; tipo: string } | null>(null);
   const [docReprovacao, setDocReprovacao] = useState<{ tipo: string; label: string } | null>(null);
@@ -89,6 +95,9 @@ function DetalheVendedorPage() {
   const updateDoc = useServerFn(atualizarStatusDocumentoFn);
   const aprovar = useServerFn(aprovarVendedorComplianceFn);
   const solicitarPendencia = useServerFn(solicitarPendenciaComplianceFn);
+  const reenviarSenha = useServerFn(reenviarSenhaTemporariaFn);
+  const gerenciarUsuario = useServerFn(gerenciarUsuarioFn);
+  const excluirPerfil = useServerFn(excluirPerfilFn);
 
   const { data: res, refetch } = useQuery({
     queryKey: ["admin-vendedor", id],
@@ -203,6 +212,58 @@ function DetalheVendedorPage() {
     }
   };
 
+  const handleReenviarSenha = async () => {
+    if (!window.confirm(`Gerar uma nova senha temporária e reenviar o acesso para ${perfil.email}?`)) return;
+    const loading = toast.loading("Reenviando acesso...");
+    try {
+      const resp: any = await reenviarSenha({ data: { perfilId: id } });
+      if (!resp?.ok) throw new Error(resp?.message || "Erro ao reenviar acesso.");
+      if (resp.emailEnviado) toast.success("Nova senha gerada e enviada por e-mail.");
+      else toast.warning(`Senha gerada (${resp.senha}), mas o e-mail falhou: ${resp.emailErro || "motivo desconhecido"} — repasse manualmente.`);
+    } catch (e: any) {
+      toast.error(e.message || "Erro ao reenviar acesso.");
+    } finally {
+      toast.dismiss(loading);
+    }
+  };
+
+  const handleToggleAtivo = async () => {
+    const bloquear = perfil.ativo !== false;
+    const acao = bloquear ? "bloquear o acesso de" : "reativar o acesso de";
+    if (!window.confirm(`Deseja realmente ${acao} ${perfil.nome}?`)) return;
+    const loading = toast.loading(bloquear ? "Bloqueando acesso..." : "Reativando acesso...");
+    try {
+      const resp: any = await gerenciarUsuario({ data: { id, ativo: !bloquear } });
+      if (!resp?.ok) throw new Error(resp?.message || "Erro ao alterar o acesso.");
+      toast.success(bloquear ? "Acesso bloqueado." : "Acesso reativado.");
+      refetch();
+    } catch (e: any) {
+      toast.error(e.message || "Erro ao alterar o acesso.");
+    } finally {
+      toast.dismiss(loading);
+    }
+  };
+
+  const handleExcluir = async () => {
+    if (!window.confirm(`Excluir definitivamente o cadastro de ${perfil.nome}? Essa ação não pode ser desfeita.`)) return;
+    const confirmacao = window.prompt('Para confirmar, digite EXCLUIR (tudo em maiúsculas):');
+    if (confirmacao !== "EXCLUIR") {
+      toast.info("Exclusão cancelada.");
+      return;
+    }
+    const loading = toast.loading("Excluindo cadastro...");
+    try {
+      const resp: any = await excluirPerfil({ data: { id } });
+      if (!resp?.ok) throw new Error(resp?.message || "Erro ao excluir.");
+      toast.success("Cadastro excluído.");
+      navigate({ to: "/admin/vendedores" });
+    } catch (e: any) {
+      toast.error(e.message || "Erro ao excluir.");
+    } finally {
+      toast.dismiss(loading);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6 p-4 md:p-6">
       {/* Header */}
@@ -212,8 +273,24 @@ function DetalheVendedorPage() {
             {perfil.nome?.[0] || "V"}
           </div>
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-slate-900 truncate">{perfil.nome}</h1>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-bold text-slate-900 truncate">{perfil.nome}</h1>
+              {perfil.ativo === false && (
+                <Badge variant="destructive">Acesso bloqueado</Badge>
+              )}
+            </div>
             <p className="text-slate-500 truncate">{perfil.email} • CPF: {perfil.cpf}</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={handleReenviarSenha}>
+                <KeyRound className="mr-1.5 h-3.5 w-3.5" /> Reenviar senha
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleToggleAtivo}>
+                <Ban className="mr-1.5 h-3.5 w-3.5" /> {perfil.ativo === false ? "Reativar acesso" : "Bloquear acesso"}
+              </Button>
+              <Button variant="outline" size="sm" className="text-red-600 hover:bg-red-50" onClick={handleExcluir}>
+                <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Excluir cadastro
+              </Button>
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -447,8 +524,9 @@ function DetalheVendedorPage() {
                     >
                       <Clock className="mr-2 h-4 w-4" /> Solicitar Pendências
                     </Button>
-                    <Button variant="destructive" className="justify-start">
-                      <XCircle className="mr-2 h-4 w-4" /> Bloquear Cadastro permanentemente
+                    <Button variant="destructive" className="justify-start" onClick={handleToggleAtivo}>
+                      <XCircle className="mr-2 h-4 w-4" />
+                      {perfil.ativo === false ? "Reativar acesso do vendedor" : "Bloquear Cadastro permanentemente"}
                     </Button>
                     <Button 
                       className="justify-start bg-green-600 hover:bg-green-700"

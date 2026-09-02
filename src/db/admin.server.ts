@@ -229,6 +229,36 @@ export async function alterarStatusUsuario(userId: string, ativo: boolean) {
   return { ok: true };
 }
 
+/**
+ * Exclui definitivamente um vendedor ou comprador. Só aceita essas duas roles
+ * (admin/operação/vistoriador não passam por aqui). Não faz cascade manual —
+ * se o perfil tiver veículos, negociações, contratos etc. vinculados, o
+ * próprio banco recusa a exclusão (violação de chave estrangeira) e isso é
+ * repassado como mensagem clara em vez de apagar dados vinculados.
+ */
+export async function excluirPerfil(userId: string) {
+  const d = requireDb();
+  try {
+    const res = await d.execute(sql`
+      DELETE FROM profiles
+      WHERE id = ${userId}::uuid AND role IN ('vendedor'::app_role, 'comprador'::app_role)
+      RETURNING id;
+    `);
+    const linhas = rowsOf(res) || (res as any);
+    if (!linhas || linhas.length === 0) {
+      throw new Error("Cadastro não encontrado (ou não é um vendedor/comprador).");
+    }
+    return { ok: true as const };
+  } catch (e: any) {
+    if (e?.code === "23503") {
+      throw new Error(
+        "Não é possível excluir: este cadastro tem veículos, negociações, contratos ou outros registros vinculados. Bloqueie o acesso em vez de excluir.",
+      );
+    }
+    throw e;
+  }
+}
+
 export async function criarUsuario(data: any) {
   const d = requireDb();
   const auth = await import("./auth.server");
