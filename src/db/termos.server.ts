@@ -109,6 +109,18 @@ export async function registrarAceiteTermo(params: {
   await d.execute(sql`
     UPDATE profiles SET termo_aceito_em = now(), atualizado_em = now() WHERE id = ${params.perfilId}::uuid
   `);
+
+  // O veículo cadastrado pelo pré-cadastro interno nasce em "AGUARDANDO_APROVACAO"
+  // (fora da máquina de estados normal) porque o vendedor ainda não tinha autorizado
+  // formalmente a venda. Assinado o termo, ele é liberado para "CADASTRADO" — o ponto
+  // de entrada do funil normal (agendamento de vistoria, análise, e só então anúncio).
+  await d.execute(sql`
+    UPDATE veiculos
+    SET status = 'CADASTRADO', atualizado_em = now()
+    WHERE (perfil_id = ${params.perfilId}::uuid OR vendedor_id = ${params.perfilId}::uuid)
+      AND status = 'AGUARDANDO_APROVACAO'
+  `);
+
   return { ok: true as const };
 }
 

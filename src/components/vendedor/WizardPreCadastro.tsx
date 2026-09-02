@@ -375,7 +375,7 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
                 disabled={salvando}
               >
                 {salvando && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Concluir pré-cadastro e gerar senha
+                Salvar dados e continuar para o veículo
               </Button>
             </div>
           </div>
