@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Copy, Loader2, ShieldCheck, UserPlus } from "lucide-react";
+import { Copy, Loader2, MessageCircle, ShieldCheck, UserPlus } from "lucide-react";
 
 import {
   Dialog,
@@ -42,7 +42,9 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
   const [salvando, setSalvando] = useState(false);
 
   const [perfilId, setPerfilId] = useState<string | null>(null);
-  const [senha, setSenha] = useState<{ senha: string; emailEnviado: boolean } | null>(null);
+  const [senha, setSenha] = useState<{ senha: string; emailEnviado: boolean; emailErro?: string | null } | null>(
+    null,
+  );
   const [veiculoId, setVeiculoId] = useState<string | null>(null);
   const [consulta, setConsulta] = useState<any>(null);
 
@@ -221,9 +223,14 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
     try {
       const res: any = await reenviarSenhaTemporariaFn({ data: { perfilId } });
       if (!res?.ok) { toast.error(res?.message || "Não foi possível enviar o acesso."); return; }
-      setSenha({ senha: res.senha, emailEnviado: !!res.emailEnviado });
+      setSenha({ senha: res.senha, emailEnviado: !!res.emailEnviado, emailErro: res.emailErro ?? null });
       if (res.emailEnviado) toast.success("Acesso enviado por e-mail ao vendedor.");
-      else toast.warning("Senha gerada, mas o e-mail falhou — repasse manualmente.");
+      else
+        toast.warning(
+          res.emailErro
+            ? `Senha gerada, mas o e-mail falhou: ${res.emailErro} — repasse manualmente.`
+            : "Senha gerada, mas o e-mail falhou — repasse manualmente.",
+        );
     } finally {
       setSalvando(false);
     }
@@ -281,7 +288,7 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
                 </Button>
               ))}
             </div>
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <Campo label="Nome completo / Razão social" valor={dados.nome} onChange={(v) => set("nome", v)} />
               <Campo label="E-mail" valor={dados.email} onChange={(v) => set("email", v)} />
               {dados.tipo_pessoa === "PF" ? (
@@ -336,7 +343,7 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
               O operador anexa os documentos do vendedor. Ao concluir, o cadastro já nasce validado
               e dispensa a análise de compliance no app.
             </p>
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <FileUpload
                 label="CNH — frente"
                 value={docs.doc_cnh_frente}
@@ -380,7 +387,7 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
               Cadastro do veículo habilitado para <strong>{dados.nome}</strong>. O vendedor apenas
               assina o termo no final, com o resumo dos dados e do veículo.
             </p>
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
               <Campo label="Placa" valor={veiculo.placa} onChange={(v) => setVeiculo({ ...veiculo, placa: maskPlaca(v) })} placeholder="ABC1D23" />
               <Campo label="Marca" valor={veiculo.marca} onChange={(v) => setVeiculo({ ...veiculo, marca: v })} />
               <Campo label="Modelo" valor={veiculo.modelo} onChange={(v) => setVeiculo({ ...veiculo, modelo: v })} />
@@ -407,7 +414,7 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
               <Campo label="UF" valor={veiculo.uf} onChange={(v) => setVeiculo({ ...veiculo, uf: v.toUpperCase().slice(0, 2) })} />
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <FileUpload label="CRLV-e do veículo" value={crlv} onChange={setCrlv} />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {fotos.map((f, i) => (
@@ -485,24 +492,37 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
                 <p className="text-xs font-semibold text-slate-500">
                   {senha.emailEnviado
                     ? "E-mail com o acesso enviado ao vendedor."
-                    : "Acesso ainda não enviado. Conclua para disparar o e-mail."}
+                    : senha.emailErro
+                      ? `E-mail falhou: ${senha.emailErro}`
+                      : "Acesso ainda não enviado. Conclua para disparar o e-mail."}
                 </p>
-                {senha.emailEnviado && (
-                  <div className="flex items-center gap-2 rounded-xl bg-white p-3">
-                    <code className="flex-1 font-black tracking-widest text-slate-900">
-                      {senha.senha}
-                    </code>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        navigator.clipboard.writeText(senha.senha);
-                        toast.success("Senha copiada.");
-                      }}
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                  </div>
+
+                <div className="flex items-center gap-2 rounded-xl bg-white p-3">
+                  <code className="flex-1 font-black tracking-widest text-slate-900">
+                    {senha.senha}
+                  </code>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      navigator.clipboard.writeText(senha.senha);
+                      toast.success("Senha copiada.");
+                    }}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                {!senha.emailEnviado && (
+                  <Button
+                    size="sm"
+                    className="w-full bg-emerald-600 font-bold hover:bg-emerald-700"
+                    onClick={() => {
+                      window.open(linkWhatsApp(dados.whatsapp, mensagemAcesso(dados.nome, dados.email, senha.senha)), "_blank");
+                    }}
+                  >
+                    <MessageCircle className="mr-2 h-4 w-4" /> Enviar acesso pelo WhatsApp
+                  </Button>
                 )}
               </div>
             )}
@@ -526,6 +546,17 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
       </DialogContent>
     </Dialog>
   );
+}
+
+function mensagemAcesso(nome: string, email: string, senha: string) {
+  const link = `${window.location.origin}/login`;
+  return `Olá${nome ? `, ${nome}` : ""}! Seu acesso à plataforma Esse Já Foi foi criado.\n\nE-mail: ${email}\nSenha temporária: ${senha}\n\nAcesse: ${link}\n\nNo primeiro acesso você vai criar uma nova senha.`;
+}
+
+function linkWhatsApp(whatsapp: string, mensagem: string) {
+  let numero = whatsapp.replace(/\D/g, "");
+  if (numero && numero.length <= 11) numero = `55${numero}`;
+  return `https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`;
 }
 
 function Campo({

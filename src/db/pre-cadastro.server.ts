@@ -13,14 +13,11 @@ function rowsOf(res: any): any[] {
   return [];
 }
 
-const ALFABETO = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
-
-export function gerarSenhaTemporaria(tamanho = 10) {
-  const bytes = new Uint8Array(tamanho);
+export function gerarSenhaTemporaria() {
+  const bytes = new Uint8Array(4);
   crypto.getRandomValues(bytes);
-  let senha = "";
-  for (const b of bytes) senha += ALFABETO[b % ALFABETO.length];
-  return `${senha}@1`;
+  const digitos = Array.from(bytes, (b) => b % 10).join("");
+  return `esseja${digitos}`;
 }
 
 export type PreCadastroInput = {

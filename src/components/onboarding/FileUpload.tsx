@@ -143,7 +143,7 @@ export function FileUpload({ label, description, value, status = "vazio", onChan
             </div>
 
             {!disabled && (
-              <div className="flex gap-2 mt-2">
+              <div className="flex flex-wrap justify-center gap-2 mt-2">
                 <Button 
                   variant="outline" 
                   size="sm" 
