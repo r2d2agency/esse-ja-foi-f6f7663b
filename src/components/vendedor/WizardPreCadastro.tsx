@@ -22,6 +22,7 @@ import {
   consultarLaudoVeiculoFn,
 } from "@/lib/consulta-veicular.functions";
 import { buscarCep } from "@/lib/viacep";
+import { maskDocumento, maskTelefone, maskCep, maskData, maskPlaca, maskKm, maskMoeda } from "@/lib/brasil";
 import { cn } from "@/lib/utils";
 
 type Etapa = 1 | 2 | 3 | 4;
@@ -176,7 +177,7 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
           combustivel: veiculo.combustivel || null,
           km: veiculo.km ? Number(veiculo.km.replace(/\D/g, "")) : undefined,
           valorInteresse: veiculo.valorInteresse
-            ? Number(veiculo.valorInteresse.replace(/\D/g, ""))
+            ? Number(veiculo.valorInteresse.replace(/\D/g, "")) / 100
             : undefined,
           cep: veiculo.cep || undefined,
           endereco: veiculo.endereco || undefined,
@@ -285,27 +286,29 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
               <Campo label="E-mail" valor={dados.email} onChange={(v) => set("email", v)} />
               {dados.tipo_pessoa === "PF" ? (
                 <>
-                  <Campo label="CPF" valor={dados.cpf} onChange={(v) => set("cpf", v)} />
+                  <Campo label="CPF" valor={dados.cpf} onChange={(v) => set("cpf", maskDocumento(v))} placeholder="000.000.000-00" />
                   <Campo label="RG" valor={dados.rg} onChange={(v) => set("rg", v)} />
                   <Campo
                     label="Data de nascimento"
                     valor={dados.data_nascimento}
-                    onChange={(v) => set("data_nascimento", v)}
+                    onChange={(v) => set("data_nascimento", maskData(v))}
                     placeholder="dd/mm/aaaa"
                   />
                 </>
               ) : (
-                <Campo label="CNPJ" valor={dados.cnpj} onChange={(v) => set("cnpj", v)} />
+                <Campo label="CNPJ" valor={dados.cnpj} onChange={(v) => set("cnpj", maskDocumento(v))} placeholder="00.000.000/0000-00" />
               )}
-              <Campo label="WhatsApp" valor={dados.whatsapp} onChange={(v) => set("whatsapp", v)} />
-              <Campo label="Telefone (opcional)" valor={dados.telefone} onChange={(v) => set("telefone", v)} />
+              <Campo label="WhatsApp" valor={dados.whatsapp} onChange={(v) => set("whatsapp", maskTelefone(v))} placeholder="(00) 00000-0000" />
+              <Campo label="Telefone (opcional)" valor={dados.telefone} onChange={(v) => set("telefone", maskTelefone(v))} placeholder="(00) 00000-0000" />
               <Campo
                 label="CEP"
                 valor={dados.cep}
                 onChange={(v) => {
-                  set("cep", v);
-                  void preencherCep(v, "vendedor");
+                  const cep = maskCep(v);
+                  set("cep", cep);
+                  void preencherCep(cep, "vendedor");
                 }}
+                placeholder="00000-000"
               />
               <Campo label="Endereço" valor={dados.endereco} onChange={(v) => set("endereco", v)} />
               <Campo label="Número" valor={dados.numero} onChange={(v) => set("numero", v)} />
@@ -378,24 +381,26 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
               assina o termo no final, com o resumo dos dados e do veículo.
             </p>
             <div className="grid gap-3 md:grid-cols-3">
-              <Campo label="Placa" valor={veiculo.placa} onChange={(v) => setVeiculo({ ...veiculo, placa: v.toUpperCase() })} />
+              <Campo label="Placa" valor={veiculo.placa} onChange={(v) => setVeiculo({ ...veiculo, placa: maskPlaca(v) })} placeholder="ABC1D23" />
               <Campo label="Marca" valor={veiculo.marca} onChange={(v) => setVeiculo({ ...veiculo, marca: v })} />
               <Campo label="Modelo" valor={veiculo.modelo} onChange={(v) => setVeiculo({ ...veiculo, modelo: v })} />
               <Campo label="Versão" valor={veiculo.versao} onChange={(v) => setVeiculo({ ...veiculo, versao: v })} />
               <Campo label="Ano fabricação" valor={veiculo.anoFabricacao} onChange={(v) => setVeiculo({ ...veiculo, anoFabricacao: v })} />
               <Campo label="Ano modelo" valor={veiculo.anoModelo} onChange={(v) => setVeiculo({ ...veiculo, anoModelo: v })} />
               <Campo label="Cor" valor={veiculo.cor} onChange={(v) => setVeiculo({ ...veiculo, cor: v })} />
-              <Campo label="KM" valor={veiculo.km} onChange={(v) => setVeiculo({ ...veiculo, km: v })} />
+              <Campo label="KM" valor={veiculo.km} onChange={(v) => setVeiculo({ ...veiculo, km: maskKm(v) })} />
               <Campo label="Câmbio" valor={veiculo.cambio} onChange={(v) => setVeiculo({ ...veiculo, cambio: v })} />
               <Campo label="Combustível" valor={veiculo.combustivel} onChange={(v) => setVeiculo({ ...veiculo, combustivel: v })} />
-              <Campo label="Valor pretendido (R$)" valor={veiculo.valorInteresse} onChange={(v) => setVeiculo({ ...veiculo, valorInteresse: v })} />
+              <Campo label="Valor pretendido (R$)" valor={veiculo.valorInteresse} onChange={(v) => setVeiculo({ ...veiculo, valorInteresse: maskMoeda(v) })} placeholder="R$ 0,00" />
               <Campo
                 label="CEP onde está o veículo"
                 valor={veiculo.cep}
                 onChange={(v) => {
-                  setVeiculo({ ...veiculo, cep: v });
-                  void preencherCep(v, "veiculo");
+                  const cep = maskCep(v);
+                  setVeiculo({ ...veiculo, cep });
+                  void preencherCep(cep, "veiculo");
                 }}
+                placeholder="00000-000"
               />
               <Campo label="Endereço" valor={veiculo.endereco} onChange={(v) => setVeiculo({ ...veiculo, endereco: v })} />
               <Campo label="Cidade" valor={veiculo.cidade} onChange={(v) => setVeiculo({ ...veiculo, cidade: v })} />

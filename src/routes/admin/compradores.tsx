@@ -28,6 +28,7 @@ import {
   TableRow 
 } from "@/components/ui/table";
 import { cn, formatDate, formatCPF } from "@/lib/utils";
+import { maskDocumento, maskTelefone } from "@/lib/brasil";
 
 export const Route = createFileRoute("/admin/compradores")({
   component: CompradoresPage,
@@ -101,8 +102,8 @@ function CompradoresPage() {
               <Input placeholder="Nome / Razão social" value={pre.nome} onChange={(e) => setPre({ ...pre, nome: e.target.value })} className="h-12" />
               <Input placeholder="E-mail de acesso" type="email" value={pre.email} onChange={(e) => setPre({ ...pre, email: e.target.value })} className="h-12" />
               <Input placeholder="Senha provisória" value={pre.senha} onChange={(e) => setPre({ ...pre, senha: e.target.value })} className="h-12" />
-              <Input placeholder="WhatsApp" value={pre.whatsapp} onChange={(e) => setPre({ ...pre, whatsapp: e.target.value })} className="h-12" />
-              <Input placeholder="CNPJ (lojista)" value={pre.cnpj} onChange={(e) => setPre({ ...pre, cnpj: e.target.value })} className="h-12" />
+              <Input placeholder="WhatsApp" value={pre.whatsapp} onChange={(e) => setPre({ ...pre, whatsapp: maskTelefone(e.target.value) })} className="h-12" />
+              <Input placeholder="CNPJ (lojista)" value={pre.cnpj} onChange={(e) => setPre({ ...pre, cnpj: maskDocumento(e.target.value) })} className="h-12" />
               <Input placeholder="Região de atuação" value={pre.regiao} onChange={(e) => setPre({ ...pre, regiao: e.target.value })} className="h-12" />
               <Input placeholder="Endereço da loja" value={pre.endereco} onChange={(e) => setPre({ ...pre, endereco: e.target.value })} className="h-12" />
               <div className="grid grid-cols-[2fr_1fr] gap-3">

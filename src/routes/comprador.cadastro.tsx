@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
 import { formatCPF, formatPhone, cn } from "@/lib/utils";
+import { maskDocumento, maskCep } from "@/lib/brasil";
 import { buscarCep } from "@/lib/viacep";
 import { FileUpload } from "@/components/onboarding/FileUpload";
 import { LogoEsf } from "@/components/shared/LogoEsf";
@@ -280,7 +281,7 @@ function CadastroComprador() {
                   placeholder="CNPJ"
                   className="h-14 rounded-xl"
                   value={form.cnpj}
-                  onChange={(e) => setForm({ ...form, cnpj: e.target.value })}
+                  onChange={(e) => setForm({ ...form, cnpj: maskDocumento(e.target.value) })}
                 />
                 <Input
                   placeholder="Nome fantasia"
@@ -376,7 +377,7 @@ function CadastroComprador() {
               className="h-14 rounded-xl"
               value={form.cep}
               onChange={async (e) => {
-                const cep = e.target.value;
+                const cep = maskCep(e.target.value);
                 setForm((f: any) => ({ ...f, cep }));
                 if (cep.replace(/\D/g, "").length === 8) {
                   try {

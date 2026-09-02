@@ -25,6 +25,26 @@ export function maskCep(value: string) {
   return onlyDigits(value).slice(0, 8).replace(/(\d{5})(\d{1,3})$/, "$1-$2");
 }
 
+/** Data no formato dd/mm/aaaa, enquanto o usuário digita. */
+export function maskData(value: string) {
+  const d = onlyDigits(value).slice(0, 8);
+  return d
+    .replace(/(\d{2})(\d)/, "$1/$2")
+    .replace(/(\d{2})(\d{1,4})$/, "$1/$2");
+}
+
+/** Valor em reais a partir dos dígitos digitados (centavos), ex.: "150000" → "R$ 1.500,00". */
+export function maskMoeda(value: string) {
+  const n = Number(onlyDigits(value)) / 100;
+  return n > 0 ? formatCurrency(n) : "";
+}
+
+/** Quilometragem com separador de milhar, mantendo apenas dígitos como valor real. */
+export function maskKm(value: string) {
+  const d = onlyDigits(value);
+  return d ? Number(d).toLocaleString("pt-BR") : "";
+}
+
 /** Máscara adaptativa: ABC-1234 (antigo) ou ABC1D23 (Mercosul). */
 export function maskPlaca(value: string) {
   const p = normalizePlaca(value).slice(0, 7);
