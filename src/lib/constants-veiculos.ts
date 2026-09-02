@@ -58,6 +58,27 @@ export const CATEGORIAS_VEICULOS = [
   "Hatch", "Sedan", "SUV", "Picape", "Utilitário", "Premium", "Esportivo", "Antigo", "Outros"
 ];
 
+export const ACESSORIOS_VEICULO = [
+  "Ar condicionado",
+  "Ar quente",
+  "Direção hidráulica",
+  "Direção elétrica",
+  "Vidro elétrico",
+  "Trava elétrica",
+  "Limpador traseiro",
+  "Desembaçador traseiro",
+  "Airbag",
+  "Freios ABS",
+  "Som/multimídia",
+  "Central com Android Auto/CarPlay",
+  "Sensor de ré",
+  "Câmera de ré",
+  "Piloto automático",
+  "Teto solar",
+  "Bancos de couro",
+  "Rodas de liga leve",
+];
+
 export const UFS = [
   "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"
 ];

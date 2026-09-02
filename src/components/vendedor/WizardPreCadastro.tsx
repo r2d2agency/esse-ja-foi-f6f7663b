@@ -14,9 +14,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { ComboboxSearch } from "@/components/ui/combobox-search";
 import { FileUpload } from "@/components/onboarding/FileUpload";
 import { FotoSlot } from "@/components/veiculo/FotoSlot";
 import { OpcaoBotoes } from "@/components/veiculo/OpcaoBotoes";
+import { OpcaoMultipla } from "@/components/veiculo/OpcaoMultipla";
 import { getSessionToken } from "@/lib/session";
 import { criarVendedorInternoFn, reenviarSenhaTemporariaFn } from "@/lib/pre-cadastro.functions";
 import { cadastrarMeuVeiculoFn } from "@/lib/vendedor.functions";
@@ -26,6 +28,7 @@ import {
 } from "@/lib/consulta-veicular.functions";
 import { buscarCep } from "@/lib/viacep";
 import { maskDocumento, maskTelefone, maskCep, maskData, maskPlaca, maskKm, maskMoeda } from "@/lib/brasil";
+import { COMBUSTIVEIS, CAMBIOS, ACESSORIOS_VEICULO } from "@/lib/constants-veiculos";
 import {
   FOTOS_VEICULO,
   CONDICAO_INICIAL,
@@ -411,8 +414,26 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
               <Campo label="Ano modelo" valor={veiculo.anoModelo} onChange={(v) => setVeiculo({ ...veiculo, anoModelo: v })} />
               <Campo label="Cor" valor={veiculo.cor} onChange={(v) => setVeiculo({ ...veiculo, cor: v })} />
               <Campo label="KM" valor={veiculo.km} onChange={(v) => setVeiculo({ ...veiculo, km: maskKm(v) })} />
-              <Campo label="Câmbio" valor={veiculo.cambio} onChange={(v) => setVeiculo({ ...veiculo, cambio: v })} />
-              <Campo label="Combustível" valor={veiculo.combustivel} onChange={(v) => setVeiculo({ ...veiculo, combustivel: v })} />
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-slate-600">Câmbio</Label>
+                <ComboboxSearch
+                  options={CAMBIOS}
+                  value={veiculo.cambio}
+                  onChange={(v) => setVeiculo({ ...veiculo, cambio: v })}
+                  placeholder="Selecione"
+                  className="h-11"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-slate-600">Combustível</Label>
+                <ComboboxSearch
+                  options={COMBUSTIVEIS}
+                  value={veiculo.combustivel}
+                  onChange={(v) => setVeiculo({ ...veiculo, combustivel: v })}
+                  placeholder="Selecione"
+                  className="h-11"
+                />
+              </div>
               <Campo label="Valor pretendido (R$)" valor={veiculo.valorInteresse} onChange={(v) => setVeiculo({ ...veiculo, valorInteresse: maskMoeda(v) })} placeholder="R$ 0,00" />
               <Campo
                 label="CEP onde está o veículo"
@@ -528,15 +549,13 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
                 <OpcaoBotoes label="Chave reserva?" opcoes={["Sim", "Não"]} value={condicao.chaveReserva} onChange={(v) => setCondicaoCampo({ chaveReserva: v })} />
                 <OpcaoBotoes label="Manual?" opcoes={["Sim", "Não"]} value={condicao.manual} onChange={(v) => setCondicaoCampo({ manual: v })} />
                 <OpcaoBotoes label="Estepe?" opcoes={["Sim", "Não"]} value={condicao.estepe} onChange={(v) => setCondicaoCampo({ estepe: v })} />
-                <OpcaoBotoes label="Possui acessórios adicionais?" opcoes={["Sim", "Não"]} value={condicao.acessorios} onChange={(v) => setCondicaoCampo({ acessorios: v })} />
-                {condicao.acessorios === "Sim" && (
-                  <Textarea
-                    placeholder="Quais acessórios?"
-                    value={condicao.acessoriosQuais}
-                    onChange={(e) => setCondicaoCampo({ acessoriosQuais: e.target.value })}
-                    className="rounded-xl"
-                  />
-                )}
+                <OpcaoMultipla
+                  label="Acessórios do veículo"
+                  opcoes={ACESSORIOS_VEICULO}
+                  value={condicao.acessoriosSelecionados}
+                  onChange={(v) => setCondicaoCampo({ acessoriosSelecionados: v })}
+                  colunas={2}
+                />
               </div>
             </div>
 

@@ -34,8 +34,7 @@ export type CondicaoVeiculo = {
   chaveReserva: string;
   manual: string;
   estepe: string;
-  acessorios: string;
-  acessoriosQuais: string;
+  acessoriosSelecionados: string[];
 };
 
 export const CONDICAO_INICIAL: CondicaoVeiculo = {
@@ -54,11 +53,21 @@ export const CONDICAO_INICIAL: CondicaoVeiculo = {
   chaveReserva: "",
   manual: "",
   estepe: "",
-  acessorios: "",
-  acessoriosQuais: "",
+  acessoriosSelecionados: [],
 };
 
-/** Mesmo formato lido por `desserializarObservacoes` em /vendedor/cadastrar. */
+/**
+ * Mesmo formato lido por `desserializarObservacoes` em /vendedor/cadastrar.
+ * Além do campo canônico `acessoriosSelecionados`, grava também `acessorios`
+ * (Sim/Não) e `acessoriosQuais` (lista em texto) — os nomes que aquele fluxo
+ * já sabe ler — para que o vendedor veja a lista preenchida se depois abrir
+ * o mesmo veículo em /vendedor/cadastrar.
+ */
 export function serializarCondicao(condicao: CondicaoVeiculo) {
-  return JSON.stringify({ versao: 2, snapshot: condicao });
+  const snapshot = {
+    ...condicao,
+    acessorios: condicao.acessoriosSelecionados.length > 0 ? "Sim" : "Não",
+    acessoriosQuais: condicao.acessoriosSelecionados.join(", "),
+  };
+  return JSON.stringify({ versao: 2, snapshot });
 }
