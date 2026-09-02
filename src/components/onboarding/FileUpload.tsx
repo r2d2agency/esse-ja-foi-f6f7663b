@@ -1,7 +1,9 @@
 import { useState, useRef } from "react";
 import { Upload, Camera, FileText, CheckCircle2, Eye, RefreshCw, Trash2, X } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { compressImage, extensaoPorMime } from "@/components/vistoria/ImageCompressor";
 
 export type UploadStatus = "vazio" | "enviado" | "analise" | "aprovado" | "reenviar" | "recusado";
 
@@ -38,10 +40,23 @@ export function FileUpload({ label, description, value, status = "vazio", onChan
     if (!file) return;
 
     setIsUploading(true);
-    
+
     try {
+      let arquivoParaEnviar: File | Blob = file;
+      let nomeArquivo = file.name;
+
+      // Fotos tiradas direto da câmera do celular costumam vir em altíssima resolução
+      // (vários MB) e sem compressão isso estoura o limite de payload do upload,
+      // fazendo o envio falhar silenciosamente. PDFs seguem sem alteração.
+      if (file.type.startsWith("image/")) {
+        const comprimida = await compressImage(file);
+        const extensao = extensaoPorMime(comprimida.type || "image/jpeg");
+        nomeArquivo = `${nomeArquivo.replace(/\.[^.]+$/, "")}.${extensao}`;
+        arquivoParaEnviar = comprimida;
+      }
+
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", arquivoParaEnviar, nomeArquivo);
 
       const response = await fetch("/api/public/upload", {
         method: "POST",
@@ -49,13 +64,15 @@ export function FileUpload({ label, description, value, status = "vazio", onChan
       });
 
       if (!response.ok) throw new Error("Erro no upload");
-      
+
       const data = await response.json();
       onChange(data.url);
     } catch (error) {
       console.error("Erro ao subir arquivo:", error);
+      toast.error("Não foi possível enviar esse arquivo. Tente novamente.");
     } finally {
       setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
@@ -140,7 +157,7 @@ export function FileUpload({ label, description, value, status = "vazio", onChan
                   variant="outline" 
                   size="sm" 
                   className="rounded-xl h-9 px-4 font-semibold border-slate-200"
-                  onClick={onCameraClick}
+                  onClick={onCameraClick ?? (() => fileInputRef.current?.click())}
                   disabled={isUploading}
                 >
                   <Camera className="mr-2 h-4 w-4" /> Câmera

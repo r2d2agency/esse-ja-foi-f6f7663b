@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { QueryClient } from "@tanstack/react-query";
 import { QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -41,25 +42,57 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     ],
   }),
   component: RootLayout,
+  errorComponent: RootError,
 });
 
-function RootLayout() {
-  const { queryClient } = Route.useRouteContext();
+function RootDocument({ children }: { children: ReactNode }) {
   return (
     <html lang="pt-BR">
       <head>
         <HeadContent />
       </head>
       <body>
-        <QueryClientProvider client={queryClient}>
-          <div className="min-h-screen bg-background text-foreground">
-            <Outlet />
-          </div>
-          <Toaster richColors position="top-right" />
-          <ConsentimentoCookies />
-        </QueryClientProvider>
+        {children}
         <Scripts />
       </body>
     </html>
+  );
+}
+
+function RootError({ error, reset }: { error: Error; reset: () => void }) {
+  return (
+    <RootDocument>
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background p-6 text-center text-foreground">
+        <p className="text-lg font-bold">Algo deu errado ao carregar a página.</p>
+        <p className="max-w-md text-sm text-muted-foreground">
+          {error?.message || "Tente recarregar. Se o problema continuar, avise o suporte."}
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            reset();
+            window.location.reload();
+          }}
+          className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-bold text-white hover:bg-teal-700"
+        >
+          Recarregar
+        </button>
+      </div>
+    </RootDocument>
+  );
+}
+
+function RootLayout() {
+  const { queryClient } = Route.useRouteContext();
+  return (
+    <RootDocument>
+      <QueryClientProvider client={queryClient}>
+        <div className="min-h-screen bg-background text-foreground">
+          <Outlet />
+        </div>
+        <Toaster richColors position="top-right" />
+        <ConsentimentoCookies />
+      </QueryClientProvider>
+    </RootDocument>
   );
 }

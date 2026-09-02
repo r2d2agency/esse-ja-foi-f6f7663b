@@ -304,13 +304,13 @@ function DetalheVeiculoAdminPage() {
   return (
     <div className="flex flex-col h-full bg-slate-50">
       {/* Header */}
-      <div className="bg-white border-b border-slate-200 p-6 flex items-center justify-between sticky top-0 z-10">
+      <div className="bg-white border-b border-slate-200 p-4 md:p-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sticky top-0 z-10">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate({ to: "/admin/veiculos" })}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-xl font-black text-slate-950 uppercase">{v.marca} {v.modelo}</h1>
               <Badge variant="outline" className="font-mono">{v.placa}</Badge>
               <Badge className={cn(
@@ -328,9 +328,9 @@ function DetalheVeiculoAdminPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <Button 
-            variant="outline" 
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            variant="outline"
             className="font-bold border-teal-200 text-teal-700 hover:bg-teal-50"
             onClick={() => navigate({ to: "/admin/comunicacoes" as any })}
           >
@@ -416,7 +416,7 @@ function DetalheVeiculoAdminPage() {
                         <p className="text-xl font-black text-slate-950">{v.marca} {v.modelo}</p>
                         <p className="text-sm font-bold text-slate-500">{v.ano_fabricacao || '-'}/{v.ano_modelo || '-'}</p>
                       </div>
-                      <div className="grid grid-cols-2 gap-y-3 text-sm">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-3 text-sm">
                         <div><p className="text-slate-400 font-medium">Placa</p><p className="font-bold font-mono">{v.placa}</p></div>
                         <div><p className="text-slate-400 font-medium">KM</p><p className="font-bold">{v.km ? v.km.toLocaleString() : '-'} km</p></div>
                         <div><p className="text-slate-400 font-medium">Cor</p><p className="font-bold">{v.cor || '-'}</p></div>
@@ -446,7 +446,7 @@ function DetalheVeiculoAdminPage() {
                           </div>
                         </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-y-3 text-sm">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-3 text-sm">
                         <div>
                           <p className="text-slate-400 font-medium">Compliance</p>
                           <p className={cn("font-bold uppercase", complianceAprovado ? "text-teal-600" : "text-amber-600")}>{complianceLabel}</p>
@@ -483,7 +483,7 @@ function DetalheVeiculoAdminPage() {
               <TabsContent value="dados" className="mt-0">
                 <Card className="border-slate-200 shadow-none">
                   <CardContent className="p-0">
-                    <div className="grid grid-cols-2 gap-px bg-slate-100 border-b border-slate-100">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-px bg-slate-100 border-b border-slate-100">
                       {[
                         { label: "Placa", value: v.placa },
                         { label: "Renavam", value: v.renavam || "Não informado" },
@@ -537,7 +537,7 @@ function DetalheVeiculoAdminPage() {
                     </Badge>
                   </CardHeader>
                   <CardContent className="p-6">
-                    <div className="flex gap-8">
+                    <div className="flex flex-col sm:flex-row gap-6 sm:gap-8">
                       <div className="flex-1 max-w-sm aspect-[3/4] bg-slate-100 rounded-lg border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-400 p-8 text-center group cursor-pointer hover:bg-slate-50 transition-colors">
                         {v.documento_crlv_url ? (
                           <div className="w-full h-full relative group">
@@ -1071,7 +1071,7 @@ function AuctionConfigCard({ veiculo }: { veiculo: any }) {
         </CardTitle>
       </CardHeader>
       <CardContent className="pt-6 space-y-6">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label className="text-[10px] font-bold uppercase text-slate-500">Lance Inicial (R$)</Label>
             <Input 

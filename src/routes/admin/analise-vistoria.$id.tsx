@@ -196,7 +196,7 @@ function DetalheAnaliseVistoriaPage() {
 
   return (
     <div className="flex flex-col h-full bg-slate-50">
-      <div className="bg-white border-b border-slate-200 p-6 flex items-center justify-between sticky top-0 z-10">
+      <div className="bg-white border-b border-slate-200 p-4 md:p-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sticky top-0 z-10">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate({ to: "/admin/vistorias", search: { tab: "aguardando_analise" } } as any)}>
             <ArrowLeft className="h-4 w-4" />
@@ -212,7 +212,7 @@ function DetalheAnaliseVistoriaPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Button variant="outline" className="font-bold text-amber-700" onClick={() => setNovaVistoriaAberta(true)}>
             <RotateCcw className="mr-2 h-4 w-4" /> Solicitar nova vistoria
           </Button>
@@ -308,7 +308,7 @@ function DetalheAnaliseVistoriaPage() {
                   <CardHeader className="pb-3 border-b border-slate-100">
                     <CardTitle className="text-xs font-black uppercase text-slate-400">Veículo</CardTitle>
                   </CardHeader>
-                  <CardContent className="pt-4 grid grid-cols-2 gap-4 text-sm">
+                  <CardContent className="pt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                     <Field label="Placa" value={veiculo.placa} />
                     <Field label="Ano/Modelo" value={`${veiculo.ano_fabricacao || "-"} / ${veiculo.ano_modelo || "-"}`} />
                     <Field label="KM" value={veiculo.km ? `${Number(veiculo.km).toLocaleString("pt-BR")} km` : "-"} />
@@ -341,7 +341,7 @@ function DetalheAnaliseVistoriaPage() {
 
             <TabsContent value="checklist" className="mt-0">
               <Card className="border-slate-200 shadow-none overflow-hidden">
-                <CardContent className="p-0">
+                <CardContent className="p-0 overflow-x-auto">
                   <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="bg-slate-50 border-b border-slate-200">

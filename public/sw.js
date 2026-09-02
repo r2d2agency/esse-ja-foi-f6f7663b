@@ -1,5 +1,5 @@
 /* Esse Já Foi — Service Worker do app do vistoriador */
-const CACHE = "ejf-vistoriador-v2";
+const CACHE = "ejf-vistoriador-v3";
 const SHELL = [
   "/vistoriador",
   "/manifest.webmanifest",
@@ -20,11 +20,25 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
-    )
+    (async () => {
+      // Versões antigas se registravam sem `scope`, o que assume escopo "/" (raiz do
+      // site) e faz esse SW controlar TODAS as rotas — admin, login, portal do
+      // vendedor — não só /vistoriador. Isso causava tela branca em qualquer página
+      // do site após um novo deploy, para quem já tivesse acessado /vistoriador uma
+      // vez. Aqui ele se autodestrói nesses casos e força as abas abertas a recarregar
+      // sem o SW no controle.
+      if (self.registration.scope === `${self.location.origin}/`) {
+        await self.registration.unregister();
+        const clientesAbertos = await self.clients.matchAll({ type: "window" });
+        for (const cliente of clientesAbertos) cliente.navigate(cliente.url);
+        return;
+      }
+
+      const keys = await caches.keys();
+      await Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)));
+      await self.clients.claim();
+    })()
   );
-  self.clients.claim();
 });
 
 self.addEventListener("fetch", (event) => {
@@ -55,18 +69,20 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Estáticos: cache-first
+  // Estáticos: cache-first, com retentativa de rede caso o cache esteja vazio
   event.respondWith(
     caches.match(event.request).then(
       (cached) =>
         cached ||
-        fetch(event.request).then((res) => {
-          if (res.ok && url.origin === self.location.origin) {
-            const copia = res.clone();
-            caches.open(CACHE).then((cache) => cache.put(event.request, copia));
-          }
-          return res;
-        })
+        fetch(event.request)
+          .then((res) => {
+            if (res.ok && url.origin === self.location.origin) {
+              const copia = res.clone();
+              caches.open(CACHE).then((cache) => cache.put(event.request, copia));
+            }
+            return res;
+          })
+          .catch(() => fetch(event.request))
     )
   );
 });

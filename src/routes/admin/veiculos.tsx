@@ -44,23 +44,23 @@ function AdminVeiculosPage() {
     <div className="flex flex-col h-full bg-slate-50">
 
       {/* Header */}
-      <div className="bg-white border-b border-slate-200 p-8 space-y-6">
-        <div className="flex justify-between items-center">
+      <div className="bg-white border-b border-slate-200 p-4 md:p-8 space-y-4 md:space-y-6">
+        <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
           <div>
             <h1 className="text-2xl font-black text-slate-950 uppercase tracking-tight">Análise de Veículos</h1>
             <p className="text-sm text-slate-500 font-medium">Gerenciamento e aprovação inicial de novos veículos cadastrados.</p>
           </div>
-          <div className="flex gap-2 bg-slate-100 p-1 rounded-lg">
+          <div className="flex gap-2 bg-slate-100 p-1 rounded-lg overflow-x-auto">
             {[
               { id: "TODOS", label: "Todos" },
               { id: "AGUARDANDO_ANALISE", label: "Aguardando" },
               { id: "EM_ANALISE", label: "Em análise" },
               { id: "PRONTO_PARA_VISTORIA", label: "Prontos" }
             ].map((s) => (
-              <button 
-                key={s.id} 
+              <button
+                key={s.id}
                 className={cn(
-                  "px-4 py-1.5 rounded-md text-xs font-black uppercase transition-all",
+                  "px-4 py-1.5 rounded-md text-xs font-black uppercase transition-all whitespace-nowrap shrink-0",
                   status === s.id ? "bg-white text-teal-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
                 )}
                 onClick={() => setStatus(s.id)}
@@ -71,11 +71,11 @@ function AdminVeiculosPage() {
           </div>
         </div>
 
-        <div className="flex gap-4">
+        <div className="flex flex-col md:flex-row gap-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <Input 
-              placeholder="Buscar por placa, marca, modelo ou vendedor..." 
+            <Input
+              placeholder="Buscar por placa, marca, modelo ou vendedor..."
               className="pl-10 h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all font-medium"
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
@@ -87,8 +87,9 @@ function AdminVeiculosPage() {
         </div>
       </div>
 
-      <div className="p-8 flex-1 overflow-auto">
+      <div className="p-4 md:p-8 flex-1 overflow-auto">
         <Card className="border-slate-200 shadow-none overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/50">
@@ -174,6 +175,7 @@ function AdminVeiculosPage() {
               )}
             </tbody>
           </table>
+          </div>
         </Card>
       </div>
     </div>

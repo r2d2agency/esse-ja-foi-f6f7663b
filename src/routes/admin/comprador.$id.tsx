@@ -86,9 +86,9 @@ function DetalheCompradorPage() {
   };
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl mx-auto">
+    <div className="p-4 md:p-6 space-y-6 max-w-5xl mx-auto">
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-4 flex-wrap">
         <Button variant="ghost" onClick={() => history.back()}><ArrowLeft className="mr-2 h-4 w-4" /> Voltar</Button>
         <h1 className="text-2xl font-black uppercase text-slate-950 tracking-tight">Detalhes do Comprador</h1>
       </div>
@@ -100,7 +100,7 @@ function DetalheCompradorPage() {
               {comprador.tipo_pessoa === 'PJ' ? <Building2 /> : <User />} {comprador.nome}
             </CardTitle>
           </CardHeader>
-          <CardContent className="grid grid-cols-2 gap-4 text-sm">
+          <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
             <div><p className="text-slate-400">E-mail</p><p className="font-bold">{comprador.email}</p></div>
             <div><p className="text-slate-400">WhatsApp</p><p className="font-bold">{comprador.whatsapp}</p></div>
             <div><p className="text-slate-400">Documento</p><p className="font-bold">{comprador.tipo_pessoa === 'PJ' ? comprador.cnpj : comprador.cpf}</p></div>

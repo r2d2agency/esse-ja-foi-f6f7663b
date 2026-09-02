@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { LogoEsf } from "@/components/shared/LogoEsf";
 
 type MenuItem = {
@@ -240,6 +241,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     if (initialized && !isAuthenticated) navigate({ to: "/login", replace: true });
@@ -257,11 +259,55 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     return prefixMatch || includesMatch;
   };
 
+  const renderNav = (expanded: boolean, onNavigate?: () => void) => (
+    <nav className="p-3 space-y-5">
+      {MENU_SECTIONS.map((section) => (
+        <div key={section.label} className="space-y-1.5">
+          {expanded && (
+            <p className="px-3 pb-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+              {section.label}
+            </p>
+          )}
+          {section.items.map((item) => (
+            <Link
+              key={item.label}
+              to={item.to}
+              search={item.search}
+              onClick={onNavigate}
+              className={cn(
+                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all group",
+                isActive(item)
+                  ? "bg-teal-500 text-slate-950 font-bold"
+                  : "text-slate-400 hover:text-white hover:bg-slate-900"
+              )}
+              title={!expanded ? `${item.label} - ${item.description || section.label}` : undefined}
+            >
+              <item.icon className={cn("h-5 w-5 shrink-0", isActive(item) ? "text-slate-950" : "group-hover:text-teal-400")} />
+              {expanded && (
+                <div className="min-w-0">
+                  <span className="block truncate">{item.label}</span>
+                  {item.description && (
+                    <span className={cn(
+                      "block truncate text-[10px] font-semibold",
+                      isActive(item) ? "text-slate-900/70" : "text-slate-500 group-hover:text-slate-300"
+                    )}>
+                      {item.description}
+                    </span>
+                  )}
+                </div>
+              )}
+            </Link>
+          ))}
+        </div>
+      ))}
+    </nav>
+  );
+
   return (
     <div className="flex h-screen bg-slate-50 font-sans text-slate-900">
-      {/* Sidebar */}
+      {/* Sidebar (desktop) */}
       <aside className={cn(
-        "bg-slate-950 text-white transition-all duration-300 flex flex-col",
+        "hidden md:flex bg-slate-950 text-white transition-all duration-300 flex-col",
         sidebarOpen ? "w-64" : "w-20"
       )}>
         <div className="h-16 flex items-center px-6 border-b border-slate-800">
@@ -271,50 +317,11 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         </div>
 
         <ScrollArea className="flex-1">
-          <nav className="p-3 space-y-5">
-            {MENU_SECTIONS.map((section) => (
-              <div key={section.label} className="space-y-1.5">
-                {sidebarOpen && (
-                  <p className="px-3 pb-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
-                    {section.label}
-                  </p>
-                )}
-                {section.items.map((item) => (
-                  <Link
-                    key={item.label}
-                    to={item.to}
-                    search={item.search}
-                    className={cn(
-                      "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all group",
-                      isActive(item)
-                        ? "bg-teal-500 text-slate-950 font-bold"
-                        : "text-slate-400 hover:text-white hover:bg-slate-900"
-                    )}
-                    title={!sidebarOpen ? `${item.label} - ${item.description || section.label}` : undefined}
-                  >
-                    <item.icon className={cn("h-5 w-5 shrink-0", isActive(item) ? "text-slate-950" : "group-hover:text-teal-400")} />
-                    {sidebarOpen && (
-                      <div className="min-w-0">
-                        <span className="block truncate">{item.label}</span>
-                        {item.description && (
-                          <span className={cn(
-                            "block truncate text-[10px] font-semibold",
-                            isActive(item) ? "text-slate-900/70" : "text-slate-500 group-hover:text-slate-300"
-                          )}>
-                            {item.description}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </Link>
-                ))}
-              </div>
-            ))}
-          </nav>
+          {renderNav(sidebarOpen)}
         </ScrollArea>
 
         <div className="p-4 border-t border-slate-800">
-          <button 
+          <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
             className="w-full flex items-center justify-center p-2 rounded-lg hover:bg-slate-900 text-slate-400"
           >
@@ -323,25 +330,51 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         </div>
       </aside>
 
+      {/* Sidebar (mobile drawer) */}
+      <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+        <SheetContent side="left" className="w-72 max-w-[85vw] border-slate-800 bg-slate-950 p-0 text-white">
+          <SheetTitle className="sr-only">Menu</SheetTitle>
+          <div className="h-16 flex items-center px-6 border-b border-slate-800">
+            <LogoEsf to="/admin" height={32} variant="dark" />
+          </div>
+          <ScrollArea className="h-[calc(100vh-4rem)]">
+            {renderNav(true, () => setMobileMenuOpen(false))}
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
+
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Header */}
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0">
-          <div className="flex-1 max-w-xl relative">
+        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-3 md:px-6 shrink-0 gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="md:hidden shrink-0 text-slate-500"
+            onClick={() => setMobileMenuOpen(true)}
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+
+          <div className="hidden md:block flex-1 max-w-xl relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <Input 
+            <Input
               placeholder="Buscar vendedor, comprador, placa, veículo ou leilão"
               className="pl-10 bg-slate-50 border-none focus-visible:ring-1 focus-visible:ring-teal-500 h-10"
             />
           </div>
 
-          <div className="flex items-center gap-4 ml-4">
+          <div className="flex-1 md:hidden overflow-hidden">
+            <LogoEsf to="/admin" height={24} />
+          </div>
+
+          <div className="flex items-center gap-2 md:gap-4 shrink-0">
             <Button variant="ghost" size="icon" className="relative text-slate-500">
               <Bell className="h-5 w-5" />
               <span className="absolute top-2 right-2 w-2 h-2 bg-teal-500 rounded-full border-2 border-white"></span>
             </Button>
 
-            <div className="h-8 w-px bg-slate-200"></div>
+            <div className="hidden md:block h-8 w-px bg-slate-200"></div>
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

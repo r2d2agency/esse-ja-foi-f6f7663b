@@ -21,7 +21,11 @@ function VistoriadorLayout() {
   // Registra o service worker (PWA offline) apenas no cliente
   useEffect(() => {
     if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/sw.js").catch(() => null);
+      // Escopo restrito ao app do vistoriador: sem isso, o SW assume escopo "/" por
+      // padrão (raiz de onde /sw.js é servido) e passa a controlar TODAS as rotas do
+      // site — admin, login, portal do vendedor — para qualquer dispositivo que tenha
+      // acessado /vistoriador uma única vez, causando tela branca após deploys.
+      navigator.serviceWorker.register("/sw.js", { scope: "/vistoriador" }).catch(() => null);
     }
   }, []);
 

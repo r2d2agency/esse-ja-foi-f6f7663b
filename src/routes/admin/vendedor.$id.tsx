@@ -204,16 +204,16 @@ function DetalheVendedorPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <div className="flex flex-col gap-6 p-4 md:p-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
-          <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center text-primary text-2xl font-bold">
+          <div className="h-16 w-16 shrink-0 rounded-full bg-primary/10 flex items-center justify-center text-primary text-2xl font-bold">
             {perfil.nome?.[0] || "V"}
           </div>
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">{perfil.nome}</h1>
-            <p className="text-slate-500">{perfil.email} • CPF: {perfil.cpf}</p>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-slate-900 truncate">{perfil.nome}</h1>
+            <p className="text-slate-500 truncate">{perfil.email} • CPF: {perfil.cpf}</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -238,14 +238,16 @@ function DetalheVendedorPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="bg-slate-100 p-1">
-          <TabsTrigger value="resumo" className="gap-2"><User className="h-4 w-4" /> Resumo</TabsTrigger>
-          <TabsTrigger value="documentos" className="gap-2"><FileText className="h-4 w-4" /> Documentos</TabsTrigger>
-          <TabsTrigger value="compliance" className="gap-2"><ShieldCheck className="h-4 w-4" /> Compliance</TabsTrigger>
-          <TabsTrigger value="contrato" className="gap-2"><FileSignature className="h-4 w-4" /> Contrato</TabsTrigger>
-          <TabsTrigger value="veiculos" className="gap-2"><Car className="h-4 w-4" /> Veículos ({veiculos.length})</TabsTrigger>
-          <TabsTrigger value="historico" className="gap-2"><History className="h-4 w-4" /> Histórico</TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto">
+          <TabsList className="bg-slate-100 p-1 w-max min-w-full">
+            <TabsTrigger value="resumo" className="gap-2 whitespace-nowrap"><User className="h-4 w-4" /> Resumo</TabsTrigger>
+            <TabsTrigger value="documentos" className="gap-2 whitespace-nowrap"><FileText className="h-4 w-4" /> Documentos</TabsTrigger>
+            <TabsTrigger value="compliance" className="gap-2 whitespace-nowrap"><ShieldCheck className="h-4 w-4" /> Compliance</TabsTrigger>
+            <TabsTrigger value="contrato" className="gap-2 whitespace-nowrap"><FileSignature className="h-4 w-4" /> Contrato</TabsTrigger>
+            <TabsTrigger value="veiculos" className="gap-2 whitespace-nowrap"><Car className="h-4 w-4" /> Veículos ({veiculos.length})</TabsTrigger>
+            <TabsTrigger value="historico" className="gap-2 whitespace-nowrap"><History className="h-4 w-4" /> Histórico</TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="resumo" className="mt-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -253,7 +255,7 @@ function DetalheVendedorPage() {
               <CardHeader>
                 <CardTitle className="text-lg">Dados Cadastrais</CardTitle>
               </CardHeader>
-              <CardContent className="grid grid-cols-2 gap-y-4 text-sm">
+              <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-y-4 text-sm">
                 <div>
                   <p className="text-slate-400">WhatsApp</p>
                   <p className="font-medium">{perfil.whatsapp || "Não informado"}</p>

@@ -409,7 +409,7 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
 
             <div className="grid gap-4 md:grid-cols-2">
               <FileUpload label="CRLV-e do veículo" value={crlv} onChange={setCrlv} />
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {fotos.map((f, i) => (
                   <FileUpload
                     key={i}

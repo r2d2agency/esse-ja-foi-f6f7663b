@@ -77,8 +77,8 @@ function AnalisePosVistoriaPage() {
   const v = res.data;
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => window.history.back()}>
             <ArrowLeft className="h-4 w-4" />
@@ -97,7 +97,7 @@ function AnalisePosVistoriaPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="p-6 space-y-6">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label className="text-xs font-bold uppercase text-slate-500">Valor FIPE Atual (R$)</Label>
                   <Input 
@@ -137,7 +137,7 @@ function AnalisePosVistoriaPage() {
                 ) : (
                   <div className="space-y-3">
                     {depreciacoes.map((dep, idx) => (
-                      <div key={idx} className="flex gap-3 items-start p-3 bg-slate-50 rounded-lg border border-slate-100">
+                      <div key={idx} className="flex flex-col sm:flex-row gap-3 sm:items-start p-3 bg-slate-50 rounded-lg border border-slate-100">
                         <div className="flex-1 space-y-2">
                           <Input 
                             placeholder="Item (Ex: Pneus, Funilaria)" 
@@ -166,8 +166,8 @@ function AnalisePosVistoriaPage() {
                             className="h-16 text-xs resize-none"
                           />
                         </div>
-                        <div className="w-32 space-y-2 text-right">
-                          <Input 
+                        <div className="w-full sm:w-32 flex items-center gap-2 sm:block sm:space-y-2 sm:text-right">
+                          <Input
                             type="number"
                             placeholder="Valor R$"
                             value={dep.valor}
@@ -179,9 +179,9 @@ function AnalisePosVistoriaPage() {
                                 setDepreciacoes(newDeps);
                               }
                             }}
-                            className="h-8 text-xs font-bold text-right"
+                            className="h-8 min-w-0 flex-1 sm:w-full text-xs font-bold text-right"
                           />
-                          <Button variant="ghost" size="icon" onClick={() => removeDepreciacao(idx)} className="h-8 w-8 text-red-400 hover:text-red-600 hover:bg-red-50">
+                          <Button variant="ghost" size="icon" onClick={() => removeDepreciacao(idx)} className="h-8 w-8 shrink-0 text-red-400 hover:text-red-600 hover:bg-red-50">
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
@@ -195,7 +195,7 @@ function AnalisePosVistoriaPage() {
         </div>
 
         <div className="space-y-6">
-          <Card className="bg-slate-950 text-white border-none shadow-xl sticky top-6">
+          <Card className="bg-slate-950 text-white border-none shadow-xl static md:sticky md:top-6">
             <CardHeader>
               <CardTitle className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Resumo da Proposta</CardTitle>
             </CardHeader>
