@@ -23,11 +23,8 @@ export const salvarProvedorConsultaFn = createServerFn({ method: "POST" })
         nome: z.string().trim().optional(),
         base_url: z.string().url(),
         caminho_consulta: z.string().trim().optional(),
-        produto: z.string().trim().optional(),
         usuario: z.string().trim().optional(),
         senha: z.string().trim().optional(),
-        api_key: z.string().trim().optional(),
-        auth_modo: z.string().trim().optional(),
         ativo: z.boolean(),
       })
 

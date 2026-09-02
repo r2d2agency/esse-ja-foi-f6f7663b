@@ -278,16 +278,12 @@ function ConfiguracoesAdminPage() {
 function ConsultaVeicularSection() {
   const [form, setForm] = useState({
     nome: "Company Conferi",
-    base_url: "https://webservice.companyconferi.com.br",
-    caminho_consulta: "/api-clientes/consulta",
-    produto: "GOLD",
+    base_url: "https://webservice.companyconferi.com.br/api-clientes",
+    caminho_consulta: "/conferi-veiculo/json",
     usuario: "",
     senha: "",
-    api_key: "",
-    auth_modo: "AUTO",
     ativo: false,
   });
-  const [chaveMascarada, setChaveMascarada] = useState<string | null>(null);
   const [temSenha, setTemSenha] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const [placaTeste, setPlacaTeste] = useState("");
@@ -305,14 +301,10 @@ function ConsultaVeicularSection() {
         nome: p.nome || f.nome,
         base_url: p.base_url || f.base_url,
         caminho_consulta: p.caminho_consulta || f.caminho_consulta,
-        produto: p.produto || f.produto,
         usuario: p.usuario || "",
         senha: "",
-        api_key: "",
-        auth_modo: p.auth_modo || "AUTO",
         ativo: !!p.ativo,
       }));
-      setChaveMascarada(p.chave_mascarada || null);
       setTemSenha(!!p.tem_senha);
     })();
   }, []);
@@ -327,9 +319,8 @@ function ConsultaVeicularSection() {
       }
       toast.success("Módulo de consulta veicular salvo.");
       const atualizado: any = await getProvedorConsultaFn();
-      setChaveMascarada(atualizado?.data?.chave_mascarada || null);
       setTemSenha(!!atualizado?.data?.tem_senha);
-      setForm((f) => ({ ...f, api_key: "", senha: "" }));
+      setForm((f) => ({ ...f, senha: "" }));
     } finally {
       setOcupado(false);
     }
@@ -396,24 +387,27 @@ function ConsultaVeicularSection() {
           <Input
             value={form.caminho_consulta}
             onChange={(e) => setForm({ ...form, caminho_consulta: e.target.value })}
-            placeholder="/api-clientes/consulta"
+            placeholder="/conferi-veiculo/json"
           />
         </div>
         <div className="space-y-2">
-          <Label>Produto / pacote</Label>
-          <Input
-            value={form.produto}
-            onChange={(e) => setForm({ ...form, produto: e.target.value })}
-            placeholder="GOLD"
-          />
+          <Label>Produto</Label>
+          <Input value="conferi-auto-pericia-gold" disabled readOnly />
+          <p className="text-xs text-slate-500">
+            Valor fixo exigido pela API da Company Conferi para este produto — não é editável.
+          </p>
         </div>
         <div className="space-y-2">
           <Label>Usuário da API</Label>
           <Input
             value={form.usuario}
-            onChange={(e) => setForm({ ...form, usuario: e.target.value })}
-            placeholder="usuário fornecido pela Company Conferi"
+            onChange={(e) => setForm({ ...form, usuario: e.target.value.replace(/\D/g, "") })}
+            placeholder="código numérico fornecido pela Company Conferi"
+            inputMode="numeric"
           />
+          <p className="text-xs text-slate-500">
+            É o mesmo código de acesso usado para entrar na plataforma da Company Conferi (numérico).
+          </p>
         </div>
         <div className="space-y-2">
           <Label>Senha da API</Label>
@@ -427,41 +421,6 @@ function ConsultaVeicularSection() {
             {temSenha ? "Senha cadastrada. Deixe em branco para manter." : "Nenhuma senha cadastrada."}
           </p>
         </div>
-        <div className="space-y-2">
-          <Label>Modo de autenticação</Label>
-          <select
-            className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
-            value={form.auth_modo}
-            onChange={(e) => setForm({ ...form, auth_modo: e.target.value })}
-          >
-            <option value="AUTO">Automático (testa as combinações)</option>
-            <option value="XML">XML Conferi (usuário/senha em atributos)</option>
-            <option value="XMLTAG">XML Conferi (usuário/senha em elementos)</option>
-            <option value="XMLFORM">XML Conferi em campo de formulário (xml=)</option>
-            <option value="QUERY">Parâmetros na URL (GET)</option>
-            <option value="CORPO">Usuário e senha no corpo (JSON)</option>
-            <option value="FORM">Usuário e senha em formulário</option>
-            <option value="BASIC">Basic auth (usuário:senha)</option>
-            <option value="BEARER">Bearer token</option>
-            <option value="APIKEY">Cabeçalho x-api-key</option>
-
-          </select>
-        </div>
-        <div className="space-y-2">
-          <Label>Chave / token de acesso (se houver)</Label>
-          <Input
-            type="password"
-            value={form.api_key}
-            onChange={(e) => setForm({ ...form, api_key: e.target.value })}
-            placeholder={chaveMascarada || "Cole a chave fornecida pelo provedor"}
-          />
-          <p className="text-xs text-slate-500">
-            {chaveMascarada
-              ? `Chave atual: ${chaveMascarada}. Deixe em branco para manter.`
-              : "Nenhuma chave cadastrada ainda."}
-          </p>
-        </div>
-
       </div>
 
       <div className="flex gap-2">
@@ -473,14 +432,18 @@ function ConsultaVeicularSection() {
           <PlugZap className="mr-2 h-4 w-4" /> Testar conexão
         </Button>
       </div>
+      <p className="text-xs text-slate-500">
+        &quot;Testar conexão&quot; usa o ambiente de homologação da Company Conferi (não gera cobrança) só
+        para validar usuário e senha. Para testar uma consulta real, use o campo abaixo.
+      </p>
 
       <div className="space-y-3 rounded-xl border border-dashed border-teal-300 bg-teal-50/40 p-4">
         <p className="text-sm font-bold text-slate-800">
           Testar consulta com uma placa real
         </p>
         <p className="text-xs text-slate-500">
-          Digite uma placa para executar uma consulta de verdade no provedor e validar o retorno.
-          Nada é gravado no cadastro de veículos. Salve o módulo antes de testar.
+          Digite uma placa para executar uma consulta de verdade no provedor de produção (pode gerar
+          cobrança) e validar o retorno. Nada é gravado no cadastro de veículos. Salve o módulo antes de testar.
         </p>
         <div className="flex gap-2">
           <Input
@@ -519,7 +482,7 @@ function ConsultaVeicularSection() {
             {resultadoTeste.resumo && <PainelResultadoConsulta resumo={resultadoTeste.resumo} />}
             {Array.isArray(resultadoTeste.diagnostico) && resultadoTeste.diagnostico.length > 0 && (
               <div className="space-y-1 rounded-lg bg-white p-3 text-xs text-slate-700">
-                <p className="font-bold text-slate-500">Tentativas de autenticação</p>
+                <p className="font-bold text-slate-500">Detalhe da chamada</p>
                 {resultadoTeste.diagnostico.map((d: any, i: number) => (
                   <div key={i}>
                     {d.modo} — HTTP {d.httpStatus || "sem resposta"}: {d.mensagem}

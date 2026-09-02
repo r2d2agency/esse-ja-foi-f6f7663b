@@ -13,14 +13,22 @@ function rowsOf(res: any): any[] {
   return [];
 }
 
-/** Provedor padrão pré-configurado (Company Conferi — Consulta Gold). */
+/**
+ * Provedor padrão pré-configurado (Company Conferi — produto Conferi Auto Pericia Gold).
+ * Endpoint e nome do produto seguem exatamente a documentação oficial de integração:
+ * webservice.companyconferi.com.br/api-clientes/documentacao/documentacao/conferi-auto-pericia-gold
+ */
 export const PROVEDOR_PADRAO = {
   slug: "company_conferi",
   nome: "Company Conferi",
   base_url: "https://webservice.companyconferi.com.br/api-clientes",
-  caminho_consulta: "/consulta",
-  produto: "GOLD",
+  caminho_consulta: "/conferi-veiculo/json",
+  produto: "conferi-auto-pericia-gold",
 };
+
+/** URL de homologação do produto — usada para validar credenciais sem gerar cobrança. */
+const URL_HOMOLOGACAO =
+  "https://webservice.companyconferi.com.br/api-clientes-homologacao/conferi-veiculo?responseType=xml";
 
 export async function ensureConsultaVeicularSchema() {
   const d = requireDb();
@@ -78,7 +86,6 @@ export async function ensureConsultaVeicularSchema() {
     sql`ALTER TABLE consulta_provedores ADD COLUMN IF NOT EXISTS auth_modo text DEFAULT 'AUTO';`,
   );
 
-
   const existe = rowsOf(
     await d.execute(sql`SELECT id FROM consulta_provedores WHERE slug = ${PROVEDOR_PADRAO.slug}`),
   );
@@ -87,6 +94,28 @@ export async function ensureConsultaVeicularSchema() {
       INSERT INTO consulta_provedores (slug, nome, base_url, caminho_consulta, produto, ativo)
       VALUES (${PROVEDOR_PADRAO.slug}, ${PROVEDOR_PADRAO.nome}, ${PROVEDOR_PADRAO.base_url},
               ${PROVEDOR_PADRAO.caminho_consulta}, ${PROVEDOR_PADRAO.produto}, false)
+    `);
+  } else {
+    // Corrige instalações antigas que ficaram com o endpoint/produto incorretos
+    // (a versão anterior usava um contrato de API que nunca correspondeu ao real,
+    // por isso a integração nunca funcionava). O produto exigido pela Conferi é
+    // um valor fixo, então sempre o mantemos correto; base_url/caminho só são
+    // corrigidos quando ainda estão no valor-padrão antigo, preservando qualquer
+    // customização deliberada (ex.: apontar para homologação).
+    await d.execute(sql`
+      UPDATE consulta_provedores SET
+        produto = ${PROVEDOR_PADRAO.produto},
+        base_url = CASE
+          WHEN base_url = 'https://webservice.companyconferi.com.br'
+          THEN ${PROVEDOR_PADRAO.base_url}
+          ELSE base_url
+        END,
+        caminho_consulta = CASE
+          WHEN caminho_consulta IN ('/consulta', '/api-clientes/consulta')
+          THEN ${PROVEDOR_PADRAO.caminho_consulta}
+          ELSE caminho_consulta
+        END
+      WHERE slug = ${PROVEDOR_PADRAO.slug}
     `);
   }
 }
@@ -97,7 +126,7 @@ function mascarar(chave?: string | null) {
   return `${chave.slice(0, 3)}••••••${chave.slice(-3)}`;
 }
 
-/** Configuração visível no admin — a chave nunca é devolvida em texto puro. */
+/** Configuração visível no admin — a senha nunca é devolvida em texto puro. */
 export async function getProvedorConsulta() {
   const d = requireDb();
   await ensureConsultaVeicularSchema();
@@ -112,11 +141,9 @@ export async function getProvedorConsulta() {
     caminho_consulta: p.caminho_consulta,
     produto: p.produto,
     usuario: p.usuario,
-    auth_modo: p.auth_modo || "AUTO",
     ativo: !!p.ativo,
-    tem_chave: !!p.api_key,
     tem_senha: !!p.senha,
-    chave_mascarada: mascarar(p.api_key),
+    chave_mascarada: mascarar(p.senha),
     atualizado_em: p.atualizado_em,
   };
 }
@@ -128,23 +155,21 @@ export async function salvarProvedorConsulta(data: {
   produto?: string | undefined;
   usuario?: string | undefined;
   senha?: string | undefined;
-  api_key?: string | undefined;
-  auth_modo?: string | undefined;
   ativo: boolean;
 }) {
   const d = requireDb();
   await ensureConsultaVeicularSchema();
-  const trocaChave = typeof data.api_key === "string" && data.api_key.trim().length > 0;
+  if (data.usuario && !/^\d+$/.test(data.usuario.trim())) {
+    throw new Error("O usuário da Company Conferi é numérico (código de acesso da plataforma).");
+  }
   const trocaSenha = typeof data.senha === "string" && data.senha.trim().length > 0;
   await d.execute(sql`
     UPDATE consulta_provedores SET
       nome = ${data.nome || PROVEDOR_PADRAO.nome},
       base_url = ${data.base_url.replace(/\/+$/, "")},
       caminho_consulta = ${data.caminho_consulta || PROVEDOR_PADRAO.caminho_consulta},
-      produto = ${data.produto || PROVEDOR_PADRAO.produto},
+      produto = ${PROVEDOR_PADRAO.produto},
       usuario = ${data.usuario || null},
-      auth_modo = ${data.auth_modo || "AUTO"},
-      ${trocaChave ? sql`api_key = ${data.api_key!.trim()},` : sql``}
       ${trocaSenha ? sql`senha = ${data.senha!.trim()},` : sql``}
       ativo = ${data.ativo},
       atualizado_em = now()
@@ -161,197 +186,35 @@ async function getProvedorComChave() {
   )[0];
   if (!p) throw new Error("Provedor de consulta não configurado.");
   if (!p.ativo) throw new Error("O módulo de consulta veicular está desativado.");
-  if (!p.api_key && !(p.usuario && p.senha)) {
-    throw new Error("Informe a chave de acesso ou o usuário e a senha do provedor antes de consultar.");
+  if (!p.usuario || !p.senha) {
+    throw new Error("Informe o usuário e a senha da Company Conferi antes de consultar.");
   }
   return p;
 }
 
-type Tentativa = {
-  label: string;
-  headers: Record<string, string>;
-  body?: string;
-  method?: "POST" | "GET";
-  url?: string;
-};
-
-function b64(s: string) {
-  // eslint-disable-next-line n/no-deprecated-api
-  return typeof btoa === "function" ? btoa(s) : Buffer.from(s, "utf8").toString("base64");
-}
-
-function esc(v: any) {
-  return String(v ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
+type ConferiParametros = Record<string, string | number | undefined | null>;
 
 /**
- * Monta as variações de autenticação aceitas por webservices do tipo Company Conferi.
- * O webservice da Conferi é XML: o pedido vai em <conferi><solicitacao usuario senha .../></conferi>.
+ * Monta o corpo da requisição exatamente como descrito na documentação oficial:
+ * { usuario: Number, senha: String, parametros: { placa|chassi, produto, codigo_consulta? } }
+ * Não há cabeçalho de autenticação separado — usuario e senha viajam no corpo.
  */
-function montarTentativas(prov: any, dados: Record<string, any>, urlBase: string): Tentativa[] {
-  const usuario = prov.usuario ? String(prov.usuario) : "";
-  const senha = prov.senha ? String(prov.senha) : "";
-  const chave = prov.api_key ? String(prov.api_key) : "";
-  const base = { ...dados, produto: prov.produto || "GOLD" };
-  const jsonHeaders = { "Content-Type": "application/json", Accept: "application/json" };
-  const xmlHeaders = { "Content-Type": "application/xml; charset=UTF-8", Accept: "application/xml" };
-
-  const entradas = Object.entries(dados).filter(
-    ([, v]) => v !== undefined && v !== null && v !== "",
-  );
-
-  const paramsTag = (upper: boolean) =>
-    entradas
-      .map(
-        ([k, v]) =>
-          `<parametro nome="${esc(upper ? k.toUpperCase() : k)}" valor="${esc(v)}"/>`,
-      )
-      .join("");
-  const paramsElem = (upper: boolean) =>
-    entradas
-      .map(([k, v]) => {
-        const nome = upper ? k.toUpperCase() : k;
-        return `<${nome}>${esc(v)}</${nome}>`;
-      })
-      .join("");
-  const paramsAttr = entradas.map(([k, v]) => `${k}="${esc(v)}"`).join(" ");
-
-  const envelope = (acao: string, solicitacaoExtra: string, corpoParametros: string) =>
-    `<?xml version="1.0" encoding="UTF-8"?>` +
-    `<conferi><solicitacao acao="${acao}" usuario="${esc(usuario)}" senha="${esc(senha || chave)}" ` +
-    `chave="${esc(chave)}" produto="${esc(prov.produto || "GOLD")}"${solicitacaoExtra ? " " + solicitacaoExtra : ""}/>` +
-    `<parametros>${corpoParametros}</parametros></conferi>`;
-
-  const xmlAttr = envelope("2", "", paramsTag(false));
-
-  const xmlTag =
-    `<?xml version="1.0" encoding="UTF-8"?>` +
-    `<conferi><solicitacao acao="2"><usuario>${esc(usuario)}</usuario>` +
-    `<senha>${esc(senha || chave)}</senha><chave>${esc(chave)}</chave>` +
-    `<produto>${esc(prov.produto || "GOLD")}</produto></solicitacao>` +
-    `<parametros>${paramsTag(false)}</parametros></conferi>`;
-
-  /** Variações do formato dos parâmetros aceitas por diferentes contratos Conferi. */
-  const variacoesXml: { label: string; body: string }[] = [
-    { label: "XML Conferi (parâmetro nome/valor, acao=2)", body: xmlAttr },
-    {
-      label: "XML Conferi (parâmetro NOME/VALOR maiúsculo, acao=2)",
-      body: envelope("2", "", paramsTag(true)),
-    },
-    {
-      label: "XML Conferi (parâmetros como elementos, acao=2)",
-      body: envelope("2", "", paramsElem(false)),
-    },
-    {
-      label: "XML Conferi (parâmetros como elementos maiúsculos, acao=2)",
-      body: envelope("2", "", paramsElem(true)),
-    },
-    {
-      label: "XML Conferi (parâmetros na tag solicitacao, acao=2)",
-      body: envelope("2", paramsAttr, ""),
-    },
-    { label: "XML Conferi (parâmetro nome/valor, acao=1)", body: envelope("1", "", paramsTag(false)) },
-    {
-      label: "XML Conferi (parâmetros na tag solicitacao, acao=1)",
-      body: envelope("1", paramsAttr, ""),
-    },
-  ];
-
-  const corpoCredenciais = JSON.stringify({
-    ...base,
-    usuario: usuario || undefined,
-    login: usuario || undefined,
-    senha: senha || undefined,
-    password: senha || undefined,
-    token: chave || undefined,
-    chave: chave || undefined,
-  });
-  const corpoSimples = JSON.stringify({ ...base, usuario: usuario || undefined });
-  const form = new URLSearchParams();
-  Object.entries({ ...base, usuario, senha, token: chave }).forEach(([k, v]) => {
-    if (v !== undefined && v !== null && v !== "") form.append(k, String(v));
-  });
-
-  const query = new URLSearchParams();
-  Object.entries({ ...dados, usuario, senha: senha || chave, chave, produto: prov.produto })
-    .forEach(([k, v]) => {
-      if (v !== undefined && v !== null && v !== "") query.append(k, String(v));
-    });
-
-  const tentativas: Record<string, Tentativa> = {
-    XML: {
-      label: "XML Conferi (usuário/senha em atributos)",
-      headers: xmlHeaders,
-      body: xmlAttr,
-    },
-    XMLTAG: {
-      label: "XML Conferi (usuário/senha em elementos)",
-      headers: xmlHeaders,
-      body: xmlTag,
-    },
-    XMLFORM: {
-      label: "XML Conferi enviado em campo de formulário (xml=)",
-      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/xml" },
-      body: new URLSearchParams({ xml: xmlAttr }).toString(),
-    },
-
-    QUERY: {
-      label: "Parâmetros na URL (GET)",
-      headers: { Accept: "application/xml, application/json" },
-      method: "GET",
-      url: `${urlBase}?${query.toString()}`,
-    },
-    CORPO: {
-      label: "Usuário e senha no corpo (JSON)",
-      headers: jsonHeaders,
-      body: corpoCredenciais,
-    },
-    FORM: {
-      label: "Usuário e senha em formulário (x-www-form-urlencoded)",
-      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
-      body: form.toString(),
-    },
-    BASIC: {
-      label: "Basic auth (usuário:senha)",
-      headers: { ...jsonHeaders, Authorization: `Basic ${b64(`${usuario}:${senha || chave}`)}` },
-      body: corpoSimples,
-    },
-    BEARER: {
-      label: "Bearer token",
-      headers: { ...jsonHeaders, Authorization: `Bearer ${chave}` },
-      body: corpoSimples,
-    },
-    APIKEY: {
-      label: "Cabeçalho x-api-key",
-      headers: { ...jsonHeaders, "x-api-key": chave },
-      body: corpoSimples,
-    },
+function montarCorpo(prov: any, parametros: ConferiParametros, codigoConsulta?: string) {
+  const usuarioTexto = String(prov.usuario ?? "").trim();
+  const usuarioNum = Number(usuarioTexto);
+  const corpo: Record<string, any> = {
+    usuario: usuarioTexto && Number.isFinite(usuarioNum) ? usuarioNum : prov.usuario,
+    senha: prov.senha,
   };
-
-  const variantes: Tentativa[] = variacoesXml.flatMap((v) => [
-    { label: v.label, headers: xmlHeaders, body: v.body },
-    {
-      label: `${v.label} · em formulário xml=`,
-      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/xml" },
-      body: new URLSearchParams({ xml: v.body }).toString(),
-    },
-  ]);
-
-  const modo = String(prov.auth_modo || "AUTO").toUpperCase();
-  if (modo.startsWith("XML")) return [tentativas[modo]!, ...variantes].filter(Boolean);
-  if (modo !== "AUTO" && tentativas[modo]) return [tentativas[modo]!];
-
-  const ordem: string[] = ["XML", "XMLTAG", "XMLFORM", "QUERY"];
-  if (usuario && senha) ordem.push("CORPO", "FORM", "BASIC");
-  if (chave) ordem.push("BEARER", "APIKEY", "CORPO");
-  const basicas = [...new Set(ordem)].map((k) => tentativas[k]!).filter(Boolean);
-  return [...basicas, ...variantes];
+  if (codigoConsulta) {
+    const num = Number(codigoConsulta);
+    corpo.codigo_consulta = Number.isFinite(num) ? num : codigoConsulta;
+  }
+  corpo.parametros = Object.fromEntries(
+    Object.entries(parametros).filter(([, v]) => v !== undefined && v !== null && v !== ""),
+  );
+  return JSON.stringify(corpo);
 }
-
 
 /** Conversor XML → objeto simples (sem DOMParser, compatível com o runtime do servidor). */
 function xmlParaObjeto(xml: string): any {
@@ -410,119 +273,6 @@ function parse(texto: string) {
   }
 }
 
-const PADROES_FALHA = [
-  "falha de autentica",
-  "falha na autentica",
-  "nao autenticado",
-  "não autenticado",
-  "usuario ou senha",
-  "usuário ou senha",
-  "acesso negado",
-  "credenciais",
-  "unauthorized",
-  "invalid token",
-  "token invalido",
-  "token inválido",
-  "dados incorretos",
-  "dados invalidos",
-  "dados inválidos",
-  "parametro invalido",
-  "parâmetro inválido",
-  "parametros invalidos",
-  "requisicao invalida",
-  "requisição inválida",
-  "sem saldo",
-  "sem permissao",
-  "sem permissão",
-  "produto invalido",
-  "produto inválido",
-  "consulta nao autorizada",
-  "erro na solicitacao",
-  "erro na solicitação",
-];
-
-function mensagemDoRetorno(payload: any): string | null {
-  const direto = primeiro(payload, [
-    "mensagem",
-    "message",
-    "erro",
-    "error",
-    "descricao",
-    "conferi.solicitacao.mensagem",
-    "conferi.mensagem",
-    "conferi.erro.#text",
-    "solicitacao.mensagem",
-  ]);
-  if (direto) return String(direto);
-  return null;
-}
-
-/** Detecta erro lógico devolvido com HTTP 200 (caso típico da Conferi). */
-function falhaLogica(payload: any): string | null {
-  const msg = mensagemDoRetorno(payload);
-  if (msg) {
-    const norm = msg.toLowerCase();
-    if (PADROES_FALHA.some((p) => norm.includes(p))) return msg;
-  }
-  // A Conferi devolve acao="3" quando recusa a solicitação (dados/produto/credenciais).
-  const acao = primeiro(payload, ["conferi.solicitacao.acao", "solicitacao.acao", "acao"]);
-  if (acao && !["1", "2", "0"].includes(String(acao))) {
-    return msg || `Solicitação recusada pelo provedor (acao=${acao}).`;
-  }
-  const raw = typeof payload?.raw === "string" ? payload.raw.toLowerCase() : "";
-  if (raw) {
-    const achou = PADROES_FALHA.find((p) => raw.includes(p));
-    if (achou) return msg || "Falha informada pelo provedor.";
-  }
-  return null;
-}
-
-
-/** Executa as tentativas até obter sucesso; devolve diagnóstico de todas. */
-async function executarConsulta(prov: any, dados: Record<string, any>) {
-  const url = `${String(prov.base_url).replace(/\/+$/, "")}${prov.caminho_consulta || "/consulta"}`;
-  const tentativas = montarTentativas(prov, dados, url);
-  const diagnostico: { modo: string; httpStatus: number; mensagem: string }[] = [];
-  let ultima: { ok: boolean; httpStatus: number; payload: any; erro: string | null } | null = null;
-
-  for (const t of tentativas) {
-    try {
-      const method = t.method || "POST";
-      const init: RequestInit = { method, headers: t.headers };
-      if (method !== "GET" && t.body !== undefined) init.body = t.body;
-      const resp = await fetch(t.url || url, init);
-      const payload = parse(await resp.text());
-      const falha = resp.ok ? falhaLogica(payload) : null;
-      const msg =
-        falha || mensagemDoRetorno(payload) || (resp.ok ? "OK" : `HTTP ${resp.status}`);
-      diagnostico.push({
-        modo: t.label,
-        httpStatus: resp.status,
-        mensagem: String(msg).slice(0, 300),
-      });
-      if (resp.ok && !falha) {
-        return { ok: true as const, httpStatus: resp.status, payload, erro: null, diagnostico };
-      }
-      ultima = { ok: false, httpStatus: resp.status, payload, erro: String(msg) };
-      if (!resp.ok && ![400, 401, 403, 404, 405, 415, 500].includes(resp.status)) break;
-    } catch (e: any) {
-      const erro = e?.message || "Falha de comunicação com o provedor.";
-      diagnostico.push({ modo: t.label, httpStatus: 0, mensagem: erro });
-      ultima = { ok: false, httpStatus: 0, payload: null, erro };
-    }
-  }
-
-  return {
-    ok: false as const,
-    httpStatus: ultima?.httpStatus ?? 0,
-    payload: ultima?.payload ?? null,
-    erro: ultima?.erro ?? "Não foi possível autenticar no provedor.",
-    diagnostico,
-  };
-}
-
-
-
 function primeiro(obj: any, chaves: string[]) {
   for (const k of chaves) {
     const v = k.split(".").reduce((acc: any, part) => (acc == null ? acc : acc[part]), obj);
@@ -531,55 +281,182 @@ function primeiro(obj: any, chaves: string[]) {
   return null;
 }
 
-/** Achata a resposta XML da Conferi em um objeto plano nome → valor. */
-function achatarConferi(payload: any): Record<string, any> {
-  const plano: Record<string, any> = {};
-  const visitar = (node: any) => {
-    if (!node || typeof node !== "object") return;
-    if (Array.isArray(node)) return node.forEach(visitar);
-    if (node.nome && node.valor !== undefined) plano[String(node.nome).toLowerCase()] = node.valor;
-    for (const [k, v] of Object.entries(node)) {
-      if (k === "raw") continue;
-      if (v && typeof v === "object") visitar(v);
-      else if (typeof v === "string" && k !== "#text") plano[k.toLowerCase()] ??= v;
-    }
-  };
-  visitar(payload?.conferi ?? payload);
-  return plano;
+/** A resposta pode vir com o objeto raiz nomeado "conferi" (espelhando o XML) ou já "achatada". */
+function raizDoPayload(payload: any): any {
+  return payload?.conferi ?? payload ?? {};
 }
 
-/** Mapeamento tolerante: cobre variações comuns de nomes de campo do retorno. */
+/** Mensagens oficiais por código de "acao" (seção 6 da documentação). */
+const MENSAGENS_ACAO: Record<string, string> = {
+  "2": "Falha de autenticação: usuário ou senha incorretos.",
+  "3": "Dados incorretos: verifique a placa/chassi informados.",
+  "4": "Sistema indisponível no provedor. A consulta foi registrada e pode ser reenviada mais tarde com o código de consulta.",
+  "6": "Código pré-pago sem créditos suficientes para este produto.",
+  "8": "Este usuário não tem acesso a este produto/consulta.",
+  "9": "Consulta não está mais disponível (criada há mais de 60 dias).",
+};
+
+function mensagemDoRetorno(payload: any): string | null {
+  const raiz = raizDoPayload(payload);
+  const direto = primeiro(raiz, ["solicitacao.mensagem", "mensagem", "message", "erro", "error"]);
+  return direto ? String(direto) : null;
+}
+
+/** Detecta erro lógico devolvido com HTTP 200, usando o código "acao" da solicitação. */
+function falhaLogica(payload: any): string | null {
+  const raiz = raizDoPayload(payload);
+  const acao = primeiro(raiz, ["solicitacao.acao"]);
+  if (acao === null) return null;
+  const codigo = String(acao);
+  if (codigo === "1") return null;
+  const msgApi = primeiro(raiz, ["solicitacao.mensagem"]);
+  return MENSAGENS_ACAO[codigo] || (msgApi ? String(msgApi) : `Solicitação recusada pelo provedor (acao=${codigo}).`);
+}
+
+type ResultadoConsulta = {
+  ok: boolean;
+  httpStatus: number;
+  payload: any;
+  erro: string | null;
+  diagnostico: { modo: string; httpStatus: number; mensagem: string }[];
+};
+
+/** Executa a chamada ao endpoint do produto Conferi Auto Pericia Gold (POST, JSON). */
+async function executarConsulta(
+  prov: any,
+  parametros: ConferiParametros,
+  opcoes: { codigoConsulta?: string; url?: string } = {},
+): Promise<ResultadoConsulta> {
+  const url =
+    opcoes.url ||
+    `${String(prov.base_url).replace(/\/+$/, "")}${prov.caminho_consulta || PROVEDOR_PADRAO.caminho_consulta}`;
+  const body = montarCorpo(prov, { ...parametros, produto: PROVEDOR_PADRAO.produto }, opcoes.codigoConsulta);
+  const diagnostico: { modo: string; httpStatus: number; mensagem: string }[] = [];
+
+  try {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json, application/xml" },
+      body,
+    });
+    const payload = parse(await resp.text());
+    const falha = resp.ok ? falhaLogica(payload) : null;
+    const msg = falha || mensagemDoRetorno(payload) || (resp.ok ? "OK" : `HTTP ${resp.status}`);
+    diagnostico.push({ modo: "POST JSON", httpStatus: resp.status, mensagem: String(msg).slice(0, 300) });
+
+    if (resp.ok && !falha) {
+      return { ok: true, httpStatus: resp.status, payload, erro: null, diagnostico };
+    }
+    return {
+      ok: false,
+      httpStatus: resp.status,
+      payload,
+      erro: falha || mensagemDoRetorno(payload) || `HTTP ${resp.status}`,
+      diagnostico,
+    };
+  } catch (e: any) {
+    const erro = e?.message || "Falha de comunicação com o provedor.";
+    diagnostico.push({ modo: "POST JSON", httpStatus: 0, mensagem: erro });
+    return { ok: false, httpStatus: 0, payload: null, erro, diagnostico };
+  }
+}
+
+/** Junta valores não vazios de restrições em um único texto legível. */
+function juntarNaoVazios(valores: any[]): string | null {
+  const vistos = new Set<string>();
+  const filtrados = valores
+    .map((v) => (v === null || v === undefined ? "" : String(v).trim()))
+    .filter((v) => v.length > 0)
+    .filter((v) => {
+      const chave = v.toLowerCase();
+      if (vistos.has(chave)) return false;
+      vistos.add(chave);
+      return true;
+    });
+  return filtrados.length ? filtrados.join(" / ") : null;
+}
+
+/** Achata valores-folha de um objeto para exibição de diagnóstico (campos fora do mapeamento). */
+function achatarLeaves(node: any, prefixo = "", saida: Record<string, any> = {}, profundidade = 0) {
+  if (node == null || profundidade > 4) return saida;
+  if (Array.isArray(node)) {
+    node.forEach((item, i) => achatarLeaves(item, prefixo ? `${prefixo}[${i}]` : String(i), saida, profundidade + 1));
+    return saida;
+  }
+  if (typeof node === "object") {
+    for (const [k, v] of Object.entries(node)) {
+      if (k === "raw" || k === "#text") continue;
+      achatarLeaves(v, prefixo ? `${prefixo}.${k}` : k, saida, profundidade + 1);
+    }
+    return saida;
+  }
+  if (node !== "") saida[prefixo] = node;
+  return saida;
+}
+
+/** Mapeia a resposta (blocos agregados/estadual/historicoRouboFurto/sinistro/leilao/csv) para um resumo legível. */
 export function resumirRetorno(payload: any) {
-  const base = payload?.retorno ?? payload?.data ?? payload?.resultado ?? payload;
-  const raiz = payload?.conferi ? { ...achatarConferi(payload), ...base } : base;
+  const raiz = raizDoPayload(payload);
+  const solicitacao = raiz.solicitacao ?? {};
+  const agregados = raiz.agregados ?? {};
+  const estadual = raiz.estadual ?? {};
+  const bin = raiz.bin ?? {};
+  const historicoRF = raiz.historicoRouboFurto ?? {};
+  const sinistro = raiz.sinistro ?? {};
+  const indicioSinistro = raiz.indicioSinistro ?? {};
+  const leilao = raiz.leilao ?? {};
+  const csv = raiz.csv ?? {};
+  const alertaAcidente = raiz.alertaDeAcidente ?? null;
+
+  const restricoes = juntarNaoVazios([
+    agregados.restricao1,
+    agregados.restricao2,
+    agregados.restricao3,
+    agregados.restricao4,
+    estadual.restricoes,
+    estadual.restricoes_01,
+    estadual.restricoes_02,
+    estadual.restricoes_03,
+    estadual.restricoes_04,
+    estadual.restricoes_05,
+  ]);
+
+  const temRegistroLeilao = !!(leilao?.leiloes?.leilao);
+  const temDebito = [
+    estadual.existeDebitoMulta,
+    estadual.existeDebitoIPVA,
+    estadual.existeDebitoLicenciamento,
+    estadual.existeDebitoDpvat,
+  ].some((v) => {
+    const norm = String(v ?? "").trim().toLowerCase();
+    return norm && norm !== "nao" && norm !== "não" && norm !== "0" && norm !== "false";
+  });
 
   const resumo = {
-    protocolo: primeiro(raiz, ["protocolo", "ticket", "id_consulta", "idConsulta", "numero_protocolo"]),
-    situacao: primeiro(raiz, ["situacao", "situacao_veiculo", "status_veiculo"]),
-    roubo_furto: primeiro(raiz, ["roubo_furto", "rouboFurto", "indicio_roubo_furto", "ocorrencia_roubo"]),
-    restricoes: primeiro(raiz, ["restricoes", "restricao", "restricoes_veiculo"]),
-    leilao: primeiro(raiz, ["leilao", "historico_leilao", "indicio_leilao", "remarcacao_leilao"]),
-    sinistro: primeiro(raiz, ["sinistro", "indicio_sinistro", "historico_sinistro"]),
-    debitos: primeiro(raiz, ["debitos", "debito", "total_debitos"]),
-    renajud: primeiro(raiz, ["renajud", "restricao_judicial"]),
-    documento_url: primeiro(raiz, ["url_pdf", "pdf", "link_pdf", "arquivo", "url_laudo", "documento"]),
+    protocolo: primeiro(solicitacao, ["codigoConsulta"]),
+    situacao: primeiro({ agregados, estadual, bin }, ["agregados.situacao", "estadual.situacao", "bin.situacao"]),
+    roubo_furto: historicoRF.alertaMensagem || null,
+    restricoes,
+    leilao: temRegistroLeilao ? "Consta ocorrência de leilão" : leilao?.mensagem || null,
+    sinistro: sinistro.mensagem || indicioSinistro.mensagem || null,
+    debitos: temDebito ? "Consta débito em aberto" : estadual.mensagem || null,
+    renajud: estadual.restricoesRenajud || estadual.restricaoRenajud || bin.restricaoRenajud || null,
+    alerta_acidente: (alertaAcidente as any)?.mensagem || null,
+    documento_url: csv?.retorno?.pdf_path || null,
+    hash_pesquisa: raiz.hashPesquisa || null,
   };
 
-  // Quando o provedor devolve campos com nomes fora do mapeamento,
-  // expõe os demais campos achatados para a tela de teste/diagnóstico.
   const conhecidos = new Set(Object.keys(resumo));
-  const extras: Record<string, any> = {};
-  if (raiz && typeof raiz === "object") {
-    for (const [k, v] of Object.entries(raiz)) {
-      const chave = String(k).toLowerCase();
-      if (conhecidos.has(chave) || chave === "raw" || chave === "#text") continue;
-      if (v === null || v === undefined || v === "") continue;
-      if (typeof v === "object") continue;
-      extras[chave] = v;
-    }
-  }
   const tudoNulo = Object.values(resumo).every((v) => v === null || v === undefined || v === "");
-  return { ...resumo, ...(tudoNulo && Object.keys(extras).length > 0 ? { extras } : {}) };
+  if (!tudoNulo) return resumo;
+
+  // Nada do mapeamento padrão veio preenchido: expõe os campos brutos para diagnóstico.
+  const extras: Record<string, any> = {};
+  for (const [k, v] of Object.entries(achatarLeaves(raiz))) {
+    if (conhecidos.has(k)) continue;
+    extras[k] = v;
+  }
+  return { ...resumo, ...(Object.keys(extras).length > 0 ? { extras } : {}) };
 }
 
 export async function consultarLaudoVeiculo(veiculoId: string, criadoPor?: string | null) {
@@ -588,18 +465,29 @@ export async function consultarLaudoVeiculo(veiculoId: string, criadoPor?: strin
   const prov = await getProvedorComChave();
 
   const veiculo = rowsOf(
-    await d.execute(sql`SELECT id, placa, chassi, renavam FROM veiculos WHERE id = ${veiculoId}::uuid`),
+    await d.execute(sql`SELECT id, placa, chassi FROM veiculos WHERE id = ${veiculoId}::uuid`),
   )[0];
   if (!veiculo) throw new Error("Veículo não encontrado.");
   if (!veiculo.placa && !veiculo.chassi) {
     throw new Error("Cadastre a placa ou o chassi do veículo antes de consultar.");
   }
 
-  const r = await executarConsulta(prov, {
-    placa: veiculo.placa || undefined,
-    chassi: veiculo.chassi || undefined,
-    renavam: veiculo.renavam || undefined,
-  });
+  // Reaproveita o protocolo de uma consulta anterior (até 60 dias) para não gerar nova cobrança,
+  // conforme a seção "Atualização de uma consulta existente" da documentação.
+  const anterior = rowsOf(
+    await d.execute(sql`
+      SELECT protocolo FROM veiculo_consultas
+      WHERE veiculo_id = ${veiculoId}::uuid AND protocolo IS NOT NULL
+        AND criado_em > now() - interval '60 days'
+      ORDER BY criado_em DESC LIMIT 1
+    `),
+  )[0];
+
+  const r = await executarConsulta(
+    prov,
+    { placa: veiculo.placa || undefined, chassi: veiculo.chassi || undefined },
+    { codigoConsulta: anterior?.protocolo ? String(anterior.protocolo) : undefined },
+  );
 
   const payload = r.payload;
   const erro = r.ok ? null : r.erro;
@@ -609,7 +497,6 @@ export async function consultarLaudoVeiculo(veiculoId: string, criadoPor?: strin
       ? "NAO_AUTORIZADO"
       : "ERRO";
 
-
   const resumo = status === "CONCLUIDA" ? resumirRetorno(payload) : {};
 
   const row = rowsOf(
@@ -617,7 +504,7 @@ export async function consultarLaudoVeiculo(veiculoId: string, criadoPor?: strin
       INSERT INTO veiculo_consultas
         (veiculo_id, provedor, produto, placa, chassi, status, protocolo, resumo, resposta, documento_url, erro, criado_por)
       VALUES (
-        ${veiculoId}::uuid, ${prov.nome}, ${prov.produto}, ${veiculo.placa || null}, ${veiculo.chassi || null},
+        ${veiculoId}::uuid, ${prov.nome}, ${PROVEDOR_PADRAO.produto}, ${veiculo.placa || null}, ${veiculo.chassi || null},
         ${status}, ${(resumo as any).protocolo || null}, ${JSON.stringify(resumo)}::jsonb,
         ${payload ? JSON.stringify(payload) : null}::jsonb,
         ${(resumo as any).documento_url || null}, ${erro}, ${criadoPor || null}
@@ -649,29 +536,30 @@ export async function listarConsultasVeiculo(veiculoId: string) {
   return rowsOf(res);
 }
 
+/**
+ * Testa usuário/senha contra o ambiente de homologação do produto (seção 2.3 da documentação),
+ * que simula retornos sem gerar cobrança — não consulta o ambiente de produção.
+ */
 export async function testarConexaoProvedor() {
   const prov = await getProvedorComChave();
-  const r = await executarConsulta(prov, { placa: "TESTE000" });
+  const r = await executarConsulta(prov, { placa: "ABC1234" }, { url: URL_HOMOLOGACAO });
   if (r.ok) {
     return {
       ok: true as const,
-      message: `Conexão estabelecida (HTTP ${r.httpStatus}).`,
+      message: `Credenciais validadas no ambiente de homologação (HTTP ${r.httpStatus}).`,
       diagnostico: r.diagnostico,
     };
   }
-  const naoAutorizado = r.diagnostico.some((d) => d.httpStatus === 401 || d.httpStatus === 403);
   return {
     ok: false as const,
-    message: naoAutorizado
-      ? `Credenciais recusadas pelo provedor. ${r.erro}`
-      : r.erro || "Não foi possível alcançar o endpoint.",
+    message: r.erro || "Não foi possível validar as credenciais no ambiente de homologação.",
     diagnostico: r.diagnostico,
   };
 }
 
 /**
- * Consulta de teste por placa digitada (tela de configurações).
- * Não grava nada no banco — serve apenas para validar credenciais/endpoint e inspecionar o retorno.
+ * Consulta de teste por placa digitada (tela de configurações), no ambiente de produção.
+ * Gera uma consulta real (e possível cobrança) — não grava nada no cadastro de veículos.
  */
 export async function consultarPlacaAvulsa(placa: string) {
   const prov = await getProvedorComChave();
@@ -698,4 +586,3 @@ export async function consultarPlacaAvulsa(placa: string) {
     diagnostico: r.diagnostico,
   };
 }
-
