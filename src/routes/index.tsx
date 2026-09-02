@@ -21,6 +21,7 @@ import {
 import { useAuth } from '@/hooks/use-auth';
 import { LogoEsf } from '@/components/shared/LogoEsf';
 import landingHeroAsset from '@/assets/esse-ja-foi-hero.webp.asset.json';
+import { abrirConfiguracoesCookies } from '@/lib/cookies-consent';
 
 export const Route = createFileRoute('/')({
   head: () => ({
@@ -51,7 +52,7 @@ const COMO_FUNCIONA = [
   {
     numero: '02',
     titulo: 'Vistoria especializada',
-    descricao: 'Um vistoriador credenciado analisa mais de 50 pontos e emite o laudo do veículo.',
+    descricao: 'Um vistoriador credenciado analisa mais de 50 pontos e registra o estado real do veículo.',
   },
   {
     numero: '03',
@@ -117,7 +118,7 @@ const FAQ = [
   {
     pergunta: 'O que é avaliado na vistoria?',
     resposta:
-      'Nossos vistoriadores credenciados analisam mais de 50 pontos, incluindo motor, estrutura, documentação e histórico do veículo, gerando um laudo cautelar completo.',
+      'Nossos vistoriadores credenciados analisam mais de 50 pontos, incluindo motor, estrutura, documentação e histórico do veículo. Além disso, todo carro vendido pelo Esse Já Foi conta com laudo cautelar emitido por empresas parceiras especializadas, garantindo mais segurança na negociação.',
   },
   {
     pergunta: 'É seguro vender pelo Esse Já Foi?',
@@ -217,7 +218,7 @@ function LandingPage() {
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="w-5 h-5 text-turquoise" />
-                Laudo Cautelar
+                Laudo cautelar por parceiros
               </div>
             </div>
           </div>
@@ -252,7 +253,7 @@ function LandingPage() {
             <FeatureCard
               icon={<Car className="w-6 h-6" />}
               title="Vistoria Especializada"
-              description="Nossos vistoriadores analisam mais de 50 pontos antes do veículo ir para a vitrine."
+              description="Analisamos mais de 50 pontos e todo carro vendido tem laudo cautelar emitido por parceiros especializados."
             />
             <FeatureCard
               icon={<FileCheck className="w-6 h-6" />}
@@ -396,6 +397,21 @@ function LandingPage() {
             <Link to="/veiculos" className="hover:text-turquoise transition-colors">Estoque</Link>
             <a href="#faq" className="hover:text-turquoise transition-colors">FAQ</a>
             <Link to="/login" className="hover:text-turquoise transition-colors">Entrar</Link>
+          </div>
+          <div className="flex justify-center flex-wrap gap-6 text-sm mb-6">
+            <Link to="/politica-de-privacidade" className="hover:text-turquoise transition-colors">
+              Política de Privacidade
+            </Link>
+            <Link to="/politica-de-cookies" className="hover:text-turquoise transition-colors">
+              Política de Cookies
+            </Link>
+            <button
+              type="button"
+              onClick={abrirConfiguracoesCookies}
+              className="hover:text-turquoise transition-colors"
+            >
+              Configurações de Cookies
+            </button>
           </div>
           <p className="text-sm text-center">© 2026 Esse Já Foi - Todos os direitos reservados.</p>
         </div>

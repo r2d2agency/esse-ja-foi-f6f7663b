@@ -1,9 +1,9 @@
-import { createFileRoute, Outlet } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { getRelatoriosGeraisFn, getRelatoriosVendasFn } from "@/lib/relatorios.functions";
+import { getRelatoriosGeraisFn, getRelatoriosVendasFn, getRelatorioComissoesFn } from "@/lib/relatorios.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -103,6 +103,9 @@ function RelatoriosPage() {
           <TabsTrigger value="vendas" className="gap-2">
             <TrendingUp className="h-4 w-4" /> Vendas
           </TabsTrigger>
+          <TabsTrigger value="comissoes" className="gap-2">
+            <DollarSign className="h-4 w-4" /> Comissões
+          </TabsTrigger>
           <TabsTrigger value="veiculos" className="gap-2">
             <Car className="h-4 w-4" /> Veículos
           </TabsTrigger>
@@ -146,6 +149,10 @@ function RelatoriosPage() {
 
         <TabsContent value="vendas" className="space-y-8">
           <SalesTab dataInicio={dataInicio} dataFim={dataFim} />
+        </TabsContent>
+
+        <TabsContent value="comissoes" className="space-y-8">
+          <ComissoesTab />
         </TabsContent>
       </Tabs>
     </div>
@@ -238,6 +245,85 @@ function FunnelStep({ label, value, total }: any) {
       <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
         <div className="h-full bg-teal-500 rounded-full" style={{ width: `${percent}%` }} />
       </div>
+    </div>
+  );
+}
+
+function ComissoesTab() {
+  const carregar = useServerFn(getRelatorioComissoesFn);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["relatorio-comissoes"],
+    queryFn: () => carregar(),
+  });
+
+  const resumo = data?.ok ? data.data?.resumo : undefined;
+  const lista: any[] = (data?.ok ? data.data?.lista : []) || [];
+
+  return (
+    <div className="space-y-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard label="A receber neste mês" value={resumo?.comissao_a_receber_mes} isCurrency loading={isLoading} />
+        <StatCard label="Recebido neste mês" value={resumo?.comissao_recebida_mes} isCurrency loading={isLoading} />
+        <StatCard label="Total a receber" value={resumo?.comissao_a_receber} isCurrency loading={isLoading} />
+        <StatCard label="Total recebido" value={resumo?.comissao_recebida_total} isCurrency loading={isLoading} />
+      </div>
+
+      <Card className="border-slate-200 shadow-none">
+        <CardContent className="p-4">
+          <p className="text-xs text-slate-500">
+            O percentual padrão de comissão é configurado em <strong>Admin &rarr; Configurações &rarr; Comissão da plataforma</strong> e pode ser ajustado caso a caso no fechamento comercial de cada veículo.
+            Comissão prevista em propostas ativas: <strong>{formatCurrency(Number(resumo?.comissao_prevista || 0))}</strong> em {resumo?.qtd_veiculos || 0} veículo(s).
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card className="border-slate-200 shadow-none">
+        <CardHeader>
+          <CardTitle className="text-sm font-black uppercase tracking-wider text-slate-500">Comissões por venda</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-slate-50">
+                <TableHead>Data</TableHead>
+                <TableHead>Negociação</TableHead>
+                <TableHead>Veículo</TableHead>
+                <TableHead>Vendedor</TableHead>
+                <TableHead>Regra</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Venda</TableHead>
+                <TableHead className="text-right">Comissão</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                <TableRow><TableCell colSpan={8} className="text-center p-8 text-slate-400">Carregando...</TableCell></TableRow>
+              ) : lista.length === 0 ? (
+                <TableRow><TableCell colSpan={8} className="text-center p-8 text-slate-400">Nenhuma comissão registrada ainda.</TableCell></TableRow>
+              ) : lista.map((item: any) => (
+                <TableRow key={item.id}>
+                  <TableCell className="text-xs">{formatDate(item.concluido_em || item.criado_em)}</TableCell>
+                  <TableCell className="font-mono text-xs">{item.negociacao_codigo}</TableCell>
+                  <TableCell className="font-bold text-xs">{item.veiculo || "—"}</TableCell>
+                  <TableCell className="text-xs">{item.vendedor_nome || "—"}</TableCell>
+                  <TableCell className="text-xs">{item.comissao_regra || "—"}</TableCell>
+                  <TableCell>
+                    <span className={cn(
+                      "text-[10px] font-black uppercase px-2 py-1 rounded-full",
+                      item.status === "CONCLUIDO" ? "bg-teal-50 text-teal-700" : "bg-amber-50 text-amber-700"
+                    )}>
+                      {item.status === "CONCLUIDO" ? "Recebida" : "A receber"}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-right font-bold text-xs">{formatCurrency(Number(item.valor_venda))}</TableCell>
+                  <TableCell className="text-right font-bold text-xs text-teal-600">{formatCurrency(Number(item.valor_comissao))}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
     </div>
   );
 }

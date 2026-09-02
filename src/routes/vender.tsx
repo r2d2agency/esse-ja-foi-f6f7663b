@@ -4,6 +4,7 @@ import { Menu, X, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LogoEsf } from "@/components/shared/LogoEsf";
+import { abrirConfiguracoesCookies } from "@/lib/cookies-consent";
 import heroVender from "@/assets/hero-car.jpg";
 
 export const Route = createFileRoute("/vender")({
@@ -116,6 +117,13 @@ function LandingVender() {
       <footer className="border-t border-slate-100 py-10">
         <div className="mx-auto flex max-w-[1400px] flex-col items-center justify-between gap-6 px-6 sm:flex-row lg:px-12">
           <LogoEsf height={28} />
+          <div className="flex flex-wrap items-center justify-center gap-5 text-sm text-slate-400">
+            <Link to="/politica-de-privacidade" className="hover:text-teal-700">Política de Privacidade</Link>
+            <Link to="/politica-de-cookies" className="hover:text-teal-700">Política de Cookies</Link>
+            <button type="button" onClick={abrirConfiguracoesCookies} className="hover:text-teal-700">
+              Configurações de Cookies
+            </button>
+          </div>
           <p className="text-sm text-slate-400">© Esse Já Foi. Todos os direitos reservados.</p>
         </div>
       </footer>

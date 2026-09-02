@@ -170,8 +170,8 @@ export async function getDetalheAnaliseVistoria(veiculoId: string) {
   `);
   const vistoria = rowsOf(vistRes)[0];
 
-  let checklist = [];
-  let fotos = [];
+  let checklist: any[] = [];
+  let fotos: any[] = [];
   if (vistoria?.laudo_id) {
     try {
       const checkRes = await d.execute(sql`
