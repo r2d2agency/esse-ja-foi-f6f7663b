@@ -658,17 +658,15 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
                   </Button>
                 </div>
 
-                {!senha.emailEnviado && (
-                  <Button
-                    size="sm"
-                    className="w-full bg-emerald-600 font-bold hover:bg-emerald-700"
-                    onClick={() => {
-                      window.open(linkWhatsApp(dados.whatsapp, mensagemAcesso(dados.nome, dados.email, senha.senha)), "_blank");
-                    }}
-                  >
-                    <MessageCircle className="mr-2 h-4 w-4" /> Enviar acesso pelo WhatsApp
-                  </Button>
-                )}
+                <Button
+                  size="sm"
+                  className="w-full bg-emerald-600 font-bold hover:bg-emerald-700"
+                  onClick={() => {
+                    window.open(linkWhatsApp(dados.whatsapp, mensagemAcesso(dados.nome, dados.email, senha.senha)), "_blank");
+                  }}
+                >
+                  <MessageCircle className="mr-2 h-4 w-4" /> Enviar acesso pelo WhatsApp
+                </Button>
               </div>
             )}
 
