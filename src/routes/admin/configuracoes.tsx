@@ -382,7 +382,8 @@ function ConfiguracoesAdminPage() {
 
         <ComissaoSection />
         <ConsultaVeicularSection />
-        <TermoAdesaoSection />
+        <TermoAdesaoSection tipo="VENDEDOR" titulo="Termo de adesão do vendedor" />
+        <TermoAdesaoSection tipo="COMPRADOR" titulo="Termo de uso do comprador" />
       </div>
   );
 }
@@ -928,22 +929,28 @@ function PainelResultadoConsulta({ resumo }: { resumo: Record<string, any> }) {
   );
 }
 
-function TermoAdesaoSection() {
+function TermoAdesaoSection({
+  tipo,
+  titulo: tituloPadrao,
+}: {
+  tipo: "VENDEDOR" | "COMPRADOR";
+  titulo: string;
+}) {
   const [versao, setVersao] = useState("1.0");
-  const [titulo, setTitulo] = useState("Termo de adesão do vendedor");
+  const [titulo, setTitulo] = useState(tituloPadrao);
   const [conteudo, setConteudo] = useState("");
   const [ocupado, setOcupado] = useState(false);
 
   useEffect(() => {
     void (async () => {
-      const res: any = await getTermoVigenteFn();
+      const res: any = await getTermoVigenteFn({ data: { tipo } });
       const t = res?.data;
       if (!t) return;
       setVersao(t.versao || "1.0");
-      setTitulo(t.titulo || "Termo de adesão do vendedor");
+      setTitulo(t.titulo || tituloPadrao);
       setConteudo(t.conteudo || "");
     })();
-  }, []);
+  }, [tipo]);
 
   async function salvarTermoAtual() {
     if (conteudo.trim().length < 20) {
@@ -952,7 +959,7 @@ function TermoAdesaoSection() {
     }
     setOcupado(true);
     try {
-      const res: any = await salvarTermoFn({ data: { versao, titulo, conteudo } });
+      const res: any = await salvarTermoFn({ data: { tipo, versao, titulo, conteudo } });
       if (!res?.ok) {
         toast.error(res?.message || "Erro ao salvar o termo.");
         return;
@@ -963,11 +970,13 @@ function TermoAdesaoSection() {
     }
   }
 
+  const publico = tipo === "VENDEDOR" ? "vendedores" : "compradores";
+
   return (
     <section className="space-y-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
       <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
         <FileSignature className="h-5 w-5 text-amber-600" />
-        Termo de adesão do vendedor
+        {tituloPadrao}
       </div>
       <div className="grid gap-4 md:grid-cols-3">
         <div className="space-y-2">
@@ -983,8 +992,9 @@ function TermoAdesaoSection() {
         <Label>Conteúdo do termo</Label>
         <Textarea rows={12} value={conteudo} onChange={(e) => setConteudo(e.target.value)} />
         <p className="text-xs text-slate-500">
-          Ao salvar, uma nova versão é publicada e passa a ser exigida no primeiro acesso dos
-          vendedores. O aceite registra data, hora, IP e navegador.
+          Ao salvar, uma nova versão é publicada e passa a ser exigida dos {publico} antes de
+          liberar {tipo === "VENDEDOR" ? "o veículo para o funil normal" : "lances nos leilões"}.
+          O aceite registra data, hora, IP e navegador.
         </p>
       </div>
       <Button className="bg-teal-900" disabled={ocupado} onClick={salvarTermoAtual}>

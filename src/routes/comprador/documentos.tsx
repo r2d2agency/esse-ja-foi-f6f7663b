@@ -1,8 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { CheckCircle2, Clock, AlertCircle, ShieldCheck, Loader2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { CheckCircle2, Clock, AlertCircle, ShieldCheck, FileSignature, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { FileUpload } from "@/components/onboarding/FileUpload";
 import { cn } from "@/lib/utils";
 import { getSessionToken } from "@/lib/session";
@@ -11,6 +15,7 @@ import {
   enviarDocumentoCompradorFn,
   enviarCadastroCompradorFn,
 } from "@/lib/comprador.functions";
+import { getTermoVigenteFn, aceitarTermoFn } from "@/lib/termos.functions";
 
 export const Route = createFileRoute("/comprador/documentos")({
   head: () => ({
@@ -39,15 +44,29 @@ const STATUS_UI: Record<string, { label: string; cls: string; Icon: any }> = {
 
 function CompradorDocumentosPage() {
   const qc = useQueryClient();
+  const [assinatura, setAssinatura] = useState("");
+  const [concorda, setConcorda] = useState(false);
+
   const { data, isLoading } = useQuery({
     queryKey: ["comprador-perfil"],
     queryFn: () => getPerfilCompradorFn({ data: { token: getSessionToken() } }),
+  });
+  const { data: termoRes } = useQuery({
+    queryKey: ["termo-vigente", "COMPRADOR"],
+    queryFn: () => getTermoVigenteFn({ data: { tipo: "COMPRADOR" } }),
   });
 
   const perfil: any = (data as any)?.perfil || {};
   const progresso: any = (data as any)?.progresso || { percentual: 0, pendencias: [] };
   const status = perfil.status_compliance || "NAO_ENVIADO";
   const ui = STATUS_UI[status] || STATUS_UI["NAO_ENVIADO"]!;
+  const termo: any = (termoRes as any)?.data ?? null;
+  const termoAceito = !!perfil.termo_aceito_em;
+
+  useEffect(() => {
+    if (perfil.nome && !assinatura) setAssinatura(perfil.nome);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [perfil.nome]);
 
   const upload = useMutation({
     mutationFn: (v: { tipo: string; url: string }) =>
@@ -58,6 +77,33 @@ function CompradorDocumentosPage() {
     },
     onError: () => toast.error("Erro ao enviar documento."),
   });
+
+  const aceitar = useMutation({
+    mutationFn: () =>
+      aceitarTermoFn({
+        data: { token: getSessionToken(), assinatura: assinatura.trim(), tipo: "COMPRADOR" },
+      }),
+    onSuccess: (res: any) => {
+      if (!res?.ok) {
+        toast.error(res?.message || "Não foi possível registrar o aceite.");
+        return;
+      }
+      toast.success("Termo aceito e registrado.");
+      qc.invalidateQueries({ queryKey: ["comprador-perfil"] });
+    },
+  });
+
+  function aceitarTermo() {
+    if (!concorda) {
+      toast.error("Marque a confirmação de leitura do termo.");
+      return;
+    }
+    if (assinatura.trim().length < 3) {
+      toast.error("Digite seu nome completo como assinatura.");
+      return;
+    }
+    aceitar.mutate();
+  }
 
   const enviar = useMutation({
     mutationFn: () => enviarCadastroCompradorFn({ data: { token: getSessionToken() } }),
@@ -149,15 +195,58 @@ function CompradorDocumentosPage() {
         ))}
       </div>
 
+      {status !== "APROVADO" && status !== "AGUARDANDO_ANALISE" && !termoAceito && (
+        <div className="rounded-3xl border border-slate-200 bg-white p-6">
+          <div className="flex items-center gap-2 text-lg font-bold text-slate-900">
+            <FileSignature className="h-5 w-5 text-teal-700" />
+            {termo?.titulo || "Termo de uso do comprador"}
+          </div>
+          <div className="mt-4 max-h-64 overflow-y-auto whitespace-pre-wrap rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-relaxed text-slate-700">
+            {termo?.conteudo || "Carregando o termo..."}
+          </div>
+          <div className="mt-4 space-y-2">
+            <Label>Assinatura digital (digite seu nome completo)</Label>
+            <Input
+              className="h-12 font-semibold"
+              value={assinatura}
+              onChange={(e) => setAssinatura(e.target.value)}
+            />
+          </div>
+          <label className="mt-4 flex items-start gap-3 text-sm text-slate-600">
+            <Checkbox
+              checked={concorda}
+              onCheckedChange={(v: boolean | "indeterminate") => setConcorda(v === true)}
+            />
+            <span>
+              Li e concordo com o termo acima. Estou ciente de que este aceite registra data, hora,
+              endereço IP e navegador utilizados.
+            </span>
+          </label>
+          <Button
+            onClick={aceitarTermo}
+            disabled={aceitar.isPending}
+            className="mt-5 h-12 w-full rounded-xl bg-teal-700 font-bold hover:bg-teal-800"
+          >
+            {aceitar.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Aceitar e assinar
+          </Button>
+        </div>
+      )}
+
       {status !== "APROVADO" && status !== "AGUARDANDO_ANALISE" && (
         <div className="rounded-3xl bg-slate-950 p-6 text-white">
           <ShieldCheck className="h-6 w-6 text-teal-400" />
           <p className="mt-3 text-sm text-slate-300">
             Ao concluir o envio, nossa equipe analisa seus dados e libera valores e lances.
           </p>
+          {!termoAceito && (
+            <p className="mt-2 text-xs font-semibold text-amber-400">
+              Aceite o termo de uso acima antes de enviar para análise.
+            </p>
+          )}
           <Button
             onClick={() => enviar.mutate()}
-            disabled={enviar.isPending}
+            disabled={enviar.isPending || !termoAceito}
             className="mt-5 h-12 rounded-xl bg-teal-600 px-8 font-bold hover:bg-teal-500"
           >
             {enviar.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

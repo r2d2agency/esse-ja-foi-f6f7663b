@@ -296,7 +296,7 @@ export async function salvarEtapaComprador(id: string, etapa: number, dados: Rec
   return getPerfilComprador(id);
 }
 
-/** Conclui o cadastro e envia para análise, apenas se não houver pendências. */
+/** Conclui o cadastro e envia para análise, apenas se não houver pendências e o termo estiver assinado. */
 export async function enviarCadastroCompradorParaAnalise(id: string) {
   const atual = await getPerfilComprador(id);
   if (!atual) return { ok: false as const, message: "Perfil não encontrado." };
@@ -306,6 +306,9 @@ export async function enviarCadastroCompradorParaAnalise(id: string) {
       message: `Faltam informações: ${atual.progresso.pendencias.join(", ")}`,
       progresso: atual.progresso,
     };
+  }
+  if (!atual.perfil.termo_aceito_em) {
+    return { ok: false as const, message: "Leia e aceite o termo de uso antes de enviar para análise." };
   }
 
   await db!.execute(sql`

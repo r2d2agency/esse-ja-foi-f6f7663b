@@ -8,19 +8,24 @@ async function userIdFrom(token?: string | null) {
   return verifyToken(token);
 }
 
-export const getTermoVigenteFn = createServerFn({ method: "POST" }).handler(async () => {
-  try {
-    const { getTermoVigente } = await import("@/db/termos.server");
-    return { ok: true as const, data: await getTermoVigente() };
-  } catch (e: any) {
-    return { ok: false as const, message: e?.message || "Erro ao carregar o termo." };
-  }
-});
+const tipoTermoSchema = z.enum(["VENDEDOR", "COMPRADOR"]).optional();
+
+export const getTermoVigenteFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) => z.object({ tipo: tipoTermoSchema }).optional().parse(d))
+  .handler(async ({ data }) => {
+    try {
+      const { getTermoVigente } = await import("@/db/termos.server");
+      return { ok: true as const, data: await getTermoVigente(data?.tipo || "VENDEDOR") };
+    } catch (e: any) {
+      return { ok: false as const, message: e?.message || "Erro ao carregar o termo." };
+    }
+  });
 
 export const salvarTermoFn = createServerFn({ method: "POST" })
   .validator((d: unknown) =>
     z
       .object({
+        tipo: tipoTermoSchema,
         versao: z.string().min(1),
         titulo: z.string().optional(),
         conteudo: z.string().min(20),
@@ -30,7 +35,7 @@ export const salvarTermoFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     try {
       const { salvarTermo } = await import("@/db/termos.server");
-      await salvarTermo(data.versao, data.conteudo, data.titulo);
+      await salvarTermo(data.tipo || "VENDEDOR", data.versao, data.conteudo, data.titulo);
       return { ok: true as const };
     } catch (e: any) {
       return { ok: false as const, message: e?.message || "Erro ao salvar o termo." };
@@ -40,7 +45,11 @@ export const salvarTermoFn = createServerFn({ method: "POST" })
 export const aceitarTermoFn = createServerFn({ method: "POST" })
   .validator((d: unknown) =>
     z
-      .object({ token: z.string().nullable().optional(), assinatura: z.string().min(3) })
+      .object({
+        token: z.string().nullable().optional(),
+        assinatura: z.string().min(3),
+        tipo: tipoTermoSchema,
+      })
       .parse(d),
   )
   .handler(async ({ data }) => {
@@ -65,7 +74,13 @@ export const aceitarTermoFn = createServerFn({ method: "POST" })
       }
 
       const { registrarAceiteTermo } = await import("@/db/termos.server");
-      await registrarAceiteTermo({ perfilId: userId, assinatura: data.assinatura, ip, userAgent });
+      await registrarAceiteTermo({
+        perfilId: userId,
+        assinatura: data.assinatura,
+        tipo: data.tipo || "VENDEDOR",
+        ip,
+        userAgent,
+      });
       return { ok: true as const };
     } catch (e: any) {
       return { ok: false as const, message: e?.message || "Erro ao registrar o aceite." };
