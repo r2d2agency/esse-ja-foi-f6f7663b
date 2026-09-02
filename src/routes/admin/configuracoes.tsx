@@ -502,9 +502,11 @@ function ConsultaVeicularSection() {
           <PlugZap className="mr-2 h-4 w-4" /> Testar conexão
         </Button>
       </div>
-      <p className="text-xs text-slate-500">
-        &quot;Testar conexão&quot; usa o ambiente de homologação da Company Conferi (não gera cobrança) só
-        para validar usuário e senha. Para testar uma consulta real, use o campo abaixo.
+      <p className="text-xs text-amber-700">
+        &quot;Testar conexão&quot; usa o ambiente de homologação da Company Conferi (não gera cobrança), mas
+        esse ambiente aceita qualquer usuário/senha — ele só confirma que o formato da chamada está
+        correto, não que as credenciais são válidas. Para confirmar de fato o usuário e a senha, use o
+        teste com placa real abaixo (ambiente de produção).
       </p>
 
       <div className="space-y-3 rounded-xl border border-dashed border-teal-300 bg-teal-50/40 p-4">
