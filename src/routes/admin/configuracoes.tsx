@@ -1,11 +1,28 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Save, Settings, BrainCircuit, Mail, Send, ScanSearch, FileSignature, Loader2, PlugZap, Percent } from "lucide-react";
+import {
+  Save,
+  Settings,
+  BrainCircuit,
+  Mail,
+  Send,
+  ScanSearch,
+  FileSignature,
+  Loader2,
+  PlugZap,
+  Percent,
+  Plus,
+  Trash2,
+  Upload,
+  FlaskConical,
+  CheckCircle2,
+  XCircle,
+} from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -17,6 +34,20 @@ import {
 import { getTermoVigenteFn, salvarTermoFn } from "@/lib/termos.functions";
 import { listarConfiguracoesFn, salvarConfiguracaoFn, enviarEmailTesteFn } from "@/lib/admin.functions";
 import { getComissaoPadraoFn, setComissaoPadraoFn } from "@/lib/relatorios.functions";
+import {
+  listarModelosOpenAIFn,
+  cadastrarModeloOpenAIFn,
+  removerModeloOpenAIFn,
+  testarAnaliseDocumentoFn,
+} from "@/lib/ia-documentos.functions";
+
+const TIPOS_DOCUMENTO_TESTE: { id: string; label: string }[] = [
+  { id: "cnh_frente", label: "CNH — frente" },
+  { id: "cnh_verso", label: "CNH — verso" },
+  { id: "crlv", label: "CRLV-e" },
+  { id: "comprovante_endereco", label: "Comprovante de endereço" },
+  { id: "selfie", label: "Selfie segurando o documento" },
+];
 
 
 export const Route = createFileRoute("/admin/configuracoes")({
@@ -26,6 +57,8 @@ export const Route = createFileRoute("/admin/configuracoes")({
 function ConfiguracoesAdminPage() {
   const [configs, setConfigs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [modelosOpenAI, setModelosOpenAI] = useState<string[]>([]);
+  const [novoModelo, setNovoModelo] = useState("");
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -46,9 +79,39 @@ function ConfiguracoesAdminPage() {
     }
   }, []);
 
+  const carregarModelos = useCallback(async () => {
+    const res: any = await listarModelosOpenAIFn();
+    if (res?.ok) setModelosOpenAI(res.data);
+  }, []);
+
   useEffect(() => {
     void carregar();
-  }, [carregar]);
+    void carregarModelos();
+  }, [carregar, carregarModelos]);
+
+  async function adicionarModeloOpenAI() {
+    const nome = novoModelo.trim();
+    if (!nome) return;
+    const res: any = await cadastrarModeloOpenAIFn({ data: { nome } });
+    if (res?.ok) {
+      setModelosOpenAI(res.data);
+      setNovoModelo("");
+      setConfig("openai_model", nome);
+      toast.success("Modelo cadastrado.");
+    } else {
+      toast.error(res?.message || "Erro ao cadastrar o modelo.");
+    }
+  }
+
+  async function removerModeloOpenAI(nome: string) {
+    const res: any = await removerModeloOpenAIFn({ data: { nome } });
+    if (res?.ok) {
+      setModelosOpenAI(res.data);
+      toast.success("Modelo removido.");
+    } else {
+      toast.error(res?.message || "Erro ao remover o modelo.");
+    }
+  }
 
   const salvar = async (chave: string, valor: string) => {
     const res = await salvarConfiguracaoFn({ data: { chave, valor } });
@@ -210,11 +273,52 @@ function ConfiguracoesAdminPage() {
             </div>
             <div className="space-y-2">
               <Label>Modelo</Label>
-              <Input
-                value={getConfig("openai_model")}
-                onChange={(e) => setConfig("openai_model", e.target.value)}
-                placeholder="gpt-4o"
-              />
+              <div className="flex gap-2">
+                <select
+                  className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+                  value={getConfig("openai_model")}
+                  onChange={(e) => setConfig("openai_model", e.target.value)}
+                >
+                  {getConfig("openai_model") && !modelosOpenAI.includes(getConfig("openai_model")) && (
+                    <option value={getConfig("openai_model")}>{getConfig("openai_model")} (atual)</option>
+                  )}
+                  {modelosOpenAI.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+                {modelosOpenAI.includes(getConfig("openai_model")) && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="shrink-0"
+                    title="Remover este modelo da lista"
+                    onClick={() => removerModeloOpenAI(getConfig("openai_model"))}
+                  >
+                    <Trash2 className="h-4 w-4 text-red-500" />
+                  </Button>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  className="h-9 text-xs"
+                  placeholder="Cadastrar novo modelo (ex: gpt-4.1-mini)"
+                  value={novoModelo}
+                  onChange={(e) => setNovoModelo(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && adicionarModeloOpenAI()}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!novoModelo.trim()}
+                  onClick={adicionarModeloOpenAI}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
               <p className="text-xs text-slate-500">Precisa ser um modelo com suporte a visão (ex: gpt-4o), pois a IA lê a imagem do documento.</p>
             </div>
           </div>
@@ -269,6 +373,12 @@ function ConfiguracoesAdminPage() {
             </Button>
           </div>
         </section>
+
+        <ValidacaoIASection
+          apiKey={getConfig("openai_api_key")}
+          model={getConfig("openai_model")}
+          prompt={getConfig("ia_prompt_documentos")}
+        />
 
         <ComissaoSection />
         <ConsultaVeicularSection />
@@ -341,6 +451,160 @@ function ComissaoSection() {
           Salvar comissão
         </Button>
       </div>
+    </section>
+  );
+}
+
+function ValidacaoIASection({ apiKey, model, prompt }: { apiKey: string; model: string; prompt: string }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [tipoDocumento, setTipoDocumento] = useState(TIPOS_DOCUMENTO_TESTE[0]!.id);
+  const [arquivoNome, setArquivoNome] = useState("");
+  const [imagemUrl, setImagemUrl] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [testando, setTestando] = useState(false);
+  const [resultado, setResultado] = useState<any>(null);
+
+  async function selecionarArquivo(file?: File) {
+    if (!file) return;
+    setEnviando(true);
+    setResultado(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/public/upload", { method: "POST", body: fd });
+      const json = await res.json().catch(() => null);
+      if (!json?.url) {
+        toast.error("Falha ao enviar o arquivo.");
+        return;
+      }
+      setImagemUrl(json.url);
+      setArquivoNome(file.name);
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  async function testar() {
+    if (!imagemUrl) {
+      toast.error("Envie uma imagem de teste primeiro.");
+      return;
+    }
+    setTestando(true);
+    setResultado(null);
+    try {
+      const res: any = await testarAnaliseDocumentoFn({
+        data: { tipoDocumento: tipoDocumento as any, imagemUrl, model, prompt, apiKey },
+      });
+      setResultado(res);
+      if (res?.ok) toast.success("Análise de teste concluída.");
+      else toast.error(res?.message || "Falha ao testar a análise.");
+    } finally {
+      setTestando(false);
+    }
+  }
+
+  return (
+    <section className="space-y-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+        <FlaskConical className="h-5 w-5 text-teal-700" />
+        Validação e calibração da IA
+      </div>
+      <p className="text-sm text-slate-500">
+        Envie um documento de exemplo para ver exatamente o que a IA responderia com o modelo e o
+        prompt preenchidos no card acima — mesmo sem salvar ainda. Ajuste o prompt, teste de novo, e só
+        salve as configurações quando o resultado estiver correto. Nada aqui é gravado no cadastro de
+        nenhum vendedor.
+      </p>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="space-y-2">
+          <Label>Tipo de documento a simular</Label>
+          <select
+            className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+            value={tipoDocumento}
+            onChange={(e) => setTipoDocumento(e.target.value)}
+          >
+            {TIPOS_DOCUMENTO_TESTE.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="space-y-2">
+          <Label>Imagem de teste</Label>
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => selecionarArquivo(e.target.files?.[0])}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full font-bold"
+            onClick={() => inputRef.current?.click()}
+            disabled={enviando}
+          >
+            {enviando ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Upload className="mr-2 h-4 w-4" />
+            )}
+            {arquivoNome || "Selecionar imagem"}
+          </Button>
+        </div>
+      </div>
+
+      <Button className="bg-teal-900" disabled={testando || !imagemUrl} onClick={testar}>
+        {testando ? (
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        ) : (
+          <FlaskConical className="mr-2 h-4 w-4" />
+        )}
+        Testar análise com esse documento
+      </Button>
+
+      {resultado && (
+        <div className="space-y-3 rounded-xl border border-dashed border-teal-300 bg-teal-50/40 p-4">
+          {resultado.ok ? (
+            <>
+              <div className="flex items-center gap-2">
+                {resultado.resultado.confere ? (
+                  <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                ) : (
+                  <XCircle className="h-5 w-5 text-red-600" />
+                )}
+                <p className="text-sm font-bold text-slate-900">
+                  {resultado.resultado.confere
+                    ? "A IA considerou que o documento confere"
+                    : "A IA considerou que o documento NÃO confere"}
+                </p>
+              </div>
+              <div className="grid gap-2 text-xs text-slate-700 md:grid-cols-3">
+                <div>
+                  <span className="font-bold text-slate-500">Tipo detectado:</span>{" "}
+                  {resultado.resultado.tipoDetectado}
+                </div>
+                <div>
+                  <span className="font-bold text-slate-500">Confiança:</span>{" "}
+                  {resultado.resultado.confianca}
+                </div>
+                <div className="md:col-span-3">
+                  <span className="font-bold text-slate-500">Motivo:</span> {resultado.resultado.motivo}
+                </div>
+              </div>
+              <details className="rounded-lg bg-slate-900 p-3 text-xs text-slate-100">
+                <summary className="cursor-pointer font-bold">Ver resposta bruta da OpenAI</summary>
+                <pre className="mt-2 max-h-72 overflow-auto">{JSON.stringify(resultado.bruto, null, 2)}</pre>
+              </details>
+            </>
+          ) : (
+            <p className="text-xs font-bold text-red-600">{resultado.message}</p>
+          )}
+        </div>
+      )}
     </section>
   );
 }

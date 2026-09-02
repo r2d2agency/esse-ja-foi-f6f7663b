@@ -36,6 +36,54 @@ Regras:
 - Nunca invente dados que não conseguir ler na imagem.
 - Responda somente com o JSON, sem texto adicional antes ou depois.`;
 
+/** Modelos sugeridos na primeira instalação — todos com suporte a visão (necessário para ler o documento). */
+const MODELOS_OPENAI_PADRAO = ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "o4-mini"];
+
+export async function ensureIaModelosSchema() {
+  const d = requireDb();
+  await d.execute(sql`
+    CREATE TABLE IF NOT EXISTS ia_modelos_openai (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      nome text NOT NULL UNIQUE,
+      criado_em timestamptz NOT NULL DEFAULT now()
+    );
+  `);
+  const existentes = (await d.execute(sql`SELECT 1 FROM ia_modelos_openai LIMIT 1`)) as any;
+  const linhas = existentes.rows || existentes || [];
+  if (linhas.length === 0) {
+    for (const nome of MODELOS_OPENAI_PADRAO) {
+      await d.execute(sql`INSERT INTO ia_modelos_openai (nome) VALUES (${nome}) ON CONFLICT (nome) DO NOTHING`);
+    }
+  }
+}
+
+/** Lista os modelos da OpenAI disponíveis para seleção, cadastrados pelo admin. */
+export async function listarModelosOpenAI(): Promise<string[]> {
+  const d = requireDb();
+  await ensureIaModelosSchema();
+  const res = (await d.execute(sql`SELECT nome FROM ia_modelos_openai ORDER BY nome`)) as any;
+  const linhas: { nome: string }[] = res.rows || res || [];
+  return linhas.map((r) => r.nome);
+}
+
+/** Cadastra um novo modelo da OpenAI na lista de seleção (idempotente). */
+export async function cadastrarModeloOpenAI(nome: string): Promise<string[]> {
+  const d = requireDb();
+  await ensureIaModelosSchema();
+  const limpo = nome.trim();
+  if (!limpo) throw new Error("Informe o nome do modelo.");
+  await d.execute(sql`INSERT INTO ia_modelos_openai (nome) VALUES (${limpo}) ON CONFLICT (nome) DO NOTHING`);
+  return listarModelosOpenAI();
+}
+
+/** Remove um modelo da lista de seleção. */
+export async function removerModeloOpenAI(nome: string): Promise<string[]> {
+  const d = requireDb();
+  await ensureIaModelosSchema();
+  await d.execute(sql`DELETE FROM ia_modelos_openai WHERE nome = ${nome}`);
+  return listarModelosOpenAI();
+}
+
 type ConfigIA = {
   apiKey: string;
   model: string;
@@ -74,6 +122,71 @@ function extrairJson(texto: string): any {
   }
 }
 
+type ResultadoChamadaOpenAI =
+  | { ok: true; resultado: ResultadoAnaliseIA; bruto: any }
+  | { ok: false; motivo: string; bruto?: any };
+
+/** Chama a OpenAI para analisar um documento — usada tanto na análise real quanto no teste de calibração. */
+async function chamarOpenAIParaDocumento(params: {
+  apiKey: string;
+  model: string;
+  prompt: string;
+  tipoDocumento: TipoDocumentoVendedor;
+  imagemUrl: string;
+}): Promise<ResultadoChamadaOpenAI> {
+  const { apiKey, model, prompt, tipoDocumento, imagemUrl } = params;
+  if (!apiKey) return { ok: false, motivo: "Chave da OpenAI não configurada." };
+  const rotulo = TIPOS_DOCUMENTO_VENDEDOR[tipoDocumento];
+
+  const resposta = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0,
+      max_tokens: 400,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: prompt },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: `Tipo de documento esperado: ${rotulo}.` },
+            { type: "image_url", image_url: { url: imagemUrl } },
+          ],
+        },
+      ],
+    }),
+  });
+
+  if (!resposta.ok) {
+    const corpo = await resposta.text().catch(() => "");
+    return { ok: false, motivo: `Falha na chamada à OpenAI (HTTP ${resposta.status}): ${corpo.slice(0, 300)}` };
+  }
+
+  const payload: any = await resposta.json();
+  const conteudo = payload?.choices?.[0]?.message?.content;
+  if (!conteudo) return { ok: false, motivo: "OpenAI retornou resposta vazia.", bruto: payload };
+
+  let dados: any;
+  try {
+    dados = extrairJson(conteudo);
+  } catch (e: any) {
+    return { ok: false, motivo: e?.message || "Resposta da IA não veio em formato JSON válido.", bruto: payload };
+  }
+
+  const resultado: ResultadoAnaliseIA = {
+    tipoDetectado: String(dados.tipo_detectado || "não informado"),
+    confere: dados.confere === true,
+    confianca: ["alta", "media", "baixa"].includes(dados.confianca) ? dados.confianca : "baixa",
+    motivo: String(dados.motivo || "Sem justificativa retornada pela IA."),
+  };
+  return { ok: true, resultado, bruto: payload };
+}
+
 /**
  * Analisa um documento enviado pelo vendedor com a IA configurada em
  * /admin/configuracoes e grava o veredito. Nunca lança erro — se a IA
@@ -92,55 +205,53 @@ export async function analisarDocumentoVendedor(params: {
     if (!config.ativo) return { ok: false, motivo: "Análise por IA desativada nas configurações." };
     if (!config.apiKey) return { ok: false, motivo: "Chave da OpenAI não configurada." };
 
-    const rotulo = TIPOS_DOCUMENTO_VENDEDOR[tipoDocumento];
-
-    const resposta = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${config.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: config.model,
-        temperature: 0,
-        max_tokens: 400,
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: config.prompt },
-          {
-            role: "user",
-            content: [
-              { type: "text", text: `Tipo de documento esperado: ${rotulo}.` },
-              { type: "image_url", image_url: { url: imagemUrl } },
-            ],
-          },
-        ],
-      }),
+    const r = await chamarOpenAIParaDocumento({
+      apiKey: config.apiKey,
+      model: config.model,
+      prompt: config.prompt,
+      tipoDocumento,
+      imagemUrl,
     });
+    if (!r.ok) return { ok: false, motivo: r.motivo };
 
-    if (!resposta.ok) {
-      const corpo = await resposta.text().catch(() => "");
-      return { ok: false, motivo: `Falha na chamada à OpenAI (HTTP ${resposta.status}): ${corpo.slice(0, 300)}` };
-    }
-
-    const payload: any = await resposta.json();
-    const conteudo = payload?.choices?.[0]?.message?.content;
-    if (!conteudo) return { ok: false, motivo: "OpenAI retornou resposta vazia." };
-
-    const dados = extrairJson(conteudo);
-    const resultado: ResultadoAnaliseIA = {
-      tipoDetectado: String(dados.tipo_detectado || "não informado"),
-      confere: dados.confere === true,
-      confianca: ["alta", "media", "baixa"].includes(dados.confianca) ? dados.confianca : "baixa",
-      motivo: String(dados.motivo || "Sem justificativa retornada pela IA."),
-    };
-
-    await salvarAnaliseIA(vendedorId, tipoDocumento, resultado, config.autoReprovar);
+    await salvarAnaliseIA(vendedorId, tipoDocumento, r.resultado, config.autoReprovar);
     return { ok: true, motivo: "Análise concluída." };
   } catch (err: any) {
     console.error("[ia-documentos] Erro ao analisar documento:", err);
     return { ok: false, motivo: err?.message || "Erro desconhecido na análise por IA." };
   }
+}
+
+/**
+ * Testa a análise de um documento sem gravar nada no cadastro de nenhum vendedor —
+ * usada na tela de configurações para calibrar o prompt e o modelo antes de salvar.
+ * Se model/prompt/apiKey não forem informados, usa os valores já salvos.
+ */
+export async function testarAnaliseDocumento(params: {
+  tipoDocumento: TipoDocumentoVendedor;
+  imagemUrl: string;
+  model?: string;
+  prompt?: string;
+  apiKey?: string;
+}): Promise<{ resultado: ResultadoAnaliseIA; bruto: any }> {
+  const config = await getConfigIA();
+  const apiKey = params.apiKey?.trim() || config.apiKey;
+  const model = params.model?.trim() || config.model;
+  const prompt = params.prompt?.trim() || config.prompt;
+
+  if (!apiKey) {
+    throw new Error("Informe a chave da OpenAI (no formulário ou já salva nas configurações) antes de testar.");
+  }
+
+  const r = await chamarOpenAIParaDocumento({
+    apiKey,
+    model,
+    prompt,
+    tipoDocumento: params.tipoDocumento,
+    imagemUrl: params.imagemUrl,
+  });
+  if (!r.ok) throw new Error(r.motivo);
+  return { resultado: r.resultado, bruto: r.bruto };
 }
 
 /** Dispara a análise de vários documentos em paralelo, sem lançar erros. */
