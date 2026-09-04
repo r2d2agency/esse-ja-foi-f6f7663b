@@ -149,7 +149,7 @@ export async function criarVendedorInterno(
 export async function enviarSenhaTemporaria(email: string, nome: string, senha: string) {
   try {
     const { enviarEmailSimples } = await import("./mail.server");
-    const base = process.env["APP_URL"] || process.env["VITE_APP_URL"] || "";
+    const base = process.env["APP_URL"] || process.env["VITE_APP_URL"] || "https://www.essejafoi.com.br";
     const link = `${base}/login`;
     const html = `
       <div style="font-family:Arial,sans-serif;font-size:15px;color:#0f172a">

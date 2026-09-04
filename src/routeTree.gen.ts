@@ -49,6 +49,7 @@ import { Route as CompradorInteressesRouteImport } from './routes/comprador/inte
 import { Route as CompradorNegociacoesRouteImport } from './routes/comprador/negociacoes'
 import { Route as CompradorPerfilRouteImport } from './routes/comprador/perfil'
 import { Route as VTokenRouteImport } from './routes/v.$token'
+import { Route as CTokenRouteImport } from './routes/c.$token'
 import { Route as VeiculosIndexRouteImport } from './routes/veiculos.index'
 import { Route as VeiculosSlugRouteImport } from './routes/veiculos.$slug'
 import { Route as VendedorIndexRouteImport } from './routes/vendedor.index'
@@ -288,6 +289,11 @@ const VTokenRoute = VTokenRouteImport.update({
   path: '/v/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CTokenRoute = CTokenRouteImport.update({
+  id: '/c/$token',
+  path: '/c/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const VeiculosIndexRoute = VeiculosIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -522,6 +528,7 @@ export interface FileRoutesByFullPath {
   '/comprador/negociacoes': typeof CompradorNegociacoesRoute
   '/comprador/perfil': typeof CompradorPerfilRoute
   '/v/$token': typeof VTokenRoute
+  '/c/$token': typeof CTokenRoute
   '/veiculos/$slug': typeof VeiculosSlugRoute
   '/vendedor/boas-vindas': typeof VendedorBoasVindasRoute
   '/vendedor/cadastrar': typeof VendedorCadastrarRoute
@@ -597,6 +604,7 @@ export interface FileRoutesByTo {
   '/comprador/negociacoes': typeof CompradorNegociacoesRoute
   '/comprador/perfil': typeof CompradorPerfilRoute
   '/v/$token': typeof VTokenRoute
+  '/c/$token': typeof CTokenRoute
   '/veiculos/$slug': typeof VeiculosSlugRoute
   '/vendedor/boas-vindas': typeof VendedorBoasVindasRoute
   '/vendedor/cadastrar': typeof VendedorCadastrarRoute
@@ -678,6 +686,7 @@ export interface FileRoutesById {
   '/comprador/negociacoes': typeof CompradorNegociacoesRoute
   '/comprador/perfil': typeof CompradorPerfilRoute
   '/v/$token': typeof VTokenRoute
+  '/c/$token': typeof CTokenRoute
   '/veiculos/$slug': typeof VeiculosSlugRoute
   '/vendedor/boas-vindas': typeof VendedorBoasVindasRoute
   '/vendedor/cadastrar': typeof VendedorCadastrarRoute
@@ -760,6 +769,7 @@ export interface FileRouteTypes {
     | '/comprador/negociacoes'
     | '/comprador/perfil'
     | '/v/$token'
+    | '/c/$token'
     | '/veiculos/$slug'
     | '/vendedor/boas-vindas'
     | '/vendedor/cadastrar'
@@ -835,6 +845,7 @@ export interface FileRouteTypes {
     | '/comprador/negociacoes'
     | '/comprador/perfil'
     | '/v/$token'
+    | '/c/$token'
     | '/veiculos/$slug'
     | '/vendedor/boas-vindas'
     | '/vendedor/cadastrar'
@@ -915,6 +926,7 @@ export interface FileRouteTypes {
     | '/comprador/negociacoes'
     | '/comprador/perfil'
     | '/v/$token'
+    | '/c/$token'
     | '/veiculos/$slug'
     | '/vendedor/boas-vindas'
     | '/vendedor/cadastrar'
@@ -973,6 +985,7 @@ export interface RootRouteChildren {
   VenderRoute: typeof VenderRoute
   VistoriadorRoute: typeof VistoriadorRouteWithChildren
   VTokenRoute: typeof VTokenRoute
+  CTokenRoute: typeof CTokenRoute
   ApiPublicUploadRoute: typeof ApiPublicUploadRoute
   ApiPublicWebhooksPagamentosRoute: typeof ApiPublicWebhooksPagamentosRoute
   ApiPublicWebhooksWhatsappRoute: typeof ApiPublicWebhooksWhatsappRoute
@@ -1258,6 +1271,13 @@ declare module '@tanstack/react-router' {
       path: '/v/$token'
       fullPath: '/v/$token'
       preLoaderRoute: typeof VTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/c/$token': {
+      id: '/c/$token'
+      path: '/c/$token'
+      fullPath: '/c/$token'
+      preLoaderRoute: typeof CTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/veiculos/': {
@@ -1742,6 +1762,7 @@ const rootRouteChildren: RootRouteChildren = {
   VenderRoute: VenderRoute,
   VistoriadorRoute: VistoriadorRouteWithChildren,
   VTokenRoute: VTokenRoute,
+  CTokenRoute: CTokenRoute,
   ApiPublicUploadRoute: ApiPublicUploadRoute,
   ApiPublicWebhooksPagamentosRoute: ApiPublicWebhooksPagamentosRoute,
   ApiPublicWebhooksWhatsappRoute: ApiPublicWebhooksWhatsappRoute,

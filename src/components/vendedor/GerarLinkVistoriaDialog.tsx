@@ -27,7 +27,7 @@ function linkWhatsApp(whatsapp: string, mensagem: string) {
 
 /**
  * Cria um vendedor "do zero" (só nome + whatsapp) e gera o link público de
- * vistoria simplificada — para o vendedor preencher veículo + condição sem
+ * cadastro simplificado — para o vendedor preencher veículo + condição sem
  * precisar de conta/senha. Usado tanto na home do admin quanto em vendedores.
  */
 export function GerarLinkVistoriaDialog() {
@@ -66,13 +66,13 @@ export function GerarLinkVistoriaDialog() {
     <Dialog open={aberto} onOpenChange={fechar}>
       <DialogTrigger asChild>
         <Button variant="outline" className="h-11 font-bold">
-          <Link2 className="mr-2 h-4 w-4" /> Link de vistoria
+          <Link2 className="mr-2 h-4 w-4" /> Link de cadastro
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="font-black uppercase tracking-tight">
-            Gerar link de vistoria simplificada
+            Gerar link de cadastro simplificado
           </DialogTitle>
         </DialogHeader>
 
@@ -80,7 +80,7 @@ export function GerarLinkVistoriaDialog() {
           <div className="space-y-4">
             <p className="text-sm text-slate-500">
               Informe só o nome e o WhatsApp do vendedor. Ele recebe um link para preencher os
-              dados do veículo e a vistoria simplificada por conta própria, sem precisar criar
+              dados do veículo e o cadastro simplificado por conta própria, sem precisar criar
               conta.
             </p>
             <div className="space-y-1">

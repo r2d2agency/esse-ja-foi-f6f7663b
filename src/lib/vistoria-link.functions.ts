@@ -45,7 +45,7 @@ export const gerarLinkVistoriaFn = createServerFn({ method: "POST" })
       const { gerarLinkVistoria } = await import("@/db/vistoria-link.server");
       return await gerarLinkVistoria({ nome: data.nome, whatsapp: data.whatsapp, criadoPor });
     } catch (e: any) {
-      return { ok: false as const, message: e?.message || "Erro ao gerar o link de vistoria." };
+      return { ok: false as const, message: e?.message || "Erro ao gerar o link de cadastro." };
     }
   });
 

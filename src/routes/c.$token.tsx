@@ -9,10 +9,10 @@ import { FormularioVeiculoCondicao } from "@/components/veiculo/FormularioVeicul
 import { getVistoriaPorTokenFn, enviarVistoriaPorTokenFn } from "@/lib/vistoria-link.functions";
 import { FOTOS_VEICULO, CONDICAO_INICIAL, type CondicaoVeiculo } from "@/lib/veiculo-condicao";
 
-export const Route = createFileRoute("/vistoria/$token")({
+export const Route = createFileRoute("/c/$token")({
   head: () => ({
     meta: [
-      { title: "Vistoria simplificada — ESSE JÁ FOI" },
+      { title: "Cadastro simplificado — ESSE JÁ FOI" },
       { name: "robots", content: "noindex" },
     ],
   }),
@@ -173,7 +173,7 @@ function VistoriaPorTokenPage() {
 
       <main className="mx-auto max-w-2xl px-5 py-8">
         <h1 className="text-2xl font-black uppercase tracking-tight text-slate-950">
-          Vistoria simplificada
+          Cadastro simplificado
         </h1>
         <p className="mt-2 text-sm text-slate-500">
           Olá, <strong>{res.data.vendedorNome}</strong>! Preencha os dados do veículo e a condição
@@ -215,7 +215,7 @@ function VistoriaPorTokenPage() {
             onClick={handleEnviar}
             disabled={enviar.isPending}
           >
-            {enviar.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Enviar vistoria
+            {enviar.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Enviar cadastro
           </Button>
         </div>
       </main>

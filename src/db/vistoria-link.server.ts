@@ -58,8 +58,8 @@ export async function gerarLinkVistoria(dados: { nome: string; whatsapp: string;
     VALUES (${perfilId}::uuid, ${token}, ${dados.criadoPor ? sql`${dados.criadoPor}::uuid` : sql`NULL`})
   `);
 
-  const base = process.env["APP_URL"] || process.env["VITE_APP_URL"] || "";
-  return { ok: true as const, token, perfilId, link: `${base}/vistoria/${token}` };
+  const base = process.env["APP_URL"] || process.env["VITE_APP_URL"] || "https://www.essejafoi.com.br";
+  return { ok: true as const, token, perfilId, link: `${base}/c/${token}` };
 }
 
 async function buscarLinkAtivo(token: string) {
@@ -149,16 +149,16 @@ async function notificarPreenchimento(vendedorNome: string, veiculoId: string) {
     const destinatario = rows[0]?.valor?.trim();
     if (!destinatario) return;
 
-    const base = process.env["APP_URL"] || process.env["VITE_APP_URL"] || "";
+    const base = process.env["APP_URL"] || process.env["VITE_APP_URL"] || "https://www.essejafoi.com.br";
     const link = `${base}/admin/veiculo/${veiculoId}`;
     const { enviarEmailSimples } = await import("./mail.server");
     await enviarEmailSimples(
       destinatario,
-      "Vistoria simplificada preenchida por link",
+      "Cadastro simplificado preenchido por link",
       `
         <div style="font-family:Arial,sans-serif;font-size:15px;color:#0f172a">
-          <h2 style="margin:0 0 12px">Vistoria simplificada recebida</h2>
-          <p><strong>${vendedorNome}</strong> preencheu as informações do veículo pelo link de vistoria.</p>
+          <h2 style="margin:0 0 12px">Cadastro simplificado recebido</h2>
+          <p><strong>${vendedorNome}</strong> preencheu as informações do veículo pelo link de cadastro simplificado.</p>
           ${link ? `<p><a href="${link}">Ver veículo no painel</a></p>` : ""}
         </div>`,
     );
@@ -180,8 +180,8 @@ export async function getVistoriaLinkPorPerfil(perfilId: string) {
   );
   const link = rows[0] || null;
   if (!link) return null;
-  const base = process.env["APP_URL"] || process.env["VITE_APP_URL"] || "";
-  return { ...link, link: `${base}/vistoria/${link.token}` };
+  const base = process.env["APP_URL"] || process.env["VITE_APP_URL"] || "https://www.essejafoi.com.br";
+  return { ...link, link: `${base}/c/${link.token}` };
 }
 
 export async function revogarVistoriaLink(linkId: string) {
