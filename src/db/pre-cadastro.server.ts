@@ -76,7 +76,7 @@ async function garantirSchemas() {
 export async function criarVendedorInterno(
   dados: PreCadastroInput,
   criadoPor?: string | null,
-  opcoes?: { enviarAcesso?: boolean },
+  opcoes?: { enviarAcesso?: boolean; origemCadastro?: string; statusCompliance?: string },
 ) {
   const d = requireDb();
   await garantirSchemas();
@@ -112,8 +112,8 @@ export async function criarVendedorInterno(
         ${dados.doc_comprovante || null}, ${dados.doc_selfie || null},
         ${dados.doc_cnh_frente ? "APROVADO" : "PENDENTE"}, ${dados.doc_cnh_verso ? "APROVADO" : "PENDENTE"},
         ${dados.doc_comprovante ? "APROVADO" : "PENDENTE"}, ${dados.doc_selfie ? "APROVADO" : "PENDENTE"},
-        'vendedor'::text::app_role, true, ${hash}, true, 'INTERNO',
-        true, 'DISPENSADO', true, now()
+        'vendedor'::text::app_role, true, ${hash}, true, ${opcoes?.origemCadastro || "INTERNO"},
+        true, ${opcoes?.statusCompliance || "DISPENSADO"}, true, now()
       )
       RETURNING id
     `),

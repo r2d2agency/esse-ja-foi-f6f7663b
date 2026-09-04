@@ -5,6 +5,7 @@ import { listarVendedoresFn } from "@/lib/vendedores-compliance.functions";
 import { useEffect, useState } from "react";
 import { Search, ChevronRight } from "lucide-react";
 import { WizardPreCadastro } from "@/components/vendedor/WizardPreCadastro";
+import { GerarLinkVistoriaDialog } from "@/components/vendedor/GerarLinkVistoriaDialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -70,7 +71,10 @@ function VendedoresPage() {
           <h1 className="text-2xl font-black text-slate-950 uppercase tracking-tight">Vendedores</h1>
           <p className="text-slate-500 font-medium">Gestão de cadastro e compliance da rede Esse Já Foi.</p>
         </div>
-        <WizardPreCadastro />
+        <div className="flex gap-2">
+          <GerarLinkVistoriaDialog />
+          <WizardPreCadastro />
+        </div>
       </div>
 
       <div className="flex flex-col gap-4">
@@ -92,6 +96,7 @@ function VendedoresPage() {
               { label: 'Pendência', value: 'PENDENCIA' },
               { label: 'Aprovados', value: 'APROVADO' },
               { label: 'Reprovados', value: 'REPROVADO' },
+              { label: 'Link aguardando preenchimento', value: 'LINK_PENDENTE' },
             ].map((f) => (
               <Button
                 key={f.label}
@@ -155,17 +160,24 @@ function VendedoresPage() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-2">
-                      <div className={cn(
-                        "w-2 h-2 rounded-full",
-                        v.compliance_status ? STATUS_CONFIG[v.compliance_status]?.bg : 'bg-amber-500'
-                      )} />
-                      <span className={cn(
-                        "text-xs font-bold",
-                        v.compliance_status ? STATUS_CONFIG[v.compliance_status]?.color : 'text-amber-600'
-                      )}>
-                        {v.compliance_status ? STATUS_CONFIG[v.compliance_status]?.label : 'Aguardando Análise'}
-                      </span>
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <div className={cn(
+                          "w-2 h-2 rounded-full",
+                          v.compliance_status ? STATUS_CONFIG[v.compliance_status]?.bg : 'bg-amber-500'
+                        )} />
+                        <span className={cn(
+                          "text-xs font-bold",
+                          v.compliance_status ? STATUS_CONFIG[v.compliance_status]?.color : 'text-amber-600'
+                        )}>
+                          {v.compliance_status ? STATUS_CONFIG[v.compliance_status]?.label : 'Aguardando Análise'}
+                        </span>
+                      </div>
+                      {v.vistoria_link_pendente && (
+                        <Badge variant="outline" className="w-fit border-amber-200 bg-amber-50 text-[9px] font-black text-amber-700">
+                          Aguardando preenchimento (link)
+                        </Badge>
+                      )}
                     </div>
                   </TableCell>
                   <TableCell className="text-center font-black text-slate-950 text-sm">

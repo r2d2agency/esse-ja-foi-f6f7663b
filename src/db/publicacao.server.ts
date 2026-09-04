@@ -19,7 +19,7 @@ export type Canal = (typeof CANAIS)[number];
 /** Veículo só pode ser publicado depois de aprovado na análise pós-vistoria. */
 export const STATUS_APTOS = ["PRONTO_PARA_ANUNCIO", "ANUNCIADO", "EM_LEILAO"];
 
-function gerarToken() {
+export function gerarToken() {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
   return Array.from(bytes)

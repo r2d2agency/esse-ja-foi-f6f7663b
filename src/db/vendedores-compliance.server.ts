@@ -128,21 +128,40 @@ export const COMPLIANCE_STATUS_LABELS: Record<string, string> = {
 export async function listarVendedores(filtros: { status?: string | undefined, busca?: string | undefined }) {
   const d = requireDb();
   await ensureVendedoresSchema();
-  
+  try {
+    const { ensureVistoriaLinkSchema } = await import("./vistoria-link.server");
+    await ensureVistoriaLinkSchema();
+  } catch (e) {
+    console.error("[vendedores] vistoria_links schema", e);
+  }
+
   const busca = `%${filtros.busca || ""}%`;
-  const whereStatus = filtros.status ? sql`AND p.status_compliance = ${filtros.status}` : sql``;
-  
+  // "LINK_PENDENTE" é um pseudo-status: não existe em status_compliance, representa
+  // vendedores criados por link de vistoria que ainda não preencheram o formulário.
+  const linkPendente = filtros.status === "LINK_PENDENTE";
+  const whereStatus = filtros.status && !linkPendente
+    ? sql`AND p.status_compliance = ${filtros.status}`
+    : sql``;
+  const whereLinkPendente = linkPendente
+    ? sql`AND EXISTS (SELECT 1 FROM vistoria_links vl WHERE vl.perfil_id = p.id AND vl.ativo = true AND vl.preenchido_em IS NULL)`
+    : sql``;
+
   const rows = (await d.execute(sql`
-    SELECT 
+    SELECT
       p.id, p.nome, p.cpf, p.email, p.whatsapp, p.criado_em,
       p.status_compliance as compliance_status,
       p.cadastro_completo,
       (SELECT count(*)::int FROM veiculos v WHERE v.perfil_id = p.id) as total_veiculos,
-      res.nome as responsavel_nome
+      res.nome as responsavel_nome,
+      EXISTS (
+        SELECT 1 FROM vistoria_links vl
+        WHERE vl.perfil_id = p.id AND vl.ativo = true AND vl.preenchido_em IS NULL
+      ) as vistoria_link_pendente
     FROM profiles p
     LEFT JOIN profiles res ON res.id = p.compliance_responsavel_id
     WHERE p.role = 'vendedor'::app_role
       ${whereStatus}
+      ${whereLinkPendente}
       AND (p.nome ILIKE ${busca} OR p.cpf ILIKE ${busca} OR p.email ILIKE ${busca})
     ORDER BY p.criado_em DESC;
   `)) as any;
@@ -187,6 +206,14 @@ export async function obterDetalheVendedor(id: string) {
 
   const progresso = calcularProgressoVendedor(p);
 
+  let vistoriaLink: any = null;
+  try {
+    const { getVistoriaLinkPorPerfil } = await import("./vistoria-link.server");
+    vistoriaLink = await getVistoriaLinkPorPerfil(id);
+  } catch (e) {
+    console.error("[vendedores] vistoria link", e);
+  }
+
   return {
     perfil: {
       ...p,
@@ -195,7 +222,8 @@ export async function obterDetalheVendedor(id: string) {
     progresso,
     pendencias: pendencias.rows || pendencias,
     historico: historico.rows || historico,
-    veiculos: veiculos.rows || veiculos
+    veiculos: veiculos.rows || veiculos,
+    vistoriaLink,
   };
 }
 
