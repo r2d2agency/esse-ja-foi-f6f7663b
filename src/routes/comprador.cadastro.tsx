@@ -51,7 +51,7 @@ function CadastroComprador() {
   );
 
   const [form, setForm] = useState<any>({
-    tipo: "PF",
+    tipo: "PJ",
     nome: "",
     email: "",
     password: "",
@@ -84,15 +84,13 @@ function CadastroComprador() {
     (async () => {
       const res: any = await getPerfilCompradorFn({ data: { token: getSessionToken() } });
       if (res?.ok) {
-        setForm((f: any) => ({ ...f, ...limparNulos(res.perfil), tipo: res.perfil.tipo_pessoa || "PF" }));
+        setForm((f: any) => ({ ...f, ...limparNulos(res.perfil), tipo: "PJ" }));
         setProgresso(res.progresso);
         setEtapa((e) => Math.max(e, Math.min(res.perfil.etapa_cadastro || 2, 5)));
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
-
-  const pj = form.tipo === "PJ";
 
   async function criarConta() {
     if (form.password !== form.confirm) {
@@ -103,12 +101,10 @@ function CadastroComprador() {
     try {
       const res: any = await cadastrarCompradorFn({
         data: {
-          tipo: form.tipo,
-          nome: pj ? form.razao_social || form.nome : form.nome,
+          nome: form.razao_social || form.nome,
           email: form.email,
           password: form.password,
           whatsapp: form.whatsapp,
-          cpf: form.cpf,
           cnpj: form.cnpj,
         },
       });
@@ -204,30 +200,14 @@ function CadastroComprador() {
 
         {etapa === 1 && (
           <div className="mt-6 space-y-4">
-            <div className="flex gap-2">
-              {(["PF", "PJ"] as const).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setForm({ ...form, tipo: t })}
-                  className={cn(
-                    "h-16 flex-1 rounded-2xl border-2 font-bold transition-all",
-                    form.tipo === t
-                      ? "border-teal-600 bg-teal-50 text-teal-900"
-                      : "border-slate-200 bg-white text-slate-500",
-                  )}
-                >
-                  {t === "PF" ? "Pessoa Física" : "Empresa (PJ)"}
-                </button>
-              ))}
-            </div>
+            <p className="text-sm text-slate-500">
+              O cadastro de comprador é exclusivo para empresas (pessoa jurídica).
+            </p>
             <Input
-              placeholder={pj ? "Razão Social" : "Nome completo"}
+              placeholder="Razão Social"
               className="h-14 rounded-xl"
-              value={pj ? form.razao_social : form.nome}
-              onChange={(e) =>
-                setForm({ ...form, [pj ? "razao_social" : "nome"]: e.target.value })
-              }
+              value={form.razao_social}
+              onChange={(e) => setForm({ ...form, razao_social: e.target.value })}
             />
             <Input
               placeholder="E-mail"
@@ -275,86 +255,60 @@ function CadastroComprador() {
 
         {etapa === 2 && (
           <div className="mt-6 space-y-4">
-            {pj ? (
-              <>
-                <Input
-                  placeholder="CNPJ"
-                  className="h-14 rounded-xl"
-                  value={form.cnpj}
-                  onChange={(e) => setForm({ ...form, cnpj: maskDocumento(e.target.value) })}
-                />
-                <Input
-                  placeholder="Nome fantasia"
-                  className="h-14 rounded-xl"
-                  value={form.nome_fantasia}
-                  onChange={(e) => setForm({ ...form, nome_fantasia: e.target.value })}
-                />
-                <Input
-                  placeholder="Inscrição estadual (opcional)"
-                  className="h-14 rounded-xl"
-                  value={form.inscricao_estadual}
-                  onChange={(e) => setForm({ ...form, inscricao_estadual: e.target.value })}
-                />
-                <div className="pt-2 text-xs font-black uppercase tracking-widest text-slate-400">
-                  Responsável pela loja
-                </div>
-                <Input
-                  placeholder="Nome do responsável"
-                  className="h-14 rounded-xl"
-                  value={form.responsavel_nome}
-                  onChange={(e) => setForm({ ...form, responsavel_nome: e.target.value })}
-                />
-                <Input
-                  placeholder="CPF do responsável"
-                  className="h-14 rounded-xl"
-                  value={form.responsavel_cpf}
-                  onChange={(e) => setForm({ ...form, responsavel_cpf: formatCPF(e.target.value) })}
-                />
-                <Input
-                  placeholder="WhatsApp do responsável"
-                  className="h-14 rounded-xl"
-                  value={form.responsavel_whatsapp}
-                  onChange={(e) =>
-                    setForm({ ...form, responsavel_whatsapp: formatPhone(e.target.value) })
-                  }
-                />
-                <Input
-                  placeholder="Cargo"
-                  className="h-14 rounded-xl"
-                  value={form.responsavel_cargo}
-                  onChange={(e) => setForm({ ...form, responsavel_cargo: e.target.value })}
-                />
-              </>
-            ) : (
-              <>
-                <Input
-                  placeholder="Nome completo"
-                  className="h-14 rounded-xl"
-                  value={form.nome}
-                  onChange={(e) => setForm({ ...form, nome: e.target.value })}
-                />
-                <Input
-                  placeholder="CPF"
-                  className="h-14 rounded-xl"
-                  value={form.cpf}
-                  onChange={(e) => setForm({ ...form, cpf: formatCPF(e.target.value) })}
-                />
-                <Input
-                  placeholder="WhatsApp"
-                  className="h-14 rounded-xl"
-                  value={form.whatsapp}
-                  onChange={(e) => setForm({ ...form, whatsapp: formatPhone(e.target.value) })}
-                />
-              </>
-            )}
+            <Input
+              placeholder="CNPJ"
+              className="h-14 rounded-xl"
+              value={form.cnpj}
+              onChange={(e) => setForm({ ...form, cnpj: maskDocumento(e.target.value) })}
+            />
+            <Input
+              placeholder="Nome fantasia"
+              className="h-14 rounded-xl"
+              value={form.nome_fantasia}
+              onChange={(e) => setForm({ ...form, nome_fantasia: e.target.value })}
+            />
+            <Input
+              placeholder="Inscrição estadual (opcional)"
+              className="h-14 rounded-xl"
+              value={form.inscricao_estadual}
+              onChange={(e) => setForm({ ...form, inscricao_estadual: e.target.value })}
+            />
+            <div className="pt-2 text-xs font-black uppercase tracking-widest text-slate-400">
+              Responsável pela loja
+            </div>
+            <Input
+              placeholder="Nome do responsável"
+              className="h-14 rounded-xl"
+              value={form.responsavel_nome}
+              onChange={(e) => setForm({ ...form, responsavel_nome: e.target.value })}
+            />
+            <Input
+              placeholder="CPF do responsável"
+              className="h-14 rounded-xl"
+              value={form.responsavel_cpf}
+              onChange={(e) => setForm({ ...form, responsavel_cpf: formatCPF(e.target.value) })}
+            />
+            <Input
+              placeholder="WhatsApp do responsável"
+              className="h-14 rounded-xl"
+              value={form.responsavel_whatsapp}
+              onChange={(e) =>
+                setForm({ ...form, responsavel_whatsapp: formatPhone(e.target.value) })
+              }
+            />
+            <Input
+              placeholder="Cargo"
+              className="h-14 rounded-xl"
+              value={form.responsavel_cargo}
+              onChange={(e) => setForm({ ...form, responsavel_cargo: e.target.value })}
+            />
             <NavBotoes
               loading={loading}
               onVoltar={() => setEtapa(1)}
               onAvancar={() =>
                 salvarEtapa(3, {
-                  tipo_pessoa: form.tipo,
-                  nome: pj ? form.razao_social : form.nome,
-                  cpf: form.cpf,
+                  tipo_pessoa: "PJ",
+                  nome: form.razao_social,
                   cnpj: form.cnpj,
                   whatsapp: form.whatsapp,
                   razao_social: form.razao_social,
@@ -449,28 +403,13 @@ function CadastroComprador() {
 
         {etapa === 4 && (
           <div className="mt-6 space-y-5">
-            {pj ? (
-              <FileUpload
-                label="Contrato social"
-                value={form.documento_contrato_social_url}
-                onChange={(url: string | null) =>
-                  subirDoc("CONTRATO_SOCIAL", "documento_contrato_social_url", url || "")
-                }
-              />
-            ) : (
-              <>
-                <FileUpload
-                  label="CNH ou RG"
-                  value={form.documento_cnh_url}
-                  onChange={(url: string | null) => subirDoc("CNH", "documento_cnh_url", url || "")}
-                />
-                <FileUpload
-                  label="Selfie segurando o documento"
-                  value={form.documento_selfie_url}
-                  onChange={(url: string | null) => subirDoc("SELFIE", "documento_selfie_url", url || "")}
-                />
-              </>
-            )}
+            <FileUpload
+              label="Contrato social"
+              value={form.documento_contrato_social_url}
+              onChange={(url: string | null) =>
+                subirDoc("CONTRATO_SOCIAL", "documento_contrato_social_url", url || "")
+              }
+            />
             <FileUpload
               label="Comprovante de endereço"
               value={form.documento_comprovante_url}

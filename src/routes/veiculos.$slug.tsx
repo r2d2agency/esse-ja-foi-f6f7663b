@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getAnuncioPublico } from "@/lib/vitrine.functions";
 import { getLeilaoInfo, darLanceFn } from "@/lib/leilao.functions";
 import { Button } from "@/components/ui/button";
-import { ShieldCheck, MapPin, Fuel, Settings2, Lock, ArrowLeft, Gavel, Clock, TrendingUp, Heart, BellPlus } from "lucide-react";
+import { ShieldCheck, MapPin, Fuel, Settings2, Lock, ArrowLeft, Gavel, Clock, TrendingUp, Heart, BellPlus, ClipboardCheck } from "lucide-react";
 import { getSessionToken } from "@/lib/session";
 import { alternarFavoritoFn, salvarLembreteFn } from "@/lib/comprador.functions";
 import { useState, useEffect } from "react";
@@ -229,6 +229,8 @@ function DetalheVeiculoPublico() {
                 </div>
               </div>
             </div>
+
+            <VistoriaSimplificada condicao={anuncio.condicao} />
           </div>
 
           <div className="lg:sticky lg:top-24 h-fit">
@@ -408,6 +410,66 @@ function DetalheVeiculoPublico() {
           </div>
         </div>
       </main>
+    </div>
+  );
+}
+
+const ITENS_VISTORIA: { chave: string; label: string }[] = [
+  { chave: "funcionamento", label: "Funcionamento" },
+  { chave: "motor", label: "Motor" },
+  { chave: "cambioProblema", label: "Câmbio" },
+  { chave: "lataria", label: "Lataria" },
+  { chave: "interior", label: "Interior" },
+  { chave: "pneus", label: "Pneus" },
+  { chave: "acidente", label: "Já sofreu acidente" },
+  { chave: "leilao", label: "Já passou por leilão" },
+  { chave: "sinistro", label: "Sinistro" },
+  { chave: "debitos", label: "Débitos" },
+  { chave: "restricao", label: "Restrição p/ transferência" },
+  { chave: "chaveReserva", label: "Chave reserva" },
+  { chave: "manual", label: "Manual" },
+  { chave: "estepe", label: "Estepe" },
+];
+
+const OBS_VISTORIA: { chave: string; label: string }[] = [
+  { chave: "funcionamentoObs", label: "Funcionamento" },
+  { chave: "motorObs", label: "Motor" },
+  { chave: "latariaObs", label: "Lataria" },
+  { chave: "historicoObs", label: "Histórico" },
+  { chave: "acessoriosQuais", label: "Acessórios" },
+];
+
+function VistoriaSimplificada({ condicao }: { condicao?: Record<string, any> | null }) {
+  const itens = ITENS_VISTORIA.filter((i) => condicao?.[i.chave]);
+  const observacoes = OBS_VISTORIA.filter((o) => condicao?.[o.chave]);
+
+  if (itens.length === 0) return null;
+
+  return (
+    <div className="bg-slate-50 rounded-3xl p-8 space-y-6">
+      <h2 className="text-xl font-black uppercase tracking-tight flex items-center gap-2">
+        <ClipboardCheck className="h-5 w-5 text-teal-600" /> Vistoria simplificada
+      </h2>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-y-6 gap-x-8">
+        {itens.map((i) => (
+          <div key={i.chave}>
+            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+              {i.label}
+            </div>
+            <div className="font-bold">{condicao?.[i.chave]}</div>
+          </div>
+        ))}
+      </div>
+      {observacoes.length > 0 && (
+        <div className="space-y-4 border-t border-slate-200 pt-6">
+          {observacoes.map((o) => (
+            <div key={o.chave}>
+              <p className="text-[10px] font-black uppercase text-slate-400 mb-1">{o.label}</p>
+              <p className="text-slate-700 text-sm">{condicao?.[o.chave]}</p>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

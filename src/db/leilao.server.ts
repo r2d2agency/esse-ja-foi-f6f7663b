@@ -364,6 +364,7 @@ export async function registrarLance(leilaoId: string, compradorId: string, valo
       SELECT
         p.role,
         p.ativo,
+        p.tipo_pessoa,
         COALESCE((to_jsonb(p)->>'cadastro_completo')::boolean, false) AS cadastro_completo,
         COALESCE(to_jsonb(p)->>'status_compliance', 'NAO_ENVIADO') AS status_compliance
       FROM profiles p WHERE p.id = ${compradorId}::uuid
@@ -372,6 +373,9 @@ export async function registrarLance(leilaoId: string, compradorId: string, valo
 
     if (!comprador || comprador.role !== 'comprador' || !comprador.ativo) {
       throw new Error("Comprador não autorizado ou bloqueado.");
+    }
+    if (comprador.tipo_pessoa !== 'PJ') {
+      throw new Error("Apenas empresas (pessoa jurídica) podem dar lances.");
     }
     if (!comprador.cadastro_completo) {
       throw new Error("Complete seu cadastro para participar dos leilões.");

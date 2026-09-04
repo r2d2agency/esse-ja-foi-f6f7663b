@@ -29,6 +29,9 @@ export type CondicaoVeiculo = {
   interior: string;
   pneus: string;
   acidente: string;
+  leilao: string;
+  sinistro: string;
+  debitos: string;
   restricao: string;
   historicoObs: string;
   chaveReserva: string;
@@ -48,6 +51,9 @@ export const CONDICAO_INICIAL: CondicaoVeiculo = {
   interior: "",
   pneus: "",
   acidente: "",
+  leilao: "",
+  sinistro: "",
+  debitos: "",
   restricao: "",
   historicoObs: "",
   chaveReserva: "",
@@ -70,4 +76,42 @@ export function serializarCondicao(condicao: CondicaoVeiculo) {
     acessoriosQuais: condicao.acessoriosSelecionados.join(", "),
   };
   return JSON.stringify({ versao: 2, snapshot });
+}
+
+/**
+ * Inverso de `serializarCondicao` — também lê o formato mais antigo (campos
+ * soltos em `historico`/`itens`/etc, sem `snapshot`) usado por outras telas
+ * que gravam `veiculos.observacoes` nesse formato legado.
+ */
+export function desserializarCondicao(obsRaw?: string | null): Record<string, any> {
+  if (!obsRaw) return {};
+
+  try {
+    const parsed = JSON.parse(obsRaw);
+    if (!parsed || typeof parsed !== "object") return {};
+
+    const snapshot =
+      typeof parsed.snapshot === "object" && parsed.snapshot
+        ? (parsed.snapshot as Record<string, any>)
+        : (parsed as Record<string, any>);
+
+    const historico = (parsed.historico || {}) as Record<string, any>;
+    const itens = (parsed.itens || {}) as Record<string, any>;
+
+    return {
+      ...snapshot,
+      acidente: snapshot.acidente ?? historico.acidente ?? "",
+      leilao: snapshot.leilao ?? historico.leilao ?? "",
+      sinistro: snapshot.sinistro ?? historico.sinistro ?? "",
+      debitos: snapshot.debitos ?? historico.debitos ?? "",
+      restricao: snapshot.restricao ?? historico.restricao ?? "",
+      historicoObs: snapshot.historicoObs ?? historico.obs ?? "",
+      chaveReserva: snapshot.chaveReserva ?? itens.chaveReserva ?? "",
+      manual: snapshot.manual ?? itens.manual ?? "",
+      estepe: snapshot.estepe ?? itens.estepe ?? "",
+      acessoriosQuais: snapshot.acessoriosQuais ?? itens.acessorios ?? "",
+    };
+  } catch {
+    return {};
+  }
 }

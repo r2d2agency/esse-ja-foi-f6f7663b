@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { db } from "./index";
+import { desserializarCondicao } from "@/lib/veiculo-condicao";
 
 function requireDb() {
   if (!db) throw new Error("Banco de dados indisponível.");
@@ -55,17 +56,19 @@ export async function getAcessoComercial(userId?: string | null) {
   const base = { autenticado: false, pode_ver_valores: false, pode_dar_lances: false, comprador_id: null as string | null };
   if (!userId || !db) return base;
   const res = await db.execute(sql`
-    SELECT id, role, ativo, cadastro_completo, status_compliance, pode_ver_valores
+    SELECT id, role, ativo, cadastro_completo, status_compliance, pode_ver_valores, tipo_pessoa
     FROM profiles WHERE id = ${userId}::uuid
   `);
   const p = rowsOf(res)[0];
   if (!p) return base;
   const aprovado = p.status_compliance === "APROVADO" && p.ativo;
+  // Só pessoa jurídica pode dar lances — comprador é sempre lojista/empresa.
+  const pj = p.tipo_pessoa === "PJ";
   return {
     autenticado: true,
     comprador_id: p.id as string,
     pode_ver_valores: !!(aprovado || p.pode_ver_valores),
-    pode_dar_lances: !!(aprovado && p.cadastro_completo),
+    pode_dar_lances: !!(aprovado && p.cadastro_completo && pj),
   };
 }
 
@@ -134,9 +137,10 @@ export async function getDetalheAnuncioPublico(slug: string, userId?: string | n
   const acesso = await getAcessoComercial(userId);
 
   const aRes = await d.execute(sql`
-    SELECT 
+    SELECT
       a.*,
       v.marca, v.modelo, v.ano_fabricacao, v.ano_modelo, v.km, v.cor, v.combustivel, v.cambio,
+      v.observacoes,
       pc.titulo as canal_titulo, pc.descricao as canal_descricao, pc.fotos as canal_fotos,
       l.id as leilao_id, l.status as leilao_status, l.inicio_em, l.fim_em,
       l.lance_inicial, l.incremento_minimo,
@@ -190,6 +194,7 @@ export async function getDetalheAnuncioPublico(slug: string, userId?: string | n
     favorito,
     lembrete,
     acesso,
+    condicao: desserializarCondicao(anuncio.observacoes),
     // Valores do leilão só são expostos para compradores habilitados
     lance_inicial: acesso.pode_ver_valores ? anuncio.lance_inicial : null,
     lance_atual: acesso.pode_ver_valores ? anuncio.lance_atual : null,

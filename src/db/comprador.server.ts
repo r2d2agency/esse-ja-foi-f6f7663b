@@ -94,29 +94,28 @@ export async function ensureCompradorSchema() {
   );
 }
 
-/** Regras canônicas de progresso/habilitação do comprador. */
+/**
+ * Regras canônicas de progresso/habilitação do comprador.
+ * Comprador só pode ser pessoa jurídica — não existe mais ramo PF aqui, então
+ * um comprador antigo cadastrado como PF nunca completa o cadastro sem
+ * fornecer os dados de empresa (é assim que a restrição PJ-only é aplicada
+ * também para quem já tinha conta antes dessa regra existir).
+ */
 export function calcularProgressoComprador(p: any) {
-  const pj = (p?.tipo_pessoa || "PF") === "PJ";
   const pendencias: string[] = [];
 
   if (!p?.nome) pendencias.push("Nome");
   if (!p?.email) pendencias.push("E-mail");
   if (!p?.whatsapp) pendencias.push("WhatsApp");
-  if (pj) {
-    if (!p?.cnpj) pendencias.push("CNPJ");
-    if (!p?.razao_social) pendencias.push("Razão social");
-    if (!p?.responsavel_nome) pendencias.push("Nome do responsável");
-    if (!p?.responsavel_cpf) pendencias.push("CPF do responsável");
-    if (!p?.documento_contrato_social_url) pendencias.push("Contrato social");
-  } else {
-    if (!p?.cpf) pendencias.push("CPF");
-    if (!p?.documento_cnh_url) pendencias.push("CNH/RG");
-    if (!p?.documento_selfie_url) pendencias.push("Selfie");
-  }
+  if (!p?.cnpj) pendencias.push("CNPJ");
+  if (!p?.razao_social) pendencias.push("Razão social");
+  if (!p?.responsavel_nome) pendencias.push("Nome do responsável");
+  if (!p?.responsavel_cpf) pendencias.push("CPF do responsável");
+  if (!p?.documento_contrato_social_url) pendencias.push("Contrato social");
   if (!p?.cep || !p?.endereco || !p?.cidade || !p?.uf) pendencias.push("Endereço");
   if (!p?.documento_comprovante_url) pendencias.push("Comprovante de endereço");
 
-  const totalRequisitos = pj ? 9 : 9;
+  const totalRequisitos = 9;
   const cumpridos = Math.max(0, totalRequisitos - pendencias.length);
   const percentual = Math.round((cumpridos / totalRequisitos) * 100);
 
@@ -124,7 +123,7 @@ export function calcularProgressoComprador(p: any) {
     percentual: pendencias.length === 0 ? 100 : Math.min(percentual, 99),
     pendencias,
     completo: pendencias.length === 0,
-    tipo_pessoa: pj ? "PJ" : "PF",
+    tipo_pessoa: "PJ",
   };
 }
 
@@ -141,7 +140,7 @@ export async function cadastrarComprador(data: any) {
         status_compliance, origem_cadastro, etapa_cadastro, ativo
       ) VALUES (
         ${data.nome}, ${String(data.email).toLowerCase()}, 'comprador'::text::app_role, ${senhaHash},
-        ${data.whatsapp || null}, ${data.cpf || null}, ${data.cnpj || null}, ${data.tipo || "PF"},
+        ${data.whatsapp || null}, ${data.cpf || null}, ${data.cnpj || null}, 'PJ',
         'NAO_ENVIADO', 'AUTOCADASTRO', 2, true
       ) RETURNING id, nome, email, role, tipo_pessoa, pode_ver_valores
     `);

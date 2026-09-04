@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getVitrine } from "@/lib/vitrine.functions";
 import { alternarFavoritoFn } from "@/lib/comprador.functions";
 import { getSessionToken } from "@/lib/session";
+import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -47,6 +48,7 @@ const brl = (v: any) =>
   Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 
 function VitrinePublica() {
+  const { isAuthenticated } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [busca, setBusca] = useState("");
   const [marca, setMarca] = useState("");
@@ -59,6 +61,8 @@ function VitrinePublica() {
   const { data: veiculos, isLoading, isError, error } = useQuery({
     queryKey: ["vitrine-veiculos"],
     queryFn: () => getVitrine({ data: { token: getSessionToken() } }),
+    // Lojistas logados acompanham valor de leilão em tempo real direto na vitrine.
+    refetchInterval: isAuthenticated ? 5000 : false,
   });
 
   const favoritar = useMutation({
@@ -325,7 +329,15 @@ function VitrinePublica() {
                                 <div className="text-base font-black text-slate-700">{brl(partida)}</div>
                               </div>
                               <div>
-                                <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Lance atual</div>
+                                <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                  Lance atual
+                                  {isAuthenticated && (
+                                    <span className="flex items-center gap-1 text-teal-600">
+                                      <span className="h-1.5 w-1.5 rounded-full bg-teal-500 animate-pulse" />
+                                      ao vivo
+                                    </span>
+                                  )}
+                                </div>
                                 <div className="text-2xl font-black leading-tight text-teal-700">{brl(atual)}</div>
                               </div>
                             </div>

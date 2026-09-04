@@ -1,7 +1,6 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Copy, Loader2, MessageCircle, ShieldCheck, UserPlus } from "lucide-react";
+import { Copy, Loader2, MessageCircle, UserPlus } from "lucide-react";
 
 import {
   Dialog,
@@ -22,10 +21,6 @@ import { OpcaoMultipla } from "@/components/veiculo/OpcaoMultipla";
 import { getSessionToken } from "@/lib/session";
 import { criarVendedorInternoFn, reenviarSenhaTemporariaFn } from "@/lib/pre-cadastro.functions";
 import { cadastrarMeuVeiculoFn } from "@/lib/vendedor.functions";
-import {
-  getProvedorConsultaFn,
-  consultarLaudoVeiculoFn,
-} from "@/lib/consulta-veicular.functions";
 import { buscarCep } from "@/lib/viacep";
 import { maskDocumento, maskTelefone, maskCep, maskData, maskPlaca, maskKm, maskMoeda } from "@/lib/brasil";
 import { COMBUSTIVEIS, CAMBIOS, ACESSORIOS_VEICULO } from "@/lib/constants-veiculos";
@@ -43,7 +38,7 @@ const ETAPAS: { n: Etapa; label: string }[] = [
   { n: 1, label: "Dados do vendedor" },
   { n: 2, label: "Documentos" },
   { n: 3, label: "Veículo" },
-  { n: 4, label: "Consulta e conclusão" },
+  { n: 4, label: "Conclusão" },
 ];
 
 const CAMPO = "h-11";
@@ -58,7 +53,6 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
     null,
   );
   const [veiculoId, setVeiculoId] = useState<string | null>(null);
-  const [consulta, setConsulta] = useState<any>(null);
 
   const [dados, setDados] = useState<Record<string, string>>({
     nome: "",
@@ -110,14 +104,6 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
   const [condicao, setCondicao] = useState<CondicaoVeiculo>(CONDICAO_INICIAL);
   const setCondicaoCampo = (patch: Partial<CondicaoVeiculo>) =>
     setCondicao((c) => ({ ...c, ...patch }));
-
-  const { data: provedorRes } = useQuery({
-    queryKey: ["provedor-consulta"],
-    queryFn: () => getProvedorConsultaFn(),
-    enabled: aberto,
-  });
-  const provedor: any = (provedorRes as any)?.data ?? null;
-  const consultaAtiva = !!provedor?.ativo;
 
   function set(campo: string, valor: string) {
     setDados((d) => ({ ...d, [campo]: valor }));
@@ -215,21 +201,6 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
       setEtapa(4);
     } catch (e: any) {
       toast.error(e?.message || "Não foi possível salvar o veículo.");
-    } finally {
-      setSalvando(false);
-    }
-  }
-
-  async function consultarLaudo() {
-    if (!veiculoId) return;
-    setSalvando(true);
-    try {
-      const res: any = await consultarLaudoVeiculoFn({
-        data: { token: getSessionToken(), veiculoId },
-      });
-      if (!res?.ok) { toast.error(res?.message || "Falha na consulta."); return; }
-      setConsulta(res);
-      toast.success("Consulta realizada.");
     } finally {
       setSalvando(false);
     }
@@ -530,12 +501,14 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
 
               <div className="space-y-5 border-t border-slate-100 pt-6">
                 <p className="text-sm text-slate-500">
-                  Sinistro e histórico de leilão são verificados pela consulta veicular
-                  (Company Conferi) na etapa seguinte — não precisa perguntar aqui.
+                  Essas informações serão verificadas durante a análise do veículo.
                 </p>
                 <OpcaoBotoes label="Já sofreu acidente?" opcoes={["Não", "Sim", "Não sei"]} value={condicao.acidente} onChange={(v) => setCondicaoCampo({ acidente: v })} colunas={3} />
-                <OpcaoBotoes label="Possui alguma restrição conhecida?" opcoes={["Não", "Sim", "Não sei"]} value={condicao.restricao} onChange={(v) => setCondicaoCampo({ restricao: v })} colunas={3} />
-                {[condicao.acidente, condicao.restricao].includes("Sim") && (
+                <OpcaoBotoes label="Já passou por leilão?" opcoes={["Não", "Sim", "Não sei"]} value={condicao.leilao} onChange={(v) => setCondicaoCampo({ leilao: v })} colunas={3} />
+                <OpcaoBotoes label="Possui sinistro conhecido?" opcoes={["Não", "Sim", "Não sei"]} value={condicao.sinistro} onChange={(v) => setCondicaoCampo({ sinistro: v })} colunas={3} />
+                <OpcaoBotoes label="Possui débitos conhecidos (IPVA, multas, licenciamento)?" opcoes={["Não", "Sim", "Não sei"]} value={condicao.debitos} onChange={(v) => setCondicaoCampo({ debitos: v })} colunas={3} />
+                <OpcaoBotoes label="Possui alguma restrição impeditiva de transferência (alienação, judicial, etc.)?" opcoes={["Não", "Sim", "Não sei"]} value={condicao.restricao} onChange={(v) => setCondicaoCampo({ restricao: v })} colunas={3} />
+                {[condicao.acidente, condicao.leilao, condicao.sinistro, condicao.debitos, condicao.restricao].includes("Sim") && (
                   <Textarea
                     placeholder="Complemente o histórico se necessário"
                     value={condicao.historicoObs}
@@ -592,41 +565,6 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
 
         {etapa === 4 && (
           <div className="space-y-5">
-            {veiculoId && (
-              <div className="space-y-3 rounded-2xl border border-slate-200 p-4">
-                <div className="flex items-center gap-2 font-bold text-slate-900">
-                  <ShieldCheck className="h-4 w-4 text-teal-600" /> Consulta veicular
-                  {provedor?.nome ? ` — ${provedor.nome}` : ""}
-                </div>
-                {consultaAtiva ? (
-                  <>
-                    <p className="text-sm text-slate-500">
-                      Verifica sinistro, roubo/furto, restrições e histórico de leilão da placa
-                      informada.
-                    </p>
-                    <Button
-                      onClick={consultarLaudo}
-                      disabled={salvando}
-                      variant="outline"
-                      className="h-11 font-bold"
-                    >
-                      {salvando && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Consultar agora
-                    </Button>
-                    {consulta && (
-                      <pre className="max-h-56 overflow-auto rounded-xl bg-slate-50 p-3 text-xs text-slate-700">
-                        {JSON.stringify(consulta.resumo ?? consulta.data ?? consulta, null, 2)}
-                      </pre>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-sm text-slate-500">
-                    Módulo de consulta desativado. Ative e configure as credenciais em
-                    Configurações → Integrações.
-                  </p>
-                )}
-              </div>
-            )}
-
             {senha && (
               <div className="space-y-3 rounded-2xl border border-teal-200 bg-teal-50/50 p-4">
                 <p className="text-sm text-slate-700">

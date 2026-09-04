@@ -23,12 +23,10 @@ export const cadastrarCompradorFn = createServerFn({ method: "POST" })
   .validator((data: unknown) =>
     z
       .object({
-        tipo: z.enum(["PF", "PJ"]).default("PF"),
         nome: z.string().min(2),
         email: z.string().email(),
         password: z.string().min(6),
         whatsapp: z.string().optional(),
-        cpf: z.string().optional(),
         cnpj: z.string().optional(),
       })
       .parse(data),
