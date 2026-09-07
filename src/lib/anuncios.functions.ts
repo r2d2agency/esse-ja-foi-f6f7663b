@@ -31,6 +31,7 @@ export const getDadosParaNovoAnuncio = createServerFn({ method: "GET" })
   .handler(async ({ data: veiculoId }) => {
     const d = db;
     if (!d) throw new Error("DB offline");
+    await ensureAnunciosSchema();
 
     const vRes = await d.execute(sql`
       SELECT v.*, p.cidade as vendedor_cidade, p.uf as vendedor_uf
@@ -65,7 +66,8 @@ export const criarAnuncio = createServerFn({ method: "POST" })
       foto_url: z.string(),
       foto_original_id: z.string().uuid().optional().nullable(),
       eh_capa: z.boolean(),
-      ordem: z.number()
+      ordem: z.number(),
+      logo_ajuste: z.record(z.string(), z.any()).optional().nullable(),
     })),
     status: z.string(),
     agendado_para: z.string().optional().nullable(),
@@ -73,6 +75,7 @@ export const criarAnuncio = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const d = db;
     if (!d) throw new Error("DB offline");
+    await ensureAnunciosSchema();
 
     const codigo = await getProximoCodigoAnuncio();
     const slug = `${data.titulo.toLowerCase().replace(/ /g, '-')}-${codigo.toLowerCase()}`;
@@ -93,8 +96,13 @@ export const criarAnuncio = createServerFn({ method: "POST" })
 
     for (const foto of data.fotos) {
       await d.execute(sql`
-        INSERT INTO anuncios_fotos (anuncio_id, foto_original_id, foto_url, eh_capa, ordem)
-        VALUES (${anuncioId}::uuid, ${foto.foto_original_id ? sql`${foto.foto_original_id}::uuid` : null}, ${foto.foto_url}, ${foto.eh_capa}, ${foto.ordem})
+        INSERT INTO anuncios_fotos (anuncio_id, foto_original_id, foto_url, eh_capa, ordem, logo_ajuste)
+        VALUES (
+          ${anuncioId}::uuid,
+          ${foto.foto_original_id ? sql`${foto.foto_original_id}::uuid` : null},
+          ${foto.foto_url}, ${foto.eh_capa}, ${foto.ordem},
+          ${foto.logo_ajuste ? JSON.stringify(foto.logo_ajuste) : null}::jsonb
+        )
       `);
     }
 

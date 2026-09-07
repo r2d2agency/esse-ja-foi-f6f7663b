@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ImagePlus, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { AJUSTE_PADRAO, bboxParaAjuste, compositarLogo } from "@/lib/logo-foto";
+import { detectarPlacaFotoFn } from "@/lib/fotos-anuncio.functions";
 
 async function enviarArquivo(file: File): Promise<string | null> {
   const fd = new FormData();
@@ -10,6 +12,23 @@ async function enviarArquivo(file: File): Promise<string | null> {
   if (!res.ok) return null;
   const json = await res.json().catch(() => null);
   return json?.url ?? null;
+}
+
+/** Detecta a placa via IA e cobre com a logo da Esse Já Foi; sem placa detectada, aplica a marca d'água padrão. */
+async function processarComLogo(url: string): Promise<string> {
+  let ajuste = AJUSTE_PADRAO;
+  try {
+    const res = await detectarPlacaFotoFn({ data: { imagemUrl: url } });
+    if (res.ok && res.bbox) ajuste = bboxParaAjuste(res.bbox);
+  } catch {
+    // sem IA disponível — segue com a marca d'água padrão
+  }
+  try {
+    return await compositarLogo(url, ajuste);
+  } catch (err) {
+    console.error("[UploadFotos] falha ao aplicar a logo, mantendo a foto original:", err);
+    return url;
+  }
 }
 
 export function UploadFotos({
@@ -33,12 +52,12 @@ export function UploadFotos({
         const urls: string[] = [];
         for (const file of imagens) {
           const url = await enviarArquivo(file);
-          if (url) urls.push(url);
+          if (url) urls.push(await processarComLogo(url));
           else toast.error(`Falha ao enviar ${file.name}`);
         }
         if (urls.length > 0) {
           onChange([...fotos, ...urls]);
-          toast.success(`${urls.length} foto(s) adicionada(s).`);
+          toast.success(`${urls.length} foto(s) adicionada(s) com a logo aplicada.`);
         }
       } finally {
         setEnviando(false);

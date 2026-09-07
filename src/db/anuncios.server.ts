@@ -43,6 +43,7 @@ export async function ensureAnunciosSchema() {
       eh_capa boolean DEFAULT false,
       ordem integer DEFAULT 0,
       legenda text,
+      logo_ajuste jsonb,
       criado_em timestamptz DEFAULT now()
     );
 
@@ -83,6 +84,10 @@ export async function ensureAnunciosSchema() {
     sql`ALTER TABLE anuncios_fotos ADD COLUMN IF NOT EXISTS ordem integer DEFAULT 0`,
     sql`ALTER TABLE anuncios_fotos ADD COLUMN IF NOT EXISTS legenda text`,
     sql`ALTER TABLE anuncios_fotos ADD COLUMN IF NOT EXISTS foto_original_id uuid`,
+    sql`ALTER TABLE anuncios_fotos ADD COLUMN IF NOT EXISTS logo_ajuste jsonb`,
+    // Usadas pela seleção de fotos para o anúncio (getDadosParaNovoAnuncio / listarVeiculosProntosParaAnuncio).
+    sql`ALTER TABLE laudo_fotos ADD COLUMN IF NOT EXISTS usar_anuncio boolean DEFAULT true`,
+    sql`ALTER TABLE laudo_fotos ADD COLUMN IF NOT EXISTS eh_principal boolean DEFAULT false`,
   ];
   for (const stmt of alters) {
     try {
