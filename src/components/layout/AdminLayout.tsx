@@ -16,6 +16,7 @@ import {
   UserCog, 
   Settings,
   ClipboardCheck,
+  HelpCircle,
   Search,
   Bell,
   LogOut,
@@ -227,6 +228,13 @@ const MENU_SECTIONS: MenuSection[] = [
         activePrefixes: ["/admin/demo"],
         description: "Vendedor e veículo de teste",
       },
+      {
+        label: "Ajuda",
+        icon: HelpCircle,
+        to: "/admin/ajuda",
+        activePrefixes: ["/admin/ajuda"],
+        description: "Como funciona o sistema",
+      },
     ],
   },
 ];
@@ -405,6 +413,11 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                 <DropdownMenuItem asChild>
                   <Link to="/admin/configuracoes" className="flex items-center gap-2 cursor-pointer">
                     <Settings className="h-4 w-4" /> Configurações
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link to="/admin/ajuda" className="flex items-center gap-2 cursor-pointer">
+                    <HelpCircle className="h-4 w-4" /> Ajuda
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
