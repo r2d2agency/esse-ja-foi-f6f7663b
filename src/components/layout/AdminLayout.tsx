@@ -345,7 +345,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           <div className="h-16 flex items-center px-6 border-b border-slate-800">
             <LogoEsf to="/admin" height={32} variant="dark" />
           </div>
-          <ScrollArea className="h-[calc(100vh-4rem)]">
+          <ScrollArea className="h-[calc(100dvh-4rem)]">
             {renderNav(true, () => setMobileMenuOpen(false))}
           </ScrollArea>
         </SheetContent>
