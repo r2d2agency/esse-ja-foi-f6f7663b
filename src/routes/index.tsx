@@ -148,7 +148,7 @@ function LandingPage() {
           <LogoEsf height={36} />
 
           <div className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-600">
-            <Link to="/" className="hover:text-turquoise transition-colors">Comprar</Link>
+            <Link to="/comprador/cadastro" className="hover:text-turquoise transition-colors">Comprar</Link>
             <Link to="/vender" className="hover:text-turquoise transition-colors">Vender</Link>
             <Link to="/veiculos" className="hover:text-turquoise transition-colors">Estoque</Link>
             <a href="#faq" className="hover:text-turquoise transition-colors">FAQ</a>
@@ -392,7 +392,7 @@ function LandingPage() {
             <LogoEsf height={40} variant="dark" />
           </div>
           <div className="flex justify-center flex-wrap gap-6 text-sm mb-6">
-            <Link to="/" className="hover:text-turquoise transition-colors">Comprar</Link>
+            <Link to="/comprador/cadastro" className="hover:text-turquoise transition-colors">Comprar</Link>
             <Link to="/vender" className="hover:text-turquoise transition-colors">Vender</Link>
             <Link to="/veiculos" className="hover:text-turquoise transition-colors">Estoque</Link>
             <a href="#faq" className="hover:text-turquoise transition-colors">FAQ</a>
