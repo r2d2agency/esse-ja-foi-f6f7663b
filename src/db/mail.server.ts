@@ -135,17 +135,14 @@ export async function gerarEnviarOTP(email: string, type: 'LOGIN' | 'RECOVERY' |
   try {
     await d.execute(sql`
       INSERT INTO otp_codes (email, code, type, expires_at)
-      VALUES (${email}, ${code}, ${type}, ${expiresAt})
+      VALUES (${email}, ${code}, ${type}, ${expiresAt.toISOString()}::timestamptz)
     `);
   } catch (err: any) {
     console.error("[mail.server] Falha ao inserir OTP no banco:", err);
     // Em ambiente de desenvolvimento, se falhar a persistência, ainda permitimos o envio do e-mail
     // para não travar o fluxo do usuário se for apenas um problema de permissão temporário no banco
     if (process.env['NODE_ENV'] !== 'development') {
-      const causa: any = err?.cause || err;
-      const partes = [causa?.code, causa?.message, causa?.detail, causa?.hint].filter(Boolean);
-      const detalhe = partes.join(" | ") || err?.message || "desconhecido";
-      throw new Error(`Erro interno ao gerar código de acesso. Detalhe: ${detalhe}`);
+      throw new Error("Erro interno ao gerar código de acesso.");
     }
   }
 
