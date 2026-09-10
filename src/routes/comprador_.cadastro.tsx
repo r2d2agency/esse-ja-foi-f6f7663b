@@ -210,6 +210,13 @@ function CadastroComprador() {
               onChange={(e) => setForm({ ...form, razao_social: e.target.value })}
             />
             <Input
+              placeholder="CNPJ"
+              inputMode="numeric"
+              className="h-14 rounded-xl"
+              value={form.cnpj}
+              onChange={(e) => setForm({ ...form, cnpj: maskDocumento(e.target.value) })}
+            />
+            <Input
               placeholder="E-mail"
               type="email"
               className="h-14 rounded-xl"
@@ -255,12 +262,6 @@ function CadastroComprador() {
 
         {etapa === 2 && (
           <div className="mt-6 space-y-4">
-            <Input
-              placeholder="CNPJ"
-              className="h-14 rounded-xl"
-              value={form.cnpj}
-              onChange={(e) => setForm({ ...form, cnpj: maskDocumento(e.target.value) })}
-            />
             <Input
               placeholder="Nome fantasia"
               className="h-14 rounded-xl"
