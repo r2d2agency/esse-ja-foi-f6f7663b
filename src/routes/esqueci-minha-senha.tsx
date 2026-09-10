@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Loader2, ArrowLeft, Mail, ShieldCheck, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { toast } from "sonner";
 import { solicitarResetSenha, validarOTPResetFn, resetarSenhaFinalFn } from "@/lib/auth.functions";
 
@@ -157,18 +158,16 @@ function EsqueciSenhaPage() {
                 <p className="text-slate-500 mt-2">Crie uma senha forte para proteger sua conta.</p>
               </div>
               <form onSubmit={handleResetFinal} className="space-y-4">
-                <Input 
-                  required 
-                  type="password" 
-                  placeholder="Nova senha" 
+                <PasswordInput
+                  required
+                  placeholder="Nova senha"
                   className="h-14 rounded-xl"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                 />
-                <Input 
-                  required 
-                  type="password" 
-                  placeholder="Confirme a nova senha" 
+                <PasswordInput
+                  required
+                  placeholder="Confirme a nova senha"
                   className="h-14 rounded-xl"
                   value={confirmPassword}
                   onChange={e => setConfirmPassword(e.target.value)}

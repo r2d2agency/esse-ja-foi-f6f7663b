@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/hooks/use-auth";
 import { formatCPF, formatPhone } from "@/lib/utils";
@@ -174,21 +175,26 @@ function CriarConta() {
     placeholder: string,
     props: React.ComponentProps<typeof Input> = {},
     mask?: (v: string) => string
-  ) => (
-    <div>
-      <Input
-        placeholder={placeholder}
-        aria-label={placeholder}
-        className="h-14 rounded-xl border-slate-200 text-base"
-        value={form[key]}
-        onChange={(e) => setForm({ ...form, [key]: mask ? mask(e.target.value) : e.target.value })}
-        {...props}
-      />
-      {erros[key as keyof Erros] && (
-        <p className="mt-1.5 text-sm text-rose-600">{erros[key as keyof Erros]}</p>
-      )}
-    </div>
-  );
+  ) => {
+    const { type, ...resto } = props;
+    const Campo = type === "password" ? PasswordInput : Input;
+    return (
+      <div>
+        <Campo
+          placeholder={placeholder}
+          aria-label={placeholder}
+          className="h-14 rounded-xl border-slate-200 text-base"
+          value={form[key]}
+          onChange={(e) => setForm({ ...form, [key]: mask ? mask(e.target.value) : e.target.value })}
+          {...(type && type !== "password" ? { type } : {})}
+          {...resto}
+        />
+        {erros[key as keyof Erros] && (
+          <p className="mt-1.5 text-sm text-rose-600">{erros[key as keyof Erros]}</p>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-white lg:grid lg:grid-cols-[1fr_0.9fr]">

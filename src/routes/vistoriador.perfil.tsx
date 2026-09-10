@@ -8,6 +8,7 @@ import { alterarSenhaVistoriadorFn, getPainelVistoriadorFn } from "@/lib/vistori
 import { useAuthStore } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { GpsStatus } from "@/components/vistoriador/GpsStatus";
 import { InstalarApp } from "@/components/vistoriador/InstalarApp";
@@ -79,9 +80,9 @@ function PerfilPage() {
       <form onSubmit={enviar} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
         <h2 className="flex items-center gap-2 font-black text-foreground"><Lock className="h-4 w-4 text-primary" /> Alterar senha</h2>
         <div className="mt-4 grid gap-4 sm:grid-cols-3">
-          <Campo label="Senha atual"><Input type="password" value={senhas.atual} onChange={(e) => setSenhas({ ...senhas, atual: e.target.value })} required className="h-11 rounded-xl" /></Campo>
-          <Campo label="Nova senha"><Input type="password" value={senhas.nova} onChange={(e) => setSenhas({ ...senhas, nova: e.target.value })} required className="h-11 rounded-xl" /></Campo>
-          <Campo label="Confirmar"><Input type="password" value={senhas.confirmar} onChange={(e) => setSenhas({ ...senhas, confirmar: e.target.value })} required className="h-11 rounded-xl" /></Campo>
+          <Campo label="Senha atual"><PasswordInput value={senhas.atual} onChange={(e) => setSenhas({ ...senhas, atual: e.target.value })} required className="h-11 rounded-xl" /></Campo>
+          <Campo label="Nova senha"><PasswordInput value={senhas.nova} onChange={(e) => setSenhas({ ...senhas, nova: e.target.value })} required className="h-11 rounded-xl" /></Campo>
+          <Campo label="Confirmar"><PasswordInput value={senhas.confirmar} onChange={(e) => setSenhas({ ...senhas, confirmar: e.target.value })} required className="h-11 rounded-xl" /></Campo>
         </div>
         <Button type="submit" disabled={mutacao.isPending} className="mt-5 h-12 w-full rounded-xl font-bold sm:w-auto">
           {mutacao.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

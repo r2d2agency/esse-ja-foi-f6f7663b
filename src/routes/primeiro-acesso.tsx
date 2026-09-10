@@ -6,6 +6,7 @@ import { Loader2, KeyRound, FileSignature, ShieldCheck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { LogoEsf } from "@/components/shared/LogoEsf";
@@ -162,8 +163,7 @@ function PrimeiroAcessoPage() {
             </p>
             <div className="space-y-2">
               <Label>Nova senha</Label>
-              <Input
-                type="password"
+              <PasswordInput
                 className="h-12"
                 value={senha}
                 onChange={(e) => setSenha(e.target.value)}
@@ -172,8 +172,7 @@ function PrimeiroAcessoPage() {
             </div>
             <div className="space-y-2">
               <Label>Confirmar nova senha</Label>
-              <Input
-                type="password"
+              <PasswordInput
                 className="h-12"
                 value={confirmar}
                 onChange={(e) => setConfirmar(e.target.value)}

@@ -8,6 +8,7 @@ import { obterMeuPerfilFn, atualizarMeuPerfilFn, alterarMinhaSenhaFn } from '@/l
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { maskCep, maskDocumento, maskTelefone, buscarCep } from '@/lib/brasil';
 
@@ -253,13 +254,13 @@ function PerfilVendedor() {
         </h2>
         <div className="mt-5 grid gap-4 sm:grid-cols-3">
           <Campo label="Senha atual">
-            <Input type="password" value={senhas.atual} onChange={(e) => setSenhas({ ...senhas, atual: e.target.value })} className="h-12 rounded-xl" />
+            <PasswordInput value={senhas.atual} onChange={(e) => setSenhas({ ...senhas, atual: e.target.value })} className="h-12 rounded-xl" />
           </Campo>
           <Campo label="Nova senha">
-            <Input type="password" value={senhas.nova} onChange={(e) => setSenhas({ ...senhas, nova: e.target.value })} className="h-12 rounded-xl" />
+            <PasswordInput value={senhas.nova} onChange={(e) => setSenhas({ ...senhas, nova: e.target.value })} className="h-12 rounded-xl" />
           </Campo>
           <Campo label="Confirmar nova senha">
-            <Input type="password" value={senhas.confirmar} onChange={(e) => setSenhas({ ...senhas, confirmar: e.target.value })} className="h-12 rounded-xl" />
+            <PasswordInput value={senhas.confirmar} onChange={(e) => setSenhas({ ...senhas, confirmar: e.target.value })} className="h-12 rounded-xl" />
           </Campo>
         </div>
         <Button

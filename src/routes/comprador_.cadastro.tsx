@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Loader2, ArrowRight, ArrowLeft, Check, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { useAuth } from "@/hooks/use-auth";
 import { formatCPF, formatPhone, cn } from "@/lib/utils";
 import { maskDocumento, maskCep } from "@/lib/brasil";
@@ -229,16 +230,14 @@ function CadastroComprador() {
               value={form.whatsapp}
               onChange={(e) => setForm({ ...form, whatsapp: formatPhone(e.target.value) })}
             />
-            <Input
+            <PasswordInput
               placeholder="Senha"
-              type="password"
               className="h-14 rounded-xl"
               value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
             />
-            <Input
+            <PasswordInput
               placeholder="Confirmar senha"
-              type="password"
               className="h-14 rounded-xl"
               value={form.confirm}
               onChange={(e) => setForm({ ...form, confirm: e.target.value })}

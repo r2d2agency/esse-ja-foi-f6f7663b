@@ -6,6 +6,7 @@ import { useAuthStore } from "@/hooks/use-auth";
 import { loginWithPassword } from "@/lib/auth.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { LogoEsf } from "@/components/shared/LogoEsf";
 import heroCar from "@/assets/hero-car.jpg";
@@ -115,9 +116,8 @@ function LoginPage() {
               value={identificador}
               onChange={(e) => setIdentificador(e.target.value)}
             />
-            <Input
+            <PasswordInput
               required
-              type="password"
               placeholder="Senha"
               aria-label="Senha"
               className="h-14 rounded-xl text-base"
