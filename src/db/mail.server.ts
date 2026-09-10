@@ -142,7 +142,10 @@ export async function gerarEnviarOTP(email: string, type: 'LOGIN' | 'RECOVERY' |
     // Em ambiente de desenvolvimento, se falhar a persistência, ainda permitimos o envio do e-mail
     // para não travar o fluxo do usuário se for apenas um problema de permissão temporário no banco
     if (process.env['NODE_ENV'] !== 'development') {
-      throw new Error(`Erro interno ao gerar código de acesso. Detalhe: ${err?.message || err?.code || "desconhecido"}`);
+      const causa: any = err?.cause || err;
+      const partes = [causa?.code, causa?.message, causa?.detail, causa?.hint].filter(Boolean);
+      const detalhe = partes.join(" | ") || err?.message || "desconhecido";
+      throw new Error(`Erro interno ao gerar código de acesso. Detalhe: ${detalhe}`);
     }
   }
 
