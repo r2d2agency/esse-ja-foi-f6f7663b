@@ -43,7 +43,7 @@ import { Route as AdminVeiculosRouteImport } from './routes/admin/veiculos'
 import { Route as AdminVendedoresRouteImport } from './routes/admin/vendedores'
 import { Route as AdminVistoriasRouteImport } from './routes/admin/vistorias'
 import { Route as CompradorIndexRouteImport } from './routes/comprador/index'
-import { Route as CompradorCadastroRouteImport } from './routes/comprador.cadastro'
+import { Route as CompradorCadastroRouteImport } from './routes/comprador_.cadastro'
 import { Route as CompradorDocumentosRouteImport } from './routes/comprador/documentos'
 import { Route as CompradorInteressesRouteImport } from './routes/comprador/interesses'
 import { Route as CompradorNegociacoesRouteImport } from './routes/comprador/negociacoes'
@@ -259,11 +259,6 @@ const CompradorIndexRoute = CompradorIndexRouteImport.update({
   path: '/',
   getParentRoute: () => CompradorRoute,
 } as any)
-const CompradorCadastroRoute = CompradorCadastroRouteImport.update({
-  id: '/cadastro',
-  path: '/cadastro',
-  getParentRoute: () => CompradorRoute,
-} as any)
 const CompradorDocumentosRoute = CompradorDocumentosRouteImport.update({
   id: '/documentos',
   path: '/documentos',
@@ -292,6 +287,11 @@ const VTokenRoute = VTokenRouteImport.update({
 const CTokenRoute = CTokenRouteImport.update({
   id: '/c/$token',
   path: '/c/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CompradorCadastroRoute = CompradorCadastroRouteImport.update({
+  id: '/comprador/cadastro',
+  path: '/comprador/cadastro',
   getParentRoute: () => rootRouteImport,
 } as any)
 const VeiculosIndexRoute = VeiculosIndexRouteImport.update({
@@ -986,6 +986,7 @@ export interface RootRouteChildren {
   VistoriadorRoute: typeof VistoriadorRouteWithChildren
   VTokenRoute: typeof VTokenRoute
   CTokenRoute: typeof CTokenRoute
+  CompradorCadastroRoute: typeof CompradorCadastroRoute
   ApiPublicUploadRoute: typeof ApiPublicUploadRoute
   ApiPublicWebhooksPagamentosRoute: typeof ApiPublicWebhooksPagamentosRoute
   ApiPublicWebhooksWhatsappRoute: typeof ApiPublicWebhooksWhatsappRoute
@@ -1231,13 +1232,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CompradorIndexRouteImport
       parentRoute: typeof CompradorRoute
     }
-    '/comprador/cadastro': {
-      id: '/comprador/cadastro'
-      path: '/cadastro'
-      fullPath: '/comprador/cadastro'
-      preLoaderRoute: typeof CompradorCadastroRouteImport
-      parentRoute: typeof CompradorRoute
-    }
     '/comprador/documentos': {
       id: '/comprador/documentos'
       path: '/documentos'
@@ -1278,6 +1272,13 @@ declare module '@tanstack/react-router' {
       path: '/c/$token'
       fullPath: '/c/$token'
       preLoaderRoute: typeof CTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/comprador/cadastro': {
+      id: '/comprador/cadastro'
+      path: '/comprador/cadastro'
+      fullPath: '/comprador/cadastro'
+      preLoaderRoute: typeof CompradorCadastroRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/veiculos/': {
@@ -1638,7 +1639,6 @@ const AdminRouteChildren: AdminRouteChildren = {
 const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
 interface CompradorRouteChildren {
-  CompradorCadastroRoute: typeof CompradorCadastroRoute
   CompradorDocumentosRoute: typeof CompradorDocumentosRoute
   CompradorInteressesRoute: typeof CompradorInteressesRoute
   CompradorNegociacoesRoute: typeof CompradorNegociacoesRoute
@@ -1649,7 +1649,6 @@ interface CompradorRouteChildren {
 }
 
 const CompradorRouteChildren: CompradorRouteChildren = {
-  CompradorCadastroRoute: CompradorCadastroRoute,
   CompradorDocumentosRoute: CompradorDocumentosRoute,
   CompradorInteressesRoute: CompradorInteressesRoute,
   CompradorNegociacoesRoute: CompradorNegociacoesRoute,
@@ -1763,6 +1762,7 @@ const rootRouteChildren: RootRouteChildren = {
   VistoriadorRoute: VistoriadorRouteWithChildren,
   VTokenRoute: VTokenRoute,
   CTokenRoute: CTokenRoute,
+  CompradorCadastroRoute: CompradorCadastroRoute,
   ApiPublicUploadRoute: ApiPublicUploadRoute,
   ApiPublicWebhooksPagamentosRoute: ApiPublicWebhooksPagamentosRoute,
   ApiPublicWebhooksWhatsappRoute: ApiPublicWebhooksWhatsappRoute,
