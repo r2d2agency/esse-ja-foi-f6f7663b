@@ -288,6 +288,8 @@ function ConfiguracoesAdminPage() {
 
         <NotificacoesSection />
 
+        <OpcionaisVeiculoSection getConfig={getConfig} setConfig={setConfig} salvar={salvar} />
+
         <section className="space-y-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
             <BrainCircuit className="h-5 w-5 text-teal-700" />
@@ -775,6 +777,103 @@ function NotificacoesSection() {
         </div>
         <Button className="bg-teal-900" onClick={adicionar} disabled={adicionando}>
           <Plus className="mr-2 h-4 w-4" /> Adicionar destinatário
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+function OpcionaisVeiculoSection({
+  getConfig,
+  setConfig,
+  salvar,
+}: {
+  getConfig: (chave: string) => string;
+  setConfig: (chave: string, valor: string) => void;
+  salvar: (chave: string, valor: string) => Promise<void>;
+}) {
+  const [novoItem, setNovoItem] = useState("");
+  const [salvando, setSalvando] = useState(false);
+
+  let itens: string[] = [];
+  try {
+    const bruto = getConfig("opcionais_veiculo");
+    if (bruto) itens = JSON.parse(bruto);
+  } catch {
+    itens = [];
+  }
+
+  async function persistir(novaLista: string[]) {
+    setSalvando(true);
+    setConfig("opcionais_veiculo", JSON.stringify(novaLista));
+    try {
+      await salvar("opcionais_veiculo", JSON.stringify(novaLista));
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function adicionarItem() {
+    const nome = novoItem.trim();
+    if (!nome) return;
+    if (itens.some((i) => i.toLowerCase() === nome.toLowerCase())) {
+      toast.error("Esse item já está na lista.");
+      return;
+    }
+    await persistir([...itens, nome]);
+    setNovoItem("");
+  }
+
+  async function removerItem(nome: string) {
+    await persistir(itens.filter((i) => i !== nome));
+  }
+
+  return (
+    <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+        <Tag className="h-5 w-5 text-teal-700" />
+        Opcionais do veículo
+      </div>
+      <p className="text-sm text-slate-500">
+        Itens que o vendedor pode marcar no cadastro (ar-condicionado, rodas de liga, som, etc.).
+        Aparecem como checklist na vitrine, no leilão e na ficha do veículo.
+      </p>
+
+      <div className="flex flex-wrap gap-2">
+        {itens.length === 0 && <p className="text-sm text-slate-400">Nenhum item cadastrado ainda.</p>}
+        {itens.map((item) => (
+          <span
+            key={item}
+            className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 py-1.5 pl-3 pr-2 text-sm font-medium text-slate-700"
+          >
+            {item}
+            <button
+              type="button"
+              onClick={() => removerItem(item)}
+              disabled={salvando}
+              className="rounded-full p-0.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+              aria-label={`Remover ${item}`}
+            >
+              <XCircle className="h-4 w-4" />
+            </button>
+          </span>
+        ))}
+      </div>
+
+      <div className="flex gap-2">
+        <Input
+          value={novoItem}
+          onChange={(e) => setNovoItem(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              void adicionarItem();
+            }
+          }}
+          placeholder="Ex.: Câmbio automático"
+        />
+        <Button onClick={adicionarItem} disabled={salvando || !novoItem.trim()}>
+          <Plus className="mr-2 h-4 w-4" /> Adicionar
         </Button>
       </div>
     </section>

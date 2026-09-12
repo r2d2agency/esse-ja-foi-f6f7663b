@@ -1,4 +1,4 @@
-import type { Dispatch, SetStateAction } from "react";
+import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import { Plus } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,6 +13,7 @@ import { OpcaoMultipla } from "@/components/veiculo/OpcaoMultipla";
 import { maskKm, maskMoeda, maskPlaca } from "@/lib/brasil";
 import { COMBUSTIVEIS, CAMBIOS, ACESSORIOS_VEICULO } from "@/lib/constants-veiculos";
 import { FOTOS_VEICULO, type CondicaoVeiculo } from "@/lib/veiculo-condicao";
+import { obterConfiguracoesPublicasFn } from "@/lib/config-publica.functions";
 
 const CAMPO = "h-11";
 
@@ -55,6 +56,25 @@ export function FormularioVeiculoCondicao({
   blindado: boolean;
   setBlindado: Dispatch<SetStateAction<boolean>>;
 }) {
+  const [opcionais, setOpcionais] = useState<string[]>(ACESSORIOS_VEICULO);
+
+  useEffect(() => {
+    let cancelado = false;
+    (async () => {
+      try {
+        const res: any = await obterConfiguracoesPublicasFn();
+        const bruto = res?.data?.opcionais_veiculo;
+        const lista = bruto ? JSON.parse(bruto) : null;
+        if (!cancelado && Array.isArray(lista) && lista.length > 0) setOpcionais(lista);
+      } catch {
+        // mantém a lista padrão do código
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, []);
+
   return (
     <>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
@@ -198,7 +218,7 @@ export function FormularioVeiculoCondicao({
           <OpcaoBotoes label="Estepe?" opcoes={["Sim", "Não"]} value={condicao.estepe} onChange={(v) => setCondicaoCampo({ estepe: v })} />
           <OpcaoMultipla
             label="Acessórios do veículo"
-            opcoes={ACESSORIOS_VEICULO}
+            opcoes={opcionais}
             value={condicao.acessoriosSelecionados}
             onChange={(v) => setCondicaoCampo({ acessoriosSelecionados: v })}
             colunas={2}

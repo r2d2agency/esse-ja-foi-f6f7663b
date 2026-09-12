@@ -114,6 +114,7 @@ export async function ensureAdminTables(silent = true) {
 
     // Sementes iniciais
     const { PROMPT_IA_DOCUMENTOS_PADRAO } = await import("./ia-documentos.server");
+    const { ACESSORIOS_VEICULO } = await import("@/lib/constants-veiculos");
     await d.execute(sql`
       INSERT INTO configuracoes_sistema (chave, valor, descricao)
       VALUES
@@ -135,7 +136,8 @@ export async function ensureAdminTables(silent = true) {
         ('tracking_meta_capi_ativa', 'false', 'Enviar eventos também pela Conversions API do Meta (servidor-a-servidor)'),
         ('tracking_head_html', '', 'HTML/script customizado injetado no <head> de todas as páginas'),
         ('tracking_body_html', '', 'HTML/script customizado injetado logo após a abertura do <body> de todas as páginas'),
-        (${'ia_prompt_documentos'}, ${PROMPT_IA_DOCUMENTOS_PADRAO}, 'Prompt de sistema usado pela IA para validar CNH, CRLV, comprovante e selfie do vendedor')
+        (${'ia_prompt_documentos'}, ${PROMPT_IA_DOCUMENTOS_PADRAO}, 'Prompt de sistema usado pela IA para validar CNH, CRLV, comprovante e selfie do vendedor'),
+        (${'opcionais_veiculo'}, ${JSON.stringify(ACESSORIOS_VEICULO)}, 'Lista de opcionais/acessórios que o vendedor pode marcar no cadastro (JSON de strings)')
       ON CONFLICT (chave) DO NOTHING;
     `);
     if (!silent && process.env['NODE_ENV'] === 'development') console.log("[admin.server] Tabelas admin OK.");
@@ -335,6 +337,7 @@ const CHAVES_CONFIG_PUBLICAS = [
   "tracking_meta_pixel_id",
   "tracking_head_html",
   "tracking_body_html",
+  "opcionais_veiculo",
 ] as const;
 
 export type ConfiguracoesPublicas = Record<(typeof CHAVES_CONFIG_PUBLICAS)[number], string>;
