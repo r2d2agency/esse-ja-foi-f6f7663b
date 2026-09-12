@@ -25,7 +25,7 @@ import { cadastrarMeuVeiculoFn, listarMeusVeiculosFn } from '@/lib/vendedor.func
 import { getOnboardingStatusFn } from '@/lib/onboarding.functions';
 import { getTermoVigenteFn, aceitarTermoFn } from '@/lib/termos.functions';
 import { getSessionToken } from '@/lib/session';
-import { maskPlaca, formatCurrency, buscarCep, maskCep } from '@/lib/brasil';
+import { maskPlaca, formatCurrency } from '@/lib/brasil';
 import { montarEtapas, percentual } from '@/components/vendedor/ProgressoCadastro';
 import { TODAS_MARCAS, MARCAS_POPULARES, MODELOS_POR_MARCA, CORES, COMBUSTIVEIS, CAMBIOS, PORTAS, UFS, RELACOES_PROPRIETARIO, BANCOS_COMUNS } from '@/lib/constants-veiculos';
 
@@ -310,6 +310,18 @@ function CadastrarVeiculo() {
     hidratado.current = true;
   }, [search.id, data]);
 
+  // O endereço do carro não é mais perguntado ao vendedor — usa o endereço já
+  // cadastrado no perfil dele. Só preenche se ainda não veio de um veículo
+  // já salvo (efeito de hidratação acima).
+  useEffect(() => {
+    if (!profile?.cidade && !profile?.uf) return;
+    setForm((f) =>
+      f.cidade || f.uf
+        ? f
+        : { ...f, cep: profile.cep || f.cep, cidade: profile.cidade || f.cidade, uf: profile.uf || f.uf },
+    );
+  }, [profile?.cep, profile?.cidade, profile?.uf]);
+
   useEffect(() => {
     if (!hidratado.current) return;
     const t = setTimeout(() => {
@@ -481,7 +493,7 @@ function CadastrarVeiculo() {
           <div className="space-y-6">
             <div>
               <h2 className="text-2xl font-black text-slate-900">Qual veículo você quer vender?</h2>
-              <p className="mt-1 text-sm text-slate-500">Informe a placa e o CEP onde o carro se encontra.</p>
+              <p className="mt-1 text-sm text-slate-500">Informe a placa do carro.</p>
             </div>
             <div className="space-y-4">
               <div className="space-y-2">
@@ -494,34 +506,7 @@ function CadastrarVeiculo() {
                   className="h-14 w-full rounded-xl text-2xl font-black uppercase tracking-[0.2em] text-center"
                 />
               </div>
-              <div className="space-y-2">
-                <Label className="text-xs font-black text-slate-400 uppercase tracking-widest">CEP (Onde o carro está?)</Label>
-                <Input
-                  value={form.cep || ''}
-                  placeholder="00000-000"
-                  onChange={async (e) => {
-                    const val = maskCep(e.target.value);
-                    set({ cep: val });
-                    const clean = val.replace(/\D/g, '');
-                    if (clean.length === 8) {
-                      setBuscando(true);
-                      const res = await buscarCep(clean);
-                      if (res) {
-                        set({ cidade: res.cidade, uf: res.uf });
-                        toast.success(`Localizado: ${res.cidade}/${res.uf}`);
-                      }
-                      setBuscando(false);
-                    }
-                  }}
-                  className="h-14 w-full rounded-xl text-lg font-bold text-center"
-                />
-                {form.uf && (
-                  <p className="mt-1 text-center text-sm font-medium text-teal-700">
-                    {form.cidade} / {form.uf}
-                  </p>
-                )}
-              </div>
-              
+
               <Button onClick={buscarPlaca} disabled={buscando} className="h-16 w-full rounded-2xl bg-teal-800 text-lg font-black text-white hover:bg-teal-900 shadow-lg shadow-teal-900/20">
                 {buscando ? <Loader2 className="h-6 w-6 animate-spin" /> : <><Search className="mr-2 h-5 w-5" /> Buscar e Continuar</>}
               </Button>
@@ -633,10 +618,10 @@ function CadastrarVeiculo() {
               </div>
 
               <div className="space-y-2">
-                <Label className="text-sm font-bold text-slate-900">CEP</Label>
+                <Label className="text-sm font-bold text-slate-900">Localização</Label>
                 <Input
                   value={form.uf ? `${form.cidade}/${form.uf}` : form.cidade}
-                  placeholder="Município e Estado"
+                  placeholder="Baseada no seu cadastro"
                   disabled
                   className="h-12 rounded-xl bg-slate-50 font-medium"
                 />

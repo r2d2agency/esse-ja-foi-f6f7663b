@@ -116,7 +116,8 @@ export const listarMeusVeiculosFn = createServerFn({ method: "GET" })
     `);
     
     const profileRows = await db.execute(sql`
-      SELECT cadastro_completo, termo_aceito_em FROM profiles WHERE id = ${data.perfilId}::uuid;
+      SELECT cadastro_completo, termo_aceito_em, cep, endereco, cidade, uf
+      FROM profiles WHERE id = ${data.perfilId}::uuid;
     `);
     
     return { 
