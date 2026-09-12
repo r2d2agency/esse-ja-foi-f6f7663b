@@ -221,7 +221,8 @@ export async function getVeiculoPorToken(token: string) {
   const veiculo = rowsOf(
     await d.execute(sql`
       SELECT v.id, v.placa, v.marca, v.modelo, v.versao, v.ano_fabricacao, v.ano_modelo,
-             v.km, v.cor, v.cambio, v.combustivel, v.cidade, v.uf, v.fotos, v.fotos_processadas
+             v.km, v.cor, v.cambio, v.combustivel, v.cidade, v.uf, v.fotos, v.fotos_processadas,
+             v.observacoes
       FROM veiculos v WHERE v.id = ${canal.veiculo_id}::uuid
     `),
   )[0];

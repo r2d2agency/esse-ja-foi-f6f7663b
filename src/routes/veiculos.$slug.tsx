@@ -202,11 +202,6 @@ function DetalheVeiculoPublico() {
                     <Maximize2 className="h-3.5 w-3.5" /> Ampliar
                   </span>
                 )}
-                <div className="absolute top-4 left-4">
-                  <span className="bg-teal-600 text-white text-xs font-black px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-lg">
-                    <ShieldCheck className="h-4 w-4" /> VEÍCULO VISTORIADO
-                  </span>
-                </div>
               </div>
               
               <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">

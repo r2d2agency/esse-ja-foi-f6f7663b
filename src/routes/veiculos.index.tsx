@@ -10,7 +10,6 @@ import {
   Search,
   MapPin,
   Gauge,
-  ShieldCheck,
   Lock,
   Menu,
   X,
@@ -295,9 +294,6 @@ function VitrinePublica() {
                             <div className="flex h-full w-full items-center justify-center text-slate-300">Sem foto</div>
                           )}
                           <div className="absolute left-3 top-3 flex gap-2">
-                            <span className="flex items-center gap-1 rounded bg-teal-600 px-2 py-1 text-[10px] font-black text-white">
-                              <ShieldCheck className="h-3 w-3" /> VISTORIADO
-                            </span>
                             {emLeilao && (
                               <span className="flex items-center gap-1 rounded bg-amber-500 px-2 py-1 text-[10px] font-black text-white">
                                 <Gavel className="h-3 w-3" /> LEILÃO
