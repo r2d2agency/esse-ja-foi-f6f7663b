@@ -172,9 +172,9 @@ function DetalheVeiculoPublico() {
             <div className="space-y-4">
               <div className="aspect-video bg-slate-100 rounded-3xl overflow-hidden relative">
                 {anuncio.fotos?.length > 0 ? (
-                  <img 
-                    src={anuncio.fotos[activePhoto].foto_url} 
-                    className="w-full h-full object-cover" 
+                  <img
+                    src={anuncio.fotos[activePhoto].foto_url}
+                    className="w-full h-full object-contain"
                     alt={anuncio.titulo}
                   />
                 ) : (
@@ -194,7 +194,7 @@ function DetalheVeiculoPublico() {
                     onClick={() => setActivePhoto(i)}
                     className={`w-24 h-18 shrink-0 rounded-lg overflow-hidden border-2 transition-all ${activePhoto === i ? 'border-teal-500 ring-2 ring-teal-50' : 'border-transparent opacity-60 hover:opacity-100'}`}
                   >
-                    <img src={f.foto_url} className="w-full h-full object-cover" alt={`Miniatura ${i}`} />
+                    <img src={f.foto_url} className="w-full h-full object-contain bg-slate-100" alt={`Miniatura ${i}`} />
                   </button>
                 ))}
               </div>

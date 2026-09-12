@@ -287,7 +287,7 @@ function VitrinePublica() {
                           {v.foto_capa ? (
                             <img
                               src={v.foto_capa}
-                              className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                              className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-105"
                               alt={`${v.marca ?? ""} ${v.modelo ?? ""}`}
                               loading="lazy"
                             />
