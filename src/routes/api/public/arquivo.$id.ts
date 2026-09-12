@@ -26,6 +26,11 @@ export const Route = createFileRoute('/api/public/arquivo/$id')({
               'Content-Type': arquivo.mimeType,
               // O id é único por arquivo e o conteúdo nunca muda, então pode cachear para sempre.
               'Cache-Control': 'public, max-age=31536000, immutable',
+              // Sem isso, carregar a foto num <canvas> (editor de logo/marca d'água) a
+              // partir de um domínio diferente do que gerou a URL (ex.: essejafoi.com.br
+              // vs www.essejafoi.com.br) "suja" o canvas e o navegador bloqueia o
+              // toDataURL/toBlob por CORS — é um arquivo público, sem autenticação.
+              'Access-Control-Allow-Origin': '*',
             },
           });
         } catch (error: any) {
