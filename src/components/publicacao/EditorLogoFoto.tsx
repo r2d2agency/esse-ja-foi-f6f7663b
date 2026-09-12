@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, PenSquare, Plus, RotateCw, Scan, Sparkles, Trash2 } from "lucide-react";
+import { Loader2, PenSquare, Plus, RotateCw, Sparkles, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -10,7 +10,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  bboxParaCamadaPlaca,
   compositarCamadas,
   novaCamadaMarcaDagua,
   novaCamadaPlaca,
@@ -18,7 +17,6 @@ import {
   type CamadaPlaca,
   type VarianteLogo,
 } from "@/lib/logo-foto";
-import { detectarPlacaFotoFn } from "@/lib/fotos-anuncio.functions";
 import { cn } from "@/lib/utils";
 
 const LOGOS: Record<VarianteLogo, string> = {
@@ -55,7 +53,6 @@ export function EditorLogoFoto({
   const [camadas, setCamadas] = useState<Camada[]>(() => camadasIniciaisPadrao(camadasIniciais));
   const [selecionadaId, setSelecionadaId] = useState<string | null>(() => camadas[0]?.id ?? null);
   const [desenhandoPlaca, setDesenhandoPlaca] = useState(false);
-  const [detectando, setDetectando] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [aspecto, setAspecto] = useState<number | null>(null);
   const [tamanho, setTamanho] = useState<{ largura: number; altura: number } | null>(null);
@@ -238,37 +235,6 @@ export function EditorLogoFoto({
     arrasteRef.current = null;
   }
 
-  async function detectarPlaca() {
-    setDetectando(true);
-    try {
-      const res = await detectarPlacaFotoFn({ data: { imagemUrl: fotoUrl } });
-      if (!res.ok) {
-        toast.error(res.motivo || "Não foi possível detectar a placa.");
-        return;
-      }
-      if (!res.bbox) {
-        toast.info("Nenhuma placa encontrada nessa foto. Desenhe a área manualmente.");
-        return;
-      }
-      const selecionada = camadas.find((c) => c.id === selecionadaId);
-      if (selecionada?.tipo === "placa") {
-        const nova = bboxParaCamadaPlaca(res.bbox);
-        atualizarCamada(selecionada.id, (c) =>
-          c.tipo === "placa" ? { ...c, xPct: nova.xPct, yPct: nova.yPct, larguraPct: nova.larguraPct, alturaPct: nova.alturaPct } : c,
-        );
-      } else {
-        const nova = bboxParaCamadaPlaca(res.bbox);
-        setCamadas((atual) => [...atual, nova]);
-        setSelecionadaId(nova.id);
-      }
-      toast.success("Placa localizada — ajuste fino se precisar.");
-    } catch (err: any) {
-      toast.error(err?.message || "Erro ao detectar a placa.");
-    } finally {
-      setDetectando(false);
-    }
-  }
-
   async function salvar() {
     setSalvando(true);
     try {
@@ -445,10 +411,6 @@ export function EditorLogoFoto({
           >
             <PenSquare className="h-4 w-4" />
             {desenhandoPlaca ? "Desenhando..." : "Desenhar área da placa"}
-          </Button>
-          <Button type="button" variant="outline" size="sm" onClick={detectarPlaca} disabled={detectando}>
-            {detectando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Scan className="h-4 w-4" />}
-            Detectar placa (IA)
           </Button>
         </div>
 

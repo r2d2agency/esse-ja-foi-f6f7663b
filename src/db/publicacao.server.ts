@@ -221,7 +221,7 @@ export async function getVeiculoPorToken(token: string) {
   const veiculo = rowsOf(
     await d.execute(sql`
       SELECT v.id, v.placa, v.marca, v.modelo, v.versao, v.ano_fabricacao, v.ano_modelo,
-             v.km, v.cor, v.cambio, v.combustivel, v.cidade, v.uf, v.fotos
+             v.km, v.cor, v.cambio, v.combustivel, v.cidade, v.uf, v.fotos, v.fotos_processadas
       FROM veiculos v WHERE v.id = ${canal.veiculo_id}::uuid
     `),
   )[0];
@@ -231,16 +231,21 @@ export async function getVeiculoPorToken(token: string) {
     sql`UPDATE publicacao_canais SET visualizacoes = COALESCE(visualizacoes,0) + 1 WHERE id = ${canal.id}::uuid`,
   );
 
+  const normalizarFotos = (lista: unknown): string[] =>
+    Array.isArray(lista)
+      ? lista.map((f: any) => (typeof f === "string" ? f : f?.url)).filter(Boolean)
+      : [];
   const fotosCanal = Array.isArray(canal.fotos) ? canal.fotos : [];
-  const fotosVeiculo = Array.isArray(veiculo.fotos)
-    ? veiculo.fotos.map((f: any) => (typeof f === "string" ? f : f?.url)).filter(Boolean)
-    : [];
+  // Fotos processadas na ficha do veículo são a fonte única: têm prioridade máxima, assim
+  // reprocessar uma foto ali atualiza automaticamente aqui também.
+  const fotosProcessadas = normalizarFotos(veiculo.fotos_processadas);
+  const fotosVeiculo = fotosProcessadas.length > 0 ? fotosProcessadas : normalizarFotos(veiculo.fotos);
 
   return {
     veiculo,
     titulo: canal.titulo || `${veiculo.marca} ${veiculo.modelo} ${veiculo.ano_modelo}`,
     descricao: canal.descricao || "",
-    fotos: fotosCanal.length ? fotosCanal : fotosVeiculo,
+    fotos: fotosVeiculo.length ? fotosVeiculo : fotosCanal,
   };
 }
 
@@ -271,12 +276,12 @@ export async function montarMensagemWhatsapp(veiculoId: string, baseUrl: string)
       ? lista.map((f: any) => (typeof f === "string" ? f : f?.url)).filter(Boolean)
       : [];
   const fotosCanal = Array.isArray(canal.fotos) ? canal.fotos : [];
-  // Prioriza as fotos já processadas (placa coberta pela logo) como capa, para não expor a
-  // placa numa foto que ainda não passou pelo processamento feito na ficha do veículo.
+  // Fotos processadas na ficha do veículo são a fonte única: têm prioridade máxima, assim
+  // reprocessar uma foto ali atualiza automaticamente a capa usada em todos os anúncios.
   const fotosVeiculo = normalizarFotos(v.fotos_processadas).length > 0
     ? normalizarFotos(v.fotos_processadas)
     : normalizarFotos(v.fotos);
-  const fotoCapa = fotosCanal[0] || fotosVeiculo[0] || null;
+  const fotoCapa = fotosVeiculo[0] || fotosCanal[0] || null;
 
   const link = `${baseUrl.replace(/\/+$/, "")}/v/${canal.token_acesso}`;
   const km = v.km ? `${Number(v.km).toLocaleString("pt-BR")} km` : "KM não informado";

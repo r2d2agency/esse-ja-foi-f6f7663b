@@ -83,7 +83,7 @@ export async function listarAnunciosVitrine(userId?: string | null) {
   const res = await d.execute(sql`
     SELECT 
       a.id, a.codigo_publico, a.slug, a.titulo, a.localizacao_publica, a.veiculo_id,
-      v.marca, v.modelo, v.ano_modelo, v.km, v.cor,
+      v.marca, v.modelo, v.ano_modelo, v.km, v.cor, v.fotos_processadas,
       pc.titulo as vitrine_titulo, pc.descricao as vitrine_descricao, pc.fotos as vitrine_fotos,
       l.id as leilao_id, l.status as leilao_status, l.inicio_em, l.fim_em,
       l.lance_inicial, l.incremento_minimo,
@@ -120,7 +120,12 @@ export async function listarAnunciosVitrine(userId?: string | null) {
   return rowsOf(res).map((r) => ({
     ...r,
     titulo: r.vitrine_titulo || r.titulo,
-    foto_capa: (Array.isArray(r.vitrine_fotos) && r.vitrine_fotos[0]) || r.foto_capa,
+    // Fotos processadas na ficha do veículo são a fonte única: atualizar ali reflete em
+    // toda a vitrine, sem precisar reaplicar a seleção de fotos em cada canal.
+    foto_capa:
+      (Array.isArray(r.fotos_processadas) && r.fotos_processadas[0]) ||
+      (Array.isArray(r.vitrine_fotos) && r.vitrine_fotos[0]) ||
+      r.foto_capa,
     // Valores só aparecem para compradores habilitados
     lance_inicial: acesso.pode_ver_valores ? r.lance_inicial : null,
     lance_atual: acesso.pode_ver_valores ? r.lance_atual : null,
@@ -140,7 +145,7 @@ export async function getDetalheAnuncioPublico(slug: string, userId?: string | n
     SELECT
       a.*,
       v.marca, v.modelo, v.ano_fabricacao, v.ano_modelo, v.km, v.cor, v.combustivel, v.cambio,
-      v.observacoes,
+      v.observacoes, v.fotos_processadas,
       pc.titulo as canal_titulo, pc.descricao as canal_descricao, pc.fotos as canal_fotos,
       l.id as leilao_id, l.status as leilao_status, l.inicio_em, l.fim_em,
       l.lance_inicial, l.incremento_minimo,
@@ -161,14 +166,19 @@ export async function getDetalheAnuncioPublico(slug: string, userId?: string | n
   if (!anuncio) return null;
 
   const fotoRes = await d.execute(sql`
-    SELECT * FROM anuncios_fotos 
-    WHERE anuncio_id = ${anuncio.id}::uuid 
+    SELECT * FROM anuncios_fotos
+    WHERE anuncio_id = ${anuncio.id}::uuid
     ORDER BY ordem ASC
   `);
 
   let fotos = rowsOf(fotoRes) || [];
   if (Array.isArray(anuncio.canal_fotos) && anuncio.canal_fotos.length > 0) {
     fotos = anuncio.canal_fotos.map((url: string, i: number) => ({ id: `c-${i}`, foto_url: url }));
+  }
+  // Fotos processadas na ficha do veículo são a fonte única: têm prioridade máxima,
+  // assim reprocessar uma foto ali atualiza automaticamente em todos os anúncios.
+  if (Array.isArray(anuncio.fotos_processadas) && anuncio.fotos_processadas.length > 0) {
+    fotos = anuncio.fotos_processadas.map((url: string, i: number) => ({ id: `p-${i}`, foto_url: url }));
   }
 
   let favorito = false;
