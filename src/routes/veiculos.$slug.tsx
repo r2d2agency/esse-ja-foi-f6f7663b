@@ -329,11 +329,11 @@ function DetalheVeiculoPublico() {
                       </div>
                     )}
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <Button
                         onClick={() => darLanceMutation.mutate(proximoLanceMinimo)}
                         disabled={!podeDarLances || darLanceMutation.isPending || lancesBloqueados}
-                        className="h-14 bg-teal-600 hover:bg-teal-700 text-white font-black text-xs uppercase rounded-2xl shadow-lg shadow-teal-900/20"
+                        className="h-auto min-h-14 min-w-0 whitespace-normal break-words px-3 py-2 text-center leading-tight bg-teal-600 hover:bg-teal-700 text-white font-black text-xs uppercase rounded-2xl shadow-lg shadow-teal-900/20"
                       >
                         Dar Lance R$ {proximoLanceMinimo.toLocaleString('pt-BR')}
                       </Button>
@@ -341,7 +341,7 @@ function DetalheVeiculoPublico() {
                         onClick={() => darLanceMutation.mutate(proximoLanceMinimo + incrementoMinimo)}
                         disabled={!podeDarLances || darLanceMutation.isPending || lancesBloqueados}
                         variant="outline"
-                        className="h-14 border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white font-black text-xs uppercase rounded-2xl"
+                        className="h-auto min-h-14 min-w-0 whitespace-normal break-words px-3 py-2 text-center leading-tight border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white font-black text-xs uppercase rounded-2xl"
                       >
                         Lance R$ {(proximoLanceMinimo + incrementoMinimo).toLocaleString('pt-BR')}
                       </Button>
@@ -402,15 +402,15 @@ function DetalheVeiculoPublico() {
                 </div>
               )}
               {isAuthenticated && (
-                <div className="mt-8 grid grid-cols-2 gap-3">
+                <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Button
                     type="button"
                     variant="outline"
                     onClick={() => favoritoMutation.mutate()}
-                    className="h-12 rounded-2xl border-white/20 bg-transparent text-xs font-black uppercase text-white hover:bg-white/10 hover:text-white"
+                    className="h-auto min-h-12 min-w-0 whitespace-normal px-3 py-2 rounded-2xl border-white/20 bg-transparent text-xs font-black uppercase text-white hover:bg-white/10 hover:text-white"
                   >
                     <Heart
-                      className={`mr-2 h-4 w-4 ${anuncio.favorito ? "fill-teal-400 text-teal-400" : ""}`}
+                      className={`mr-2 h-4 w-4 shrink-0 ${anuncio.favorito ? "fill-teal-400 text-teal-400" : ""}`}
                     />
                     {anuncio.favorito ? "Favoritado" : "Favoritar"}
                   </Button>
@@ -418,9 +418,9 @@ function DetalheVeiculoPublico() {
                     type="button"
                     variant="outline"
                     onClick={() => lembreteMutation.mutate()}
-                    className="h-12 rounded-2xl border-white/20 bg-transparent text-xs font-black uppercase text-white hover:bg-white/10 hover:text-white"
+                    className="h-auto min-h-12 min-w-0 whitespace-normal px-3 py-2 rounded-2xl border-white/20 bg-transparent text-xs font-black uppercase text-white hover:bg-white/10 hover:text-white"
                   >
-                    <BellPlus className="mr-2 h-4 w-4" />
+                    <BellPlus className="mr-2 h-4 w-4 shrink-0" />
                     {anuncio.lembrete ? "Lembrete ativo" : "Lembrar-me"}
                   </Button>
                 </div>
