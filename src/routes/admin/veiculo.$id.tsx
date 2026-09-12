@@ -795,18 +795,18 @@ function DetalheVeiculoAdminPage() {
                   {fotos.length > 0 ? fotos.map((foto: string, idx: number) => (
                     <div key={idx} className="aspect-square bg-white border border-slate-200 rounded-xl overflow-hidden group relative">
                       <img src={foto} alt={`Foto ${idx+1}`} className="w-full h-full object-cover" />
-                      <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                      <div className="absolute inset-0 flex items-center justify-center gap-2 bg-slate-900/0 transition-colors group-hover:bg-slate-900/40">
                         <Button
                           size="icon"
                           variant="secondary"
-                          className="h-8 w-8 rounded-full"
+                          className="h-9 w-9 rounded-full opacity-100 shadow-lg sm:h-8 sm:w-8 sm:opacity-0 sm:shadow-none sm:group-hover:opacity-100"
                           onClick={() => setSelectedPreview({ url: foto, label: `Foto ${idx + 1}` })}
                         >
                           <Maximize2 className="h-4 w-4" />
                         </Button>
                         <Button
                           size="icon"
-                          className="h-8 w-8 rounded-full bg-teal-600 hover:bg-teal-700"
+                          className="h-9 w-9 rounded-full bg-teal-600 opacity-100 shadow-lg hover:bg-teal-700 sm:h-8 sm:w-8 sm:opacity-0 sm:shadow-none sm:group-hover:opacity-100"
                           title="Posicionar logo/marca d'água sobre a placa"
                           onClick={() => setEditorFoto({ url: foto, index: idx })}
                         >
@@ -840,11 +840,11 @@ function DetalheVeiculoAdminPage() {
                       {fotosProcessadas.map((foto: string, idx: number) => (
                         <div key={idx} className="aspect-square bg-white border border-teal-200 rounded-xl overflow-hidden group relative">
                           <img src={foto} alt={`Foto processada ${idx + 1}`} className="w-full h-full object-cover" />
-                          <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                          <div className="absolute inset-0 flex items-center justify-center gap-2 bg-slate-900/0 transition-colors group-hover:bg-slate-900/40">
                             <Button
                               size="icon"
                               variant="secondary"
-                              className="h-8 w-8 rounded-full"
+                              className="h-9 w-9 rounded-full opacity-100 shadow-lg sm:h-8 sm:w-8 sm:opacity-0 sm:shadow-none sm:group-hover:opacity-100"
                               onClick={() => setSelectedPreview({ url: foto, label: `Foto processada ${idx + 1}` })}
                             >
                               <Maximize2 className="h-4 w-4" />
@@ -852,7 +852,7 @@ function DetalheVeiculoAdminPage() {
                             {fotos[idx] && (
                               <Button
                                 size="icon"
-                                className="h-8 w-8 rounded-full bg-teal-600 hover:bg-teal-700"
+                                className="h-9 w-9 rounded-full bg-teal-600 opacity-100 shadow-lg hover:bg-teal-700 sm:h-8 sm:w-8 sm:opacity-0 sm:shadow-none sm:group-hover:opacity-100"
                                 title="Reajustar a logo/marca d'água"
                                 onClick={() => setEditorFoto({ url: fotos[idx], index: idx })}
                               >

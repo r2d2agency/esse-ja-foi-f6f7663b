@@ -31,7 +31,17 @@ type Arraste =
   | { tipo: "mover"; camadaId: string; offsetX: number; offsetY: number }
   | { tipo: "redimensionar"; camadaId: string }
   | { tipo: "rotacionar"; camadaId: string; centroX: number; centroY: number; anguloInicial: number; rotacaoInicial: number }
-  | { tipo: "desenhar"; camadaId: string; x0: number; y0: number };
+  | { tipo: "desenhar"; camadaId: string; x0: number; y0: number }
+  | { tipo: "pinca"; camadaId: string };
+
+type Pinca = {
+  camadaId: string;
+  distanciaInicial: number;
+  anguloInicial: number;
+  larguraInicial: number;
+  alturaInicial: number | null;
+  rotacaoInicial: number;
+};
 
 function camadasIniciaisPadrao(camadas?: Camada[] | null): Camada[] {
   return camadas && camadas.length > 0 ? camadas : [novaCamadaMarcaDagua()];
@@ -59,6 +69,8 @@ export function EditorLogoFoto({
   const palcoRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const arrasteRef = useRef<Arraste | null>(null);
+  const pointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pincaRef = useRef<Pinca | null>(null);
 
   // Calcula o tamanho do palco em pixels, sempre cabendo na tela — sem isso, uma foto
   // em retrato (ou muito larga) ficava maior que a viewport e escondia os botões do rodapé.
@@ -121,11 +133,34 @@ export function EditorLogoFoto({
     return { x: clientX - rect.left, y: clientY - rect.top };
   }
 
+  function registrarPonteiro(e: React.PointerEvent) {
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  }
+
+  /** Se um segundo dedo já estiver na tela, troca o gesto atual por pinça (redimensionar/girar com dois dedos). */
+  function tentarIniciarPinca(camada: Camada): boolean {
+    if (pointersRef.current.size < 2) return false;
+    const pontos = Array.from(pointersRef.current.values());
+    const [p1, p2] = pontos;
+    pincaRef.current = {
+      camadaId: camada.id,
+      distanciaInicial: Math.max(1, Math.hypot(p2.x - p1.x, p2.y - p1.y)),
+      anguloInicial: Math.atan2(p2.y - p1.y, p2.x - p1.x) * (180 / Math.PI),
+      larguraInicial: camada.larguraPct,
+      alturaInicial: camada.tipo === "placa" ? camada.alturaPct : null,
+      rotacaoInicial: camada.tipo === "placa" ? camada.rotacaoGraus : 0,
+    };
+    arrasteRef.current = { tipo: "pinca", camadaId: camada.id };
+    return true;
+  }
+
   function iniciarMover(camada: Camada, e: React.PointerEvent) {
     if (desenhandoPlaca) return;
     e.preventDefault();
     (e.target as Element).setPointerCapture(e.pointerId);
+    registrarPonteiro(e);
     setSelecionadaId(camada.id);
+    if (tentarIniciarPinca(camada)) return;
     const pos = posicaoRelativa(e.clientX, e.clientY);
     arrasteRef.current = { tipo: "mover", camadaId: camada.id, offsetX: pos.x - camada.xPct, offsetY: pos.y - camada.yPct };
   }
@@ -134,7 +169,9 @@ export function EditorLogoFoto({
     e.preventDefault();
     e.stopPropagation();
     (e.target as Element).setPointerCapture(e.pointerId);
+    registrarPonteiro(e);
     setSelecionadaId(camada.id);
+    if (tentarIniciarPinca(camada)) return;
     arrasteRef.current = { tipo: "redimensionar", camadaId: camada.id };
   }
 
@@ -142,7 +179,9 @@ export function EditorLogoFoto({
     e.preventDefault();
     e.stopPropagation();
     (e.target as Element).setPointerCapture(e.pointerId);
+    registrarPonteiro(e);
     setSelecionadaId(camada.id);
+    if (tentarIniciarPinca(camada)) return;
     const palco = palcoRef.current;
     const rect = palco?.getBoundingClientRect();
     const larguraPx = rect?.width ?? 1;
@@ -177,8 +216,30 @@ export function EditorLogoFoto({
   }
 
   function aoMoverPonteiro(e: React.PointerEvent) {
+    if (pointersRef.current.has(e.pointerId)) {
+      pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+
     const arraste = arrasteRef.current;
     if (!arraste) return;
+
+    if (arraste.tipo === "pinca") {
+      const pinca = pincaRef.current;
+      const pontos = Array.from(pointersRef.current.values());
+      if (!pinca || pontos.length < 2) return;
+      const [p1, p2] = pontos;
+      const distanciaAtual = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+      const anguloAtual = Math.atan2(p2.y - p1.y, p2.x - p1.x) * (180 / Math.PI);
+      const escala = distanciaAtual / pinca.distanciaInicial;
+      const deltaAngulo = anguloAtual - pinca.anguloInicial;
+      atualizarCamada(pinca.camadaId, (c) => {
+        const larguraNova = clamp(pinca.larguraInicial * escala, TAMANHO_MINIMO, TAMANHO_MAXIMO);
+        if (c.tipo === "marca_dagua") return { ...c, larguraPct: larguraNova };
+        const alturaNova = clamp((pinca.alturaInicial ?? pinca.larguraInicial) * escala, TAMANHO_MINIMO, TAMANHO_MAXIMO);
+        return { ...c, larguraPct: larguraNova, alturaPct: alturaNova, rotacaoGraus: pinca.rotacaoInicial + deltaAngulo };
+      });
+      return;
+    }
 
     if (arraste.tipo === "rotacionar") {
       const pos = posicaoPixel(e.clientX, e.clientY);
@@ -219,7 +280,9 @@ export function EditorLogoFoto({
     }
   }
 
-  function pararArraste() {
+  function pararArraste(e: React.PointerEvent) {
+    pointersRef.current.delete(e.pointerId);
+
     if (arrasteRef.current?.tipo === "desenhar") {
       const { camadaId } = arrasteRef.current;
       setDesenhandoPlaca(false);
@@ -232,6 +295,10 @@ export function EditorLogoFoto({
         return atual;
       });
     }
+
+    // Soltou um dos dois dedos do gesto de pinça — encerra o gesto (menos de
+    // 2 pontos não dá pra continuar calculando distância/ângulo).
+    pincaRef.current = null;
     arrasteRef.current = null;
   }
 
@@ -259,8 +326,8 @@ export function EditorLogoFoto({
 
         <p className="text-xs text-slate-500">
           {desenhandoPlaca
-            ? "Clique e arraste sobre a placa para desenhar a área que será tampada."
-            : "Toque numa camada para selecioná-la — arraste para mover, a alça no canto redimensiona."}
+            ? "Toque e arraste sobre a placa para desenhar a área que será tampada."
+            : "Toque numa camada para selecioná-la — arraste para mover, a alça no canto redimensiona, e no celular dá pra usar dois dedos (pinça) para redimensionar e girar direto."}
         </p>
 
         <div ref={containerRef} className="flex justify-center">
@@ -317,7 +384,7 @@ export function EditorLogoFoto({
                       <>
                         <div
                           onPointerDown={(e) => iniciarRedimensionar(camada, e)}
-                          className="absolute -bottom-2 -right-2 h-5 w-5 cursor-nwse-resize rounded-full border-2 border-white bg-teal-600 shadow"
+                          className="absolute -bottom-3 -right-3 h-8 w-8 cursor-nwse-resize touch-none rounded-full border-2 border-white bg-teal-600 shadow"
                         />
                         <button
                           type="button"
@@ -326,10 +393,10 @@ export function EditorLogoFoto({
                             e.stopPropagation();
                             removerCamada(camada.id);
                           }}
-                          className="absolute -top-2 -left-2 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-rose-600 text-white shadow"
+                          className="absolute -top-3 -left-3 flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-rose-600 text-white shadow"
                           aria-label="Remover marca d'água"
                         >
-                          <Trash2 className="h-2.5 w-2.5" />
+                          <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </>
                     )}
@@ -364,14 +431,14 @@ export function EditorLogoFoto({
                     <>
                       <div
                         onPointerDown={(e) => iniciarRedimensionar(camada, e)}
-                        className="absolute -bottom-2 -right-2 h-5 w-5 cursor-nwse-resize rounded-full border-2 border-white bg-teal-600 shadow"
+                        className="absolute -bottom-3 -right-3 h-8 w-8 cursor-nwse-resize touch-none rounded-full border-2 border-white bg-teal-600 shadow"
                       />
                       <div
                         onPointerDown={(e) => iniciarRotacionar(camada, e)}
-                        className="absolute -top-7 left-1/2 flex h-5 w-5 -translate-x-1/2 cursor-grab items-center justify-center rounded-full border-2 border-white bg-amber-500 text-white shadow"
+                        className="absolute -top-9 left-1/2 flex h-8 w-8 -translate-x-1/2 cursor-grab touch-none items-center justify-center rounded-full border-2 border-white bg-amber-500 text-white shadow"
                         aria-label="Girar área da placa"
                       >
-                        <RotateCw className="h-3 w-3" />
+                        <RotateCw className="h-4 w-4" />
                       </div>
                       <button
                         type="button"
@@ -380,10 +447,10 @@ export function EditorLogoFoto({
                           e.stopPropagation();
                           removerCamada(camada.id);
                         }}
-                        className="absolute -top-2 -left-2 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-rose-600 text-white shadow"
+                        className="absolute -top-3 -left-3 flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-rose-600 text-white shadow"
                         aria-label="Remover área da placa"
                       >
-                        <Trash2 className="h-2.5 w-2.5" />
+                        <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </>
                   )}

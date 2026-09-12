@@ -142,7 +142,7 @@ function idAleatorio() {
 }
 
 export function novaCamadaMarcaDagua(): CamadaMarcaDagua {
-  return { id: idAleatorio(), tipo: "marca_dagua", xPct: 0.68, yPct: 0.8, larguraPct: 0.28, variante: "normal" };
+  return { id: idAleatorio(), tipo: "marca_dagua", xPct: 0.68, yPct: 0.8, larguraPct: 0.28, variante: "branco" };
 }
 
 export function novaCamadaPlaca(): CamadaPlaca {
