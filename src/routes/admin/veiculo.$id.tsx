@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { getVeiculoDetalheAdminFn, assumirAnaliseVeiculoFn, atualizarStatusAnaliseFn, atualizarStatusDocumentoVeiculoFn } from "@/lib/admin-veiculo-detalhe.functions";
+import { getVeiculoDetalheAdminFn, assumirAnaliseVeiculoFn, atualizarStatusAnaliseFn, atualizarStatusDocumentoVeiculoFn, aprovarParaPublicacaoFn } from "@/lib/admin-veiculo-detalhe.functions";
 import { salvarConfiguracaoLeilao } from "@/lib/leilao.functions";
 import { useAuth } from "@/hooks/use-auth";
 import { useEffect, useState } from "react";
@@ -126,6 +126,7 @@ function DetalheVeiculoAdminPage() {
   const assumir = useServerFn(assumirAnaliseVeiculoFn);
   const atualizarStatus = useServerFn(atualizarStatusAnaliseFn);
   const atualizarStatusDoc = useServerFn(atualizarStatusDocumentoVeiculoFn);
+  const aprovarPublicacao = useServerFn(aprovarParaPublicacaoFn);
 
   const canReportDebug =
     typeof window !== "undefined" &&
@@ -225,6 +226,23 @@ function DetalheVeiculoAdminPage() {
         refetch();
       } else {
         toast.error("Erro ao atualizar status", { id: toastId });
+      }
+    } catch (err) {
+      toast.error("Erro técnico", { id: toastId });
+    }
+  };
+
+  const handleAprovarPublicacao = async () => {
+    if (!user?.id) return;
+    if (!window.confirm("Aprovar este veículo para publicação sem vistoria? Ele ficará disponível para Leilão, Anúncio e Vitrine.")) return;
+    const toastId = toast.loading("Aprovando veículo para publicação...");
+    try {
+      const res = await aprovarPublicacao({ data: { veiculoId: id, responsavelId: user.id } });
+      if (res.ok) {
+        toast.success("Veículo aprovado e liberado para publicação.", { id: toastId });
+        refetch();
+      } else {
+        toast.error("Erro ao aprovar o veículo.", { id: toastId });
       }
     } catch (err) {
       toast.error("Erro técnico", { id: toastId });
@@ -392,7 +410,16 @@ function DetalheVeiculoAdminPage() {
           <Button variant="outline" className="font-bold border-red-200 text-red-600 hover:bg-red-50" onClick={() => handleMudarStatus('REPROVADO')}>
             <XCircle className="mr-2 h-4 w-4" /> Reprovar
           </Button>
-          
+
+          {!["PRONTO_PARA_ANUNCIO", "ANUNCIADO", "EM_LEILAO"].includes(v.status_analise) && (
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+              onClick={handleAprovarPublicacao}
+            >
+              <CheckCircle2 className="mr-2 h-4 w-4" /> Aprovar para publicação (sem vistoria)
+            </Button>
+          )}
+
           {v.status_analise === 'VISTORIADO' ? (
             <Button 
               className="bg-purple-600 hover:bg-purple-700 text-white font-bold"

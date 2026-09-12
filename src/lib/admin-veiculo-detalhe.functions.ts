@@ -167,6 +167,37 @@ export const atualizarStatusAnaliseFn = createServerFn({ method: "POST" })
     return { ok: true as const };
   });
 
+/**
+ * Aprova o veículo direto para publicação, pulando a etapa de vistoria —
+ * usado quando a vistoria passou a ser feita só depois da venda.
+ */
+export const aprovarParaPublicacaoFn = createServerFn({ method: "POST" })
+  .validator(z.object({
+    veiculoId: z.string().uuid(),
+    responsavelId: z.string().uuid(),
+  }))
+  .handler(async ({ data }) => {
+    const { db } = await import("@/db/index");
+    const { sql } = await import("drizzle-orm");
+    if (!db) throw new Error("Banco de dados indisponível");
+
+    await db.execute(sql`
+      UPDATE veiculos
+      SET
+        status = 'PRONTO_PARA_ANUNCIO',
+        status_analise = 'PRONTO_PARA_ANUNCIO',
+        atualizado_em = now()
+      WHERE id = ${data.veiculoId}::uuid
+    `);
+
+    await db.execute(sql`
+      INSERT INTO logs (entidade, entidade_id, acao, detalhe, usuario)
+      VALUES ('veiculo', ${data.veiculoId}::uuid, 'ALTERACAO_STATUS_ANALISE', 'PRONTO_PARA_ANUNCIO (aprovado sem vistoria)', ${data.responsavelId}::uuid)
+    `);
+
+    return { ok: true as const };
+  });
+
 export const atualizarStatusDocumentoVeiculoFn = createServerFn({ method: "POST" })
   .validator(z.object({
     veiculoId: z.string().uuid(),
