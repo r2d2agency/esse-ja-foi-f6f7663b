@@ -76,10 +76,6 @@ function PropostaVendedorPage() {
           <div className="space-y-4">
             <h3 className="text-xs font-black uppercase text-slate-400 tracking-wider">Por que este valor?</h3>
             <div className="space-y-3">
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-slate-500 font-medium">Referência FIPE</span>
-                <span className="font-bold">{formatCurrency(Number(v.valor_fipe_atual))}</span>
-              </div>
               <div className="p-3 bg-red-50 rounded-lg border border-red-100">
                 <div className="flex items-start gap-2">
                   <TrendingDown className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
