@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getVeiculoDetalheAdminFn, assumirAnaliseVeiculoFn, atualizarStatusAnaliseFn, atualizarStatusDocumentoVeiculoFn, aprovarParaPublicacaoFn } from "@/lib/admin-veiculo-detalhe.functions";
 import { removerVeiculoFn, salvarVeiculoFn } from "@/lib/cadastro.functions";
+import { buscarPrecoFipeVeiculoFn } from "@/lib/fipe.functions";
 import { salvarConfiguracaoLeilao } from "@/lib/leilao.functions";
 import { useAuth } from "@/hooks/use-auth";
 import { useEffect, useState } from "react";
@@ -129,6 +130,8 @@ function DetalheVeiculoAdminPage() {
   const [editandoFipe, setEditandoFipe] = useState(false);
   const [valorFipeInput, setValorFipeInput] = useState("");
   const [salvandoFipe, setSalvandoFipe] = useState(false);
+  const [buscandoFipe, setBuscandoFipe] = useState(false);
+  const [fonteFipe, setFonteFipe] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   const getDetalhe = useServerFn(getVeiculoDetalheAdminFn);
@@ -138,6 +141,7 @@ function DetalheVeiculoAdminPage() {
   const aprovarPublicacao = useServerFn(aprovarParaPublicacaoFn);
   const removerVeiculo = useServerFn(removerVeiculoFn);
   const salvarVeiculo = useServerFn(salvarVeiculoFn);
+  const buscarPrecoFipe = useServerFn(buscarPrecoFipeVeiculoFn);
 
   const canReportDebug =
     typeof window !== "undefined" &&
@@ -285,7 +289,29 @@ function DetalheVeiculoAdminPage() {
 
   const iniciarEdicaoFipe = () => {
     setValorFipeInput(v.valor_fipe ? String(Number(v.valor_fipe)).replace(".", ",") : "");
+    setFonteFipe(null);
     setEditandoFipe(true);
+  };
+
+  const buscarNaFipe = async () => {
+    setBuscandoFipe(true);
+    setFonteFipe(null);
+    try {
+      const res: any = await buscarPrecoFipe({ data: { veiculoId: v.id } });
+      if (!res?.ok) {
+        toast.error(res?.message || "Não foi possível consultar a FIPE.");
+        return;
+      }
+      const d = res.data;
+      setValorFipeInput(String(d.precoCentavos / 100).replace(".", ","));
+      setFonteFipe(`FIPE: ${d.marca} ${d.modelo}${d.ano ? ` ${d.ano}` : " 0km"} • ${d.combustivel} • cód. ${d.fipeCode}`);
+      setEditandoFipe(true);
+      toast.success("Valor encontrado na FIPE — confira e salve.");
+    } catch (e: any) {
+      toast.error(e?.message || "Erro ao consultar a FIPE.");
+    } finally {
+      setBuscandoFipe(false);
+    }
   };
 
   const salvarValorFipe = async () => {
@@ -950,17 +976,31 @@ function DetalheVeiculoAdminPage() {
                             </Button>
                           </div>
                         ) : (
-                          <button
-                            type="button"
-                            onClick={iniciarEdicaoFipe}
-                            className="flex items-center gap-1.5 text-sm font-black text-slate-950 hover:text-teal-700"
-                            title="Clique para editar"
-                          >
-                            {valorFipe}
-                            <PenSquare className="h-3.5 w-3.5 text-slate-400" />
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={iniciarEdicaoFipe}
+                              className="flex items-center gap-1.5 text-sm font-black text-slate-950 hover:text-teal-700"
+                              title="Clique para editar"
+                            >
+                              {valorFipe}
+                              <PenSquare className="h-3.5 w-3.5 text-slate-400" />
+                            </button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-[11px] font-bold"
+                              onClick={buscarNaFipe}
+                              disabled={buscandoFipe}
+                            >
+                              {buscandoFipe ? "Buscando..." : "Buscar na FIPE"}
+                            </Button>
+                          </div>
                         )}
                       </div>
+                      {fonteFipe && editandoFipe && (
+                        <p className="-mt-2 text-right text-[11px] font-medium text-teal-700">{fonteFipe}</p>
+                      )}
                       <div className="flex items-center justify-between gap-4">
                         <span className="text-sm text-slate-400 font-medium">Valor desejado</span>
                         <span className="text-sm font-black text-slate-950">{valorDesejado}</span>
