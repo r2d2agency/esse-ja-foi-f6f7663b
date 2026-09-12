@@ -1,5 +1,3 @@
-import { detectarPlacaFotoFn } from "@/lib/fotos-anuncio.functions";
-
 export type VarianteLogo = "normal" | "branco";
 
 export type AjusteLogo = {
@@ -73,29 +71,4 @@ export async function compositarLogo(fotoUrl: string, ajuste: AjusteLogo): Promi
   ctx.drawImage(logo, x, y, larguraLogo, alturaLogo);
 
   return canvas.toDataURL("image/jpeg", 0.9);
-}
-
-/**
- * Detecta a placa via IA, cobre com a logo da Esse Já Foi (ou a marca d'água padrão, se não detectar)
- * e faz o upload do resultado, devolvendo a URL final já persistida.
- */
-export async function processarFotoComLogo(fotoUrl: string): Promise<string> {
-  let ajuste = AJUSTE_PADRAO;
-  try {
-    const res = await detectarPlacaFotoFn({ data: { imagemUrl: fotoUrl } });
-    if (res.ok && res.bbox) ajuste = bboxParaAjuste(res.bbox);
-  } catch {
-    // sem IA disponível — segue com a marca d'água padrão
-  }
-
-  const dataUrl = await compositarLogo(fotoUrl, ajuste);
-
-  const blob = await fetch(dataUrl).then((r) => r.blob());
-  const fd = new FormData();
-  fd.append("file", blob, "foto-processada.jpg");
-  const resposta = await fetch("/api/public/upload", { method: "POST", body: fd });
-  if (!resposta.ok) throw new Error("Falha ao salvar a foto processada.");
-  const json = await resposta.json().catch(() => null);
-  if (!json?.url) throw new Error("Upload não retornou uma URL válida.");
-  return json.url as string;
 }

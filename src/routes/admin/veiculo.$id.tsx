@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LaudosVeiculo } from "@/components/veiculo/LaudosVeiculo";
 import { CanaisPublicacao } from "@/components/publicacao/CanaisPublicacao";
+import { EditorLogoFoto } from "@/components/publicacao/EditorLogoFoto";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -51,7 +52,6 @@ import {
   Gavel,
   MessageSquare,
   Calculator,
-  Loader2,
   Wand2
 } from "lucide-react";
 import { format } from "date-fns";
@@ -119,8 +119,7 @@ function DetalheVeiculoAdminPage() {
   const [selectedPreview, setSelectedPreview] = useState<{ url: string; label: string } | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [rejectObservation, setRejectObservation] = useState("");
-  const [processandoFotos, setProcessandoFotos] = useState(false);
-  const [progressoFotos, setProgressoFotos] = useState<{ atual: number; total: number } | null>(null);
+  const [editorFoto, setEditorFoto] = useState<{ url: string; index: number } | null>(null);
   const queryClient = useQueryClient();
   
   const getDetalhe = useServerFn(getVeiculoDetalheAdminFn);
@@ -318,34 +317,28 @@ function DetalheVeiculoAdminPage() {
     return [];
   })();
 
-  const handleProcessarFotos = async () => {
-    if (fotos.length === 0) return;
-    setProcessandoFotos(true);
-    setProgressoFotos({ atual: 0, total: fotos.length });
+  const salvarFotoProcessada = async (index: number, dataUrl: string) => {
+    const toastId = toast.loading("Salvando foto processada...");
     try {
-      const { processarFotoComLogo } = await import("@/lib/logo-foto");
+      const blob = await fetch(dataUrl).then((r) => r.blob());
+      const fd = new FormData();
+      fd.append("file", blob, "foto-processada.jpg");
+      const resUpload = await fetch("/api/public/upload", { method: "POST", body: fd });
+      if (!resUpload.ok) throw new Error("Falha ao salvar a foto processada.");
+      const json = await resUpload.json().catch(() => null);
+      if (!json?.url) throw new Error("Upload não retornou uma URL válida.");
+
+      const novaLista = [...fotosProcessadas];
+      while (novaLista.length < fotos.length) novaLista.push(fotos[novaLista.length]);
+      novaLista[index] = json.url;
+
       const { salvarFotosProcessadasFn } = await import("@/lib/fotos-anuncio.functions");
-
-      const resultado: string[] = [];
-      for (let i = 0; i < fotos.length; i++) {
-        try {
-          resultado.push(await processarFotoComLogo(fotos[i]));
-        } catch (err) {
-          console.error("Erro ao processar foto", i, err);
-          resultado.push(fotos[i]); // mantém a original em vez de perder a foto se a IA/composição falhar
-        }
-        setProgressoFotos({ atual: i + 1, total: fotos.length });
-      }
-
-      const resSalvar = await salvarFotosProcessadasFn({ data: { veiculoId: id, fotos: resultado } });
-      if (!resSalvar?.ok) throw new Error(resSalvar?.message || "Erro ao salvar as fotos processadas.");
-      toast.success("Fotos processadas e prontas para publicar.");
+      const resSalvar = await salvarFotosProcessadasFn({ data: { veiculoId: id, fotos: novaLista } });
+      if (!resSalvar?.ok) throw new Error(resSalvar?.message || "Erro ao salvar a foto processada.");
+      toast.success("Foto processada e salva.", { id: toastId });
       refetch();
     } catch (err: any) {
-      toast.error(err?.message || "Erro ao processar as fotos.");
-    } finally {
-      setProcessandoFotos(false);
-      setProgressoFotos(null);
+      toast.error(err?.message || "Erro ao salvar a foto processada.", { id: toastId });
     }
   };
 
@@ -713,39 +706,19 @@ function DetalheVeiculoAdminPage() {
               </TabsContent>
 
               <TabsContent value="fotos" className="mt-0 space-y-6">
-                <div className="flex items-center justify-between gap-4">
-                  <p className="text-xs font-black uppercase tracking-widest text-slate-400">
-                    Fotos enviadas pelo vendedor
-                  </p>
-                  {fotos.length > 0 && (
-                    <Button
-                      size="sm"
-                      className="bg-teal-600 hover:bg-teal-700 font-bold"
-                      disabled={processandoFotos}
-                      onClick={handleProcessarFotos}
-                    >
-                      {processandoFotos ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Processando {progressoFotos?.atual ?? 0}/{progressoFotos?.total ?? fotos.length}...
-                        </>
-                      ) : (
-                        <>
-                          <Wand2 className="mr-2 h-4 w-4" />
-                          {fotosProcessadas.length > 0 ? "Reprocessar" : "Processar"} fotos com IA
-                        </>
-                      )}
-                    </Button>
-                  )}
-                </div>
+                <p className="text-xs font-black uppercase tracking-widest text-slate-400">
+                  Fotos enviadas pelo vendedor
+                </p>
                 <p className="text-xs text-slate-400">
-                  Detecta a placa em cada foto e cobre com a logo da Esse Já Foi + marca d'água, deixando as fotos prontas para publicar.
+                  Clique na varinha para posicionar manualmente a logo/marca d'água sobre a placa — você pode
+                  arrastar, redimensionar, trocar entre a logo colorida ou branca, e usar "Detectar placa (IA)"
+                  como ponto de partida.
                 </p>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                   {fotos.length > 0 ? fotos.map((foto: string, idx: number) => (
                     <div key={idx} className="aspect-square bg-white border border-slate-200 rounded-xl overflow-hidden group relative">
                       <img src={foto} alt={`Foto ${idx+1}`} className="w-full h-full object-cover" />
-                      <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center p-4 gap-2">
+                      <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                         <Button
                           size="icon"
                           variant="secondary"
@@ -754,10 +727,20 @@ function DetalheVeiculoAdminPage() {
                         >
                           <Maximize2 className="h-4 w-4" />
                         </Button>
+                        <Button
+                          size="icon"
+                          className="h-8 w-8 rounded-full bg-teal-600 hover:bg-teal-700"
+                          title="Posicionar logo/marca d'água sobre a placa"
+                          onClick={() => setEditorFoto({ url: foto, index: idx })}
+                        >
+                          <Wand2 className="h-4 w-4" />
+                        </Button>
                       </div>
-                      <div className="absolute bottom-0 inset-x-0 p-2 bg-white/90 backdrop-blur-sm">
-                        <p className="text-[9px] font-black uppercase text-slate-500 text-center truncate">Categoria foto</p>
-                      </div>
+                      {fotosProcessadas[idx] && (
+                        <span className="absolute left-2 top-2 rounded-full bg-teal-600 px-2 py-0.5 text-[9px] font-black uppercase text-white">
+                          Processada
+                        </span>
+                      )}
                     </div>
                   )) : (
                     <div className="col-span-full py-12 text-center text-slate-400">Nenhuma foto cadastrada.</div>
@@ -773,7 +756,7 @@ function DetalheVeiculoAdminPage() {
                       {fotosProcessadas.map((foto: string, idx: number) => (
                         <div key={idx} className="aspect-square bg-white border border-teal-200 rounded-xl overflow-hidden group relative">
                           <img src={foto} alt={`Foto processada ${idx + 1}`} className="w-full h-full object-cover" />
-                          <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                             <Button
                               size="icon"
                               variant="secondary"
@@ -782,11 +765,32 @@ function DetalheVeiculoAdminPage() {
                             >
                               <Maximize2 className="h-4 w-4" />
                             </Button>
+                            {fotos[idx] && (
+                              <Button
+                                size="icon"
+                                className="h-8 w-8 rounded-full bg-teal-600 hover:bg-teal-700"
+                                title="Reajustar a logo/marca d'água"
+                                onClick={() => setEditorFoto({ url: fotos[idx], index: idx })}
+                              >
+                                <Wand2 className="h-4 w-4" />
+                              </Button>
+                            )}
                           </div>
                         </div>
                       ))}
                     </div>
                   </div>
+                )}
+
+                {editorFoto && (
+                  <EditorLogoFoto
+                    open={!!editorFoto}
+                    onOpenChange={(open) => {
+                      if (!open) setEditorFoto(null);
+                    }}
+                    fotoUrl={editorFoto.url}
+                    onSalvar={(novaUrl) => salvarFotoProcessada(editorFoto.index, novaUrl)}
+                  />
                 )}
               </TabsContent>
 
