@@ -83,7 +83,7 @@ export async function listarAnunciosVitrine(userId?: string | null) {
   const res = await d.execute(sql`
     SELECT 
       a.id, a.codigo_publico, a.slug, a.titulo, a.localizacao_publica, a.veiculo_id,
-      v.marca, v.modelo, v.ano_modelo, v.km, v.cor, v.fotos_processadas,
+      v.marca, v.modelo, v.ano_modelo, v.km, v.cor, v.fotos_processadas, v.fotos_legendas,
       pc.titulo as vitrine_titulo, pc.descricao as vitrine_descricao, pc.fotos as vitrine_fotos,
       l.id as leilao_id, l.status as leilao_status, l.inicio_em, l.fim_em,
       l.lance_inicial, l.incremento_minimo,
@@ -117,15 +117,20 @@ export async function listarAnunciosVitrine(userId?: string | null) {
     }
   }
 
-  return rowsOf(res).map((r) => ({
+  return rowsOf(res).map((r) => {
+    const foto_capa =
+      (Array.isArray(r.fotos_processadas) && r.fotos_processadas[0]) ||
+      (Array.isArray(r.vitrine_fotos) && r.vitrine_fotos[0]) ||
+      r.foto_capa;
+    const legendas: Record<string, string> =
+      r.fotos_legendas && typeof r.fotos_legendas === "object" ? r.fotos_legendas : {};
+    return {
     ...r,
     titulo: r.vitrine_titulo || r.titulo,
     // Fotos processadas na ficha do veículo são a fonte única: atualizar ali reflete em
     // toda a vitrine, sem precisar reaplicar a seleção de fotos em cada canal.
-    foto_capa:
-      (Array.isArray(r.fotos_processadas) && r.fotos_processadas[0]) ||
-      (Array.isArray(r.vitrine_fotos) && r.vitrine_fotos[0]) ||
-      r.foto_capa,
+    foto_capa,
+    legenda_capa: foto_capa ? legendas[foto_capa] || null : null,
     // Valores só aparecem para compradores habilitados
     lance_inicial: acesso.pode_ver_valores ? r.lance_inicial : null,
     lance_atual: acesso.pode_ver_valores ? r.lance_atual : null,
@@ -133,7 +138,8 @@ export async function listarAnunciosVitrine(userId?: string | null) {
     valores_ocultos: !acesso.pode_ver_valores,
     pode_dar_lances: acesso.pode_dar_lances,
     favorito: favoritos.has(String(r.id)),
-  }));
+    };
+  });
 }
 
 export async function getDetalheAnuncioPublico(slug: string, userId?: string | null) {
@@ -145,7 +151,7 @@ export async function getDetalheAnuncioPublico(slug: string, userId?: string | n
     SELECT
       a.*,
       v.marca, v.modelo, v.ano_fabricacao, v.ano_modelo, v.km, v.cor, v.combustivel, v.cambio,
-      v.observacoes, v.fotos_processadas,
+      v.observacoes, v.fotos_processadas, v.fotos_legendas,
       pc.titulo as canal_titulo, pc.descricao as canal_descricao, pc.fotos as canal_fotos,
       l.id as leilao_id, l.status as leilao_status, l.inicio_em, l.fim_em,
       l.lance_inicial, l.incremento_minimo,
@@ -180,6 +186,9 @@ export async function getDetalheAnuncioPublico(slug: string, userId?: string | n
   if (Array.isArray(anuncio.fotos_processadas) && anuncio.fotos_processadas.length > 0) {
     fotos = anuncio.fotos_processadas.map((url: string, i: number) => ({ id: `p-${i}`, foto_url: url }));
   }
+  const legendasFotos: Record<string, string> =
+    anuncio.fotos_legendas && typeof anuncio.fotos_legendas === "object" ? anuncio.fotos_legendas : {};
+  fotos = fotos.map((f: any) => ({ ...f, legenda: legendasFotos[f.foto_url] || null }));
 
   let favorito = false;
   let lembrete = null as any;

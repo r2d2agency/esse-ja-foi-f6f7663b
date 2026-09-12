@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Check, ImagePlus, Loader2, UserRound, X } from "lucide-react";
+import { Check, ImagePlus, Loader2, MessageSquareText, Sparkles, UserRound, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AJUSTE_PADRAO, bboxParaAjuste, compositarLogo } from "@/lib/logo-foto";
-import { detectarPlacaFotoFn } from "@/lib/fotos-anuncio.functions";
+import { detectarPlacaFotoFn, gerarLegendaFotoFn, salvarLegendaFotoFn } from "@/lib/fotos-anuncio.functions";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
 
 async function enviarArquivo(file: File): Promise<string | null> {
   const fd = new FormData();
@@ -36,6 +38,10 @@ export function UploadFotos({
   onChange,
   fotosVendedor = [],
   fotosVendedorJaProcessadas = false,
+  veiculoId,
+  legendas = {},
+  onChangeLegendas,
+  veiculoContexto,
 }: {
   fotos: string[];
   onChange: (fotos: string[]) => void;
@@ -43,13 +49,70 @@ export function UploadFotos({
   fotosVendedor?: string[];
   /** Se true, `fotosVendedor` já tem a logo/marca d'água aplicada — não reprocessa ao usar. */
   fotosVendedorJaProcessadas?: boolean;
+  /** Id do veículo — necessário para editar a legenda de cada foto (mostrada ao comprador). */
+  veiculoId?: string;
+  /** Legendas atuais por URL de foto (compartilhadas entre os canais do mesmo veículo). */
+  legendas?: Record<string, string>;
+  onChangeLegendas?: (legendas: Record<string, string>) => void;
+  /** Dados do veículo usados pela IA para sugerir a legenda. */
+  veiculoContexto?: { marca?: string; modelo?: string; anoModelo?: string | number };
 }) {
   const [dragging, setDragging] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [selecionadas, setSelecionadas] = useState<string[]>([]);
   const [aplicandoSelecionadas, setAplicandoSelecionadas] = useState(false);
+  const [editandoLegendaUrl, setEditandoLegendaUrl] = useState<string | null>(null);
+  const [rascunhoLegenda, setRascunhoLegenda] = useState("");
+  const [gerandoLegendaIA, setGerandoLegendaIA] = useState(false);
+  const [salvandoLegenda, setSalvandoLegenda] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const zonaRef = useRef<HTMLDivElement>(null);
+
+  function abrirEdicaoLegenda(url: string) {
+    setEditandoLegendaUrl(url);
+    setRascunhoLegenda(legendas[url] || "");
+  }
+
+  async function gerarLegendaComIA() {
+    setGerandoLegendaIA(true);
+    try {
+      const res: any = await gerarLegendaFotoFn({
+        data: {
+          notaBase: rascunhoLegenda,
+          marca: veiculoContexto?.marca,
+          modelo: veiculoContexto?.modelo,
+          anoModelo: veiculoContexto?.anoModelo,
+        },
+      });
+      if (!res?.ok) {
+        toast.error(res?.motivo || "Não foi possível gerar a legenda com IA.");
+        return;
+      }
+      setRascunhoLegenda(res.legenda);
+    } finally {
+      setGerandoLegendaIA(false);
+    }
+  }
+
+  async function salvarLegendaAtual() {
+    if (!editandoLegendaUrl || !veiculoId) return;
+    setSalvandoLegenda(true);
+    try {
+      const texto = rascunhoLegenda.trim();
+      const res: any = await salvarLegendaFotoFn({
+        data: { veiculoId, fotoUrl: editandoLegendaUrl, legenda: texto },
+      });
+      if (!res?.ok) {
+        toast.error(res?.message || "Não foi possível salvar a legenda.");
+        return;
+      }
+      onChangeLegendas?.({ ...legendas, [editandoLegendaUrl]: texto });
+      toast.success("Legenda salva.");
+      setEditandoLegendaUrl(null);
+    } finally {
+      setSalvandoLegenda(false);
+    }
+  }
 
   const disponiveisVendedor = useMemo(
     () => fotosVendedor.filter((url) => !fotos.includes(url)),
@@ -134,8 +197,80 @@ export function UploadFotos({
               >
                 <X className="h-3 w-3" />
               </button>
+              {veiculoId && (
+                <button
+                  type="button"
+                  onClick={() => abrirEdicaoLegenda(url)}
+                  className={cn(
+                    "absolute bottom-1 left-1 flex items-center gap-1 rounded-full px-1.5 py-1 text-white transition-colors",
+                    legendas[url] ? "bg-teal-600 hover:bg-teal-700" : "bg-slate-950/70 hover:bg-slate-950/90",
+                  )}
+                  title={legendas[url] ? "Editar legenda para o comprador" : "Adicionar legenda para o comprador"}
+                >
+                  <MessageSquareText className="h-3 w-3" />
+                </button>
+              )}
             </div>
           ))}
+        </div>
+      )}
+
+      {editandoLegendaUrl && (
+        <div className="space-y-2 rounded-2xl border border-teal-200 bg-teal-50/60 p-3">
+          <div className="flex gap-3">
+            <img
+              src={editandoLegendaUrl}
+              alt="Foto selecionada"
+              className="h-16 w-20 shrink-0 rounded-lg object-cover"
+            />
+            <div className="flex-1 space-y-2">
+              <p className="text-xs font-bold text-slate-600">
+                Legenda curta para o comprador (aparece como um "i" sobre a foto)
+              </p>
+              <Textarea
+                rows={2}
+                maxLength={140}
+                autoFocus
+                placeholder="Ex.: risco leve no para-choque traseiro"
+                value={rascunhoLegenda}
+                onChange={(e) => setRascunhoLegenda(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={gerandoLegendaIA}
+              onClick={gerarLegendaComIA}
+            >
+              {gerandoLegendaIA ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="mr-2 h-4 w-4" />
+              )}
+              Gerar com IA
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              className="bg-teal-600 hover:bg-teal-700"
+              disabled={salvandoLegenda}
+              onClick={salvarLegendaAtual}
+            >
+              {salvandoLegenda && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Salvar legenda
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => setEditandoLegendaUrl(null)}
+              disabled={salvandoLegenda}
+            >
+              Cancelar
+            </Button>
+          </div>
         </div>
       )}
 

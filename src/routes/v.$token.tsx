@@ -7,6 +7,7 @@ import { LogoEsf } from "@/components/shared/LogoEsf";
 import { getVeiculoPorTokenFn } from "@/lib/publicacao.functions";
 import { desserializarCondicao, listarAcessorios } from "@/lib/veiculo-condicao";
 import { AcessoriosVeiculo } from "@/components/veiculo/AcessoriosVeiculo";
+import { LegendaFotoBadge } from "@/components/veiculo/LegendaFotoBadge";
 
 export const Route = createFileRoute("/v/$token")({
   head: () => ({
@@ -64,6 +65,7 @@ function VeiculoPorTokenPage() {
 
   const res: any = data;
   const fotos: string[] = res?.ok ? res.data.fotos || [] : [];
+  const fotosLegendas: Record<string, string> = res?.ok ? res.data.fotos_legendas || {} : {};
 
   useEffect(() => {
     if (!lightboxAberto) return;
@@ -118,21 +120,27 @@ function VeiculoPorTokenPage() {
 
         {fotos.length > 0 && (
           <div className="mt-6 space-y-3">
-            <button
-              type="button"
-              onClick={() => setLightboxAberto(true)}
-              className="group relative block aspect-video w-full cursor-zoom-in overflow-hidden rounded-2xl bg-slate-100"
-              aria-label="Ampliar foto"
-            >
-              <img
-                src={fotos[fotoAtiva]}
-                alt={`Foto principal do veículo ${titulo}`}
-                className="h-full w-full object-contain"
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setLightboxAberto(true)}
+                className="group relative block aspect-video w-full cursor-zoom-in overflow-hidden rounded-2xl bg-slate-100"
+                aria-label="Ampliar foto"
+              >
+                <img
+                  src={fotos[fotoAtiva]}
+                  alt={`Foto principal do veículo ${titulo}`}
+                  className="h-full w-full object-contain"
+                />
+                <span className="pointer-events-none absolute bottom-4 right-4 flex items-center gap-1.5 rounded-full bg-slate-950/60 px-3 py-1.5 text-xs font-bold text-white opacity-0 transition-opacity group-hover:opacity-100">
+                  <Maximize2 className="h-3.5 w-3.5" /> Ampliar
+                </span>
+              </button>
+              <LegendaFotoBadge
+                legenda={fotosLegendas[fotos[fotoAtiva]]}
+                className="absolute bottom-4 left-4"
               />
-              <span className="pointer-events-none absolute bottom-4 right-4 flex items-center gap-1.5 rounded-full bg-slate-950/60 px-3 py-1.5 text-xs font-bold text-white opacity-0 transition-opacity group-hover:opacity-100">
-                <Maximize2 className="h-3.5 w-3.5" /> Ampliar
-              </span>
-            </button>
+            </div>
             {fotos.length > 1 && (
               <div className="flex gap-3 overflow-x-auto pb-2">
                 {fotos.map((url, i) => (

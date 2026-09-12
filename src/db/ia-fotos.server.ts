@@ -45,6 +45,71 @@ function extrairJson(texto: string): any {
   }
 }
 
+const PROMPT_LEGENDA_FOTO = `Você escreve legendas curtas para fotos de veículos anunciados na plataforma Esse Já Foi, vistas por compradores.
+
+Regras:
+- Uma frase só, no máximo 60 caracteres, em português do Brasil.
+- Tom vendedor, direto e verdadeiro — nunca invente um detalhe que não esteja na nota recebida.
+- Sem emojis, sem aspas, sem ponto final.
+- Se a nota recebida descrever um problema (ex: risco, amassado), mantenha a legenda honesta mas neutra — não esconda nem exagere o defeito.
+- Responda SOMENTE com a legenda, sem texto adicional antes ou depois.`;
+
+export type ResultadoLegendaFoto = { ok: true; legenda: string } | { ok: false; motivo: string };
+
+/**
+ * Reescreve a nota da foto (do vendedor ou do analista) como uma legenda curta e
+ * atrativa para o comprador, usando a mesma chave/modelo configurados em
+ * /admin/configuracoes para IA. Nunca lança erro — se faltar chave ou a chamada falhar,
+ * o chamador decide o que fazer (ex.: manter a nota original).
+ */
+export async function gerarLegendaFoto(
+  notaBase: string,
+  contexto?: { marca?: string | null; modelo?: string | null; anoModelo?: string | number | null },
+): Promise<ResultadoLegendaFoto> {
+  try {
+    const { apiKey, model } = await getConfigOpenAI();
+    if (!apiKey) return { ok: false, motivo: "Chave da OpenAI não configurada." };
+
+    const veiculoDesc = [contexto?.marca, contexto?.modelo, contexto?.anoModelo]
+      .filter(Boolean)
+      .join(" ");
+    const entrada = notaBase?.trim()
+      ? `Veículo: ${veiculoDesc || "não informado"}\nNota sobre a foto: ${notaBase.trim()}`
+      : `Veículo: ${veiculoDesc || "não informado"}\nSem nota específica — crie uma legenda genérica e atrativa para uma foto do veículo.`;
+
+    const resposta = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.7,
+        max_tokens: 60,
+        messages: [
+          { role: "system", content: PROMPT_LEGENDA_FOTO },
+          { role: "user", content: entrada },
+        ],
+      }),
+    });
+
+    if (!resposta.ok) {
+      const corpo = await resposta.text().catch(() => "");
+      return { ok: false, motivo: `Falha na chamada à OpenAI (HTTP ${resposta.status}): ${corpo.slice(0, 300)}` };
+    }
+
+    const payload: any = await resposta.json();
+    const legenda = String(payload?.choices?.[0]?.message?.content || "").trim().replace(/^["']|["']$/g, "");
+    if (!legenda) return { ok: false, motivo: "OpenAI retornou resposta vazia." };
+
+    return { ok: true, legenda };
+  } catch (err: any) {
+    console.error("[ia-fotos] Erro ao gerar legenda:", err);
+    return { ok: false, motivo: err?.message || "Erro desconhecido ao gerar a legenda." };
+  }
+}
+
 export type BBoxPlaca = { x: number; y: number; width: number; height: number };
 export type ResultadoDeteccaoPlaca =
   | { ok: true; bbox: BBoxPlaca | null }

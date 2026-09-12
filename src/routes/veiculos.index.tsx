@@ -20,6 +20,7 @@ import {
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { LogoEsf } from "@/components/shared/LogoEsf";
+import { LegendaFotoBadge } from "@/components/veiculo/LegendaFotoBadge";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/veiculos/")({
@@ -300,6 +301,7 @@ function VitrinePublica() {
                               </span>
                             )}
                           </div>
+                          <LegendaFotoBadge legenda={v.legenda_capa} className="absolute bottom-3 left-3" />
                         </div>
                       </Link>
 

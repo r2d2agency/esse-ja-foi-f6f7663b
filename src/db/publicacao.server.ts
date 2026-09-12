@@ -89,7 +89,7 @@ export async function getCanaisPublicacao(veiculoId: string) {
 
   const vRes = await d.execute(sql`
     SELECT id, placa, marca, modelo, versao, ano_fabricacao, ano_modelo, km, cor,
-           cidade, uf, status_analise, fotos, fotos_processadas, valor_fipe
+           cidade, uf, status_analise, fotos, fotos_processadas, fotos_legendas, valor_fipe
     FROM veiculos WHERE id = ${veiculoId}::uuid
   `);
   const veiculo = rowsOf(vRes)[0];
@@ -222,7 +222,7 @@ export async function getVeiculoPorToken(token: string) {
     await d.execute(sql`
       SELECT v.id, v.placa, v.marca, v.modelo, v.versao, v.ano_fabricacao, v.ano_modelo,
              v.km, v.cor, v.cambio, v.combustivel, v.cidade, v.uf, v.fotos, v.fotos_processadas,
-             v.observacoes
+             v.fotos_legendas, v.observacoes
       FROM veiculos v WHERE v.id = ${canal.veiculo_id}::uuid
     `),
   )[0];
@@ -241,12 +241,16 @@ export async function getVeiculoPorToken(token: string) {
   // reprocessar uma foto ali atualiza automaticamente aqui também.
   const fotosProcessadas = normalizarFotos(veiculo.fotos_processadas);
   const fotosVeiculo = fotosProcessadas.length > 0 ? fotosProcessadas : normalizarFotos(veiculo.fotos);
+  const urls = fotosVeiculo.length ? fotosVeiculo : fotosCanal;
+  const legendas: Record<string, string> =
+    veiculo.fotos_legendas && typeof veiculo.fotos_legendas === "object" ? veiculo.fotos_legendas : {};
 
   return {
     veiculo,
     titulo: canal.titulo || `${veiculo.marca} ${veiculo.modelo} ${veiculo.ano_modelo}`,
     descricao: canal.descricao || "",
-    fotos: fotosVeiculo.length ? fotosVeiculo : fotosCanal,
+    fotos: urls,
+    fotos_legendas: legendas,
   };
 }
 

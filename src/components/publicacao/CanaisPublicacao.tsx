@@ -73,6 +73,7 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
   const [mensagem, setMensagem] = useState("");
   const [fotoCapaMensagem, setFotoCapaMensagem] = useState<string | null>(null);
   const [compartilhando, setCompartilhando] = useState(false);
+  const [legendasFotos, setLegendasFotos] = useState<Record<string, string>>({});
   const podeCompartilharArquivo =
     typeof navigator !== "undefined" && typeof navigator.share === "function" && typeof navigator.canShare === "function";
   const inicioRef = useRef<HTMLInputElement>(null);
@@ -143,6 +144,12 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
   const fotosVendedorJaProcessadas = fotosProcessadasVeiculo.length > 0;
 
   const [preenchendoFotosPadrao, setPreenchendoFotosPadrao] = useState(false);
+
+  useEffect(() => {
+    if (veiculo?.fotos_legendas && typeof veiculo.fotos_legendas === "object") {
+      setLegendasFotos(veiculo.fotos_legendas);
+    }
+  }, [veiculo?.fotos_legendas]);
 
   useEffect(() => {
     const c = canais.find((x) => x.canal === canalAtivo);
@@ -695,6 +702,10 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
             onChange={(fotos) => setForm({ ...form, fotos })}
             fotosVendedor={fotosVendedor}
             fotosVendedorJaProcessadas={fotosVendedorJaProcessadas}
+            veiculoId={veiculoId}
+            legendas={legendasFotos}
+            onChangeLegendas={setLegendasFotos}
+            veiculoContexto={{ marca: veiculo?.marca, modelo: veiculo?.modelo, anoModelo: veiculo?.ano_modelo }}
           />
         </div>
 

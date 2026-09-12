@@ -14,6 +14,7 @@ import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 import { LogoEsf } from "@/components/shared/LogoEsf";
 import { AcessoriosVeiculo } from "@/components/veiculo/AcessoriosVeiculo";
+import { LegendaFotoBadge } from "@/components/veiculo/LegendaFotoBadge";
 import { listarAcessorios } from "@/lib/veiculo-condicao";
 import { formatarTempoRestante } from "@/lib/tempo";
 
@@ -219,6 +220,10 @@ function DetalheVeiculoPublico() {
                     <Maximize2 className="h-3.5 w-3.5" /> Ampliar
                   </span>
                 )}
+                <LegendaFotoBadge
+                  legenda={anuncio.fotos?.[activePhoto]?.legenda}
+                  className="absolute bottom-4 left-4"
+                />
               </div>
               
               <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
