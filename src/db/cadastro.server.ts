@@ -482,7 +482,9 @@ export async function salvarVeiculo(input: VeiculoInput) {
       setClauses.push(sql`perfil_id = ${base.perfilId}::uuid`);
       setClauses.push(sql`vendedor_id = ${base.perfilId}::uuid`);
     }
-    if (input.fotos !== undefined) setClauses.push(sql`fotos = ${base.fotos}::jsonb`);
+    // Nunca apaga fotos já salvas quando o chamador manda uma lista vazia (rascunho
+    // parcial, autosave com estado desatualizado etc.) — só grava quando há fotos de fato.
+    if (input.fotos !== undefined && base.fotos !== null) setClauses.push(sql`fotos = ${base.fotos}::jsonb`);
     if (input.status !== undefined) setClauses.push(sql`status = ${base.status}`);
     if (input.documento_crlv_url !== undefined) setClauses.push(sql`documento_crlv_url = ${base.documento_crlv_url}`);
     if (input.blindado !== undefined) setClauses.push(sql`blindado = ${base.blindado}`);
@@ -526,7 +528,9 @@ export async function salvarVeiculo(input: VeiculoInput) {
       percentual_sobre_fipe = EXCLUDED.percentual_sobre_fipe, alerta_expectativa = EXCLUDED.alerta_expectativa,
       ciente_expectativa = EXCLUDED.ciente_expectativa, cep = EXCLUDED.cep, endereco = EXCLUDED.endereco,
       cidade = EXCLUDED.cidade, uf = EXCLUDED.uf, latitude = EXCLUDED.latitude, longitude = EXCLUDED.longitude,
-      observacoes = EXCLUDED.observacoes, fotos = EXCLUDED.fotos, status = EXCLUDED.status,
+      observacoes = EXCLUDED.observacoes,
+      fotos = CASE WHEN EXCLUDED.fotos IS NOT NULL THEN EXCLUDED.fotos ELSE veiculos.fotos END,
+      status = EXCLUDED.status,
       documento_crlv_url = EXCLUDED.documento_crlv_url, blindado = EXCLUDED.blindado, atualizado_em = now()
     RETURNING id;
   `)) as unknown as Array<{ id: string }>;

@@ -236,47 +236,62 @@ function CadastrarVeiculo() {
 
   // Rascunho: hidratação + salvamento automático
   useEffect(() => {
-    // Se temos um ID na URL, tentamos carregar do banco primeiro
-    if (search.id && data) {
-      const veiculo = ((data as any)?.data || []).find((v: any) => v.id === search.id);
-      if (veiculo) {
-        try {
-          const obs = desserializarObservacoes(veiculo.observacoes);
-          const fotosMap = normalizarFotosSalvas(veiculo.fotos);
+    if (!data) return;
+    const lista = (data as any)?.data || [];
 
-          setForm({
-            ...INICIAL,
-            ...obs,
-            placa: maskPlaca(veiculo.placa || obs.placa || ''),
-            marca: veiculo.marca || obs.marca || '',
-            modelo: veiculo.modelo || obs.modelo || '',
-            versao: veiculo.versao || obs.versao || '',
-            anoFabricacao: veiculo.ano_fabricacao || obs.anoFabricacao || '',
-            anoModelo: veiculo.ano_modelo || obs.anoModelo || '',
-            cor: veiculo.cor || obs.cor || '',
-            combustivel: veiculo.combustivel || obs.combustivel || '',
-            cambio: veiculo.cambio || obs.cambio || '',
-            blindado: veiculo.blindado ?? obs.blindado ?? false,
-            km: veiculo.km ? String(veiculo.km) : obs.km || '',
-            valorDesejado: veiculo.valor_interesse_cliente ? valorMoeda(veiculo.valor_interesse_cliente) : obs.valorDesejado || '',
-            cep: veiculo.cep || obs.cep || '',
-            cidade: veiculo.cidade || obs.cidade || '',
-            uf: veiculo.uf || obs.uf || '',
-            crlv: veiculo.documento_crlv_url || obs.crlv || null,
-            fotos: fotosMap,
-          });
-          setBuscaFeita(true);
-          hidratado.current = true;
-          return;
-        } catch (e) {
-          console.error("Erro ao hidratar veículo:", e);
-        }
+    let veiculo = search.id ? lista.find((v: any) => v.id === search.id) : undefined;
+
+    const bruto = localStorage.getItem(DRAFT_KEY);
+    let draftLocal: (Partial<Estado> & { placa?: string }) | null = null;
+    if (bruto) {
+      try { draftLocal = JSON.parse(bruto); } catch { draftLocal = null; }
+    }
+
+    // Sem "?id=" na URL (ex.: o vendedor saiu e voltou por outro caminho), tenta reconectar
+    // ao cadastro já existente pela placa do rascunho local. Sem isso, o formulário recomeçaria
+    // "em branco" e o próximo autosave apagaria fotos e dados já salvos no banco.
+    if (!veiculo && draftLocal?.placa) {
+      const placaLimpa = draftLocal.placa.replace(/[^A-Z0-9]/g, '');
+      if (placaLimpa) veiculo = lista.find((v: any) => v.placa === placaLimpa);
+    }
+
+    if (veiculo) {
+      try {
+        const obs = desserializarObservacoes(veiculo.observacoes);
+        const fotosMap = normalizarFotosSalvas(veiculo.fotos);
+
+        setForm({
+          ...INICIAL,
+          ...obs,
+          placa: maskPlaca(veiculo.placa || obs.placa || ''),
+          marca: veiculo.marca || obs.marca || '',
+          modelo: veiculo.modelo || obs.modelo || '',
+          versao: veiculo.versao || obs.versao || '',
+          anoFabricacao: veiculo.ano_fabricacao || obs.anoFabricacao || '',
+          anoModelo: veiculo.ano_modelo || obs.anoModelo || '',
+          cor: veiculo.cor || obs.cor || '',
+          combustivel: veiculo.combustivel || obs.combustivel || '',
+          cambio: veiculo.cambio || obs.cambio || '',
+          blindado: veiculo.blindado ?? obs.blindado ?? false,
+          km: veiculo.km ? String(veiculo.km) : obs.km || '',
+          valorDesejado: veiculo.valor_interesse_cliente ? valorMoeda(veiculo.valor_interesse_cliente) : obs.valorDesejado || '',
+          cep: veiculo.cep || obs.cep || '',
+          cidade: veiculo.cidade || obs.cidade || '',
+          uf: veiculo.uf || obs.uf || '',
+          crlv: veiculo.documento_crlv_url || obs.crlv || null,
+          fotos: fotosMap,
+        });
+        setIdExistente(veiculo.id);
+        setBuscaFeita(true);
+        hidratado.current = true;
+        return;
+      } catch (e) {
+        console.error("Erro ao hidratar veículo:", e);
       }
     }
 
-    const bruto = localStorage.getItem(DRAFT_KEY);
-    if (bruto) {
-      try { setForm({ ...INICIAL, ...JSON.parse(bruto) }); } catch { }
+    if (draftLocal) {
+      setForm({ ...INICIAL, ...draftLocal });
     } else {
       const placa = sessionStorage.getItem('ejf_placa');
       if (placa) setForm((f) => ({ ...f, placa: maskPlaca(placa) }));
@@ -288,18 +303,15 @@ function CadastrarVeiculo() {
     if (!hidratado.current) return;
     const t = setTimeout(() => {
       try {
-        // No rascunho compacto do localStorage, preservamos as URLs das fotos
-        // para que a "thumb" apareça ao recarregar a página antes da sincronização com o banco.
-        localStorage.setItem(DRAFT_KEY, JSON.stringify(form));
+        // Fotos e CRLV (base64) já ficam salvos no banco a cada autosave (via idExistente).
+        // Guardá-los também no localStorage estoura a cota do navegador com poucas fotos;
+        // quando isso falhava, o rascunho local ficava sem fotos e uma visita seguinte sem
+        // "?id=" na URL reconectava pela placa e apagava as fotos já salvas no banco.
+        const { fotos, crlv, ...resto } = form;
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(resto));
         setSalvoEm(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
       } catch (e) {
-        // Se falhar por espaço (Base64 grandes), tentamos salvar sem fotos
-        try {
-          const formCompacto = { ...form, fotos: {} };
-          localStorage.setItem(DRAFT_KEY, JSON.stringify(formCompacto));
-        } catch (e2) {
-          console.warn("Erro ao salvar rascunho no localStorage:", e2);
-        }
+        console.warn("Erro ao salvar rascunho no localStorage:", e);
       }
     }, 800);
     return () => clearTimeout(t);
@@ -754,7 +766,7 @@ function CadastrarVeiculo() {
                   label={f.label}
                   dica={f.dica}
                   value={form.fotos[f.id] || null}
-                  onChange={(url) => set({ fotos: { ...form.fotos, [f.id]: url } })}
+                  onChange={(url) => setForm((prev) => ({ ...prev, fotos: { ...prev.fotos, [f.id]: url } }))}
                 />
               ))}
             </div>
