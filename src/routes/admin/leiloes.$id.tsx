@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getLeilaoInfo, getResumoEncerramentoFn, encerrarLeilaoFn, cancelarLeilaoAdminFn } from "@/lib/leilao.functions";
+import { getComissaoPadraoFn } from "@/lib/relatorios.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,12 @@ function AdminLeilaoAcompanhamentoPage() {
     queryFn: () => getLeilaoInfo({ data: id }),
     refetchInterval: 3000, // Polling a cada 3 segundos para o admin
   });
+
+  const { data: comissaoRes } = useQuery({
+    queryKey: ["comissao-padrao"],
+    queryFn: () => getComissaoPadraoFn(),
+  });
+  const comissaoPadrao = (comissaoRes as any)?.percentual;
 
   const [dialogEncerrar, setDialogEncerrar] = useState(false);
   const [dialogCancelar, setDialogCancelar] = useState(false);
@@ -269,6 +276,12 @@ function AdminLeilaoAcompanhamentoPage() {
                   {leilao.lance_inicial > 0 ? (((lanceAtual / Number(leilao.lance_inicial)) - 1) * 100).toFixed(1) : 0}%
                 </span>
               </div>
+              {typeof comissaoPadrao === "number" && (
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-400 font-medium">Comissão configurada:</span>
+                  <span className="font-bold text-slate-500">{comissaoPadrao}%</span>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
