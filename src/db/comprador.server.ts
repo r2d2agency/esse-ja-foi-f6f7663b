@@ -306,7 +306,9 @@ export async function enviarCadastroCompradorParaAnalise(id: string) {
       progresso: atual.progresso,
     };
   }
-  if (!atual.perfil.termo_aceito_em) {
+  const { obterConfiguracoesPublicas } = await import("./admin.server");
+  const cfg = await obterConfiguracoesPublicas();
+  if (cfg.termo_comprador_ativo !== "false" && !atual.perfil.termo_aceito_em) {
     return { ok: false as const, message: "Leia e aceite o termo de uso antes de enviar para análise." };
   }
 

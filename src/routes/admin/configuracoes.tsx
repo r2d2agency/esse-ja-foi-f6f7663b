@@ -603,7 +603,13 @@ function ConfiguracoesAdminPage() {
         <ComissaoSection />
         <ConsultaVeicularSection />
         <TermoAdesaoSection tipo="VENDEDOR" titulo="Termo de adesão do vendedor" />
-        <TermoAdesaoSection tipo="COMPRADOR" titulo="Termo de uso do comprador" />
+        <TermoAdesaoSection
+          tipo="COMPRADOR"
+          titulo="Termo de uso do comprador"
+          getConfig={getConfig}
+          setConfig={setConfig}
+          salvar={salvar}
+        />
       </div>
   );
 }
@@ -1424,9 +1430,15 @@ function PainelResultadoConsulta({ resumo }: { resumo: Record<string, any> }) {
 function TermoAdesaoSection({
   tipo,
   titulo: tituloPadrao,
+  getConfig,
+  setConfig,
+  salvar,
 }: {
   tipo: "VENDEDOR" | "COMPRADOR";
   titulo: string;
+  getConfig?: (chave: string) => string;
+  setConfig?: (chave: string, valor: string) => void;
+  salvar?: (chave: string, valor: string) => Promise<void>;
 }) {
   const [versao, setVersao] = useState("1.0");
   const [titulo, setTitulo] = useState(tituloPadrao);
@@ -1463,13 +1475,33 @@ function TermoAdesaoSection({
   }
 
   const publico = tipo === "VENDEDOR" ? "vendedores" : "compradores";
+  const termoAtivo = getConfig ? getConfig("termo_comprador_ativo") !== "false" : true;
+
+  async function alternarAtivo(ativo: boolean) {
+    if (!setConfig || !salvar) return;
+    setConfig("termo_comprador_ativo", ativo ? "true" : "false");
+    await salvar("termo_comprador_ativo", ativo ? "true" : "false");
+  }
 
   return (
     <section className="space-y-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-      <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
-        <FileSignature className="h-5 w-5 text-amber-600" />
-        {tituloPadrao}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+          <FileSignature className="h-5 w-5 text-amber-600" />
+          {tituloPadrao}
+        </div>
+        {tipo === "COMPRADOR" && setConfig && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-500">{termoAtivo ? "Exigindo aceite" : "Desativado"}</span>
+            <Switch checked={termoAtivo} onCheckedChange={alternarAtivo} />
+          </div>
+        )}
       </div>
+      {tipo === "COMPRADOR" && setConfig && !termoAtivo && (
+        <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
+          Desativado: o termo não aparece para o comprador e não é exigido para liberar o cadastro.
+        </p>
+      )}
       <div className="grid gap-4 md:grid-cols-3">
         <div className="space-y-2">
           <Label>Versão</Label>

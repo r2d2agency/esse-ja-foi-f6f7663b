@@ -137,7 +137,8 @@ export async function ensureAdminTables(silent = true) {
         ('tracking_head_html', '', 'HTML/script customizado injetado no <head> de todas as páginas'),
         ('tracking_body_html', '', 'HTML/script customizado injetado logo após a abertura do <body> de todas as páginas'),
         (${'ia_prompt_documentos'}, ${PROMPT_IA_DOCUMENTOS_PADRAO}, 'Prompt de sistema usado pela IA para validar CNH, CRLV, comprovante e selfie do vendedor'),
-        (${'opcionais_veiculo'}, ${JSON.stringify(ACESSORIOS_VEICULO)}, 'Lista de opcionais/acessórios que o vendedor pode marcar no cadastro (JSON de strings)')
+        (${'opcionais_veiculo'}, ${JSON.stringify(ACESSORIOS_VEICULO)}, 'Lista de opcionais/acessórios que o vendedor pode marcar no cadastro (JSON de strings)'),
+        ('termo_comprador_ativo', 'true', 'Exigir aceite do termo de uso do comprador antes de liberar o cadastro para análise')
       ON CONFLICT (chave) DO NOTHING;
     `);
     if (!silent && process.env['NODE_ENV'] === 'development') console.log("[admin.server] Tabelas admin OK.");
@@ -338,6 +339,7 @@ const CHAVES_CONFIG_PUBLICAS = [
   "tracking_head_html",
   "tracking_body_html",
   "opcionais_veiculo",
+  "termo_comprador_ativo",
 ] as const;
 
 export type ConfiguracoesPublicas = Record<(typeof CHAVES_CONFIG_PUBLICAS)[number], string>;

@@ -16,6 +16,7 @@ import {
   enviarCadastroCompradorFn,
 } from "@/lib/comprador.functions";
 import { getTermoVigenteFn, aceitarTermoFn } from "@/lib/termos.functions";
+import { obterConfiguracoesPublicasFn } from "@/lib/config-publica.functions";
 
 export const Route = createFileRoute("/comprador/documentos")({
   head: () => ({
@@ -55,6 +56,10 @@ function CompradorDocumentosPage() {
     queryKey: ["termo-vigente", "COMPRADOR"],
     queryFn: () => getTermoVigenteFn({ data: { tipo: "COMPRADOR" } }),
   });
+  const { data: configRes } = useQuery({
+    queryKey: ["config-publica"],
+    queryFn: () => obterConfiguracoesPublicasFn(),
+  });
 
   const perfil: any = (data as any)?.perfil || {};
   const progresso: any = (data as any)?.progresso || { percentual: 0, pendencias: [] };
@@ -62,6 +67,7 @@ function CompradorDocumentosPage() {
   const ui = STATUS_UI[status] || STATUS_UI["NAO_ENVIADO"]!;
   const termo: any = (termoRes as any)?.data ?? null;
   const termoAceito = !!perfil.termo_aceito_em;
+  const termoCompradorAtivo = (configRes as any)?.data?.termo_comprador_ativo !== "false";
 
   useEffect(() => {
     if (perfil.nome && !assinatura) setAssinatura(perfil.nome);
@@ -195,7 +201,7 @@ function CompradorDocumentosPage() {
         ))}
       </div>
 
-      {status !== "APROVADO" && status !== "AGUARDANDO_ANALISE" && !termoAceito && (
+      {termoCompradorAtivo && status !== "APROVADO" && status !== "AGUARDANDO_ANALISE" && !termoAceito && (
         <div className="rounded-3xl border border-slate-200 bg-white p-6">
           <div className="flex items-center gap-2 text-lg font-bold text-slate-900">
             <FileSignature className="h-5 w-5 text-teal-700" />
