@@ -1,21 +1,20 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { getLeiloesAdmin } from "@/lib/leilao.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Gavel, Eye } from "lucide-react";
-import { Link } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/admin/leiloes/")({
   component: AdminLeiloesPage,
 });
 
 function AdminLeiloesPage() {
+  const navigate = useNavigate();
   const { data: leiloes, isLoading, isError, error } = useQuery({
     queryKey: ["admin-leiloes"],
     queryFn: () => getLeiloesAdmin({ data: undefined }),
@@ -106,7 +105,11 @@ function AdminLeiloesPage() {
                   </TableRow>
                 )}
                 {leiloes?.map((leilao: any) => (
-                  <TableRow key={leilao.id}>
+                  <TableRow
+                    key={leilao.id}
+                    className="cursor-pointer hover:bg-slate-50"
+                    onClick={() => navigate({ to: "/admin/leiloes/$id", params: { id: leilao.id } })}
+                  >
                     <TableCell className="font-bold">{leilao.titulo}</TableCell>
                     <TableCell className="text-xs text-slate-500">{leilao.codigo_publico}</TableCell>
                     <TableCell className="text-xs">
@@ -134,11 +137,7 @@ function AdminLeiloesPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button asChild size="sm" variant="ghost" className="gap-2">
-                        <Link to="/admin/leiloes/$id" params={{ id: leilao.id }}>
-                          <Eye className="h-4 w-4" /> Acompanhar
-                        </Link>
-                      </Button>
+                      <Eye className="ml-auto h-4 w-4 text-slate-400" />
                     </TableCell>
                   </TableRow>
                 ))}

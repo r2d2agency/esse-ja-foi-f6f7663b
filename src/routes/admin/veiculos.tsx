@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getVeiculosAdminFn } from "@/lib/admin-veiculos.functions";
@@ -22,6 +22,7 @@ export const Route = createFileRoute("/admin/veiculos")({
 });
 
 function AdminVeiculosPage() {
+  const navigate = useNavigate();
   const search = Route.useSearch();
   const [busca, setBusca] = useState("");
   const [status, setStatus] = useState(search.status || "TODOS");
@@ -235,7 +236,11 @@ function AdminVeiculosPage() {
                 <tr><td colSpan={6} className="px-6 py-12 text-center text-slate-400 font-bold">Nenhum veículo encontrado para os filtros selecionados.</td></tr>
               ) : (
                 veiculos.map((v: any) => (
-                  <tr key={v.id} className="hover:bg-slate-50/80 transition-colors group">
+                  <tr
+                    key={v.id}
+                    className="hover:bg-slate-50/80 transition-colors group cursor-pointer"
+                    onClick={() => navigate({ to: "/admin/veiculo/$id", params: { id: v.id } })}
+                  >
                     <td className="px-6 py-4">
                       <div className="flex flex-col">
                         <span className="font-black text-slate-950 uppercase group-hover:text-teal-600 transition-colors">{v.marca} {v.modelo}</span>
@@ -292,20 +297,14 @@ function AdminVeiculosPage() {
                           size="icon"
                           className="h-8 w-8 text-slate-300 hover:bg-red-50 hover:text-red-600"
                           title="Excluir veículo"
-                          onClick={() => handleExcluir(v.id, `${v.marca} ${v.modelo} — ${v.placa}`)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleExcluir(v.id, `${v.marca} ${v.modelo} — ${v.placa}`);
+                          }}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
-                        <Button
-                          asChild
-                          variant="ghost"
-                          size="sm"
-                          className="font-black text-[10px] uppercase tracking-wider text-slate-400 hover:text-teal-600 hover:bg-teal-50"
-                        >
-                          <Link to="/admin/veiculo/$id" params={{ id: v.id }}>
-                            Analisar <ChevronRight className="ml-1 h-3 w-3" />
-                          </Link>
-                        </Button>
+                        <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-teal-600 transition-colors" />
                       </div>
                     </td>
                   </tr>
