@@ -24,8 +24,10 @@ import { Route as VendedorRouteImport } from './routes/vendedor'
 import { Route as VenderRouteImport } from './routes/vender'
 import { Route as VistoriadorRouteImport } from './routes/vistoriador'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
+import { Route as AdminAjudaRouteImport } from './routes/admin/ajuda'
 import { Route as AdminAnalyticsRouteImport } from './routes/admin/analytics'
 import { Route as AdminAnunciosRouteImport } from './routes/admin/anuncios'
+import { Route as AdminChangelogRouteImport } from './routes/admin/changelog'
 import { Route as AdminCompradoresRouteImport } from './routes/admin/compradores'
 import { Route as AdminComunicacoesRouteImport } from './routes/admin/comunicacoes'
 import { Route as AdminConfiguracoesRouteImport } from './routes/admin/configuracoes'
@@ -42,14 +44,14 @@ import { Route as AdminUsuariosRouteImport } from './routes/admin/usuarios'
 import { Route as AdminVeiculosRouteImport } from './routes/admin/veiculos'
 import { Route as AdminVendedoresRouteImport } from './routes/admin/vendedores'
 import { Route as AdminVistoriasRouteImport } from './routes/admin/vistorias'
+import { Route as CTokenRouteImport } from './routes/c.$token'
 import { Route as CompradorIndexRouteImport } from './routes/comprador/index'
-import { Route as CompradorCadastroRouteImport } from './routes/comprador_.cadastro'
 import { Route as CompradorDocumentosRouteImport } from './routes/comprador/documentos'
 import { Route as CompradorInteressesRouteImport } from './routes/comprador/interesses'
 import { Route as CompradorNegociacoesRouteImport } from './routes/comprador/negociacoes'
 import { Route as CompradorPerfilRouteImport } from './routes/comprador/perfil'
+import { Route as CompradorCadastroRouteImport } from './routes/comprador_.cadastro'
 import { Route as VTokenRouteImport } from './routes/v.$token'
-import { Route as CTokenRouteImport } from './routes/c.$token'
 import { Route as VeiculosIndexRouteImport } from './routes/veiculos.index'
 import { Route as VeiculosSlugRouteImport } from './routes/veiculos.$slug'
 import { Route as VendedorIndexRouteImport } from './routes/vendedor.index'
@@ -85,6 +87,7 @@ import { Route as VistoriadorExecucaoIdRouteImport } from './routes/vistoriador.
 import { Route as VistoriadorVistoriaIdRouteImport } from './routes/vistoriador.vistoria.$id'
 import { Route as AdminAnunciosNovoRouteImport } from './routes/admin/anuncios.novo.'
 import { Route as AdminVeiculoIdPosVistoriaRouteImport } from './routes/admin/veiculo.$id.pos-vistoria'
+import { Route as ApiPublicArquivoIdRouteImport } from './routes/api/public/arquivo.$id'
 import { Route as ApiPublicWebhooksPagamentosRouteImport } from './routes/api/public/webhooks/pagamentos'
 import { Route as ApiPublicWebhooksWhatsappRouteImport } from './routes/api/public/webhooks/whatsapp'
 import { Route as VendedorVeiculoIdPropostaRouteImport } from './routes/vendedor.veiculo.$id.proposta'
@@ -164,6 +167,11 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminAjudaRoute = AdminAjudaRouteImport.update({
+  id: '/ajuda',
+  path: '/ajuda',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminAnalyticsRoute = AdminAnalyticsRouteImport.update({
   id: '/analytics',
   path: '/analytics',
@@ -172,6 +180,11 @@ const AdminAnalyticsRoute = AdminAnalyticsRouteImport.update({
 const AdminAnunciosRoute = AdminAnunciosRouteImport.update({
   id: '/anuncios',
   path: '/anuncios',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminChangelogRoute = AdminChangelogRouteImport.update({
+  id: '/changelog',
+  path: '/changelog',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminCompradoresRoute = AdminCompradoresRouteImport.update({
@@ -254,6 +267,11 @@ const AdminVistoriasRoute = AdminVistoriasRouteImport.update({
   path: '/vistorias',
   getParentRoute: () => AdminRoute,
 } as any)
+const CTokenRoute = CTokenRouteImport.update({
+  id: '/c/$token',
+  path: '/c/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CompradorIndexRoute = CompradorIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -279,19 +297,14 @@ const CompradorPerfilRoute = CompradorPerfilRouteImport.update({
   path: '/perfil',
   getParentRoute: () => CompradorRoute,
 } as any)
+const CompradorCadastroRoute = CompradorCadastroRouteImport.update({
+  id: '/comprador_/cadastro',
+  path: '/comprador/cadastro',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const VTokenRoute = VTokenRouteImport.update({
   id: '/v/$token',
   path: '/v/$token',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CTokenRoute = CTokenRouteImport.update({
-  id: '/c/$token',
-  path: '/c/$token',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CompradorCadastroRoute = CompradorCadastroRouteImport.update({
-  id: '/comprador/cadastro',
-  path: '/comprador/cadastro',
   getParentRoute: () => rootRouteImport,
 } as any)
 const VeiculosIndexRoute = VeiculosIndexRouteImport.update({
@@ -470,6 +483,11 @@ const AdminVeiculoIdPosVistoriaRoute =
     path: '/pos-vistoria',
     getParentRoute: () => AdminVeiculoIdRoute,
   } as any)
+const ApiPublicArquivoIdRoute = ApiPublicArquivoIdRouteImport.update({
+  id: '/api/public/arquivo/$id',
+  path: '/api/public/arquivo/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicWebhooksPagamentosRoute =
   ApiPublicWebhooksPagamentosRouteImport.update({
     id: '/api/public/webhooks/pagamentos',
@@ -504,8 +522,10 @@ export interface FileRoutesByFullPath {
   '/vendedor': typeof VendedorRouteWithChildren
   '/vender': typeof VenderRoute
   '/vistoriador': typeof VistoriadorRouteWithChildren
+  '/admin/ajuda': typeof AdminAjudaRoute
   '/admin/analytics': typeof AdminAnalyticsRoute
   '/admin/anuncios': typeof AdminAnunciosRouteWithChildren
+  '/admin/changelog': typeof AdminChangelogRoute
   '/admin/compradores': typeof AdminCompradoresRoute
   '/admin/comunicacoes': typeof AdminComunicacoesRoute
   '/admin/configuracoes': typeof AdminConfiguracoesRoute
@@ -522,13 +542,13 @@ export interface FileRoutesByFullPath {
   '/admin/veiculos': typeof AdminVeiculosRoute
   '/admin/vendedores': typeof AdminVendedoresRoute
   '/admin/vistorias': typeof AdminVistoriasRoute
-  '/comprador/cadastro': typeof CompradorCadastroRoute
+  '/c/$token': typeof CTokenRoute
   '/comprador/documentos': typeof CompradorDocumentosRoute
   '/comprador/interesses': typeof CompradorInteressesRoute
   '/comprador/negociacoes': typeof CompradorNegociacoesRoute
   '/comprador/perfil': typeof CompradorPerfilRoute
+  '/comprador/cadastro': typeof CompradorCadastroRoute
   '/v/$token': typeof VTokenRoute
-  '/c/$token': typeof CTokenRoute
   '/veiculos/$slug': typeof VeiculosSlugRoute
   '/vendedor/boas-vindas': typeof VendedorBoasVindasRoute
   '/vendedor/cadastrar': typeof VendedorCadastrarRoute
@@ -566,6 +586,7 @@ export interface FileRoutesByFullPath {
   '/admin/leiloes/': typeof AdminLeiloesIndexRoute
   '/admin/anuncios/novo/': typeof AdminAnunciosNovoRoute
   '/admin/veiculo/$id/pos-vistoria': typeof AdminVeiculoIdPosVistoriaRoute
+  '/api/public/arquivo/$id': typeof ApiPublicArquivoIdRoute
   '/api/public/webhooks/pagamentos': typeof ApiPublicWebhooksPagamentosRoute
   '/api/public/webhooks/whatsapp': typeof ApiPublicWebhooksWhatsappRoute
   '/vendedor/veiculo/$id/proposta': typeof VendedorVeiculoIdPropostaRoute
@@ -580,8 +601,10 @@ export interface FileRoutesByTo {
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/redefinir-senha': typeof RedefinirSenhaRoute
   '/vender': typeof VenderRoute
+  '/admin/ajuda': typeof AdminAjudaRoute
   '/admin/analytics': typeof AdminAnalyticsRoute
   '/admin/anuncios': typeof AdminAnunciosRouteWithChildren
+  '/admin/changelog': typeof AdminChangelogRoute
   '/admin/compradores': typeof AdminCompradoresRoute
   '/admin/comunicacoes': typeof AdminComunicacoesRoute
   '/admin/configuracoes': typeof AdminConfiguracoesRoute
@@ -598,13 +621,13 @@ export interface FileRoutesByTo {
   '/admin/veiculos': typeof AdminVeiculosRoute
   '/admin/vendedores': typeof AdminVendedoresRoute
   '/admin/vistorias': typeof AdminVistoriasRoute
-  '/comprador/cadastro': typeof CompradorCadastroRoute
+  '/c/$token': typeof CTokenRoute
   '/comprador/documentos': typeof CompradorDocumentosRoute
   '/comprador/interesses': typeof CompradorInteressesRoute
   '/comprador/negociacoes': typeof CompradorNegociacoesRoute
   '/comprador/perfil': typeof CompradorPerfilRoute
+  '/comprador/cadastro': typeof CompradorCadastroRoute
   '/v/$token': typeof VTokenRoute
-  '/c/$token': typeof CTokenRoute
   '/veiculos/$slug': typeof VeiculosSlugRoute
   '/vendedor/boas-vindas': typeof VendedorBoasVindasRoute
   '/vendedor/cadastrar': typeof VendedorCadastrarRoute
@@ -642,6 +665,7 @@ export interface FileRoutesByTo {
   '/admin/leiloes': typeof AdminLeiloesIndexRoute
   '/admin/anuncios/novo': typeof AdminAnunciosNovoRoute
   '/admin/veiculo/$id/pos-vistoria': typeof AdminVeiculoIdPosVistoriaRoute
+  '/api/public/arquivo/$id': typeof ApiPublicArquivoIdRoute
   '/api/public/webhooks/pagamentos': typeof ApiPublicWebhooksPagamentosRoute
   '/api/public/webhooks/whatsapp': typeof ApiPublicWebhooksWhatsappRoute
   '/vendedor/veiculo/$id/proposta': typeof VendedorVeiculoIdPropostaRoute
@@ -662,8 +686,10 @@ export interface FileRoutesById {
   '/vendedor': typeof VendedorRouteWithChildren
   '/vender': typeof VenderRoute
   '/vistoriador': typeof VistoriadorRouteWithChildren
+  '/admin/ajuda': typeof AdminAjudaRoute
   '/admin/analytics': typeof AdminAnalyticsRoute
   '/admin/anuncios': typeof AdminAnunciosRouteWithChildren
+  '/admin/changelog': typeof AdminChangelogRoute
   '/admin/compradores': typeof AdminCompradoresRoute
   '/admin/comunicacoes': typeof AdminComunicacoesRoute
   '/admin/configuracoes': typeof AdminConfiguracoesRoute
@@ -680,13 +706,13 @@ export interface FileRoutesById {
   '/admin/veiculos': typeof AdminVeiculosRoute
   '/admin/vendedores': typeof AdminVendedoresRoute
   '/admin/vistorias': typeof AdminVistoriasRoute
-  '/comprador/cadastro': typeof CompradorCadastroRoute
+  '/c/$token': typeof CTokenRoute
   '/comprador/documentos': typeof CompradorDocumentosRoute
   '/comprador/interesses': typeof CompradorInteressesRoute
   '/comprador/negociacoes': typeof CompradorNegociacoesRoute
   '/comprador/perfil': typeof CompradorPerfilRoute
+  '/comprador_/cadastro': typeof CompradorCadastroRoute
   '/v/$token': typeof VTokenRoute
-  '/c/$token': typeof CTokenRoute
   '/veiculos/$slug': typeof VeiculosSlugRoute
   '/vendedor/boas-vindas': typeof VendedorBoasVindasRoute
   '/vendedor/cadastrar': typeof VendedorCadastrarRoute
@@ -724,6 +750,7 @@ export interface FileRoutesById {
   '/admin/leiloes/': typeof AdminLeiloesIndexRoute
   '/admin/anuncios/novo/': typeof AdminAnunciosNovoRoute
   '/admin/veiculo/$id/pos-vistoria': typeof AdminVeiculoIdPosVistoriaRoute
+  '/api/public/arquivo/$id': typeof ApiPublicArquivoIdRoute
   '/api/public/webhooks/pagamentos': typeof ApiPublicWebhooksPagamentosRoute
   '/api/public/webhooks/whatsapp': typeof ApiPublicWebhooksWhatsappRoute
   '/vendedor/veiculo/$id/proposta': typeof VendedorVeiculoIdPropostaRoute
@@ -745,8 +772,10 @@ export interface FileRouteTypes {
     | '/vendedor'
     | '/vender'
     | '/vistoriador'
+    | '/admin/ajuda'
     | '/admin/analytics'
     | '/admin/anuncios'
+    | '/admin/changelog'
     | '/admin/compradores'
     | '/admin/comunicacoes'
     | '/admin/configuracoes'
@@ -763,13 +792,13 @@ export interface FileRouteTypes {
     | '/admin/veiculos'
     | '/admin/vendedores'
     | '/admin/vistorias'
-    | '/comprador/cadastro'
+    | '/c/$token'
     | '/comprador/documentos'
     | '/comprador/interesses'
     | '/comprador/negociacoes'
     | '/comprador/perfil'
+    | '/comprador/cadastro'
     | '/v/$token'
-    | '/c/$token'
     | '/veiculos/$slug'
     | '/vendedor/boas-vindas'
     | '/vendedor/cadastrar'
@@ -807,6 +836,7 @@ export interface FileRouteTypes {
     | '/admin/leiloes/'
     | '/admin/anuncios/novo/'
     | '/admin/veiculo/$id/pos-vistoria'
+    | '/api/public/arquivo/$id'
     | '/api/public/webhooks/pagamentos'
     | '/api/public/webhooks/whatsapp'
     | '/vendedor/veiculo/$id/proposta'
@@ -821,8 +851,10 @@ export interface FileRouteTypes {
     | '/primeiro-acesso'
     | '/redefinir-senha'
     | '/vender'
+    | '/admin/ajuda'
     | '/admin/analytics'
     | '/admin/anuncios'
+    | '/admin/changelog'
     | '/admin/compradores'
     | '/admin/comunicacoes'
     | '/admin/configuracoes'
@@ -839,13 +871,13 @@ export interface FileRouteTypes {
     | '/admin/veiculos'
     | '/admin/vendedores'
     | '/admin/vistorias'
-    | '/comprador/cadastro'
+    | '/c/$token'
     | '/comprador/documentos'
     | '/comprador/interesses'
     | '/comprador/negociacoes'
     | '/comprador/perfil'
+    | '/comprador/cadastro'
     | '/v/$token'
-    | '/c/$token'
     | '/veiculos/$slug'
     | '/vendedor/boas-vindas'
     | '/vendedor/cadastrar'
@@ -883,6 +915,7 @@ export interface FileRouteTypes {
     | '/admin/leiloes'
     | '/admin/anuncios/novo'
     | '/admin/veiculo/$id/pos-vistoria'
+    | '/api/public/arquivo/$id'
     | '/api/public/webhooks/pagamentos'
     | '/api/public/webhooks/whatsapp'
     | '/vendedor/veiculo/$id/proposta'
@@ -902,8 +935,10 @@ export interface FileRouteTypes {
     | '/vendedor'
     | '/vender'
     | '/vistoriador'
+    | '/admin/ajuda'
     | '/admin/analytics'
     | '/admin/anuncios'
+    | '/admin/changelog'
     | '/admin/compradores'
     | '/admin/comunicacoes'
     | '/admin/configuracoes'
@@ -920,13 +955,13 @@ export interface FileRouteTypes {
     | '/admin/veiculos'
     | '/admin/vendedores'
     | '/admin/vistorias'
-    | '/comprador/cadastro'
+    | '/c/$token'
     | '/comprador/documentos'
     | '/comprador/interesses'
     | '/comprador/negociacoes'
     | '/comprador/perfil'
+    | '/comprador_/cadastro'
     | '/v/$token'
-    | '/c/$token'
     | '/veiculos/$slug'
     | '/vendedor/boas-vindas'
     | '/vendedor/cadastrar'
@@ -964,6 +999,7 @@ export interface FileRouteTypes {
     | '/admin/leiloes/'
     | '/admin/anuncios/novo/'
     | '/admin/veiculo/$id/pos-vistoria'
+    | '/api/public/arquivo/$id'
     | '/api/public/webhooks/pagamentos'
     | '/api/public/webhooks/whatsapp'
     | '/vendedor/veiculo/$id/proposta'
@@ -984,10 +1020,11 @@ export interface RootRouteChildren {
   VendedorRoute: typeof VendedorRouteWithChildren
   VenderRoute: typeof VenderRoute
   VistoriadorRoute: typeof VistoriadorRouteWithChildren
-  VTokenRoute: typeof VTokenRoute
   CTokenRoute: typeof CTokenRoute
   CompradorCadastroRoute: typeof CompradorCadastroRoute
+  VTokenRoute: typeof VTokenRoute
   ApiPublicUploadRoute: typeof ApiPublicUploadRoute
+  ApiPublicArquivoIdRoute: typeof ApiPublicArquivoIdRoute
   ApiPublicWebhooksPagamentosRoute: typeof ApiPublicWebhooksPagamentosRoute
   ApiPublicWebhooksWhatsappRoute: typeof ApiPublicWebhooksWhatsappRoute
 }
@@ -1099,6 +1136,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/ajuda': {
+      id: '/admin/ajuda'
+      path: '/ajuda'
+      fullPath: '/admin/ajuda'
+      preLoaderRoute: typeof AdminAjudaRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/analytics': {
       id: '/admin/analytics'
       path: '/analytics'
@@ -1111,6 +1155,13 @@ declare module '@tanstack/react-router' {
       path: '/anuncios'
       fullPath: '/admin/anuncios'
       preLoaderRoute: typeof AdminAnunciosRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/changelog': {
+      id: '/admin/changelog'
+      path: '/changelog'
+      fullPath: '/admin/changelog'
+      preLoaderRoute: typeof AdminChangelogRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/compradores': {
@@ -1225,6 +1276,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminVistoriasRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/c/$token': {
+      id: '/c/$token'
+      path: '/c/$token'
+      fullPath: '/c/$token'
+      preLoaderRoute: typeof CTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/comprador/': {
       id: '/comprador/'
       path: '/'
@@ -1260,25 +1318,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CompradorPerfilRouteImport
       parentRoute: typeof CompradorRoute
     }
+    '/comprador_/cadastro': {
+      id: '/comprador_/cadastro'
+      path: '/comprador/cadastro'
+      fullPath: '/comprador/cadastro'
+      preLoaderRoute: typeof CompradorCadastroRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/v/$token': {
       id: '/v/$token'
       path: '/v/$token'
       fullPath: '/v/$token'
       preLoaderRoute: typeof VTokenRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/c/$token': {
-      id: '/c/$token'
-      path: '/c/$token'
-      fullPath: '/c/$token'
-      preLoaderRoute: typeof CTokenRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/comprador/cadastro': {
-      id: '/comprador/cadastro'
-      path: '/comprador/cadastro'
-      fullPath: '/comprador/cadastro'
-      preLoaderRoute: typeof CompradorCadastroRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/veiculos/': {
@@ -1526,6 +1577,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminVeiculoIdPosVistoriaRouteImport
       parentRoute: typeof AdminVeiculoIdRoute
     }
+    '/api/public/arquivo/$id': {
+      id: '/api/public/arquivo/$id'
+      path: '/api/public/arquivo/$id'
+      fullPath: '/api/public/arquivo/$id'
+      preLoaderRoute: typeof ApiPublicArquivoIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/webhooks/pagamentos': {
       id: '/api/public/webhooks/pagamentos'
       path: '/api/public/webhooks/pagamentos'
@@ -1575,8 +1633,10 @@ const AdminVeiculoIdRouteWithChildren = AdminVeiculoIdRoute._addFileChildren(
 )
 
 interface AdminRouteChildren {
+  AdminAjudaRoute: typeof AdminAjudaRoute
   AdminAnalyticsRoute: typeof AdminAnalyticsRoute
   AdminAnunciosRoute: typeof AdminAnunciosRouteWithChildren
+  AdminChangelogRoute: typeof AdminChangelogRoute
   AdminCompradoresRoute: typeof AdminCompradoresRoute
   AdminComunicacoesRoute: typeof AdminComunicacoesRoute
   AdminConfiguracoesRoute: typeof AdminConfiguracoesRoute
@@ -1606,8 +1666,10 @@ interface AdminRouteChildren {
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
+  AdminAjudaRoute: AdminAjudaRoute,
   AdminAnalyticsRoute: AdminAnalyticsRoute,
   AdminAnunciosRoute: AdminAnunciosRouteWithChildren,
+  AdminChangelogRoute: AdminChangelogRoute,
   AdminCompradoresRoute: AdminCompradoresRoute,
   AdminComunicacoesRoute: AdminComunicacoesRoute,
   AdminConfiguracoesRoute: AdminConfiguracoesRoute,
@@ -1760,10 +1822,11 @@ const rootRouteChildren: RootRouteChildren = {
   VendedorRoute: VendedorRouteWithChildren,
   VenderRoute: VenderRoute,
   VistoriadorRoute: VistoriadorRouteWithChildren,
-  VTokenRoute: VTokenRoute,
   CTokenRoute: CTokenRoute,
   CompradorCadastroRoute: CompradorCadastroRoute,
+  VTokenRoute: VTokenRoute,
   ApiPublicUploadRoute: ApiPublicUploadRoute,
+  ApiPublicArquivoIdRoute: ApiPublicArquivoIdRoute,
   ApiPublicWebhooksPagamentosRoute: ApiPublicWebhooksPagamentosRoute,
   ApiPublicWebhooksWhatsappRoute: ApiPublicWebhooksWhatsappRoute,
 }

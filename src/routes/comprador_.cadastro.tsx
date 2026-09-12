@@ -19,7 +19,7 @@ import {
   enviarDocumentoCompradorFn,
 } from "@/lib/comprador.functions";
 
-export const Route = createFileRoute("/comprador/cadastro")({
+export const Route = createFileRoute("/comprador_/cadastro")({
   head: () => ({
     meta: [
       { title: "Criar conta de comprador — ESSE JÁ FOI" },

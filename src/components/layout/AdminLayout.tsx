@@ -25,7 +25,8 @@ import {
   Menu,
   X,
   Building2,
-  MapPin
+  MapPin,
+  History
 } from "lucide-react";
 import { ReactNode, useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
@@ -213,6 +214,13 @@ const MENU_SECTIONS: MenuSection[] = [
         to: "/admin/relatorios",
         activePrefixes: ["/admin/relatorios"],
         description: "Indicadores e consultas",
+      },
+      {
+        label: "Changelog",
+        icon: History,
+        to: "/admin/changelog",
+        activePrefixes: ["/admin/changelog"],
+        description: "Histórico de ajustes e backlog",
       },
       {
         label: "Configurações",
