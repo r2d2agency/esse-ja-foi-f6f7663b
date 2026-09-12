@@ -20,14 +20,16 @@ import { EtapaProgresso } from '@/components/onboarding/EtapaProgresso';
 import { FileUpload } from '@/components/onboarding/FileUpload';
 import { FotoSlot } from '@/components/veiculo/FotoSlot';
 import { OpcaoBotoes } from '@/components/veiculo/OpcaoBotoes';
+import { OpcaoMultipla } from '@/components/veiculo/OpcaoMultipla';
 import { useAuth } from '@/hooks/use-auth';
 import { cadastrarMeuVeiculoFn, listarMeusVeiculosFn } from '@/lib/vendedor.functions';
 import { getOnboardingStatusFn } from '@/lib/onboarding.functions';
 import { getTermoVigenteFn, aceitarTermoFn } from '@/lib/termos.functions';
+import { obterConfiguracoesPublicasFn } from '@/lib/config-publica.functions';
 import { getSessionToken } from '@/lib/session';
 import { maskPlaca, formatCurrency } from '@/lib/brasil';
 import { montarEtapas, percentual } from '@/components/vendedor/ProgressoCadastro';
-import { TODAS_MARCAS, MARCAS_POPULARES, MODELOS_POR_MARCA, CORES, COMBUSTIVEIS, CAMBIOS, PORTAS, UFS, RELACOES_PROPRIETARIO, BANCOS_COMUNS } from '@/lib/constants-veiculos';
+import { TODAS_MARCAS, MARCAS_POPULARES, MODELOS_POR_MARCA, CORES, COMBUSTIVEIS, CAMBIOS, PORTAS, UFS, RELACOES_PROPRIETARIO, BANCOS_COMUNS, ACESSORIOS_VEICULO } from '@/lib/constants-veiculos';
 
 
 
@@ -68,6 +70,7 @@ type Estado = {
   lataria: string; latariaObs: string; interior: string; pneus: string;
   acidente: string; leilao: string; sinistro: string; restricao: string; historicoObs: string;
   chaveReserva: string; manual: string; estepe: string; acessorios: string; acessoriosQuais: string;
+  acessoriosSelecionados: string[];
   fotos: Record<string, string | null>;
   valorDesejado: string; temMinimo: string; valorMinimo: string;
 };
@@ -82,6 +85,7 @@ const INICIAL: Estado = {
   lataria: '', latariaObs: '', interior: '', pneus: '',
   acidente: '', leilao: '', sinistro: '', restricao: '', historicoObs: '',
   chaveReserva: '', manual: '', estepe: '', acessorios: '', acessoriosQuais: '',
+  acessoriosSelecionados: [],
   fotos: {}, valorDesejado: '', temMinimo: 'Não', valorMinimo: '',
 };
 
@@ -159,6 +163,7 @@ function desserializarObservacoes(obsRaw?: string | null): Partial<Estado> {
       manual: snapshot.manual ?? itens.manual ?? '',
       estepe: snapshot.estepe ?? itens.estepe ?? '',
       acessoriosQuais: snapshot.acessoriosQuais ?? itens.acessorios ?? '',
+      acessoriosSelecionados: snapshot.acessoriosSelecionados ?? [],
       temMinimo: snapshot.temMinimo ?? (parsed.valorMinimoPrivado != null ? 'Sim' : INICIAL.temMinimo),
       valorMinimo: snapshot.valorMinimo ?? valorMoeda(parsed.valorMinimoPrivado),
     };
@@ -206,9 +211,22 @@ function CadastrarVeiculo() {
     queryKey: ['termo-vendedor'],
     queryFn: () => getTermo({ data: { tipo: 'VENDEDOR' } }),
   });
+  const { data: configPublicaData } = useQuery({
+    queryKey: ['config-publica'],
+    queryFn: () => obterConfiguracoesPublicasFn(),
+  });
   const profile = (data as any)?.profile || {};
   const termo = (termoData as any)?.data || null;
   const jaAceitouTermo = !!profile.termo_aceito_em;
+  const opcionaisVeiculo = (() => {
+    try {
+      const bruto = (configPublicaData as any)?.data?.opcionais_veiculo;
+      const lista = bruto ? JSON.parse(bruto) : null;
+      return Array.isArray(lista) && lista.length > 0 ? lista : ACESSORIOS_VEICULO;
+    } catch {
+      return ACESSORIOS_VEICULO;
+    }
+  })();
   const onboardingEtapas = ((onboardingData as any)?.etapas || {}) as Record<string, string>;
   const cadastroLiberado = Object.keys(onboardingEtapas).length > 0
     ? Object.values(onboardingEtapas).every((status) => status === 'CONCLUIDO')
@@ -745,10 +763,17 @@ function CadastrarVeiculo() {
               <OpcaoBotoes label="Chave reserva?" opcoes={['Sim', 'Não']} value={form.chaveReserva} onChange={(v) => set({ chaveReserva: v })} />
               <OpcaoBotoes label="Manual?" opcoes={['Sim', 'Não']} value={form.manual} onChange={(v) => set({ manual: v })} />
               <OpcaoBotoes label="Estepe?" opcoes={['Sim', 'Não']} value={form.estepe} onChange={(v) => set({ estepe: v })} />
-              <OpcaoBotoes label="Possui acessórios adicionais?" opcoes={['Sim', 'Não']} value={form.acessorios} onChange={(v) => set({ acessorios: v })} />
-              {form.acessorios === 'Sim' && (
-                <Textarea placeholder="Quais acessórios?" value={form.acessoriosQuais} onChange={(e) => set({ acessoriosQuais: e.target.value })} className="rounded-xl" />
-              )}
+              <OpcaoMultipla
+                label="Acessórios do veículo"
+                opcoes={opcionaisVeiculo}
+                value={form.acessoriosSelecionados}
+                onChange={(v) => set({ acessoriosSelecionados: v })}
+                colunas={2}
+              />
+              <div className="space-y-2">
+                <Label className="text-sm font-bold text-slate-900">Outros acessórios (não listados acima)</Label>
+                <Textarea placeholder="Opcional" value={form.acessoriosQuais} onChange={(e) => set({ acessoriosQuais: e.target.value })} className="rounded-xl" />
+              </div>
 
             </div>
           </div>
