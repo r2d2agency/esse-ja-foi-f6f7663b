@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -391,7 +391,7 @@ function DetalheVeiculoAdminPage() {
     <div className="flex flex-col h-full bg-slate-50">
       {/* Header */}
       <div className="bg-white border-b border-slate-200 p-4 md:p-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sticky top-0 z-10">
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-3 sm:gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate({ to: "/admin/veiculos" })}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
@@ -438,7 +438,7 @@ function DetalheVeiculoAdminPage() {
               <User className="mr-2 h-4 w-4" /> Assumir análise
             </Button>
           ) : (
-            <div className="text-right mr-4">
+            <div className="text-right">
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Responsável</p>
               <p className="text-sm font-bold text-slate-700">{v.responsavel_nome}</p>
             </div>
@@ -453,7 +453,9 @@ function DetalheVeiculoAdminPage() {
               className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
               onClick={handleAprovarPublicacao}
             >
-              <CheckCircle2 className="mr-2 h-4 w-4" /> Aprovar para publicação (sem vistoria)
+              <CheckCircle2 className="mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">Aprovar para publicação (sem vistoria)</span>
+              <span className="sm:hidden">Aprovar p/ publicação</span>
             </Button>
           )}
 
@@ -491,8 +493,8 @@ function DetalheVeiculoAdminPage() {
 
       <div className="flex-1 overflow-hidden">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-          <div className="bg-white border-b border-slate-200 px-6 overflow-x-auto">
-            <TabsList className="bg-transparent border-none h-12 gap-6 p-0">
+          <div className="bg-white border-b border-slate-200 px-3 sm:px-6 overflow-x-auto">
+            <TabsList className="bg-transparent border-none h-12 gap-4 sm:gap-6 p-0">
               {["Resumo", "Dados", "Documentação", "Condição", "Fotos", "Valores", "Análise", "Publicação", "Laudos", "Histórico"].map((tab) => (
                 <TabsTrigger 
                   key={tab} 
@@ -505,7 +507,7 @@ function DetalheVeiculoAdminPage() {
             </TabsList>
           </div>
 
-          <ScrollArea className="flex-1 p-6">
+          <ScrollArea className="flex-1 p-3 sm:p-6">
             <div className="max-w-4xl mx-auto space-y-6">
               
               <TabsContent value="resumo" className="mt-0 space-y-6">
@@ -641,9 +643,9 @@ function DetalheVeiculoAdminPage() {
                        'Aguardando Análise'}
                     </Badge>
                   </CardHeader>
-                  <CardContent className="p-6">
+                  <CardContent className="p-4 sm:p-6">
                     <div className="flex flex-col sm:flex-row gap-6 sm:gap-8">
-                      <div className="flex-1 max-w-sm aspect-[3/4] bg-slate-100 rounded-lg border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-400 p-8 text-center group cursor-pointer hover:bg-slate-50 transition-colors">
+                      <div className="flex-1 max-w-sm aspect-[3/4] bg-slate-100 rounded-lg border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-400 p-4 sm:p-8 text-center group cursor-pointer hover:bg-slate-50 transition-colors">
                         {v.documento_crlv_url ? (
                           <div className="w-full h-full relative group">
                             <img src={v.documento_crlv_url} alt="CRLV" className="w-full h-full object-contain" />
@@ -1033,7 +1035,7 @@ function DetalheVeiculoAdminPage() {
                           },
                         ].map((item, idx) => (
                           <div key={idx} className="flex flex-col gap-2 p-3 bg-slate-50 rounded-lg">
-                            <div className="flex items-center justify-between w-full">
+                            <div className="flex flex-wrap items-center justify-between gap-2 w-full">
                               <span className="text-sm font-bold text-slate-700">{item.label}</span>
                               <div className="flex items-center gap-3">
                                 {item.label === "Dados cadastrais" && item.status === "PENDENTE" && (
@@ -1111,6 +1113,7 @@ function DetalheVeiculoAdminPage() {
               </TabsContent>
 
             </div>
+            <ScrollBar orientation="horizontal" />
           </ScrollArea>
         </Tabs>
       </div>

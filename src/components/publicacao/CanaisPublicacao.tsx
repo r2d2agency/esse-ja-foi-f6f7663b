@@ -497,13 +497,14 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
             {canalWhats?.token_acesso && canalWhats?.token_ativo !== false ? (
               <div className="space-y-3">
                 <div className="flex items-center gap-2 rounded-xl bg-white p-3">
-                  <code className="flex-1 truncate text-xs font-semibold text-slate-700">
+                  <code className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-700">
                     {linkPrivado}
                   </code>
                   <Button
                     type="button"
                     size="sm"
                     variant="outline"
+                    className="shrink-0"
                     onClick={() => copiar(linkPrivado, "Link copiado.")}
                   >
                     <Copy className="h-4 w-4" />
