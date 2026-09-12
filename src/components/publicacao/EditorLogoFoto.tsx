@@ -76,7 +76,10 @@ export function EditorLogoFoto({
   // em retrato (ou muito larga) ficava maior que a viewport e escondia os botões do rodapé.
   function recalcularTamanho(proporcao: number) {
     const larguraDisponivel = containerRef.current?.clientWidth || 640;
-    const alturaMaxima = Math.max(240, Math.round(window.innerHeight * 0.5));
+    // No celular a tela é mais estreita que alta — dar mais altura ao palco
+    // (em vez de um limite fixo de 50%) é o que realmente ajuda a posicionar
+    // a logo com precisão sobre a placa.
+    const alturaMaxima = Math.max(240, Math.round(window.innerHeight * (window.innerWidth < 640 ? 0.68 : 0.55)));
     let largura = larguraDisponivel;
     let altura = largura / proporcao;
     if (altura > alturaMaxima) {
@@ -319,7 +322,7 @@ export function EditorLogoFoto({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-h-[96vh] w-[calc(100%-1rem)] max-w-2xl overflow-y-auto p-3 sm:p-6">
         <DialogHeader>
           <DialogTitle>Marca d'água e área da placa</DialogTitle>
         </DialogHeader>

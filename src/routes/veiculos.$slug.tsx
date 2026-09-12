@@ -3,10 +3,10 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getAnuncioPublico } from "@/lib/vitrine.functions";
 import { getLeilaoInfo, darLanceFn } from "@/lib/leilao.functions";
 import { Button } from "@/components/ui/button";
-import { ShieldCheck, MapPin, Fuel, Settings2, Lock, ArrowLeft, Gavel, Clock, TrendingUp, Heart, BellPlus, ClipboardCheck, X, ChevronLeft, ChevronRight, Maximize2 } from "lucide-react";
+import { ShieldCheck, MapPin, Fuel, Settings2, Lock, ArrowLeft, Gavel, Clock, TrendingUp, Heart, BellPlus, ClipboardCheck, X, ChevronLeft, ChevronRight, ChevronDown, Maximize2 } from "lucide-react";
 import { getSessionToken } from "@/lib/session";
 import { alternarFavoritoFn, salvarLembreteFn } from "@/lib/comprador.functions";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/use-auth";
 import { formatDistanceToNow } from "date-fns";
@@ -113,6 +113,8 @@ function DetalheVeiculoPublico() {
   const [timeLeft, setTimeLeft] = useState("");
   const [lanceCustom, setLanceCustom] = useState("");
   const [lightboxAberto, setLightboxAberto] = useState(false);
+  const [ctaVisivel, setCtaVisivel] = useState(true);
+  const ctaRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!lightboxAberto) return;
@@ -122,6 +124,19 @@ function DetalheVeiculoPublico() {
     window.addEventListener("keydown", aoTeclar);
     return () => window.removeEventListener("keydown", aoTeclar);
   }, [lightboxAberto]);
+
+  // No celular a caixa de lance/interesse fica embaixo das fotos — sem isso,
+  // o comprador precisa rolar a tela toda vez para achar o botão de ação.
+  // Mostra um atalho flutuante só quando a caixa não está visível.
+  useEffect(() => {
+    const alvo = ctaRef.current;
+    if (!alvo) return;
+    const observer = new IntersectionObserver(([entry]) => setCtaVisivel(entry.isIntersecting), {
+      rootMargin: "-56px 0px 0px 0px",
+    });
+    observer.observe(alvo);
+    return () => observer.disconnect();
+  }, []);
 
   // Fallback: o anúncio público já traz os parâmetros do leilão. Se a consulta
   // em tempo real falhar, usamos esses valores para nunca exibir R$ 0.
@@ -252,7 +267,7 @@ function DetalheVeiculoPublico() {
             <VistoriaSimplificada condicao={anuncio.condicao} />
           </div>
 
-          <div className="lg:sticky lg:top-24 h-fit">
+          <div ref={ctaRef} className="lg:sticky lg:top-24 h-fit">
             <div className="bg-slate-950 text-white rounded-[2.5rem] p-8 md:p-10 shadow-2xl">
               <div className="mb-8">
                 <div className="text-[10px] font-bold text-teal-500 uppercase tracking-widest mb-2">Oportunidade</div>
@@ -429,6 +444,23 @@ function DetalheVeiculoPublico() {
           </div>
         </div>
       </main>
+
+      {!ctaVisivel && (
+        <button
+          type="button"
+          onClick={() => ctaRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+          className="fixed inset-x-4 bottom-4 z-40 flex h-14 items-center justify-center gap-2 rounded-2xl bg-teal-600 px-4 text-sm font-black uppercase tracking-tight text-white shadow-2xl shadow-teal-900/30 lg:hidden"
+        >
+          {!isAuthenticated
+            ? "Entrar para participar"
+            : !podeVerValores
+              ? "Ver status do cadastro"
+              : anuncio.leilao_id
+                ? `Dar lance — R$ ${proximoLanceMinimo.toLocaleString("pt-BR")}`
+                : "Ver oferta"}
+          <ChevronDown className="h-4 w-4" />
+        </button>
+      )}
 
       {lightboxAberto && anuncio.fotos?.length > 0 && (
         <div

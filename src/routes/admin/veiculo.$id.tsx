@@ -1194,6 +1194,20 @@ function DetalheVeiculoAdminPage() {
 
             </div>
           </div>
+
+          {activeTab === "analise" && v.status_analise !== 'PRONTO_PARA_VISTORIA' && (
+            <div className="border-t border-slate-200 bg-white p-3 shadow-[0_-4px_12px_rgba(0,0,0,0.04)] sm:px-6">
+              <div className="mx-auto max-w-4xl">
+                <Button
+                  className="h-auto min-h-12 w-full whitespace-normal bg-slate-950 py-2 text-center font-black uppercase tracking-tight text-white hover:bg-slate-900"
+                  disabled={!podeLiberarVistoria}
+                  onClick={() => handleMudarStatus('PRONTO_PARA_VISTORIA')}
+                >
+                  {podeLiberarVistoria ? "Liberar para vistoria" : `Faltam ${pendenciasLiberacao.length || 1} requisito(s)`}
+                </Button>
+              </div>
+            </div>
+          )}
         </Tabs>
       </div>
       {/* Modais de Documentação */}
