@@ -468,6 +468,17 @@ export async function registrarLance(leilaoId: string, compradorId: string, valo
     }
     const lanceId = rowsOf(res)?.[0]?.id;
 
+    try {
+      const veiculoRes = await tx.execute(sql`
+        SELECT placa, marca, modelo FROM veiculos WHERE id = ${leilao.veiculo_id}::uuid LIMIT 1;
+      `);
+      const veiculoLance = rowsOf(veiculoRes)[0];
+      const { notificarAdminsNovoLance } = await import("./notificacoes-admin.server");
+      void notificarAdminsNovoLance({ leilaoId, valor: valorNum, veiculo: veiculoLance });
+    } catch (e) {
+      console.error("[leilao] falha ao notificar admins sobre novo lance", e);
+    }
+
     const { processarEventoSistema } = await import("./automacoes-motor.server");
     if (maiorLanceAnterior && maiorLanceAnterior.comprador_id !== compradorId) {
       const { criarNotificacaoComprador } = await import("./comprador.server");

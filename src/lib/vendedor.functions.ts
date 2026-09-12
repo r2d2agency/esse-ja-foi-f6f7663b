@@ -151,6 +151,7 @@ export const cadastrarMeuVeiculoFn = createServerFn({ method: "POST" })
     documento_crlv_url: z.string().optional().nullable(),
     versao: z.string().optional().nullable(),
     cor: z.string().optional().nullable(),
+    blindado: z.boolean().optional(),
     status: z.string().optional(),
     id: z.string().uuid().optional(),
   }))

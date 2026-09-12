@@ -56,7 +56,7 @@ type Estado = {
   placa: string;
   marca: string; modelo: string; versao: string;
   anoFabricacao: string; anoModelo: string; cor: string;
-  combustivel: string; cambio: string; portas: string;
+  combustivel: string; cambio: string; portas: string; blindado: boolean;
   km: string; cep: string; cidade: string; uf: string;
   emSeuNome: string; relacaoProprietario: string; relacaoDescricao: string;
   financiado: string; instituicao: string; saldoQuitacao: string;
@@ -72,7 +72,7 @@ type Estado = {
 
 const INICIAL: Estado = {
   placa: '', marca: '', modelo: '', versao: '', anoFabricacao: '', anoModelo: '', cor: '',
-  combustivel: '', cambio: '', portas: '', km: '', cep: '', cidade: '', uf: '',
+  combustivel: '', cambio: '', portas: '', blindado: false, km: '', cep: '', cidade: '', uf: '',
   emSeuNome: 'Sim', relacaoProprietario: '', relacaoDescricao: '',
   financiado: 'Não, está quitado', instituicao: '', saldoQuitacao: '',
   crlv: null,
@@ -222,6 +222,7 @@ function CadastrarVeiculo() {
     anoModelo: form.anoModelo || undefined,
     combustivel: form.combustivel || undefined,
     cambio: form.cambio || undefined,
+    blindado: form.blindado,
     km: form.km ? Number(soDigitos(form.km)) : undefined,
     valorInteresse: valorNumero(form.valorDesejado) || undefined,
     fotos: Object.values(form.fotos).filter(Boolean) as string[],
@@ -255,6 +256,7 @@ function CadastrarVeiculo() {
             cor: veiculo.cor || obs.cor || '',
             combustivel: veiculo.combustivel || obs.combustivel || '',
             cambio: veiculo.cambio || obs.cambio || '',
+            blindado: veiculo.blindado ?? obs.blindado ?? false,
             km: veiculo.km ? String(veiculo.km) : obs.km || '',
             valorDesejado: veiculo.valor_interesse_cliente ? valorMoeda(veiculo.valor_interesse_cliente) : obs.valorDesejado || '',
             cep: veiculo.cep || obs.cep || '',
@@ -575,6 +577,16 @@ function CadastrarVeiculo() {
                 <ComboboxSearch options={CAMBIOS} value={form.cambio} onChange={(v) => set({ cambio: v })} placeholder="Selecione" />
               </div>
               <OpcaoBotoes label="Portas" opcoes={PORTAS} value={form.portas} onChange={(v) => set({ portas: v })} />
+              <div className="flex items-center gap-3 md:col-span-2">
+                <Checkbox
+                  id="blindado"
+                  checked={form.blindado}
+                  onCheckedChange={(v) => set({ blindado: !!v })}
+                />
+                <Label htmlFor="blindado" className="text-sm font-bold text-slate-900 cursor-pointer">
+                  Veículo blindado
+                </Label>
+              </div>
               <div className="space-y-2">
                 <Label className="text-sm font-bold text-slate-900">Quilometragem atual</Label>
                 <div className="relative">
@@ -803,6 +815,7 @@ function CadastrarVeiculo() {
                 <p className="text-sm text-slate-500">{form.anoFabricacao}/{form.anoModelo}</p>
                 <p className="text-sm uppercase tracking-widest text-slate-400">{form.placa}</p>
                 {form.km && <p className="text-sm text-slate-500">{Number(soDigitos(form.km)).toLocaleString('pt-BR')} km</p>}
+                {form.blindado && <p className="text-sm font-semibold text-teal-700">Blindado</p>}
               </Bloco>
 
               <Bloco titulo="Documentação" icone={<FileText className="h-4 w-4 text-teal-700" />} onEditar={() => setStep(3)}>

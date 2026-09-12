@@ -125,6 +125,8 @@ export async function ensureAdminTables(silent = true) {
         ('openai_model', 'gpt-4o', 'Modelo da OpenAI a ser utilizado (precisa suportar visão)'),
         ('ia_analise_documentos_ativa', 'true', 'Analisar automaticamente os documentos do vendedor com IA ao serem enviados'),
         ('ia_auto_reprovar', 'true', 'Reprovar automaticamente um documento quando a IA tiver certeza (alta/média confiança) de que não confere'),
+        ('notificacao_email_carro_analise_ativa', 'true', 'Enviar e-mail aos administradores quando um veículo entra na fila de análise'),
+        ('notificacao_email_novo_lance_ativa', 'true', 'Enviar e-mail aos administradores a cada novo lance registrado em um leilão'),
         (${'ia_prompt_documentos'}, ${PROMPT_IA_DOCUMENTOS_PADRAO}, 'Prompt de sistema usado pela IA para validar CNH, CRLV, comprovante e selfie do vendedor')
       ON CONFLICT (chave) DO NOTHING;
     `);

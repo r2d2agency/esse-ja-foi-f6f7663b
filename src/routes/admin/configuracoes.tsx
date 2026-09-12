@@ -256,6 +256,46 @@ function ConfiguracoesAdminPage() {
         </section>
 
 
+        <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+            <Mail className="h-5 w-5 text-teal-700" />
+            Notificações por E-mail
+          </div>
+          <p className="text-sm text-slate-500">
+            Escolha quando os administradores e a operação devem receber um e-mail automático.
+          </p>
+          <div className="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-slate-800">Carro para análise</p>
+                <p className="text-xs text-slate-500">Envia e-mail quando um vendedor envia um veículo para a fila de análise.</p>
+              </div>
+              <Switch
+                checked={getConfig("notificacao_email_carro_analise_ativa") !== "false"}
+                onCheckedChange={(v: boolean) => {
+                  const valor = v ? "true" : "false";
+                  setConfig("notificacao_email_carro_analise_ativa", valor);
+                  void salvar("notificacao_email_carro_analise_ativa", valor);
+                }}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-slate-800">Novo lance</p>
+                <p className="text-xs text-slate-500">Envia e-mail a cada novo lance registrado em qualquer leilão.</p>
+              </div>
+              <Switch
+                checked={getConfig("notificacao_email_novo_lance_ativa") !== "false"}
+                onCheckedChange={(v: boolean) => {
+                  const valor = v ? "true" : "false";
+                  setConfig("notificacao_email_novo_lance_ativa", valor);
+                  void salvar("notificacao_email_novo_lance_ativa", valor);
+                }}
+              />
+            </div>
+          </div>
+        </section>
+
         <section className="space-y-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
             <BrainCircuit className="h-5 w-5 text-teal-700" />

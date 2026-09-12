@@ -124,7 +124,8 @@ export async function ensureCadastroSchema(silent = true) {
       atualizado_em timestamptz NOT NULL DEFAULT now(),
       criado_em timestamptz NOT NULL DEFAULT now(),
       status_analise text DEFAULT 'AGUARDANDO_ANALISE',
-      documento_crlv_url text
+      documento_crlv_url text,
+      blindado boolean NOT NULL DEFAULT false
     );
     `);
     
@@ -153,6 +154,9 @@ export async function ensureCadastroSchema(silent = true) {
         END IF;
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'veiculos' AND column_name = 'documento_crlv_url') THEN
           ALTER TABLE veiculos ADD COLUMN documento_crlv_url text;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'veiculos' AND column_name = 'blindado') THEN
+          ALTER TABLE veiculos ADD COLUMN blindado boolean NOT NULL DEFAULT false;
         END IF;
       END $$;
     `);
@@ -357,6 +361,7 @@ export type VeiculoInput = {
   fotos?: string[] | null;
   status?: string | null;
   documento_crlv_url?: string | null;
+  blindado?: boolean | null;
 };
 
 export async function listarVeiculos(filtros: {
@@ -439,6 +444,7 @@ export async function salvarVeiculo(input: VeiculoInput) {
     fotos: input.fotos && input.fotos.length > 0 ? (typeof input.fotos === 'string' ? input.fotos : JSON.stringify(input.fotos)) : null,
     status: (input.status ?? "CADASTRADO").toUpperCase(),
     documento_crlv_url: input.documento_crlv_url || null,
+    blindado: Boolean(input.blindado),
   };
 
   if (input.id) {
@@ -479,24 +485,39 @@ export async function salvarVeiculo(input: VeiculoInput) {
     if (input.fotos !== undefined) setClauses.push(sql`fotos = ${base.fotos}::jsonb`);
     if (input.status !== undefined) setClauses.push(sql`status = ${base.status}`);
     if (input.documento_crlv_url !== undefined) setClauses.push(sql`documento_crlv_url = ${base.documento_crlv_url}`);
+    if (input.blindado !== undefined) setClauses.push(sql`blindado = ${base.blindado}`);
+
+    let statusAnterior: string | null = null;
+    if (input.status !== undefined) {
+      const anteriorRows = (await d.execute(
+        sql`SELECT status FROM veiculos WHERE id = ${input.id} LIMIT 1;`,
+      )) as unknown as Array<{ status: string }>;
+      statusAnterior = anteriorRows[0]?.status ?? null;
+    }
 
     await d.execute(sql`
       UPDATE veiculos SET ${sql.join(setClauses, sql`, `)}
       WHERE id = ${input.id};
     `);
     await registrarLog({ entidade: "veiculo", entidadeId: input.id, acao: "ATUALIZADO", detalhe: `Placa ${placa}` });
+
+    if (base.status === "AGUARDANDO_APROVACAO" && statusAnterior !== "AGUARDANDO_APROVACAO") {
+      const { notificarAdminsCarroParaAnalise } = await import("./notificacoes-admin.server");
+      void notificarAdminsCarroParaAnalise({ id: input.id, placa: base.placa, marca: base.marca, modelo: base.modelo });
+    }
+
     return { id: input.id, percentualSobreFipe: percentual, alertaExpectativa: alerta, percentualAlerta: limite };
   }
 
   const rows = (await d.execute(sql`
     INSERT INTO veiculos (placa, marca, modelo, versao, cor, km, ano_fabricacao, ano_modelo, combustivel, cambio,
       cliente_id, valor_fipe, valor_interesse_cliente, tipo_expectativa, percentual_sobre_fipe, alerta_expectativa,
-      ciente_expectativa, cep, endereco, cidade, uf, latitude, longitude, observacoes, perfil_id, vendedor_id, fotos, status, status_analise, documento_crlv_url)
+      ciente_expectativa, cep, endereco, cidade, uf, latitude, longitude, observacoes, perfil_id, vendedor_id, fotos, status, status_analise, documento_crlv_url, blindado)
     VALUES (${base.placa}, ${base.marca}, ${base.modelo}, ${base.versao}, ${base.cor}, ${base.km},
       ${base.anoFabricacao}, ${base.anoModelo}, ${base.combustivel}, ${base.cambio}, ${base.clienteId},
       ${base.fipe}, ${base.interesse}, ${base.tipoExpectativa}, ${base.percentual}, ${base.alerta},
       ${base.ciente}, ${base.cep}, ${base.endereco}, ${base.cidade}, ${base.uf}, ${base.latitude},
-      ${base.longitude}, ${base.observacoes}, ${base.perfilId}::uuid, ${base.perfilId}::uuid, ${base.fotos}::jsonb, ${base.status}, 'AGUARDANDO_ANALISE', ${input.documento_crlv_url || null})
+      ${base.longitude}, ${base.observacoes}, ${base.perfilId}::uuid, ${base.perfilId}::uuid, ${base.fotos}::jsonb, ${base.status}, 'AGUARDANDO_ANALISE', ${input.documento_crlv_url || null}, ${base.blindado})
     ON CONFLICT (placa) DO UPDATE SET
       marca = EXCLUDED.marca, modelo = EXCLUDED.modelo, versao = EXCLUDED.versao, cor = EXCLUDED.cor,
       km = EXCLUDED.km, ano_fabricacao = EXCLUDED.ano_fabricacao, ano_modelo = EXCLUDED.ano_modelo,
@@ -506,11 +527,17 @@ export async function salvarVeiculo(input: VeiculoInput) {
       ciente_expectativa = EXCLUDED.ciente_expectativa, cep = EXCLUDED.cep, endereco = EXCLUDED.endereco,
       cidade = EXCLUDED.cidade, uf = EXCLUDED.uf, latitude = EXCLUDED.latitude, longitude = EXCLUDED.longitude,
       observacoes = EXCLUDED.observacoes, fotos = EXCLUDED.fotos, status = EXCLUDED.status,
-      documento_crlv_url = EXCLUDED.documento_crlv_url, atualizado_em = now()
+      documento_crlv_url = EXCLUDED.documento_crlv_url, blindado = EXCLUDED.blindado, atualizado_em = now()
     RETURNING id;
   `)) as unknown as Array<{ id: string }>;
   const id = rows[0]?.id as string;
   await registrarLog({ entidade: "veiculo", entidadeId: id, acao: "CRIADO", para: base.status, detalhe: `Placa ${placa}` });
+
+  if (base.status === "AGUARDANDO_APROVACAO") {
+    const { notificarAdminsCarroParaAnalise } = await import("./notificacoes-admin.server");
+    void notificarAdminsCarroParaAnalise({ id, placa: base.placa, marca: base.marca, modelo: base.modelo });
+  }
+
   return { id, percentualSobreFipe: percentual, alertaExpectativa: alerta, percentualAlerta: limite };
 }
 
