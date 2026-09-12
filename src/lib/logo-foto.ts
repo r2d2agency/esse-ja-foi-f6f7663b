@@ -106,3 +106,124 @@ export async function compositarLogo(fotoUrl: string, ajusteBruto: AjusteLogo): 
 
   return canvas.toDataURL("image/jpeg", 0.9);
 }
+
+/* ------------------------------------------------------------------------ *
+ * Editor com múltiplas camadas: uma foto pode precisar de uma marca d'água
+ * (logo solta, sem fundo, em qualquer lugar) E de uma ou mais áreas cobrindo
+ * placas (retângulo branco + logo, podendo girar para acompanhar o ângulo
+ * do carro em fotos 3/4). As duas coisas coexistem na mesma foto.
+ * ------------------------------------------------------------------------ */
+
+export type CamadaMarcaDagua = {
+  id: string;
+  tipo: "marca_dagua";
+  xPct: number;
+  yPct: number;
+  larguraPct: number; // altura segue o próprio aspecto da logo
+  variante: VarianteLogo;
+};
+
+export type CamadaPlaca = {
+  id: string;
+  tipo: "placa";
+  xPct: number;
+  yPct: number;
+  larguraPct: number;
+  alturaPct: number;
+  rotacaoGraus: number; // gira em torno do centro da área, para acompanhar o ângulo da placa
+};
+
+export type Camada = CamadaMarcaDagua | CamadaPlaca;
+
+function idAleatorio() {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `camada-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+export function novaCamadaMarcaDagua(): CamadaMarcaDagua {
+  return { id: idAleatorio(), tipo: "marca_dagua", xPct: 0.68, yPct: 0.8, larguraPct: 0.28, variante: "normal" };
+}
+
+export function novaCamadaPlaca(): CamadaPlaca {
+  return { id: idAleatorio(), tipo: "placa", xPct: 0.36, yPct: 0.74, larguraPct: 0.22, alturaPct: 0.07, rotacaoGraus: 0 };
+}
+
+/** Mesma lógica de `bboxParaAjuste`, mas devolvendo uma camada de placa (sem rotação). */
+export function bboxParaCamadaPlaca(bbox: BBoxNormalizado): CamadaPlaca {
+  const ajuste = bboxParaAjuste(bbox);
+  return {
+    id: idAleatorio(),
+    tipo: "placa",
+    xPct: ajuste.xPct,
+    yPct: ajuste.yPct,
+    larguraPct: ajuste.larguraPct,
+    alturaPct: ajuste.alturaPct ?? ajuste.larguraPct * 0.42,
+    rotacaoGraus: 0,
+  };
+}
+
+/** Desenha a foto original + todas as camadas (marca d'água e/ou placas), na ordem dada. */
+export async function compositarCamadas(fotoUrl: string, camadas: Camada[]): Promise<string> {
+  const variantesUsadas = Array.from(
+    new Set<VarianteLogo>(camadas.map((c) => (c.tipo === "marca_dagua" ? c.variante : "normal"))),
+  );
+  if (variantesUsadas.length === 0) variantesUsadas.push("normal");
+
+  const [foto, ...logosCarregados] = await Promise.all([
+    carregarImagem(fotoUrl),
+    ...variantesUsadas.map((v) => carregarImagem(LOGOS[v])),
+  ]);
+  const logos = {} as Record<VarianteLogo, HTMLImageElement>;
+  variantesUsadas.forEach((v, i) => {
+    logos[v] = logosCarregados[i]!;
+  });
+
+  const canvas = document.createElement("canvas");
+  canvas.width = foto.naturalWidth || foto.width;
+  canvas.height = foto.naturalHeight || foto.height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas 2D indisponível neste dispositivo.");
+
+  ctx.drawImage(foto, 0, 0, canvas.width, canvas.height);
+
+  for (const camada of camadas) {
+    const x = camada.xPct * canvas.width;
+    const y = camada.yPct * canvas.height;
+    const largura = camada.larguraPct * canvas.width;
+
+    if (camada.tipo === "marca_dagua") {
+      const logo = logos[camada.variante] ?? logos.normal;
+      const proporcao = (logo.naturalWidth || logo.width) / (logo.naturalHeight || logo.height);
+      const altura = largura / proporcao;
+      ctx.drawImage(logo, x, y, largura, altura);
+      continue;
+    }
+
+    // Camada "placa": retângulo branco sólido + logo colorida centralizada, podendo girar.
+    const altura = camada.alturaPct * canvas.height;
+    const cx = x + largura / 2;
+    const cy = y + altura / 2;
+    const anguloRad = (camada.rotacaoGraus * Math.PI) / 180;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(anguloRad);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(-largura / 2, -altura / 2, largura, altura);
+
+    const logo = logos.normal;
+    const margem = 0.88;
+    const proporcaoLogo = (logo.naturalWidth || logo.width) / (logo.naturalHeight || logo.height);
+    let larguraLogo = largura * margem;
+    let alturaLogo = larguraLogo / proporcaoLogo;
+    if (alturaLogo > altura * margem) {
+      alturaLogo = altura * margem;
+      larguraLogo = alturaLogo * proporcaoLogo;
+    }
+    ctx.drawImage(logo, -larguraLogo / 2, -alturaLogo / 2, larguraLogo, alturaLogo);
+    ctx.restore();
+  }
+
+  return canvas.toDataURL("image/jpeg", 0.9);
+}

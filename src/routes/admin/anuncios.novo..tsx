@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getDadosParaNovoAnuncio, criarAnuncio } from "@/lib/anuncios.functions";
 import { detectarPlacaFotoFn } from "@/lib/fotos-anuncio.functions";
-import { AJUSTE_PADRAO, bboxParaAjuste, compositarLogo, type AjusteLogo } from "@/lib/logo-foto";
+import { bboxParaCamadaPlaca, compositarCamadas, novaCamadaPlaca, type Camada } from "@/lib/logo-foto";
 import { EditorLogoFoto } from "@/components/publicacao/EditorLogoFoto";
 import { Button } from "@/components/ui/button";
 import { useEffect, useRef, useState } from "react";
@@ -26,28 +26,28 @@ type FotoProcessada = {
   id: string;
   original: string;
   url: string;
-  ajuste: AjusteLogo;
+  camadas: Camada[];
   status: StatusFoto;
 };
 
-/** Processa a foto: detecta a placa via IA e aplica a logo (ou cai na marca d'água padrão). */
-async function processarFoto(original: string): Promise<{ url: string; ajuste: AjusteLogo }> {
-  let ajuste: AjusteLogo = AJUSTE_PADRAO;
+/** Processa a foto: detecta a placa via IA e cobre com a logo (ou cai na área padrão). */
+async function processarFoto(original: string): Promise<{ url: string; camadas: Camada[] }> {
+  let camadas: Camada[] = [novaCamadaPlaca()];
   try {
     const res = await detectarPlacaFotoFn({ data: { imagemUrl: original } });
-    if (res.ok && res.bbox) ajuste = bboxParaAjuste(res.bbox);
+    if (res.ok && res.bbox) camadas = [bboxParaCamadaPlaca(res.bbox)];
   } catch {
-    // segue com o ajuste padrão — nunca bloqueia o processamento por causa da IA
+    // segue com a área padrão — nunca bloqueia o processamento por causa da IA
   }
-  const url = await compositarLogo(original, ajuste);
-  return { url, ajuste };
+  const url = await compositarCamadas(original, camadas);
+  return { url, camadas };
 }
 
 /** Roda o processamento das fotos com no máximo `concorrencia` chamadas simultâneas. */
 async function processarFotosEmLote(
   fotos: FotoProcessada[],
   concorrencia: number,
-  aoConcluirUma: (id: string, resultado: { url: string; ajuste: AjusteLogo } | null) => void,
+  aoConcluirUma: (id: string, resultado: { url: string; camadas: Camada[] } | null) => void,
 ) {
   let indice = 0;
   async function worker() {
@@ -93,7 +93,7 @@ function NovoAnuncioPage() {
       id: String(f.id),
       original: f.url,
       url: f.url,
-      ajuste: AJUSTE_PADRAO,
+      camadas: [novaCamadaPlaca()],
       status: "processando" as const,
     }));
     setFotos(iniciais);
@@ -104,7 +104,7 @@ function NovoAnuncioPage() {
         atual.map((f) =>
           f.id === fotoId
             ? resultado
-              ? { ...f, url: resultado.url, ajuste: resultado.ajuste, status: "pronta" }
+              ? { ...f, url: resultado.url, camadas: resultado.camadas, status: "pronta" }
               : { ...f, status: "erro" }
             : f,
         ),
@@ -140,7 +140,7 @@ function NovoAnuncioPage() {
           foto_original_id: f.id,
           eh_capa: f.id === capaId,
           ordem: i,
-          logo_ajuste: f.ajuste,
+          logo_ajuste: f.camadas,
         })),
         status: "PUBLICADO"
       }
@@ -275,10 +275,10 @@ function NovoAnuncioPage() {
           open={!!editando}
           onOpenChange={(open) => !open && setEditando(null)}
           fotoUrl={editando.original}
-          ajusteInicial={editando.ajuste}
-          onSalvar={(novaUrl, ajuste) => {
+          camadasIniciais={editando.camadas}
+          onSalvar={(novaUrl, camadas) => {
             setFotos((atual) =>
-              atual.map((f) => (f.id === editando.id ? { ...f, url: novaUrl, ajuste, status: "pronta" } : f)),
+              atual.map((f) => (f.id === editando.id ? { ...f, url: novaUrl, camadas, status: "pronta" } : f)),
             );
           }}
         />

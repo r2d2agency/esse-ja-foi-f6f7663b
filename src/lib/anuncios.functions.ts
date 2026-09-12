@@ -67,7 +67,7 @@ export const criarAnuncio = createServerFn({ method: "POST" })
       foto_original_id: z.string().uuid().optional().nullable(),
       eh_capa: z.boolean(),
       ordem: z.number(),
-      logo_ajuste: z.record(z.string(), z.any()).optional().nullable(),
+      logo_ajuste: z.array(z.any()).optional().nullable(),
     })),
     status: z.string(),
     agendado_para: z.string().optional().nullable(),
