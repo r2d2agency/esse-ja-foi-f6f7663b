@@ -44,6 +44,34 @@ function isH3SwallowedErrorBody(body: string): boolean {
   }
 }
 
+/**
+ * Injeta as tags de rastreamento (GTM, Google Ads, Pixel Meta, HTML customizado do admin)
+ * direto no HTML final da resposta — funciona pra qualquer tipo de snippet (script, meta,
+ * style etc), sem depender do sistema estruturado de head() do React pra conteúdo solto.
+ */
+async function injetarTagsRastreamento(response: Response): Promise<Response> {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("text/html")) return response;
+
+  try {
+    const { obterConfiguracoesPublicas, construirInjecoesRastreamento } = await import("./db/admin.server");
+    const cfg = await obterConfiguracoesPublicas();
+    const { head, body } = construirInjecoesRastreamento(cfg);
+    if (!head && !body) return response;
+
+    let html = await response.text();
+    if (head) html = html.replace("</head>", `${head}</head>`);
+    if (body) html = html.replace(/<body([^>]*)>/, (m) => `${m}${body}`);
+
+    const headers = new Headers(response.headers);
+    headers.delete("content-length");
+    return new Response(html, { status: response.status, statusText: response.statusText, headers });
+  } catch (error) {
+    console.error("[tags-rastreamento] falha ao injetar tags no HTML:", error);
+    return response;
+  }
+}
+
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     const url = new URL(request.url);
@@ -58,7 +86,8 @@ export default {
       console.log(`[SSR] Request: ${request.method} ${url.pathname}`);
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
-      return await normalizeCatastrophicSsrResponse(response);
+      const normalizado = await normalizeCatastrophicSsrResponse(response);
+      return await injetarTagsRastreamento(normalizado);
     } catch (error) {
       console.error('Fatal SSR Error:', error);
       return new Response(renderErrorPage(), {

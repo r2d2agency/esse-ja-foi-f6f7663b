@@ -22,16 +22,27 @@ import { useAuth } from '@/hooks/use-auth';
 import { LogoEsf } from '@/components/shared/LogoEsf';
 import landingHeroAsset from '@/assets/esse-ja-foi-hero.webp.asset.json';
 import { abrirConfiguracoesCookies } from '@/lib/cookies-consent';
+import { obterConfiguracoesPublicasFn } from '@/lib/config-publica.functions';
 
 const DOMINIO = 'https://www.essejafoi.com.br';
 
 export const Route = createFileRoute('/')({
-  head: () => {
+  loader: async () => {
+    try {
+      const res = await obterConfiguracoesPublicasFn();
+      return res.ok ? res.data : null;
+    } catch {
+      return null;
+    }
+  },
+  head: ({ loaderData }) => {
+    const cfg = loaderData;
     const url = `${DOMINIO}/`;
-    const titulo = 'Esse Já Foi — Compra e venda de veículos vistoriados';
+    const titulo = cfg?.seo_titulo_site?.trim() || 'Esse Já Foi — Compra e venda de veículos vistoriados';
     const descricao =
+      cfg?.seo_descricao_site?.trim() ||
       'Venda ou compre veículos vistoriados com negociação digital, documentação garantida e pagamento seguro. Leilão online de carros com compradores verificados.';
-    const imagem = `${DOMINIO}${landingHeroAsset.url}`;
+    const imagem = cfg?.seo_imagem_og_url?.trim() || `${DOMINIO}${landingHeroAsset.url}`;
 
     return {
       meta: [

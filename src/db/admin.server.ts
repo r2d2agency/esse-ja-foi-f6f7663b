@@ -125,6 +125,16 @@ export async function ensureAdminTables(silent = true) {
         ('openai_model', 'gpt-4o', 'Modelo da OpenAI a ser utilizado (precisa suportar visão)'),
         ('ia_analise_documentos_ativa', 'true', 'Analisar automaticamente os documentos do vendedor com IA ao serem enviados'),
         ('ia_auto_reprovar', 'true', 'Reprovar automaticamente um documento quando a IA tiver certeza (alta/média confiança) de que não confere'),
+        ('seo_titulo_site', '', 'Título de SEO da landing page (vazio usa o padrão do código)'),
+        ('seo_descricao_site', '', 'Descrição de SEO da landing page (vazio usa o padrão do código)'),
+        ('seo_imagem_og_url', '', 'URL da imagem usada ao compartilhar o site (og:image / twitter:image)'),
+        ('tracking_gtm_id', '', 'ID do container do Google Tag Manager (ex: GTM-XXXXXXX)'),
+        ('tracking_google_ads_id', '', 'ID de conversão do Google Ads (ex: AW-XXXXXXXXX)'),
+        ('tracking_meta_pixel_id', '', 'ID do Pixel do Meta (Facebook/Instagram Ads)'),
+        ('tracking_meta_capi_token', '', 'Token de acesso da Conversions API do Meta (nunca exposto ao navegador)'),
+        ('tracking_meta_capi_ativa', 'false', 'Enviar eventos também pela Conversions API do Meta (servidor-a-servidor)'),
+        ('tracking_head_html', '', 'HTML/script customizado injetado no <head> de todas as páginas'),
+        ('tracking_body_html', '', 'HTML/script customizado injetado logo após a abertura do <body> de todas as páginas'),
         (${'ia_prompt_documentos'}, ${PROMPT_IA_DOCUMENTOS_PADRAO}, 'Prompt de sistema usado pela IA para validar CNH, CRLV, comprovante e selfie do vendedor')
       ON CONFLICT (chave) DO NOTHING;
     `);
@@ -309,6 +319,98 @@ export async function salvarConfiguracao(chave: string, valor: string) {
     ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor, atualizado_em = now();
   `);
   return { ok: true };
+}
+
+/**
+ * Chaves seguras para expor em toda página pública (SEO + tags de rastreamento).
+ * NUNCA inclua aqui segredos como tracking_meta_capi_token — esse só pode ser lido
+ * no servidor, para chamar a Conversions API, e nunca deve chegar ao navegador.
+ */
+const CHAVES_CONFIG_PUBLICAS = [
+  "seo_titulo_site",
+  "seo_descricao_site",
+  "seo_imagem_og_url",
+  "tracking_gtm_id",
+  "tracking_google_ads_id",
+  "tracking_meta_pixel_id",
+  "tracking_head_html",
+  "tracking_body_html",
+] as const;
+
+export type ConfiguracoesPublicas = Record<(typeof CHAVES_CONFIG_PUBLICAS)[number], string>;
+
+let cacheConfigPublicas: { valor: ConfiguracoesPublicas; expiraEm: number } | null = null;
+
+/**
+ * Config de SEO/tags seguras para injetar em toda página (landing, vitrine, etc).
+ * Cacheada por 30s em memória — é lida em toda request HTML, não compensa bater no
+ * banco a cada página vista.
+ */
+export async function obterConfiguracoesPublicas(): Promise<ConfiguracoesPublicas> {
+  if (cacheConfigPublicas && cacheConfigPublicas.expiraEm > Date.now()) {
+    return cacheConfigPublicas.valor;
+  }
+
+  const d = requireDb();
+  await ensureAdminTables();
+  const rows = await d.execute(sql`
+    SELECT chave, valor FROM configuracoes_sistema WHERE chave = ANY(${CHAVES_CONFIG_PUBLICAS as unknown as string[]});
+  `);
+  const base = Object.fromEntries(CHAVES_CONFIG_PUBLICAS.map((k) => [k, ""])) as ConfiguracoesPublicas;
+  for (const row of rowsOf(rows) || rows) {
+    if (CHAVES_CONFIG_PUBLICAS.includes(row.chave)) (base as any)[row.chave] = row.valor || "";
+  }
+  cacheConfigPublicas = { valor: base, expiraEm: Date.now() + 30_000 };
+  return base;
+}
+
+/** Mantém só letras, números, "-" e "_" — formato esperado de GTM-XXXX / AW-XXXX / ID numérico do Pixel. */
+function idDeRastreamentoSeguro(valor: string) {
+  return (valor || "").trim().replace(/[^A-Za-z0-9_-]/g, "");
+}
+
+/**
+ * Monta os trechos de HTML/script das tags de rastreamento configuradas (GTM, Google Ads,
+ * Pixel Meta) mais o HTML customizado do admin, para injetar no <head> e logo após o <body>
+ * de toda página renderizada. Ids passam por uma limpeza básica; o HTML customizado é
+ * responsabilidade de quem tem acesso ao admin (mesmo modelo de "custom code" de qualquer CMS).
+ */
+export function construirInjecoesRastreamento(cfg: ConfiguracoesPublicas): { head: string; body: string } {
+  const partesHead: string[] = [];
+  const partesBody: string[] = [];
+
+  const gtmId = idDeRastreamentoSeguro(cfg.tracking_gtm_id);
+  if (gtmId) {
+    partesHead.push(
+      `<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','${gtmId}');</script>`,
+    );
+    partesBody.push(
+      `<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=${gtmId}" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>`,
+    );
+  }
+
+  const adsId = idDeRastreamentoSeguro(cfg.tracking_google_ads_id);
+  if (adsId) {
+    partesHead.push(`<script async src="https://www.googletagmanager.com/gtag/js?id=${adsId}"></script>`);
+    partesHead.push(
+      `<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${adsId}');</script>`,
+    );
+  }
+
+  const pixelId = idDeRastreamentoSeguro(cfg.tracking_meta_pixel_id);
+  if (pixelId) {
+    partesHead.push(
+      `<script>!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');fbq('init','${pixelId}');fbq('track','PageView');</script>`,
+    );
+    partesBody.push(
+      `<noscript><img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=${pixelId}&ev=PageView&noscript=1" /></noscript>`,
+    );
+  }
+
+  if (cfg.tracking_head_html?.trim()) partesHead.push(cfg.tracking_head_html);
+  if (cfg.tracking_body_html?.trim()) partesBody.push(cfg.tracking_body_html);
+
+  return { head: partesHead.join("\n"), body: partesBody.join("\n") };
 }
 
 // O driver postgres-js devolve as linhas como array (sem .rows).

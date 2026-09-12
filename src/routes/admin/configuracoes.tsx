@@ -22,6 +22,10 @@ import {
   FlaskConical,
   CheckCircle2,
   XCircle,
+  Search,
+  Tag,
+  Code2,
+  ImagePlus,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
@@ -66,6 +70,7 @@ function ConfiguracoesAdminPage() {
   const [loading, setLoading] = useState(true);
   const [modelosOpenAI, setModelosOpenAI] = useState<string[]>([]);
   const [novoModelo, setNovoModelo] = useState("");
+  const [enviandoImagemSeo, setEnviandoImagemSeo] = useState(false);
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -128,6 +133,24 @@ function ConfiguracoesAdminPage() {
       toast.error(`Erro ao salvar ${chave}.`);
     }
   };
+
+  async function enviarImagemSeo(file: File) {
+    setEnviandoImagemSeo(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/public/upload", { method: "POST", body: fd });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.url) throw new Error(json?.error || "Falha no upload da imagem.");
+      setConfig("seo_imagem_og_url", json.url);
+      await salvar("seo_imagem_og_url", json.url);
+      toast.success("Imagem de SEO enviada.");
+    } catch (e: any) {
+      toast.error(e?.message || "Erro ao enviar a imagem.");
+    } finally {
+      setEnviandoImagemSeo(false);
+    }
+  }
 
   const getConfig = (chave: string) => configs.find(c => c.chave === chave)?.valor ?? "";
   
@@ -379,6 +402,192 @@ function ConfiguracoesAdminPage() {
               void salvar("ia_prompt_documentos", getConfig("ia_prompt_documentos"));
             }}>
               <Save className="mr-2 h-4 w-4" /> Salvar Configurações IA
+            </Button>
+          </div>
+        </section>
+
+        <section className="space-y-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+            <Search className="h-5 w-5 text-teal-700" />
+            SEO do site
+          </div>
+          <p className="text-sm text-slate-500">
+            Título, descrição e imagem usados quando o Google indexa o site e quando ele é
+            compartilhado no WhatsApp, Facebook ou Twitter. Deixe em branco para usar o padrão.
+          </p>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Título do site</Label>
+              <Input
+                value={getConfig("seo_titulo_site")}
+                onChange={(e) => setConfig("seo_titulo_site", e.target.value)}
+                placeholder="Esse Já Foi — Compra e venda de veículos vistoriados"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Descrição do site</Label>
+              <Textarea
+                rows={3}
+                value={getConfig("seo_descricao_site")}
+                onChange={(e) => setConfig("seo_descricao_site", e.target.value)}
+                placeholder="Venda ou compre veículos vistoriados com negociação digital..."
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Imagem de compartilhamento (og:image)</Label>
+              <div className="flex flex-wrap items-center gap-3">
+                {getConfig("seo_imagem_og_url") && (
+                  <img
+                    src={getConfig("seo_imagem_og_url")}
+                    alt="Prévia da imagem de SEO"
+                    className="h-16 w-28 rounded-lg border border-slate-200 object-cover"
+                  />
+                )}
+                <Input
+                  className="flex-1 min-w-[240px]"
+                  value={getConfig("seo_imagem_og_url")}
+                  onChange={(e) => setConfig("seo_imagem_og_url", e.target.value)}
+                  placeholder="https://..."
+                />
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                  {enviandoImagemSeo ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+                  Enviar imagem
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={enviandoImagemSeo}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) void enviarImagemSeo(file);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+              </div>
+              <p className="text-xs text-slate-500">Ideal em 1200×630px.</p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button className="bg-teal-900" onClick={() => {
+              void salvar("seo_titulo_site", getConfig("seo_titulo_site"));
+              void salvar("seo_descricao_site", getConfig("seo_descricao_site"));
+              void salvar("seo_imagem_og_url", getConfig("seo_imagem_og_url"));
+            }}>
+              <Save className="mr-2 h-4 w-4" /> Salvar SEO
+            </Button>
+          </div>
+        </section>
+
+        <section className="space-y-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+            <Tag className="h-5 w-5 text-teal-700" />
+            Tags de rastreamento
+          </div>
+          <p className="text-sm text-slate-500">
+            Google Tag Manager, Google Ads e Pixel do Meta são injetados automaticamente em
+            todas as páginas do site assim que o ID for salvo aqui.
+          </p>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Google Tag Manager (ID do container)</Label>
+              <Input
+                value={getConfig("tracking_gtm_id")}
+                onChange={(e) => setConfig("tracking_gtm_id", e.target.value)}
+                placeholder="GTM-XXXXXXX"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Google Ads (ID de conversão)</Label>
+              <Input
+                value={getConfig("tracking_google_ads_id")}
+                onChange={(e) => setConfig("tracking_google_ads_id", e.target.value)}
+                placeholder="AW-XXXXXXXXX"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Pixel do Meta (Facebook/Instagram Ads)</Label>
+              <Input
+                value={getConfig("tracking_meta_pixel_id")}
+                onChange={(e) => setConfig("tracking_meta_pixel_id", e.target.value)}
+                placeholder="123456789012345"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Token da Conversions API do Meta</Label>
+              <Input
+                type="password"
+                value={getConfig("tracking_meta_capi_token")}
+                onChange={(e) => setConfig("tracking_meta_capi_token", e.target.value)}
+                placeholder="Token gerado no Gerenciador de Eventos"
+              />
+              <p className="text-xs text-slate-500">
+                Fica só no servidor — nunca é enviado ao navegador do visitante.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <div>
+              <p className="text-sm font-medium text-slate-800">Enviar eventos pela Conversions API</p>
+              <p className="text-xs text-slate-500">
+                Envio servidor-a-servidor do Meta, além do Pixel no navegador (mais resistente a bloqueadores).
+              </p>
+            </div>
+            <Switch
+              checked={getConfig("tracking_meta_capi_ativa") === "true"}
+              onCheckedChange={(v: boolean) => setConfig("tracking_meta_capi_ativa", v ? "true" : "false")}
+            />
+          </div>
+          <div className="flex gap-2">
+            <Button className="bg-teal-900" onClick={() => {
+              void salvar("tracking_gtm_id", getConfig("tracking_gtm_id"));
+              void salvar("tracking_google_ads_id", getConfig("tracking_google_ads_id"));
+              void salvar("tracking_meta_pixel_id", getConfig("tracking_meta_pixel_id"));
+              void salvar("tracking_meta_capi_token", getConfig("tracking_meta_capi_token"));
+              void salvar("tracking_meta_capi_ativa", getConfig("tracking_meta_capi_ativa") === "true" ? "true" : "false");
+            }}>
+              <Save className="mr-2 h-4 w-4" /> Salvar tags de rastreamento
+            </Button>
+          </div>
+        </section>
+
+        <section className="space-y-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+            <Code2 className="h-5 w-5 text-teal-700" />
+            HTML customizado
+          </div>
+          <p className="text-sm text-slate-500">
+            Para snippets que não se encaixam nos campos acima (verificação de domínio, outros
+            scripts de terceiros etc). O conteúdo é injetado exatamente como colado, em todas as páginas.
+          </p>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>HTML no &lt;head&gt;</Label>
+              <Textarea
+                rows={6}
+                className="font-mono text-xs"
+                value={getConfig("tracking_head_html")}
+                onChange={(e) => setConfig("tracking_head_html", e.target.value)}
+                placeholder="<meta name=..."
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>HTML logo após o &lt;body&gt;</Label>
+              <Textarea
+                rows={6}
+                className="font-mono text-xs"
+                value={getConfig("tracking_body_html")}
+                onChange={(e) => setConfig("tracking_body_html", e.target.value)}
+                placeholder="<script>..."
+              />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button className="bg-teal-900" onClick={() => {
+              void salvar("tracking_head_html", getConfig("tracking_head_html"));
+              void salvar("tracking_body_html", getConfig("tracking_body_html"));
+            }}>
+              <Save className="mr-2 h-4 w-4" /> Salvar HTML customizado
             </Button>
           </div>
         </section>
