@@ -297,7 +297,17 @@ function DetalheVeiculoAdminPage() {
     setSalvandoFipe(true);
     try {
       const res = await salvarVeiculo({
-        data: { id: v.id, placa: v.placa, marca: v.marca, modelo: v.modelo, valorFipe: numero },
+        data: {
+          id: v.id,
+          placa: v.placa,
+          marca: v.marca,
+          modelo: v.modelo,
+          valorFipe: numero,
+          // O calculo do % sobre FIPE no servidor usa o valor de interesse enviado
+          // nesta mesma chamada — sem reenviar o que ja esta salvo, ele seria
+          // tratado como zero e zeraria o percentual/alerta ja calculados.
+          valorInteresseCliente: v.valor_interesse_cliente ? Number(v.valor_interesse_cliente) : undefined,
+        },
       });
       if (res.ok) {
         toast.success("Valor FIPE atualizado.");
@@ -954,10 +964,6 @@ function DetalheVeiculoAdminPage() {
                       <div className="flex items-center justify-between gap-4">
                         <span className="text-sm text-slate-400 font-medium">Valor desejado</span>
                         <span className="text-sm font-black text-slate-950">{valorDesejado}</span>
-                      </div>
-                      <div className="flex items-center justify-between gap-4">
-                        <span className="text-sm text-slate-400 font-medium">Tipo de expectativa</span>
-                        <span className="text-sm font-black text-slate-950">{v.tipo_expectativa || "Não informado"}</span>
                       </div>
                       <div className="flex items-center justify-between gap-4">
                         <span className="text-sm text-slate-400 font-medium">% sobre FIPE</span>
