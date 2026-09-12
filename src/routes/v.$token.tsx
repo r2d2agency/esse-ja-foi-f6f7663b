@@ -44,6 +44,14 @@ const ITENS_VISTORIA: { chave: string; label: string }[] = [
   { chave: "estepe", label: "Estepe" },
 ];
 
+const OBS_VISTORIA: { chave: string; label: string }[] = [
+  { chave: "funcionamentoObs", label: "Funcionamento" },
+  { chave: "motorObs", label: "Motor" },
+  { chave: "latariaObs", label: "Lataria" },
+  { chave: "historicoObs", label: "Histórico" },
+  { chave: "acessoriosQuais", label: "Opcionais / acessórios" },
+];
+
 function VeiculoPorTokenPage() {
   const { token } = Route.useParams();
   const { data, isLoading } = useQuery({
@@ -89,6 +97,7 @@ function VeiculoPorTokenPage() {
   const { veiculo, titulo, descricao } = res.data;
   const condicao = desserializarCondicao(veiculo.observacoes);
   const itensCondicao = ITENS_VISTORIA.filter((i) => condicao?.[i.chave]);
+  const observacoesCondicao = OBS_VISTORIA.filter((o) => condicao?.[o.chave]);
 
   return (
     <div className="min-h-screen bg-slate-50 pb-16">
@@ -183,6 +192,16 @@ function VeiculoPorTokenPage() {
                 </div>
               ))}
             </div>
+            {observacoesCondicao.length > 0 && (
+              <div className="mt-6 space-y-4 border-t border-slate-100 pt-6">
+                {observacoesCondicao.map((o) => (
+                  <div key={o.chave}>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{o.label}</p>
+                    <p className="mt-1 text-sm text-slate-700">{condicao[o.chave]}</p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </main>
