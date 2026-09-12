@@ -50,6 +50,34 @@ export const getSystemLogsFn = createServerFn({ method: "GET" })
     }
   });
 
+/** Registra um erro de JS capturado no navegador de qualquer usuário logado (ver ErrorLogCapture). */
+export const registrarErroClienteFn = createServerFn({ method: "POST" })
+  .validator(z.object({
+    mensagem: z.string(),
+    stack: z.string().optional(),
+    url: z.string().optional(),
+    userAgent: z.string().optional(),
+    usuario: z.string().optional(),
+  }))
+  .handler(async ({ data }) => {
+    if (!db) return { ok: false as const, message: "Banco de dados indisponível." };
+    try {
+      const detalhe = JSON.stringify({
+        mensagem: data.mensagem.slice(0, 2000),
+        stack: data.stack?.slice(0, 4000),
+        url: data.url,
+        userAgent: data.userAgent,
+      });
+      await db.execute(sql`
+        INSERT INTO logs (entidade, acao, detalhe, usuario)
+        VALUES ('ERRO_CLIENTE', 'ERRO_JS', ${detalhe}, ${data.usuario || "Anônimo"})
+      `);
+      return { ok: true as const };
+    } catch (e: any) {
+      return { ok: false as const, message: e.message };
+    }
+  });
+
 export const limparLogsFn = createServerFn({ method: "POST" })
   .handler(async () => {
     if (!db) return { ok: false as const, message: "Banco de dados indisponível." };

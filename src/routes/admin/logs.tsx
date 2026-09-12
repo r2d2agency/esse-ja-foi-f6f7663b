@@ -94,6 +94,17 @@ function LogsAdminPage() {
                 }}
               />
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className={busca === "erro_cliente" ? "border-red-300 bg-red-50 text-red-700" : ""}
+              onClick={() => {
+                setBusca((b) => (b === "erro_cliente" ? "" : "erro_cliente"));
+                setPage(0);
+              }}
+            >
+              <AlertCircle className="mr-1.5 h-4 w-4" /> Erros de usuários
+            </Button>
             <Button variant="outline" size="icon" onClick={() => void carregar()} disabled={loading}>
               <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
             </Button>
@@ -163,11 +174,22 @@ function LogsAdminPage() {
             },
             {
               header: "Detalhes",
-              accessor: (l: any) => (
-                <div className="max-w-md truncate text-xs text-slate-500" title={l.detalhe}>
-                  {l.detalhe || "-"}
-                </div>
-              )
+              accessor: (l: any) => {
+                let texto = l.detalhe || "-";
+                if (l.entidade === "ERRO_CLIENTE" && l.detalhe) {
+                  try {
+                    const d = JSON.parse(l.detalhe);
+                    texto = `${d.mensagem}${d.url ? ` — ${d.url}` : ""}`;
+                  } catch {
+                    // detalhe não é JSON — mostra como veio
+                  }
+                }
+                return (
+                  <div className="max-w-md truncate text-xs text-slate-500" title={texto}>
+                    {texto}
+                  </div>
+                );
+              }
             },
             {
               header: "Usuário",

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import type { QueryClient } from "@tanstack/react-query";
 import { QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -11,6 +11,7 @@ import { Toaster } from "sonner";
 
 import { ConsentimentoCookies } from "@/components/cookies/ConsentimentoCookies";
 import { VersaoWatcher } from "@/components/shared/VersaoWatcher";
+import { ErrorLogCapture } from "@/components/shared/ErrorLogCapture";
 import appCss from "@/styles.css?url";
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
@@ -61,6 +62,20 @@ function RootDocument({ children }: { children: ReactNode }) {
 }
 
 function RootError({ error, reset }: { error: Error; reset: () => void }) {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    import("@/lib/logs.functions").then(({ registrarErroClienteFn }) => {
+      registrarErroClienteFn({
+        data: {
+          mensagem: error?.message || "Erro de renderização sem mensagem",
+          stack: error?.stack,
+          url: window.location.href,
+          userAgent: navigator.userAgent,
+        },
+      }).catch(() => {});
+    });
+  }, [error]);
+
   return (
     <RootDocument>
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background p-6 text-center text-foreground">
@@ -94,6 +109,7 @@ function RootLayout() {
         <Toaster richColors position="top-right" />
         <ConsentimentoCookies />
         <VersaoWatcher />
+        <ErrorLogCapture />
       </QueryClientProvider>
     </RootDocument>
   );
