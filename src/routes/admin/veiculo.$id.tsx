@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getVeiculoDetalheAdminFn, assumirAnaliseVeiculoFn, atualizarStatusAnaliseFn, atualizarStatusDocumentoVeiculoFn, aprovarParaPublicacaoFn } from "@/lib/admin-veiculo-detalhe.functions";
-import { removerVeiculoFn } from "@/lib/cadastro.functions";
+import { removerVeiculoFn, salvarVeiculoFn } from "@/lib/cadastro.functions";
 import { salvarConfiguracaoLeilao } from "@/lib/leilao.functions";
 import { useAuth } from "@/hooks/use-auth";
 import { useEffect, useState } from "react";
@@ -55,7 +55,8 @@ import {
   MessageSquare,
   Calculator,
   Wand2,
-  Trash2
+  Trash2,
+  PenSquare
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -125,6 +126,9 @@ function DetalheVeiculoAdminPage() {
   const [rejectObservation, setRejectObservation] = useState("");
   const [editorFoto, setEditorFoto] = useState<{ url: string; index: number } | null>(null);
   const [excluindo, setExcluindo] = useState(false);
+  const [editandoFipe, setEditandoFipe] = useState(false);
+  const [valorFipeInput, setValorFipeInput] = useState("");
+  const [salvandoFipe, setSalvandoFipe] = useState(false);
   const queryClient = useQueryClient();
 
   const getDetalhe = useServerFn(getVeiculoDetalheAdminFn);
@@ -133,6 +137,7 @@ function DetalheVeiculoAdminPage() {
   const atualizarStatusDoc = useServerFn(atualizarStatusDocumentoVeiculoFn);
   const aprovarPublicacao = useServerFn(aprovarParaPublicacaoFn);
   const removerVeiculo = useServerFn(removerVeiculoFn);
+  const salvarVeiculo = useServerFn(salvarVeiculoFn);
 
   const canReportDebug =
     typeof window !== "undefined" &&
@@ -275,6 +280,36 @@ function DetalheVeiculoAdminPage() {
       toast.error("Erro técnico ao excluir o veículo.", { id: toastId });
     } finally {
       setExcluindo(false);
+    }
+  };
+
+  const iniciarEdicaoFipe = () => {
+    setValorFipeInput(v.valor_fipe ? String(Number(v.valor_fipe)).replace(".", ",") : "");
+    setEditandoFipe(true);
+  };
+
+  const salvarValorFipe = async () => {
+    const numero = Number(valorFipeInput.replace(/\./g, "").replace(",", "."));
+    if (!Number.isFinite(numero) || numero < 0) {
+      toast.error("Informe um valor FIPE válido.");
+      return;
+    }
+    setSalvandoFipe(true);
+    try {
+      const res = await salvarVeiculo({
+        data: { id: v.id, placa: v.placa, marca: v.marca, modelo: v.modelo, valorFipe: numero },
+      });
+      if (res.ok) {
+        toast.success("Valor FIPE atualizado.");
+        setEditandoFipe(false);
+        refetch();
+      } else {
+        toast.error(res.message || "Não foi possível salvar o valor FIPE.");
+      }
+    } catch {
+      toast.error("Erro técnico ao salvar o valor FIPE.");
+    } finally {
+      setSalvandoFipe(false);
     }
   };
 
@@ -887,7 +922,34 @@ function DetalheVeiculoAdminPage() {
                     <CardContent className="pt-4 space-y-4">
                       <div className="flex items-center justify-between gap-4">
                         <span className="text-sm text-slate-400 font-medium">Valor FIPE</span>
-                        <span className="text-sm font-black text-slate-950">{valorFipe}</span>
+                        {editandoFipe ? (
+                          <div className="flex items-center gap-2">
+                            <Input
+                              autoFocus
+                              value={valorFipeInput}
+                              onChange={(e) => setValorFipeInput(e.target.value.replace(/[^\d.,]/g, ""))}
+                              placeholder="0,00"
+                              className="h-8 w-32 text-right text-sm font-black"
+                              disabled={salvandoFipe}
+                            />
+                            <Button size="sm" className="h-8 bg-teal-600 hover:bg-teal-700" onClick={salvarValorFipe} disabled={salvandoFipe}>
+                              Salvar
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-8" onClick={() => setEditandoFipe(false)} disabled={salvandoFipe}>
+                              Cancelar
+                            </Button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={iniciarEdicaoFipe}
+                            className="flex items-center gap-1.5 text-sm font-black text-slate-950 hover:text-teal-700"
+                            title="Clique para editar"
+                          >
+                            {valorFipe}
+                            <PenSquare className="h-3.5 w-3.5 text-slate-400" />
+                          </button>
+                        )}
                       </div>
                       <div className="flex items-center justify-between gap-4">
                         <span className="text-sm text-slate-400 font-medium">Valor desejado</span>
