@@ -125,7 +125,8 @@ export async function ensureCadastroSchema(silent = true) {
       criado_em timestamptz NOT NULL DEFAULT now(),
       status_analise text DEFAULT 'AGUARDANDO_ANALISE',
       documento_crlv_url text,
-      blindado boolean NOT NULL DEFAULT false
+      blindado boolean NOT NULL DEFAULT false,
+      fotos_processadas jsonb
     );
     `);
     
@@ -157,6 +158,9 @@ export async function ensureCadastroSchema(silent = true) {
         END IF;
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'veiculos' AND column_name = 'blindado') THEN
           ALTER TABLE veiculos ADD COLUMN blindado boolean NOT NULL DEFAULT false;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'veiculos' AND column_name = 'fotos_processadas') THEN
+          ALTER TABLE veiculos ADD COLUMN fotos_processadas jsonb;
         END IF;
       END $$;
     `);

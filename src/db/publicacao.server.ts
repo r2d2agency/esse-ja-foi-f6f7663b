@@ -89,7 +89,7 @@ export async function getCanaisPublicacao(veiculoId: string) {
 
   const vRes = await d.execute(sql`
     SELECT id, placa, marca, modelo, versao, ano_fabricacao, ano_modelo, km, cor,
-           cidade, uf, status_analise, fotos, valor_fipe
+           cidade, uf, status_analise, fotos, fotos_processadas, valor_fipe
     FROM veiculos WHERE id = ${veiculoId}::uuid
   `);
   const veiculo = rowsOf(vRes)[0];
@@ -260,16 +260,22 @@ export async function montarMensagemWhatsapp(veiculoId: string, baseUrl: string)
 
   const v = rowsOf(
     await d.execute(sql`
-      SELECT marca, modelo, versao, ano_fabricacao, ano_modelo, km, cor, cambio, combustivel, cidade, uf, fotos
+      SELECT marca, modelo, versao, ano_fabricacao, ano_modelo, km, cor, cambio, combustivel, cidade, uf, fotos, fotos_processadas
       FROM veiculos WHERE id = ${veiculoId}::uuid
     `),
   )[0];
   if (!v) throw new Error("Veículo não encontrado.");
 
+  const normalizarFotos = (lista: unknown): string[] =>
+    Array.isArray(lista)
+      ? lista.map((f: any) => (typeof f === "string" ? f : f?.url)).filter(Boolean)
+      : [];
   const fotosCanal = Array.isArray(canal.fotos) ? canal.fotos : [];
-  const fotosVeiculo = Array.isArray(v.fotos)
-    ? v.fotos.map((f: any) => (typeof f === "string" ? f : f?.url)).filter(Boolean)
-    : [];
+  // Prioriza as fotos já processadas (placa coberta pela logo) como capa, para não expor a
+  // placa numa foto que ainda não passou pelo processamento feito na ficha do veículo.
+  const fotosVeiculo = normalizarFotos(v.fotos_processadas).length > 0
+    ? normalizarFotos(v.fotos_processadas)
+    : normalizarFotos(v.fotos);
   const fotoCapa = fotosCanal[0] || fotosVeiculo[0] || null;
 
   const link = `${baseUrl.replace(/\/+$/, "")}/v/${canal.token_acesso}`;

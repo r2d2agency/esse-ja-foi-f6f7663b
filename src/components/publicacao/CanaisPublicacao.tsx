@@ -128,9 +128,16 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
       ? payload.canais
       : [];
   const veiculo = Array.isArray(payload) ? null : payload?.veiculo;
-  const fotosVendedor: string[] = Array.isArray(veiculo?.fotos)
-    ? veiculo.fotos.map((f: any) => (typeof f === "string" ? f : f?.url)).filter(Boolean)
-    : [];
+  const normalizarFotos = (lista: unknown): string[] =>
+    Array.isArray(lista)
+      ? lista.map((f: any) => (typeof f === "string" ? f : f?.url)).filter(Boolean)
+      : [];
+  const fotosProcessadasVeiculo = normalizarFotos(veiculo?.fotos_processadas);
+  // Se já existem fotos processadas (placa coberta pela logo, feito na ficha do veículo),
+  // usa elas — evita reaplicar a logo numa foto que já está processada.
+  const fotosVendedor: string[] =
+    fotosProcessadasVeiculo.length > 0 ? fotosProcessadasVeiculo : normalizarFotos(veiculo?.fotos);
+  const fotosVendedorJaProcessadas = fotosProcessadasVeiculo.length > 0;
 
   useEffect(() => {
     const c = canais.find((x) => x.canal === canalAtivo);
@@ -596,6 +603,7 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
             fotos={form.fotos}
             onChange={(fotos) => setForm({ ...form, fotos })}
             fotosVendedor={fotosVendedor}
+            fotosVendedorJaProcessadas={fotosVendedorJaProcessadas}
           />
         </div>
 

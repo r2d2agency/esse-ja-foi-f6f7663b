@@ -50,7 +50,9 @@ import {
   Calendar,
   Gavel,
   MessageSquare,
-  Calculator
+  Calculator,
+  Loader2,
+  Wand2
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -117,6 +119,8 @@ function DetalheVeiculoAdminPage() {
   const [selectedPreview, setSelectedPreview] = useState<{ url: string; label: string } | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [rejectObservation, setRejectObservation] = useState("");
+  const [processandoFotos, setProcessandoFotos] = useState(false);
+  const [progressoFotos, setProgressoFotos] = useState<{ atual: number; total: number } | null>(null);
   const queryClient = useQueryClient();
   
   const getDetalhe = useServerFn(getVeiculoDetalheAdminFn);
@@ -300,6 +304,50 @@ function DetalheVeiculoAdminPage() {
     }
     return [];
   })();
+
+  const fotosProcessadas = (() => {
+    if (Array.isArray(v.fotos_processadas)) return v.fotos_processadas;
+    if (typeof v.fotos_processadas === 'string') {
+      try {
+        const parsed = JSON.parse(v.fotos_processadas);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  })();
+
+  const handleProcessarFotos = async () => {
+    if (fotos.length === 0) return;
+    setProcessandoFotos(true);
+    setProgressoFotos({ atual: 0, total: fotos.length });
+    try {
+      const { processarFotoComLogo } = await import("@/lib/logo-foto");
+      const { salvarFotosProcessadasFn } = await import("@/lib/fotos-anuncio.functions");
+
+      const resultado: string[] = [];
+      for (let i = 0; i < fotos.length; i++) {
+        try {
+          resultado.push(await processarFotoComLogo(fotos[i]));
+        } catch (err) {
+          console.error("Erro ao processar foto", i, err);
+          resultado.push(fotos[i]); // mantém a original em vez de perder a foto se a IA/composição falhar
+        }
+        setProgressoFotos({ atual: i + 1, total: fotos.length });
+      }
+
+      const resSalvar = await salvarFotosProcessadasFn({ data: { veiculoId: id, fotos: resultado } });
+      if (!resSalvar?.ok) throw new Error(resSalvar?.message || "Erro ao salvar as fotos processadas.");
+      toast.success("Fotos processadas e prontas para publicar.");
+      refetch();
+    } catch (err: any) {
+      toast.error(err?.message || "Erro ao processar as fotos.");
+    } finally {
+      setProcessandoFotos(false);
+      setProgressoFotos(null);
+    }
+  };
 
   return (
     <div className="flex flex-col h-full bg-slate-50">
@@ -665,6 +713,34 @@ function DetalheVeiculoAdminPage() {
               </TabsContent>
 
               <TabsContent value="fotos" className="mt-0 space-y-6">
+                <div className="flex items-center justify-between gap-4">
+                  <p className="text-xs font-black uppercase tracking-widest text-slate-400">
+                    Fotos enviadas pelo vendedor
+                  </p>
+                  {fotos.length > 0 && (
+                    <Button
+                      size="sm"
+                      className="bg-teal-600 hover:bg-teal-700 font-bold"
+                      disabled={processandoFotos}
+                      onClick={handleProcessarFotos}
+                    >
+                      {processandoFotos ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Processando {progressoFotos?.atual ?? 0}/{progressoFotos?.total ?? fotos.length}...
+                        </>
+                      ) : (
+                        <>
+                          <Wand2 className="mr-2 h-4 w-4" />
+                          {fotosProcessadas.length > 0 ? "Reprocessar" : "Processar"} fotos com IA
+                        </>
+                      )}
+                    </Button>
+                  )}
+                </div>
+                <p className="text-xs text-slate-400">
+                  Detecta a placa em cada foto e cobre com a logo da Esse Já Foi + marca d'água, deixando as fotos prontas para publicar.
+                </p>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                   {fotos.length > 0 ? fotos.map((foto: string, idx: number) => (
                     <div key={idx} className="aspect-square bg-white border border-slate-200 rounded-xl overflow-hidden group relative">
@@ -687,6 +763,31 @@ function DetalheVeiculoAdminPage() {
                     <div className="col-span-full py-12 text-center text-slate-400">Nenhuma foto cadastrada.</div>
                   )}
                 </div>
+
+                {fotosProcessadas.length > 0 && (
+                  <div className="space-y-3 border-t border-slate-100 pt-6">
+                    <p className="text-xs font-black uppercase tracking-widest text-teal-700">
+                      Fotos processadas — prontas para publicar
+                    </p>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                      {fotosProcessadas.map((foto: string, idx: number) => (
+                        <div key={idx} className="aspect-square bg-white border border-teal-200 rounded-xl overflow-hidden group relative">
+                          <img src={foto} alt={`Foto processada ${idx + 1}`} className="w-full h-full object-cover" />
+                          <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                            <Button
+                              size="icon"
+                              variant="secondary"
+                              className="h-8 w-8 rounded-full"
+                              onClick={() => setSelectedPreview({ url: foto, label: `Foto processada ${idx + 1}` })}
+                            >
+                              <Maximize2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </TabsContent>
 
               <TabsContent value="valores" className="mt-0 space-y-6">

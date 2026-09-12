@@ -35,11 +35,14 @@ export function UploadFotos({
   fotos,
   onChange,
   fotosVendedor = [],
+  fotosVendedorJaProcessadas = false,
 }: {
   fotos: string[];
   onChange: (fotos: string[]) => void;
   /** Fotos que o vendedor já enviou no cadastro do veículo, oferecidas aqui para reaproveitar. */
   fotosVendedor?: string[];
+  /** Se true, `fotosVendedor` já tem a logo/marca d'água aplicada — não reprocessa ao usar. */
+  fotosVendedorJaProcessadas?: boolean;
 }) {
   const [dragging, setDragging] = useState(false);
   const [enviando, setEnviando] = useState(false);
@@ -61,10 +64,16 @@ export function UploadFotos({
     if (selecionadas.length === 0) return;
     setAplicandoSelecionadas(true);
     try {
-      const urls = await Promise.all(selecionadas.map((url) => processarComLogo(url)));
+      const urls = fotosVendedorJaProcessadas
+        ? selecionadas
+        : await Promise.all(selecionadas.map((url) => processarComLogo(url)));
       onChange([...fotos, ...urls]);
       setSelecionadas([]);
-      toast.success(`${urls.length} foto(s) do vendedor adicionada(s) com a logo aplicada.`);
+      toast.success(
+        fotosVendedorJaProcessadas
+          ? `${urls.length} foto(s) do vendedor adicionada(s).`
+          : `${urls.length} foto(s) do vendedor adicionada(s) com a logo aplicada.`,
+      );
     } finally {
       setAplicandoSelecionadas(false);
     }
@@ -133,7 +142,8 @@ export function UploadFotos({
       {disponiveisVendedor.length > 0 && (
         <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
           <p className="flex items-center gap-1.5 text-xs font-bold text-slate-600">
-            <UserRound className="h-3.5 w-3.5" /> Fotos enviadas pelo vendedor
+            <UserRound className="h-3.5 w-3.5" />
+            {fotosVendedorJaProcessadas ? "Fotos do vendedor já processadas (logo aplicada)" : "Fotos enviadas pelo vendedor"}
           </p>
           <div className="flex flex-wrap gap-3">
             {disponiveisVendedor.map((url, i) => {

@@ -20,6 +20,7 @@ export async function ensureVeiculosAdminSchema() {
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS vendedor_id uuid REFERENCES profiles(id);
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS fotos text;
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS documento_crlv_url text;
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS fotos_processadas jsonb;
   `);
 
   pronto = true;
