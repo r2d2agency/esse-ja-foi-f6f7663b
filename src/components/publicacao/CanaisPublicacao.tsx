@@ -27,6 +27,21 @@ function paraInputLocal(valor?: string | null) {
   return new Date(d.getTime() - off).toISOString().slice(0, 16);
 }
 
+/** Renderiza *negrito* (sintaxe do WhatsApp) como ficaria no app, preservando quebras de linha. */
+function renderTextoWhatsapp(texto: string) {
+  return texto.split("\n").map((linha, i) => (
+    <p key={i} className={linha.trim() === "" ? "h-2.5" : undefined}>
+      {linha.split(/(\*[^*]+\*)/g).map((parte, j) =>
+        parte.length > 2 && parte.startsWith("*") && parte.endsWith("*") ? (
+          <strong key={j}>{parte.slice(1, -1)}</strong>
+        ) : (
+          <span key={j}>{parte}</span>
+        ),
+      )}
+    </p>
+  ));
+}
+
 function lerValorMonetario(valor: string) {
   const limpo = valor.trim().replace(/\s/g, "");
   if (!limpo) return Number.NaN;
@@ -56,6 +71,7 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
   const [salvando, setSalvando] = useState(false);
   const [tokenOcupado, setTokenOcupado] = useState(false);
   const [mensagem, setMensagem] = useState("");
+  const [fotoCapaMensagem, setFotoCapaMensagem] = useState<string | null>(null);
   const inicioRef = useRef<HTMLInputElement>(null);
   const fimRef = useRef<HTMLInputElement>(null);
   const lanceInicialRef = useRef<HTMLInputElement>(null);
@@ -111,6 +127,10 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
     : Array.isArray(payload?.canais)
       ? payload.canais
       : [];
+  const veiculo = Array.isArray(payload) ? null : payload?.veiculo;
+  const fotosVendedor: string[] = Array.isArray(veiculo?.fotos)
+    ? veiculo.fotos.map((f: any) => (typeof f === "string" ? f : f?.url)).filter(Boolean)
+    : [];
 
   useEffect(() => {
     const c = canais.find((x) => x.canal === canalAtivo);
@@ -217,6 +237,7 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
       }
       toast.success("Link privado gerado.");
       setMensagem("");
+      setFotoCapaMensagem(null);
       refetch();
     } finally {
       setTokenOcupado(false);
@@ -233,6 +254,7 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
       }
       toast.success("Link revogado.");
       setMensagem("");
+      setFotoCapaMensagem(null);
       refetch();
     } finally {
       setTokenOcupado(false);
@@ -248,6 +270,7 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
         return;
       }
       setMensagem(res.data.mensagem);
+      setFotoCapaMensagem(res.data.foto_capa || null);
     } finally {
       setTokenOcupado(false);
     }
@@ -524,16 +547,42 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
             )}
 
             {mensagem && (
-              <div className="space-y-2 rounded-xl bg-white p-3">
-                <Textarea rows={10} value={mensagem} onChange={(e) => setMensagem(e.target.value)} />
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => copiar(mensagem, "Mensagem copiada.")}
-                >
-                  <Copy className="mr-2 h-4 w-4" /> Copiar mensagem
-                </Button>
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <p className="text-xs font-black uppercase tracking-widest text-emerald-700">
+                    Prévia de como chega no grupo
+                  </p>
+                  <div className="rounded-2xl bg-[#e5ddd5] p-4">
+                    <div className="ml-auto max-w-[280px] rounded-lg bg-[#d9fdd3] p-2 shadow">
+                      {fotoCapaMensagem && (
+                        <img
+                          src={fotoCapaMensagem}
+                          alt="Foto de capa da mensagem"
+                          className="mb-1.5 aspect-video w-full rounded-md object-cover"
+                        />
+                      )}
+                      <div className="whitespace-pre-wrap break-words text-[13px] leading-snug text-slate-900">
+                        {renderTextoWhatsapp(mensagem)}
+                      </div>
+                      <p className="mt-1 text-right text-[10px] text-slate-500">
+                        {new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} ✓✓
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2 rounded-xl bg-white p-3">
+                  <p className="text-xs font-bold text-slate-600">Editar mensagem</p>
+                  <Textarea rows={8} value={mensagem} onChange={(e) => setMensagem(e.target.value)} />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => copiar(mensagem, "Mensagem copiada.")}
+                  >
+                    <Copy className="mr-2 h-4 w-4" /> Copiar mensagem
+                  </Button>
+                </div>
               </div>
             )}
           </div>
@@ -546,6 +595,7 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
           <UploadFotos
             fotos={form.fotos}
             onChange={(fotos) => setForm({ ...form, fotos })}
+            fotosVendedor={fotosVendedor}
           />
         </div>
 

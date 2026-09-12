@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ImagePlus, Loader2, X } from "lucide-react";
+import { Check, ImagePlus, Loader2, UserRound, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AJUSTE_PADRAO, bboxParaAjuste, compositarLogo } from "@/lib/logo-foto";
 import { detectarPlacaFotoFn } from "@/lib/fotos-anuncio.functions";
@@ -34,14 +34,41 @@ async function processarComLogo(url: string): Promise<string> {
 export function UploadFotos({
   fotos,
   onChange,
+  fotosVendedor = [],
 }: {
   fotos: string[];
   onChange: (fotos: string[]) => void;
+  /** Fotos que o vendedor já enviou no cadastro do veículo, oferecidas aqui para reaproveitar. */
+  fotosVendedor?: string[];
 }) {
   const [dragging, setDragging] = useState(false);
   const [enviando, setEnviando] = useState(false);
+  const [selecionadas, setSelecionadas] = useState<string[]>([]);
+  const [aplicandoSelecionadas, setAplicandoSelecionadas] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const zonaRef = useRef<HTMLDivElement>(null);
+
+  const disponiveisVendedor = useMemo(
+    () => fotosVendedor.filter((url) => !fotos.includes(url)),
+    [fotosVendedor, fotos],
+  );
+
+  function alternarSelecao(url: string) {
+    setSelecionadas((prev) => (prev.includes(url) ? prev.filter((u) => u !== url) : [...prev, url]));
+  }
+
+  async function usarSelecionadas() {
+    if (selecionadas.length === 0) return;
+    setAplicandoSelecionadas(true);
+    try {
+      const urls = await Promise.all(selecionadas.map((url) => processarComLogo(url)));
+      onChange([...fotos, ...urls]);
+      setSelecionadas([]);
+      toast.success(`${urls.length} foto(s) do vendedor adicionada(s) com a logo aplicada.`);
+    } finally {
+      setAplicandoSelecionadas(false);
+    }
+  }
 
   const enviarLista = useCallback(
     async (lista: File[]) => {
@@ -100,6 +127,47 @@ export function UploadFotos({
               </button>
             </div>
           ))}
+        </div>
+      )}
+
+      {disponiveisVendedor.length > 0 && (
+        <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+          <p className="flex items-center gap-1.5 text-xs font-bold text-slate-600">
+            <UserRound className="h-3.5 w-3.5" /> Fotos enviadas pelo vendedor
+          </p>
+          <div className="flex flex-wrap gap-3">
+            {disponiveisVendedor.map((url, i) => {
+              const marcada = selecionadas.includes(url);
+              return (
+                <button
+                  key={`${url.slice(0, 24)}-${i}`}
+                  type="button"
+                  onClick={() => alternarSelecao(url)}
+                  className={cn(
+                    "relative h-20 w-28 overflow-hidden rounded-xl border-2 bg-slate-100 transition-colors",
+                    marcada ? "border-teal-500" : "border-transparent hover:border-teal-300",
+                  )}
+                  aria-pressed={marcada}
+                >
+                  <img src={url} alt="Foto enviada pelo vendedor" className="h-full w-full object-cover" />
+                  {marcada && (
+                    <span className="absolute right-1 top-1 rounded-full bg-teal-600 p-1 text-white">
+                      <Check className="h-3 w-3" />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          <button
+            type="button"
+            disabled={selecionadas.length === 0 || aplicandoSelecionadas}
+            onClick={usarSelecionadas}
+            className="flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {aplicandoSelecionadas && <Loader2 className="h-4 w-4 animate-spin" />}
+            Usar {selecionadas.length > 0 ? selecionadas.length : ""} foto(s) selecionada(s)
+          </button>
         </div>
       )}
 
