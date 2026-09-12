@@ -7,8 +7,7 @@ import { FileUpload } from "@/components/onboarding/FileUpload";
 import { FotoSlot } from "@/components/veiculo/FotoSlot";
 import { OpcaoBotoes } from "@/components/veiculo/OpcaoBotoes";
 import { OpcaoMultipla } from "@/components/veiculo/OpcaoMultipla";
-import { buscarCep } from "@/lib/viacep";
-import { maskCep, maskKm, maskMoeda, maskPlaca } from "@/lib/brasil";
+import { maskKm, maskMoeda, maskPlaca } from "@/lib/brasil";
 import { COMBUSTIVEIS, CAMBIOS, ACESSORIOS_VEICULO } from "@/lib/constants-veiculos";
 import { FOTOS_VEICULO, type CondicaoVeiculo } from "@/lib/veiculo-condicao";
 
@@ -39,22 +38,6 @@ export function FormularioVeiculoCondicao({
   fotos: Record<string, string | null>;
   setFotos: Dispatch<SetStateAction<Record<string, string | null>>>;
 }) {
-  async function preencherCepVeiculo(cep: string) {
-    if (cep.replace(/\D/g, "").length !== 8) return;
-    try {
-      const r: any = await buscarCep(cep);
-      if (!r) return;
-      setVeiculo((v) => ({
-        ...v,
-        endereco: r.logradouro || v.endereco,
-        cidade: r.localidade || r.cidade || v.cidade,
-        uf: r.uf || v.uf,
-      }));
-    } catch {
-      /* silencioso */
-    }
-  }
-
   return (
     <>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
@@ -87,19 +70,6 @@ export function FormularioVeiculoCondicao({
           />
         </div>
         <Campo label="Valor pretendido (R$)" valor={veiculo.valorInteresse} onChange={(v) => setVeiculo({ ...veiculo, valorInteresse: maskMoeda(v) })} placeholder="R$ 0,00" />
-        <Campo
-          label="CEP onde está o veículo"
-          valor={veiculo.cep}
-          onChange={(v) => {
-            const cep = maskCep(v);
-            setVeiculo({ ...veiculo, cep });
-            void preencherCepVeiculo(cep);
-          }}
-          placeholder="00000-000"
-        />
-        <Campo label="Endereço" valor={veiculo.endereco} onChange={(v) => setVeiculo({ ...veiculo, endereco: v })} />
-        <Campo label="Cidade" valor={veiculo.cidade} onChange={(v) => setVeiculo({ ...veiculo, cidade: v })} />
-        <Campo label="UF" valor={veiculo.uf} onChange={(v) => setVeiculo({ ...veiculo, uf: v.toUpperCase().slice(0, 2) })} />
       </div>
 
       <div className="space-y-5 border-t border-slate-100 pt-6">
