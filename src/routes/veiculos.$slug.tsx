@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getAnuncioPublico } from "@/lib/vitrine.functions";
 import { getLeilaoInfo, darLanceFn } from "@/lib/leilao.functions";
 import { Button } from "@/components/ui/button";
-import { ShieldCheck, MapPin, Fuel, Settings2, Lock, ArrowLeft, Gavel, Clock, TrendingUp, Heart, BellPlus, ClipboardCheck } from "lucide-react";
+import { ShieldCheck, MapPin, Fuel, Settings2, Lock, ArrowLeft, Gavel, Clock, TrendingUp, Heart, BellPlus, ClipboardCheck, X, ChevronLeft, ChevronRight, Maximize2 } from "lucide-react";
 import { getSessionToken } from "@/lib/session";
 import { alternarFavoritoFn, salvarLembreteFn } from "@/lib/comprador.functions";
 import { useState, useEffect } from "react";
@@ -110,6 +110,16 @@ function DetalheVeiculoPublico() {
   const [activePhoto, setActivePhoto] = useState(0);
   const [timeLeft, setTimeLeft] = useState("");
   const [lanceCustom, setLanceCustom] = useState("");
+  const [lightboxAberto, setLightboxAberto] = useState(false);
+
+  useEffect(() => {
+    if (!lightboxAberto) return;
+    function aoTeclar(e: KeyboardEvent) {
+      if (e.key === "Escape") setLightboxAberto(false);
+    }
+    window.addEventListener("keydown", aoTeclar);
+    return () => window.removeEventListener("keydown", aoTeclar);
+  }, [lightboxAberto]);
 
   // Fallback: o anúncio público já traz os parâmetros do leilão. Se a consulta
   // em tempo real falhar, usamos esses valores para nunca exibir R$ 0.
@@ -170,15 +180,27 @@ function DetalheVeiculoPublico() {
           
           <div className="space-y-8">
             <div className="space-y-4">
-              <div className="aspect-video bg-slate-100 rounded-3xl overflow-hidden relative">
+              <div className="aspect-video bg-slate-100 rounded-3xl overflow-hidden relative group">
                 {anuncio.fotos?.length > 0 ? (
-                  <img
-                    src={anuncio.fotos[activePhoto].foto_url}
-                    className="w-full h-full object-contain"
-                    alt={anuncio.titulo}
-                  />
+                  <button
+                    type="button"
+                    onClick={() => setLightboxAberto(true)}
+                    className="block h-full w-full cursor-zoom-in"
+                    aria-label="Ampliar foto"
+                  >
+                    <img
+                      src={anuncio.fotos[activePhoto].foto_url}
+                      className="w-full h-full object-contain"
+                      alt={anuncio.titulo}
+                    />
+                  </button>
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-slate-400">Sem fotos</div>
+                )}
+                {anuncio.fotos?.length > 0 && (
+                  <span className="pointer-events-none absolute bottom-4 right-4 flex items-center gap-1.5 rounded-full bg-slate-950/60 px-3 py-1.5 text-xs font-bold text-white opacity-0 transition-opacity group-hover:opacity-100">
+                    <Maximize2 className="h-3.5 w-3.5" /> Ampliar
+                  </span>
                 )}
                 <div className="absolute top-4 left-4">
                   <span className="bg-teal-600 text-white text-xs font-black px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-lg">
@@ -410,6 +432,56 @@ function DetalheVeiculoPublico() {
           </div>
         </div>
       </main>
+
+      {lightboxAberto && anuncio.fotos?.length > 0 && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 p-4"
+          onClick={() => setLightboxAberto(false)}
+        >
+          <button
+            type="button"
+            onClick={() => setLightboxAberto(false)}
+            className="absolute right-4 top-4 rounded-full bg-white/10 p-2.5 text-white hover:bg-white/20"
+            aria-label="Fechar"
+          >
+            <X className="h-6 w-6" />
+          </button>
+
+          {anuncio.fotos.length > 1 && (
+            <>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActivePhoto((p) => (p - 1 + anuncio.fotos.length) % anuncio.fotos.length);
+                }}
+                className="absolute left-4 top-1/2 -translate-y-1/2 rounded-full bg-white/10 p-2.5 text-white hover:bg-white/20"
+                aria-label="Foto anterior"
+              >
+                <ChevronLeft className="h-6 w-6" />
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActivePhoto((p) => (p + 1) % anuncio.fotos.length);
+                }}
+                className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full bg-white/10 p-2.5 text-white hover:bg-white/20"
+                aria-label="Próxima foto"
+              >
+                <ChevronRight className="h-6 w-6" />
+              </button>
+            </>
+          )}
+
+          <img
+            src={anuncio.fotos[activePhoto].foto_url}
+            alt={anuncio.titulo}
+            className="max-h-full max-w-full object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 }

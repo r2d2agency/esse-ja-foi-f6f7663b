@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Loader2, Scan, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -38,8 +38,35 @@ export function EditorLogoFoto({
   const [detectando, setDetectando] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [aspecto, setAspecto] = useState<number | null>(null);
+  const [tamanho, setTamanho] = useState<{ largura: number; altura: number } | null>(null);
   const palcoRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const arrasteRef = useRef<{ tipo: "mover" | "redimensionar"; offsetX: number; offsetY: number } | null>(null);
+
+  // Calcula o tamanho do palco em pixels, sempre cabendo na tela — sem isso, uma foto
+  // em retrato (ou muito larga) ficava maior que a viewport e escondia os botões do rodapé.
+  function recalcularTamanho(proporcao: number) {
+    const larguraDisponivel = containerRef.current?.clientWidth || 640;
+    const alturaMaxima = Math.max(240, Math.round(window.innerHeight * 0.5));
+    let largura = larguraDisponivel;
+    let altura = largura / proporcao;
+    if (altura > alturaMaxima) {
+      altura = alturaMaxima;
+      largura = altura * proporcao;
+    }
+    setTamanho({ largura: Math.round(largura), altura: Math.round(altura) });
+  }
+
+  useEffect(() => {
+    if (!aspecto) return;
+    recalcularTamanho(aspecto);
+    function aoRedimensionar() {
+      recalcularTamanho(aspecto);
+    }
+    window.addEventListener("resize", aoRedimensionar);
+    return () => window.removeEventListener("resize", aoRedimensionar);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aspecto]);
 
   // Reabre com o ajuste correto sempre que a foto/ajuste inicial mudarem.
   const chaveAtual = `${fotoUrl}|${ajusteInicial?.xPct}|${ajusteInicial?.yPct}|${ajusteInicial?.larguraPct}`;
@@ -132,45 +159,51 @@ export function EditorLogoFoto({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Posicionar logo na foto</DialogTitle>
         </DialogHeader>
 
-        <div
-          ref={palcoRef}
-          className="relative w-full touch-none select-none overflow-hidden rounded-xl bg-slate-900"
-          style={{ aspectRatio: aspecto ? String(aspecto) : "4 / 3" }}
-          onPointerMove={aoMoverPonteiro}
-          onPointerUp={pararArraste}
-          onPointerCancel={pararArraste}
-        >
-          <img
-            src={fotoUrl}
-            alt="Foto do veículo"
-            className="h-full w-full object-cover"
-            draggable={false}
-            onLoad={(e) => setAspecto(e.currentTarget.naturalWidth / e.currentTarget.naturalHeight)}
-          />
+        <div ref={containerRef} className="flex justify-center">
           <div
-            onPointerDown={iniciarMover}
-            className="absolute cursor-move touch-none"
-            style={{
-              left: `${ajuste.xPct * 100}%`,
-              top: `${ajuste.yPct * 100}%`,
-              width: `${ajuste.larguraPct * 100}%`,
-            }}
+            ref={palcoRef}
+            className="relative touch-none select-none overflow-hidden rounded-xl bg-slate-900"
+            style={
+              tamanho
+                ? { width: tamanho.largura, height: tamanho.altura }
+                : { width: "100%", maxHeight: "50vh", aspectRatio: "4 / 3" }
+            }
+            onPointerMove={aoMoverPonteiro}
+            onPointerUp={pararArraste}
+            onPointerCancel={pararArraste}
           >
             <img
-              src={LOGOS[ajuste.variante]}
-              alt="Logo Esse Já Foi"
-              className="pointer-events-none w-full drop-shadow-lg"
+              src={fotoUrl}
+              alt="Foto do veículo"
+              className="h-full w-full object-contain"
               draggable={false}
+              onLoad={(e) => setAspecto(e.currentTarget.naturalWidth / e.currentTarget.naturalHeight)}
             />
             <div
-              onPointerDown={iniciarRedimensionar}
-              className="absolute -bottom-2 -right-2 h-5 w-5 cursor-nwse-resize rounded-full border-2 border-white bg-teal-600 shadow"
-            />
+              onPointerDown={iniciarMover}
+              className="absolute cursor-move touch-none"
+              style={{
+                left: `${ajuste.xPct * 100}%`,
+                top: `${ajuste.yPct * 100}%`,
+                width: `${ajuste.larguraPct * 100}%`,
+              }}
+            >
+              <img
+                src={LOGOS[ajuste.variante]}
+                alt="Logo Esse Já Foi"
+                className="pointer-events-none w-full drop-shadow-lg"
+                draggable={false}
+              />
+              <div
+                onPointerDown={iniciarRedimensionar}
+                className="absolute -bottom-2 -right-2 h-5 w-5 cursor-nwse-resize rounded-full border-2 border-white bg-teal-600 shadow"
+              />
+            </div>
           </div>
         </div>
 
