@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useServerFn } from '@tanstack/react-start';
 import { toast } from 'sonner';
 import {
-  ArrowRight, Loader2, Save, Search, Check, CheckCircle2, AlertTriangle, Car, FileText, Info,
+  ArrowRight, Loader2, Save, Search, Check, CheckCircle2, AlertTriangle, Car, FileText, Info, FileSignature,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +23,8 @@ import { OpcaoBotoes } from '@/components/veiculo/OpcaoBotoes';
 import { useAuth } from '@/hooks/use-auth';
 import { cadastrarMeuVeiculoFn, listarMeusVeiculosFn } from '@/lib/vendedor.functions';
 import { getOnboardingStatusFn } from '@/lib/onboarding.functions';
+import { getTermoVigenteFn, aceitarTermoFn } from '@/lib/termos.functions';
+import { getSessionToken } from '@/lib/session';
 import { maskPlaca, formatCurrency, buscarCep, maskCep } from '@/lib/brasil';
 import { montarEtapas, percentual } from '@/components/vendedor/ProgressoCadastro';
 import { TODAS_MARCAS, MARCAS_POPULARES, MODELOS_POR_MARCA, CORES, COMBUSTIVEIS, CAMBIOS, PORTAS, UFS, RELACOES_PROPRIETARIO, BANCOS_COMUNS } from '@/lib/constants-veiculos';
@@ -172,6 +174,8 @@ function CadastrarVeiculo() {
   const salvarVeiculo = useServerFn(cadastrarMeuVeiculoFn);
   const listar = useServerFn(listarMeusVeiculosFn);
   const getOnboardingStatus = useServerFn(getOnboardingStatusFn);
+  const getTermo = useServerFn(getTermoVigenteFn);
+  const aceitarTermo = useServerFn(aceitarTermoFn);
 
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<Estado>(INICIAL);
@@ -184,6 +188,7 @@ function CadastrarVeiculo() {
   const [enviado, setEnviado] = useState(false);
   const [declaracao1, setDeclaracao1] = useState(false);
   const [declaracao2, setDeclaracao2] = useState(false);
+  const [termoOk, setTermoOk] = useState(false);
   const [salvoEm, setSalvoEm] = useState<string | null>(null);
   const hidratado = useRef(false);
 
@@ -197,7 +202,13 @@ function CadastrarVeiculo() {
     queryFn: () => getOnboardingStatus({ data: { perfilId: user?.id || '' } }),
     enabled: !!user?.id,
   });
+  const { data: termoData } = useQuery({
+    queryKey: ['termo-vendedor'],
+    queryFn: () => getTermo({ data: { tipo: 'VENDEDOR' } }),
+  });
   const profile = (data as any)?.profile || {};
+  const termo = (termoData as any)?.data || null;
+  const jaAceitouTermo = !!profile.termo_aceito_em;
   const onboardingEtapas = ((onboardingData as any)?.etapas || {}) as Record<string, string>;
   const cadastroLiberado = Object.keys(onboardingEtapas).length > 0
     ? Object.values(onboardingEtapas).every((status) => status === 'CONCLUIDO')
@@ -400,6 +411,14 @@ function CadastrarVeiculo() {
         data: montarPayloadVeiculo('AGUARDANDO_APROVACAO'),
       });
       if (res?.ok === false) throw new Error(res.message || 'Não foi possível enviar o veículo.');
+
+      if (!jaAceitouTermo) {
+        const resTermo: any = await aceitarTermo({
+          data: { token: getSessionToken(), assinatura: user?.nome || '', tipo: 'VENDEDOR' },
+        });
+        if (resTermo?.ok === false) throw new Error(resTermo.message || 'Não foi possível registrar o aceite do termo.');
+      }
+
       localStorage.removeItem(DRAFT_KEY);
       sessionStorage.removeItem('ejf_placa');
       setEnviado(true);
@@ -681,8 +700,8 @@ function CadastrarVeiculo() {
               <p className="mt-1 text-sm text-slate-500">Aceitamos PDF, JPG ou PNG.</p>
             </div>
             <FileUpload
-              label="CRLV-e"
-              description="Documento do veículo que você pretende vender."
+              label="Documento do veículo"
+              description="CRLV-e do veículo que você pretende vender."
               value={form.crlv}
               onChange={(url) => set({ crlv: url })}
             />
@@ -831,7 +850,7 @@ function CadastrarVeiculo() {
               </Bloco>
 
               <Bloco titulo="Documentação" icone={<FileText className="h-4 w-4 text-teal-700" />} onEditar={() => setStep(3)}>
-                <p className="text-sm text-slate-600">CRLV-e: {form.crlv ? '✓ Enviado' : 'Enviar depois'}</p>
+                <p className="text-sm text-slate-600">Documento do veículo: {form.crlv ? '✓ Enviado' : 'Enviar depois'}</p>
               </Bloco>
 
               <Bloco titulo="Condição informada" onEditar={() => setStep(4)}>
@@ -879,7 +898,7 @@ function CadastrarVeiculo() {
                   Atenção: Itens obrigatórios pendentes.
                 </p>
                 <p className="mt-1 text-sm text-blue-700">
-                  Para concluir o anúncio, você deve enviar o CRLV e pelo menos 6 fotos do veículo.
+                  Para concluir o anúncio, você deve enviar o documento do veículo e pelo menos 6 fotos do veículo.
                 </p>
               </div>
             )}
@@ -894,6 +913,22 @@ function CadastrarVeiculo() {
                 Estou ciente de que o veículo ainda passará por análise e vistoria antes de ser disponibilizado para negociação.
               </label>
             </div>
+
+            {!jaAceitouTermo && (
+              <div className="space-y-4 border-t border-slate-100 pt-6">
+                <div className="flex items-center gap-2 text-sm font-bold text-slate-900">
+                  <FileSignature className="h-4 w-4 text-teal-700" />
+                  {termo?.titulo || 'Termo de adesão do vendedor'}
+                </div>
+                <div className="max-h-56 overflow-y-auto whitespace-pre-wrap rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs leading-relaxed text-slate-600">
+                  {termo?.conteudo || 'Carregando o termo...'}
+                </div>
+                <label className="flex items-start gap-3 text-sm text-slate-600">
+                  <Checkbox checked={termoOk} onCheckedChange={(v) => setTermoOk(!!v)} className="mt-0.5" />
+                  Li e concordo com o termo de adesão acima.
+                </label>
+              </div>
+            )}
           </div>
         )}
 
@@ -906,7 +941,7 @@ function CadastrarVeiculo() {
           ) : (
             <Button
               onClick={() => setConfirmando(true)}
-              disabled={!declaracao1 || !declaracao2 || !cadastroLiberado || enviando || fotosEnviadas < 6 || !form.crlv}
+              disabled={!declaracao1 || !declaracao2 || (!jaAceitouTermo && !termoOk) || !cadastroLiberado || enviando || fotosEnviadas < 6 || !form.crlv}
               className="h-14 w-full rounded-2xl bg-teal-600 text-lg font-black text-white hover:bg-teal-700 md:flex-1"
             >
               {enviando ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Enviar veículo para análise'}
