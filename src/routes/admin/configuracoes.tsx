@@ -32,7 +32,14 @@ import {
   testarConsultaPlacaFn,
 } from "@/lib/consulta-veicular.functions";
 import { getTermoVigenteFn, salvarTermoFn } from "@/lib/termos.functions";
-import { listarConfiguracoesFn, salvarConfiguracaoFn, enviarEmailTesteFn } from "@/lib/admin.functions";
+import {
+  listarConfiguracoesFn,
+  salvarConfiguracaoFn,
+  enviarEmailTesteFn,
+  listarDestinatariosNotificacaoFn,
+  salvarDestinatarioNotificacaoFn,
+  removerDestinatarioNotificacaoFn,
+} from "@/lib/admin.functions";
 import { getComissaoPadraoFn, setComissaoPadraoFn } from "@/lib/relatorios.functions";
 import {
   listarModelosOpenAIFn,
@@ -256,45 +263,7 @@ function ConfiguracoesAdminPage() {
         </section>
 
 
-        <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
-            <Mail className="h-5 w-5 text-teal-700" />
-            Notificações por E-mail
-          </div>
-          <p className="text-sm text-slate-500">
-            Escolha quando os administradores e a operação devem receber um e-mail automático.
-          </p>
-          <div className="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-sm font-medium text-slate-800">Carro para análise</p>
-                <p className="text-xs text-slate-500">Envia e-mail quando um vendedor envia um veículo para a fila de análise.</p>
-              </div>
-              <Switch
-                checked={getConfig("notificacao_email_carro_analise_ativa") !== "false"}
-                onCheckedChange={(v: boolean) => {
-                  const valor = v ? "true" : "false";
-                  setConfig("notificacao_email_carro_analise_ativa", valor);
-                  void salvar("notificacao_email_carro_analise_ativa", valor);
-                }}
-              />
-            </div>
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-sm font-medium text-slate-800">Novo lance</p>
-                <p className="text-xs text-slate-500">Envia e-mail a cada novo lance registrado em qualquer leilão.</p>
-              </div>
-              <Switch
-                checked={getConfig("notificacao_email_novo_lance_ativa") !== "false"}
-                onCheckedChange={(v: boolean) => {
-                  const valor = v ? "true" : "false";
-                  setConfig("notificacao_email_novo_lance_ativa", valor);
-                  void salvar("notificacao_email_novo_lance_ativa", valor);
-                }}
-              />
-            </div>
-          </div>
-        </section>
+        <NotificacoesSection />
 
         <section className="space-y-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
@@ -425,6 +394,171 @@ function ConfiguracoesAdminPage() {
         <TermoAdesaoSection tipo="VENDEDOR" titulo="Termo de adesão do vendedor" />
         <TermoAdesaoSection tipo="COMPRADOR" titulo="Termo de uso do comprador" />
       </div>
+  );
+}
+
+type DestinatarioNotificacao = {
+  id: string;
+  nome: string;
+  email: string;
+  notificar_carro_analise: boolean;
+  notificar_novo_lance: boolean;
+};
+
+function NotificacoesSection() {
+  const [destinatarios, setDestinatarios] = useState<DestinatarioNotificacao[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [novoNome, setNovoNome] = useState("");
+  const [novoEmail, setNovoEmail] = useState("");
+  const [novoCarroAnalise, setNovoCarroAnalise] = useState(true);
+  const [novoNovoLance, setNovoNovoLance] = useState(true);
+  const [adicionando, setAdicionando] = useState(false);
+
+  const carregar = useCallback(async () => {
+    setCarregando(true);
+    try {
+      const res: any = await listarDestinatariosNotificacaoFn();
+      if (res?.ok) setDestinatarios(res.data);
+      else toast.error(res?.message || "Erro ao carregar destinatários.");
+    } finally {
+      setCarregando(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void carregar();
+  }, [carregar]);
+
+  async function adicionar() {
+    if (!novoNome.trim() || !novoEmail.trim()) {
+      toast.error("Informe nome e e-mail do destinatário.");
+      return;
+    }
+    setAdicionando(true);
+    try {
+      const res: any = await salvarDestinatarioNotificacaoFn({
+        data: {
+          nome: novoNome.trim(),
+          email: novoEmail.trim(),
+          notificarCarroAnalise: novoCarroAnalise,
+          notificarNovoLance: novoNovoLance,
+        },
+      });
+      if (res?.ok) {
+        toast.success("Destinatário cadastrado.");
+        setNovoNome("");
+        setNovoEmail("");
+        setNovoCarroAnalise(true);
+        setNovoNovoLance(true);
+        void carregar();
+      } else {
+        toast.error(res?.message || "Erro ao cadastrar destinatário.");
+      }
+    } finally {
+      setAdicionando(false);
+    }
+  }
+
+  async function atualizarFlag(d: DestinatarioNotificacao, campo: "notificar_carro_analise" | "notificar_novo_lance", valor: boolean) {
+    setDestinatarios((prev) => prev.map((item) => (item.id === d.id ? { ...item, [campo]: valor } : item)));
+    const res: any = await salvarDestinatarioNotificacaoFn({
+      data: {
+        id: d.id,
+        nome: d.nome,
+        email: d.email,
+        notificarCarroAnalise: campo === "notificar_carro_analise" ? valor : d.notificar_carro_analise,
+        notificarNovoLance: campo === "notificar_novo_lance" ? valor : d.notificar_novo_lance,
+      },
+    });
+    if (!res?.ok) toast.error(res?.message || "Erro ao salvar alteração.");
+  }
+
+  async function remover(id: string) {
+    const res: any = await removerDestinatarioNotificacaoFn({ data: { id } });
+    if (res?.ok) {
+      toast.success("Destinatário removido.");
+      setDestinatarios((prev) => prev.filter((d) => d.id !== id));
+    } else {
+      toast.error(res?.message || "Erro ao remover destinatário.");
+    }
+  }
+
+  return (
+    <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+        <Mail className="h-5 w-5 text-teal-700" />
+        Notificações por E-mail
+      </div>
+      <p className="text-sm text-slate-500">
+        Cadastre quem deve receber e-mail automático e escolha, para cada pessoa, quais notificações ela recebe.
+      </p>
+
+      {carregando ? (
+        <p className="text-sm text-slate-400">Carregando...</p>
+      ) : (
+        <div className="space-y-3">
+          {destinatarios.length === 0 && (
+            <p className="text-sm text-slate-400">Nenhum destinatário cadastrado ainda.</p>
+          )}
+          {destinatarios.map((d) => (
+            <div key={d.id} className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">{d.nome}</p>
+                  <p className="text-xs text-slate-500">{d.email}</p>
+                </div>
+                <Button variant="ghost" size="icon" onClick={() => remover(d.id)} title="Remover destinatário">
+                  <Trash2 className="h-4 w-4 text-red-500" />
+                </Button>
+              </div>
+              <div className="flex flex-wrap items-center gap-6">
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={d.notificar_carro_analise}
+                    onCheckedChange={(v: boolean) => atualizarFlag(d, "notificar_carro_analise", v)}
+                  />
+                  <span className="text-sm text-slate-700">Carro para análise</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={d.notificar_novo_lance}
+                    onCheckedChange={(v: boolean) => atualizarFlag(d, "notificar_novo_lance", v)}
+                  />
+                  <span className="text-sm text-slate-700">Novo lance</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="space-y-3 rounded-lg border border-dashed border-slate-300 p-4">
+        <p className="text-sm font-semibold text-slate-900">Adicionar destinatário</p>
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label>Nome</Label>
+            <Input value={novoNome} onChange={(e) => setNovoNome(e.target.value)} placeholder="Nome da pessoa" />
+          </div>
+          <div className="space-y-2">
+            <Label>E-mail</Label>
+            <Input value={novoEmail} onChange={(e) => setNovoEmail(e.target.value)} placeholder="email@exemplo.com" />
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-6">
+          <div className="flex items-center gap-2">
+            <Switch checked={novoCarroAnalise} onCheckedChange={setNovoCarroAnalise} />
+            <span className="text-sm text-slate-700">Carro para análise</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Switch checked={novoNovoLance} onCheckedChange={setNovoNovoLance} />
+            <span className="text-sm text-slate-700">Novo lance</span>
+          </div>
+        </div>
+        <Button className="bg-teal-900" onClick={adicionar} disabled={adicionando}>
+          <Plus className="mr-2 h-4 w-4" /> Adicionar destinatário
+        </Button>
+      </div>
+    </section>
   );
 }
 

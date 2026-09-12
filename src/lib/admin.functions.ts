@@ -122,6 +122,45 @@ export const salvarConfiguracaoFn = createServerFn({ method: "POST" })
     }
   });
 
+export const listarDestinatariosNotificacaoFn = createServerFn({ method: "GET" })
+  .handler(async () => {
+    const m = await import("@/db/notificacoes-admin.server");
+    try {
+      return { ok: true as const, data: await m.listarDestinatariosNotificacao() };
+    } catch (e: any) {
+      return { ok: false as const, message: e.message };
+    }
+  });
+
+export const salvarDestinatarioNotificacaoFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) => z.object({
+    id: z.string().uuid().optional(),
+    nome: z.string().min(2, "Nome muito curto"),
+    email: z.string().email("E-mail inválido"),
+    notificarCarroAnalise: z.boolean(),
+    notificarNovoLance: z.boolean(),
+  }).parse(d))
+  .handler(async ({ data }) => {
+    const m = await import("@/db/notificacoes-admin.server");
+    try {
+      return { ok: true as const, data: await m.salvarDestinatarioNotificacao(data) };
+    } catch (e: any) {
+      return { ok: false as const, message: e.message };
+    }
+  });
+
+export const removerDestinatarioNotificacaoFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data }) => {
+    const m = await import("@/db/notificacoes-admin.server");
+    try {
+      await m.removerDestinatarioNotificacao(data.id);
+      return { ok: true as const };
+    } catch (e: any) {
+      return { ok: false as const, message: e.message };
+    }
+  });
+
 export const enviarEmailTesteFn = createServerFn({ method: "POST" })
   .validator((d: unknown) => z.object({ email: z.string().email() }).parse(d))
   .handler(async ({ data }) => {

@@ -1,8 +1,9 @@
 import { sql } from "drizzle-orm";
 import { db } from "./index";
+import { RegraNegocioError } from "./cadastro.server";
 
 function requireDb() {
-  if (!db) throw new Error("Banco de dados indisponível.");
+  if (!db) throw new RegraNegocioError("Banco de dados indisponível.", 503);
   return db;
 }
 
@@ -14,35 +15,106 @@ function rowsOf(res: any): any[] {
   return [];
 }
 
-const CHAVE_CARRO_ANALISE = "notificacao_email_carro_analise_ativa";
-const CHAVE_NOVO_LANCE = "notificacao_email_novo_lance_ativa";
+let prepared = false;
 
-async function notificacaoAtiva(chave: string) {
+/** Cria/ajusta a tabela de destinatários de notificação por e-mail. Idempotente. */
+export async function ensureNotificacoesDestinatariosSchema() {
+  if (prepared) return;
   const d = requireDb();
-  const rows = await d.execute(sql`SELECT valor FROM configuracoes_sistema WHERE chave = ${chave} LIMIT 1;`);
-  const valor = rowsOf(rows)[0]?.valor;
-  // Se a chave nunca foi configurada, mantém a notificação ativa por padrão.
-  return valor !== "false";
+
+  await d.execute(sql`
+    CREATE TABLE IF NOT EXISTS notificacoes_destinatarios (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      nome text NOT NULL,
+      email text NOT NULL,
+      notificar_carro_analise boolean NOT NULL DEFAULT true,
+      notificar_novo_lance boolean NOT NULL DEFAULT true,
+      criado_em timestamptz NOT NULL DEFAULT now(),
+      atualizado_em timestamptz NOT NULL DEFAULT now()
+    );
+  `);
+  await d.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS notificacoes_destinatarios_email_uidx ON notificacoes_destinatarios (lower(email));
+  `);
+
+  prepared = true;
 }
 
-async function emailsAdminsAtivos() {
+export type DestinatarioNotificacaoInput = {
+  id?: string;
+  nome: string;
+  email: string;
+  notificarCarroAnalise: boolean;
+  notificarNovoLance: boolean;
+};
+
+export async function listarDestinatariosNotificacao() {
+  await ensureNotificacoesDestinatariosSchema();
   const d = requireDb();
   const rows = await d.execute(sql`
-    SELECT email FROM profiles
-    WHERE role IN ('admin'::app_role, 'operacao'::app_role)
-      AND ativo = true
-      AND email IS NOT NULL;
+    SELECT id, nome, email, notificar_carro_analise, notificar_novo_lance, criado_em
+    FROM notificacoes_destinatarios
+    ORDER BY criado_em DESC;
+  `);
+  return rowsOf(rows);
+}
+
+export async function salvarDestinatarioNotificacao(input: DestinatarioNotificacaoInput) {
+  await ensureNotificacoesDestinatariosSchema();
+  const d = requireDb();
+
+  const nome = input.nome.trim();
+  const email = input.email.trim().toLowerCase();
+  if (nome.length < 2) throw new RegraNegocioError("Informe o nome da pessoa.", 422);
+  if (!email) throw new RegraNegocioError("Informe o e-mail.", 422);
+
+  if (input.id) {
+    await d.execute(sql`
+      UPDATE notificacoes_destinatarios SET
+        nome = ${nome}, email = ${email},
+        notificar_carro_analise = ${input.notificarCarroAnalise},
+        notificar_novo_lance = ${input.notificarNovoLance},
+        atualizado_em = now()
+      WHERE id = ${input.id}::uuid;
+    `);
+    return { id: input.id };
+  }
+
+  const dup = await d.execute(sql`
+    SELECT id FROM notificacoes_destinatarios WHERE lower(email) = ${email} LIMIT 1;
+  `);
+  if (rowsOf(dup).length > 0) throw new RegraNegocioError("Já existe um destinatário cadastrado com este e-mail.", 409);
+
+  const rows = await d.execute(sql`
+    INSERT INTO notificacoes_destinatarios (nome, email, notificar_carro_analise, notificar_novo_lance)
+    VALUES (${nome}, ${email}, ${input.notificarCarroAnalise}, ${input.notificarNovoLance})
+    RETURNING id;
+  `);
+  return { id: rowsOf(rows)[0]?.id as string };
+}
+
+export async function removerDestinatarioNotificacao(id: string) {
+  await ensureNotificacoesDestinatariosSchema();
+  const d = requireDb();
+  await d.execute(sql`DELETE FROM notificacoes_destinatarios WHERE id = ${id}::uuid;`);
+  return { ok: true };
+}
+
+async function emailsParaNotificacao(coluna: "notificar_carro_analise" | "notificar_novo_lance") {
+  await ensureNotificacoesDestinatariosSchema();
+  const d = requireDb();
+  const rows = await d.execute(sql`
+    SELECT email FROM notificacoes_destinatarios WHERE ${sql.identifier(coluna)} = true;
   `);
   return rowsOf(rows)
     .map((r) => r.email as string)
     .filter((email): email is string => !!email);
 }
 
-/** Dispara e-mail aos administradores/operação quando um veículo entra na fila de análise. Nunca lança erro. */
+/** Dispara e-mail aos destinatários cadastrados quando um veículo entra na fila de análise. Nunca lança erro. */
 export async function notificarAdminsCarroParaAnalise(veiculo: { id: string; placa: string; marca: string; modelo: string }) {
   try {
-    if (!(await notificacaoAtiva(CHAVE_CARRO_ANALISE))) return;
-    const emails = await emailsAdminsAtivos();
+    const emails = await emailsParaNotificacao("notificar_carro_analise");
     if (emails.length === 0) return;
 
     const { enviarEmailSimples } = await import("./mail.server");
@@ -73,15 +145,14 @@ export async function notificarAdminsCarroParaAnalise(veiculo: { id: string; pla
   }
 }
 
-/** Dispara e-mail aos administradores/operação a cada novo lance registrado em um leilão. Nunca lança erro. */
+/** Dispara e-mail aos destinatários cadastrados a cada novo lance registrado em um leilão. Nunca lança erro. */
 export async function notificarAdminsNovoLance(dados: {
   leilaoId: string;
   valor: number;
   veiculo?: { placa?: string | null; marca?: string | null; modelo?: string | null } | null;
 }) {
   try {
-    if (!(await notificacaoAtiva(CHAVE_NOVO_LANCE))) return;
-    const emails = await emailsAdminsAtivos();
+    const emails = await emailsParaNotificacao("notificar_novo_lance");
     if (emails.length === 0) return;
 
     const { enviarEmailSimples } = await import("./mail.server");
