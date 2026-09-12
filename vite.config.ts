@@ -6,7 +6,17 @@
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
+// Gerado uma vez por execução do `vite build` — igual no bundle do cliente e no bundle do
+// servidor (mesmo `define`). O cliente compara o próprio id com o que o servidor devolve em
+// runtime para saber se um novo deploy aconteceu e precisa recarregar. Ver VersaoWatcher.
+const APP_BUILD_ID = String(Date.now());
+
 export default defineConfig({
+  vite: {
+    define: {
+      __APP_BUILD_ID__: JSON.stringify(APP_BUILD_ID),
+    },
+  },
   // Self-hosting (Easypanel/Docker): gera um servidor Node que escuta em HOST/PORT.
   // Sem isso o build sai no formato Cloudflare Worker e o container sobe sem abrir porta.
   nitro: {

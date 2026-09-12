@@ -10,6 +10,7 @@ import {
 import { Toaster } from "sonner";
 
 import { ConsentimentoCookies } from "@/components/cookies/ConsentimentoCookies";
+import { VersaoWatcher } from "@/components/shared/VersaoWatcher";
 import appCss from "@/styles.css?url";
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
@@ -92,6 +93,7 @@ function RootLayout() {
         </div>
         <Toaster richColors position="top-right" />
         <ConsentimentoCookies />
+        <VersaoWatcher />
       </QueryClientProvider>
     </RootDocument>
   );
