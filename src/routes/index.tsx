@@ -116,11 +116,6 @@ const FAQ = [
       'O cadastro e a vistoria não têm custo inicial. A cobrança acontece apenas quando a venda é concluída com sucesso.',
   },
   {
-    pergunta: 'O que é avaliado na vistoria?',
-    resposta:
-      'Nossos vistoriadores credenciados analisam mais de 50 pontos, incluindo motor, estrutura, documentação e histórico do veículo. Além disso, todo carro vendido pelo Esse Já Foi conta com laudo cautelar emitido por empresas parceiras especializadas, garantindo mais segurança na negociação.',
-  },
-  {
     pergunta: 'É seguro vender pelo Esse Já Foi?',
     resposta:
       'Sim. Toda a negociação, documentação e pagamento são intermediados pela plataforma, reduzindo o risco de golpes e problemas na transferência.',
@@ -241,7 +236,7 @@ function LandingPage() {
             />
             <FeatureCard
               icon={<Car className="w-6 h-6" />}
-              title="Vistoria Especializada"
+              title="Checagem Completa de 50+ Pontos"
               description="Analisamos mais de 50 pontos e todo carro vendido tem laudo cautelar emitido por parceiros especializados."
             />
             <FeatureCard
