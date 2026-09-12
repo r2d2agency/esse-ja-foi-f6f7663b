@@ -16,7 +16,6 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -507,9 +506,9 @@ function DetalheVeiculoAdminPage() {
             </TabsList>
           </div>
 
-          <ScrollArea className="flex-1 p-3 sm:p-6">
-            <div className="max-w-4xl mx-auto space-y-6">
-              
+          <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-3 sm:p-6">
+            <div className="max-w-4xl mx-auto space-y-6 min-w-0">
+
               <TabsContent value="resumo" className="mt-0 space-y-6">
                 <div className="grid md:grid-cols-2 gap-6">
                   <Card className="border-slate-200 shadow-none">
@@ -1113,8 +1112,7 @@ function DetalheVeiculoAdminPage() {
               </TabsContent>
 
             </div>
-            <ScrollBar orientation="horizontal" />
-          </ScrollArea>
+          </div>
         </Tabs>
       </div>
       {/* Modais de Documentação */}
