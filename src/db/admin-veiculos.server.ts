@@ -21,6 +21,7 @@ export async function ensureVeiculosAdminSchema() {
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS fotos text;
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS documento_crlv_url text;
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS fotos_processadas jsonb;
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS fotos_camadas jsonb;
   `);
 
   pronto = true;
