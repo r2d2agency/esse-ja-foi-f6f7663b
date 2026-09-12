@@ -183,9 +183,6 @@ function LandingPage() {
       <section className="relative py-20 overflow-hidden bg-navy text-white">
         <div className="container mx-auto px-4 relative z-10">
           <div className="max-w-3xl">
-            <Badge className="mb-4 bg-turquoise/10 text-turquoise border-turquoise/30">
-              Nova experiência em leilões
-            </Badge>
             <h1 className="text-5xl md:text-7xl font-extrabold leading-tight mb-6">
               Cadastre seu carro. <br />
               <span className="text-turquoise">A gente cuida da venda.</span>
@@ -210,15 +207,7 @@ function LandingPage() {
             <div className="mt-12 flex flex-wrap items-center gap-6 text-sm text-slate-400">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="w-5 h-5 text-turquoise" />
-                Vistoria In Loco
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-5 h-5 text-turquoise" />
                 Pagamento Seguro
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-5 h-5 text-turquoise" />
-                Laudo cautelar por parceiros
               </div>
             </div>
           </div>
@@ -429,13 +418,5 @@ function FeatureCard({ icon, title, description }: any) {
       <h3 className="text-xl font-bold mb-3 text-navy">{title}</h3>
       <p className="text-slate-500 leading-relaxed">{description}</p>
     </div>
-  );
-}
-
-function Badge({ children, className }: any) {
-  return (
-    <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold tracking-wide border ${className}`}>
-      {children}
-    </span>
   );
 }
