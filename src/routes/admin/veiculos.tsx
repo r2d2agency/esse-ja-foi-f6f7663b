@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Search, ChevronRight, Filter, Trash2 } from "lucide-react";
+import { Search, ChevronRight, Filter, Trash2, X } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Badge } from "@/components/ui/badge";
@@ -25,16 +25,33 @@ function AdminVeiculosPage() {
   const search = Route.useSearch();
   const [busca, setBusca] = useState("");
   const [status, setStatus] = useState(search.status || "TODOS");
+  const [filtrosAbertos, setFiltrosAbertos] = useState(false);
+  const FILTROS_INICIAIS = { marca: "", anoMin: "", anoMax: "", kmMax: "", blindado: "TODOS", dataInicio: "", dataFim: "" };
+  const [filtros, setFiltros] = useState(FILTROS_INICIAIS);
 
   useEffect(() => {
     setStatus(search.status || "TODOS");
   }, [search.status]);
-  
+
+  const filtrosAtivos = Object.values(filtros).filter((valor) => valor && valor !== "TODOS").length;
+
   const getVeiculos = useServerFn(getVeiculosAdminFn);
   const removerVeiculo = useServerFn(removerVeiculoFn);
   const { data: res, isLoading, refetch } = useQuery({
-    queryKey: ["admin-veiculos", { busca, status }],
-    queryFn: () => getVeiculos({ data: { busca, status_analise: status === "TODOS" ? undefined : status } })
+    queryKey: ["admin-veiculos", { busca, status, filtros }],
+    queryFn: () => getVeiculos({
+      data: {
+        busca,
+        status_analise: status === "TODOS" ? undefined : status,
+        marca: filtros.marca || undefined,
+        ano_min: filtros.anoMin ? Number(filtros.anoMin) : undefined,
+        ano_max: filtros.anoMax ? Number(filtros.anoMax) : undefined,
+        km_max: filtros.kmMax ? Number(filtros.kmMax) : undefined,
+        blindado: filtros.blindado === "TODOS" ? undefined : (filtros.blindado as "SIM" | "NAO"),
+        data_inicio: filtros.dataInicio ? new Date(filtros.dataInicio).toISOString() : undefined,
+        data_fim: filtros.dataFim ? new Date(`${filtros.dataFim}T23:59:59`).toISOString() : undefined,
+      },
+    })
   });
 
   const veiculos = res?.data || [];
@@ -100,10 +117,101 @@ function AdminVeiculosPage() {
               onChange={(e) => setBusca(e.target.value)}
             />
           </div>
-          <Button variant="outline" className="h-11 border-slate-200 text-slate-600 font-bold">
+          <Button
+            variant="outline"
+            className={cn("h-11 border-slate-200 font-bold", filtrosAbertos ? "bg-teal-50 text-teal-700 border-teal-200" : "text-slate-600")}
+            onClick={() => setFiltrosAbertos((v) => !v)}
+          >
             <Filter className="mr-2 h-4 w-4" /> Filtros Avançados
+            {filtrosAtivos > 0 && (
+              <span className="ml-2 rounded-full bg-teal-600 px-1.5 py-0.5 text-[10px] text-white">{filtrosAtivos}</span>
+            )}
           </Button>
         </div>
+
+        {filtrosAbertos && (
+          <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2 lg:grid-cols-6">
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase text-slate-400">Marca</label>
+              <Input
+                className="h-10 bg-white"
+                placeholder="Ex.: Honda"
+                value={filtros.marca}
+                onChange={(e) => setFiltros((f) => ({ ...f, marca: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase text-slate-400">Ano de</label>
+              <Input
+                className="h-10 bg-white"
+                inputMode="numeric"
+                placeholder="2015"
+                value={filtros.anoMin}
+                onChange={(e) => setFiltros((f) => ({ ...f, anoMin: e.target.value.replace(/\D/g, "") }))}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase text-slate-400">Ano até</label>
+              <Input
+                className="h-10 bg-white"
+                inputMode="numeric"
+                placeholder="2024"
+                value={filtros.anoMax}
+                onChange={(e) => setFiltros((f) => ({ ...f, anoMax: e.target.value.replace(/\D/g, "") }))}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase text-slate-400">KM até</label>
+              <Input
+                className="h-10 bg-white"
+                inputMode="numeric"
+                placeholder="100000"
+                value={filtros.kmMax}
+                onChange={(e) => setFiltros((f) => ({ ...f, kmMax: e.target.value.replace(/\D/g, "") }))}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase text-slate-400">Blindado</label>
+              <select
+                className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+                value={filtros.blindado}
+                onChange={(e) => setFiltros((f) => ({ ...f, blindado: e.target.value }))}
+              >
+                <option value="TODOS">Todos</option>
+                <option value="SIM">Somente blindados</option>
+                <option value="NAO">Somente não blindados</option>
+              </select>
+            </div>
+            <div className="flex items-end">
+              <Button
+                variant="ghost"
+                className="h-10 w-full text-slate-500 font-bold"
+                onClick={() => setFiltros(FILTROS_INICIAIS)}
+                disabled={filtrosAtivos === 0}
+              >
+                <X className="mr-2 h-4 w-4" /> Limpar filtros
+              </Button>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase text-slate-400">Cadastrado de</label>
+              <Input
+                type="date"
+                className="h-10 bg-white"
+                value={filtros.dataInicio}
+                onChange={(e) => setFiltros((f) => ({ ...f, dataInicio: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase text-slate-400">Cadastrado até</label>
+              <Input
+                type="date"
+                className="h-10 bg-white"
+                value={filtros.dataFim}
+                onChange={(e) => setFiltros((f) => ({ ...f, dataFim: e.target.value }))}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="p-4 md:p-8 flex-1 overflow-auto">

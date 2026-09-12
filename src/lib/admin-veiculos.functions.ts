@@ -5,6 +5,13 @@ export const getVeiculosAdminFn = createServerFn({ method: "GET" })
   .validator(z.object({
     busca: z.string().optional(),
     status_analise: z.string().optional(),
+    marca: z.string().optional(),
+    ano_min: z.number().optional(),
+    ano_max: z.number().optional(),
+    km_max: z.number().optional(),
+    blindado: z.enum(["SIM", "NAO"]).optional(),
+    data_inicio: z.string().optional(),
+    data_fim: z.string().optional(),
   }))
   .handler(async ({ data }) => {
     const { listarVeiculosAdmin, ensureVeiculosAdminSchema } = await import("@/db/admin-veiculos.server");
@@ -12,6 +19,13 @@ export const getVeiculosAdminFn = createServerFn({ method: "GET" })
     const veiculos = await listarVeiculosAdmin({
       busca: data.busca ?? null,
       status_analise: data.status_analise ?? null,
+      marca: data.marca ?? null,
+      ano_min: data.ano_min ?? null,
+      ano_max: data.ano_max ?? null,
+      km_max: data.km_max ?? null,
+      blindado: data.blindado === "SIM" ? true : data.blindado === "NAO" ? false : null,
+      data_inicio: data.data_inicio ?? null,
+      data_fim: data.data_fim ?? null,
     });
     return { ok: true as const, data: veiculos };
   });
