@@ -23,23 +23,75 @@ import { LogoEsf } from '@/components/shared/LogoEsf';
 import landingHeroAsset from '@/assets/esse-ja-foi-hero.webp.asset.json';
 import { abrirConfiguracoesCookies } from '@/lib/cookies-consent';
 
+const DOMINIO = 'https://www.essejafoi.com.br';
+
 export const Route = createFileRoute('/')({
-  head: () => ({
-    meta: [
-      { title: 'Esse Já Foi — Compra e venda de veículos' },
-      {
-        name: 'description',
-        content: 'Venda ou compre veículos vistoriados com negociação digital, documentação garantida e pagamento seguro.',
-      },
-      { property: 'og:title', content: 'Esse Já Foi — Compra e venda de veículos' },
-      {
-        property: 'og:description',
-        content: 'Veículos vistoriados, negociação digital e pagamento seguro em uma única plataforma.',
-      },
-      { property: 'og:type', content: 'website' },
-      { name: 'twitter:card', content: 'summary_large_image' },
-    ],
-  }),
+  head: () => {
+    const url = `${DOMINIO}/`;
+    const titulo = 'Esse Já Foi — Compra e venda de veículos vistoriados';
+    const descricao =
+      'Venda ou compre veículos vistoriados com negociação digital, documentação garantida e pagamento seguro. Leilão online de carros com compradores verificados.';
+    const imagem = `${DOMINIO}${landingHeroAsset.url}`;
+
+    return {
+      meta: [
+        { title: titulo },
+        { name: 'description', content: descricao },
+        {
+          name: 'keywords',
+          content:
+            'comprar carro usado, vender carro, leilão de veículos online, veículos vistoriados, carros seminovos, leilão de carros, marketplace de veículos, compra e venda de carros',
+        },
+        { name: 'robots', content: 'index, follow' },
+        { name: 'author', content: 'Esse Já Foi' },
+        { property: 'og:title', content: titulo },
+        { property: 'og:description', content: descricao },
+        { property: 'og:type', content: 'website' },
+        { property: 'og:url', content: url },
+        { property: 'og:site_name', content: 'Esse Já Foi' },
+        { property: 'og:locale', content: 'pt_BR' },
+        { property: 'og:image', content: imagem },
+        { name: 'twitter:card', content: 'summary_large_image' },
+        { name: 'twitter:title', content: titulo },
+        { name: 'twitter:description', content: descricao },
+        { name: 'twitter:image', content: imagem },
+      ],
+      links: [{ rel: 'canonical', href: url }],
+      scripts: [
+        {
+          type: 'application/ld+json',
+          children: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@graph': [
+              {
+                '@type': 'Organization',
+                '@id': `${DOMINIO}/#organization`,
+                name: 'Esse Já Foi',
+                url: DOMINIO,
+                logo: `${DOMINIO}/logo-esse-ja-foi.png`,
+              },
+              {
+                '@type': 'WebSite',
+                '@id': `${DOMINIO}/#website`,
+                url: DOMINIO,
+                name: 'Esse Já Foi',
+                inLanguage: 'pt-BR',
+                publisher: { '@id': `${DOMINIO}/#organization` },
+              },
+              {
+                '@type': 'FAQPage',
+                mainEntity: FAQ.map((item) => ({
+                  '@type': 'Question',
+                  name: item.pergunta,
+                  acceptedAnswer: { '@type': 'Answer', text: item.resposta },
+                })),
+              },
+            ],
+          }),
+        },
+      ],
+    };
+  },
   component: LandingPage,
 });
 
