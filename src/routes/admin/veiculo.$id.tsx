@@ -527,12 +527,12 @@ function DetalheVeiculoAdminPage() {
                     </CardTitle>
                     <Badge className={cn(
                       "uppercase text-[10px] font-bold",
-                      v.documento_crlv_status === 'APROVADO' ? "bg-green-100 text-green-700" :
-                      v.documento_crlv_status === 'NOVO_ENVIO_SOLICITADO' ? "bg-red-100 text-red-700" :
+                      v.vendedor_documento_crlv_status === 'APROVADO' ? "bg-green-100 text-green-700" :
+                      v.vendedor_documento_crlv_status === 'NOVO_ENVIO_SOLICITADO' ? "bg-red-100 text-red-700" :
                       "bg-amber-100 text-amber-700"
                     )}>
-                      {v.documento_crlv_status === 'APROVADO' ? '✓ Aprovado' : 
-                       v.documento_crlv_status === 'NOVO_ENVIO_SOLICITADO' ? 'Novo envio solicitado' : 
+                      {v.vendedor_documento_crlv_status === 'APROVADO' ? '✓ Aprovado' :
+                       v.vendedor_documento_crlv_status === 'NOVO_ENVIO_SOLICITADO' ? 'Novo envio solicitado' :
                        'Aguardando Análise'}
                     </Badge>
                   </CardHeader>
@@ -581,16 +581,16 @@ function DetalheVeiculoAdminPage() {
                         </div>
 
                         <div className="flex flex-col gap-2">
-                          {v.documento_crlv_status !== 'APROVADO' && (
+                          {v.vendedor_documento_crlv_status !== 'APROVADO' && (
                             <>
-                              <Button 
+                              <Button
                                 className="bg-teal-600 hover:bg-teal-700 text-white font-bold w-full"
                                 onClick={() => setShowApproveDialog(true)}
                               >
                                 Aprovar documento
                               </Button>
-                              <Button 
-                                variant="outline" 
+                              <Button
+                                variant="outline"
                                 className="font-bold w-full"
                                 onClick={() => setShowRejectDialog(true)}
                               >
@@ -598,7 +598,7 @@ function DetalheVeiculoAdminPage() {
                               </Button>
                             </>
                           )}
-                          {v.documento_crlv_status === 'APROVADO' && (
+                          {v.vendedor_documento_crlv_status === 'APROVADO' && (
                             <Button 
                               variant="outline" 
                               className="font-bold w-full text-amber-600 border-amber-200 hover:bg-amber-50"
@@ -850,10 +850,10 @@ function DetalheVeiculoAdminPage() {
                             color: res.progresso?.dadosCadastrais?.isCompleto ? "text-green-600" : "text-amber-600",
                             pendencias: res.progresso?.dadosCadastrais?.pendencias
                           },
-                          { 
-                            label: "CRLV-e", 
-                             status: v.documento_crlv_status === 'APROVADO' ? "CONCLUÍDO" : "PENDENTE", 
-                             color: v.documento_crlv_status === 'APROVADO' ? "text-green-600" : "text-amber-600" 
+                          {
+                            label: "CRLV-e",
+                             status: v.vendedor_documento_crlv_status === 'APROVADO' ? "CONCLUÍDO" : "PENDENTE",
+                             color: v.vendedor_documento_crlv_status === 'APROVADO' ? "text-green-600" : "text-amber-600"
 
                           },
                           { 
