@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Gavel, Megaphone, Store, Loader2, MessageCircle, Copy, RefreshCw, Ban, Eye } from "lucide-react";
+import { Gavel, Megaphone, Store, Loader2, MessageCircle, Copy, RefreshCw, Ban, Eye, Share2, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -72,6 +72,9 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
   const [tokenOcupado, setTokenOcupado] = useState(false);
   const [mensagem, setMensagem] = useState("");
   const [fotoCapaMensagem, setFotoCapaMensagem] = useState<string | null>(null);
+  const [compartilhando, setCompartilhando] = useState(false);
+  const podeCompartilharArquivo =
+    typeof navigator !== "undefined" && typeof navigator.share === "function" && typeof navigator.canShare === "function";
   const inicioRef = useRef<HTMLInputElement>(null);
   const fimRef = useRef<HTMLInputElement>(null);
   const lanceInicialRef = useRef<HTMLInputElement>(null);
@@ -291,6 +294,31 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
       refetch();
     } finally {
       setTokenOcupado(false);
+    }
+  }
+
+  async function compartilharComFoto() {
+    if (!fotoCapaMensagem) {
+      copiar(mensagem, "Mensagem copiada.");
+      return;
+    }
+    setCompartilhando(true);
+    try {
+      const resp = await fetch(fotoCapaMensagem);
+      const blob = await resp.blob();
+      const extensao = blob.type.split("/")[1] || "jpg";
+      const file = new File([blob], `foto-capa.${extensao}`, { type: blob.type });
+      const shareData = { text: mensagem, files: [file] };
+      if (podeCompartilharArquivo && navigator.canShare(shareData)) {
+        await navigator.share(shareData);
+        return;
+      }
+      throw new Error("share-unsupported");
+    } catch (err: any) {
+      if (err?.name === "AbortError") return;
+      await copiar(mensagem, "Seu navegador não compartilha foto + texto juntos. Mensagem copiada — baixe a foto abaixo para anexar.");
+    } finally {
+      setCompartilhando(false);
     }
   }
 
@@ -608,14 +636,45 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
                 <div className="space-y-2 rounded-xl bg-white p-3">
                   <p className="text-xs font-bold text-slate-600">Editar mensagem</p>
                   <Textarea rows={8} value={mensagem} onChange={(e) => setMensagem(e.target.value)} />
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => copiar(mensagem, "Mensagem copiada.")}
-                  >
-                    <Copy className="mr-2 h-4 w-4" /> Copiar mensagem
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    {fotoCapaMensagem && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="bg-emerald-600 hover:bg-emerald-700"
+                        disabled={compartilhando}
+                        onClick={compartilharComFoto}
+                      >
+                        {compartilhando ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Share2 className="mr-2 h-4 w-4" />
+                        )}
+                        Enviar com foto
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => copiar(mensagem, "Mensagem copiada.")}
+                    >
+                      <Copy className="mr-2 h-4 w-4" /> Copiar mensagem
+                    </Button>
+                    {fotoCapaMensagem && (
+                      <Button type="button" size="sm" variant="outline" asChild>
+                        <a href={fotoCapaMensagem} download target="_blank" rel="noreferrer">
+                          <Download className="mr-2 h-4 w-4" /> Baixar foto
+                        </a>
+                      </Button>
+                    )}
+                  </div>
+                  {fotoCapaMensagem && !podeCompartilharArquivo && (
+                    <p className="text-[11px] font-medium text-slate-500">
+                      Seu navegador não permite enviar foto e texto juntos automaticamente. Baixe a foto,
+                      abra a conversa no WhatsApp, anexe a foto e cole a mensagem como legenda.
+                    </p>
+                  )}
                 </div>
               </div>
             )}
