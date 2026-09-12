@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ComboboxSearch } from "@/components/ui/combobox-search";
 import { FileUpload } from "@/components/onboarding/FileUpload";
 import { FotoSlot } from "@/components/veiculo/FotoSlot";
@@ -34,6 +35,8 @@ export function FormularioVeiculoCondicao({
   setFotosExtras,
   fotosNotas,
   setFotosNotas,
+  blindado,
+  setBlindado,
 }: {
   veiculo: Record<string, string>;
   setVeiculo: Dispatch<SetStateAction<Record<string, string>>>;
@@ -49,6 +52,8 @@ export function FormularioVeiculoCondicao({
   /** Observação opcional por foto (chave = URL da foto). */
   fotosNotas: Record<string, string>;
   setFotosNotas: Dispatch<SetStateAction<Record<string, string>>>;
+  blindado: boolean;
+  setBlindado: Dispatch<SetStateAction<boolean>>;
 }) {
   return (
     <>
@@ -82,6 +87,12 @@ export function FormularioVeiculoCondicao({
           />
         </div>
         <Campo label="Valor pretendido (R$)" valor={veiculo.valorInteresse} onChange={(v) => setVeiculo({ ...veiculo, valorInteresse: maskMoeda(v) })} placeholder="R$ 0,00" />
+        <div className="flex items-center gap-3 sm:col-span-2 md:col-span-3">
+          <Checkbox id="blindado" checked={blindado} onCheckedChange={(v) => setBlindado(!!v)} />
+          <Label htmlFor="blindado" className="cursor-pointer text-sm font-bold text-slate-900">
+            Veículo blindado
+          </Label>
+        </div>
       </div>
 
       <div className="space-y-5 border-t border-slate-100 pt-6">

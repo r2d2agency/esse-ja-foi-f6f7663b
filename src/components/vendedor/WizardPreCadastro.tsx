@@ -89,6 +89,7 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
     uf: "",
   });
   const [crlv, setCrlv] = useState<string | null>(null);
+  const [blindado, setBlindado] = useState(false);
   const [fotos, setFotos] = useState<Record<string, string | null>>(
     Object.fromEntries(FOTOS_VEICULO.map((f) => [f.id, null])),
   );
@@ -177,6 +178,7 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
           cidade: veiculo.cidade || undefined,
           uf: veiculo.uf || undefined,
           documento_crlv_url: crlv,
+          blindado,
           fotos: [...Object.values(fotos), ...fotosExtras].filter(Boolean) as string[],
           observacoes: serializarCondicao(condicao),
           status: "AGUARDANDO_APROVACAO",
@@ -377,6 +379,8 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
               setFotosExtras={setFotosExtras}
               fotosNotas={condicao.fotosNotas || {}}
               setFotosNotas={setFotosNotas}
+              blindado={blindado}
+              setBlindado={setBlindado}
             />
 
             <div className="flex gap-3">

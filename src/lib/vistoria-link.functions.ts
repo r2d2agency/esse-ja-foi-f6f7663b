@@ -83,6 +83,7 @@ export const enviarVistoriaPorTokenFn = createServerFn({ method: "POST" })
         cidade: z.string().optional(),
         uf: z.string().optional(),
         documento_crlv_url: z.string().optional().nullable(),
+        blindado: z.boolean().optional(),
         fotos: z.array(z.string()).optional(),
         condicao: condicaoSchema,
       })

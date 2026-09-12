@@ -42,6 +42,7 @@ function VistoriaPorTokenPage() {
   const [veiculo, setVeiculo] = useState(VEICULO_INICIAL);
   const [condicao, setCondicao] = useState<CondicaoVeiculo>(CONDICAO_INICIAL);
   const [crlv, setCrlv] = useState<string | null>(null);
+  const [blindado, setBlindado] = useState(false);
   const [fotos, setFotos] = useState<Record<string, string | null>>(
     Object.fromEntries(FOTOS_VEICULO.map((f) => [f.id, null])),
   );
@@ -92,6 +93,7 @@ function VistoriaPorTokenPage() {
         uf: v.uf || "",
       });
       if (v.documento_crlv_url) setCrlv(v.documento_crlv_url);
+      if (typeof v.blindado === "boolean") setBlindado(v.blindado);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [res?.ok]);
@@ -116,6 +118,7 @@ function VistoriaPorTokenPage() {
           cidade: veiculo.cidade || undefined,
           uf: veiculo.uf || undefined,
           documento_crlv_url: crlv || undefined,
+          blindado,
           fotos: [...Object.values(fotos), ...fotosExtras].filter(Boolean) as string[],
           condicao,
         },
@@ -218,6 +221,8 @@ function VistoriaPorTokenPage() {
             setFotosExtras={setFotosExtras}
             fotosNotas={condicao.fotosNotas || {}}
             setFotosNotas={setFotosNotas}
+            blindado={blindado}
+            setBlindado={setBlindado}
           />
 
           <Button
