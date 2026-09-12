@@ -72,6 +72,29 @@ async function injetarTagsRastreamento(response: Response): Promise<Response> {
   }
 }
 
+/**
+ * Job em segundo plano: avisa por e-mail quem marcou "lembrar-me" num leilão
+ * que já começou ou está prestes a começar. Roda a cada 5 minutos no mesmo
+ * processo Node do servidor — não depende de nenhuma página estar aberta.
+ * O `globalThis` evita duplicar o intervalo se este módulo for reavaliado
+ * (hot-reload em dev).
+ */
+declare global {
+  // eslint-disable-next-line no-var
+  var __lembretesLeilaoInterval: ReturnType<typeof setInterval> | undefined;
+}
+
+if (!globalThis.__lembretesLeilaoInterval) {
+  globalThis.__lembretesLeilaoInterval = setInterval(async () => {
+    try {
+      const { processarLembretesLeilao } = await import("./db/leilao.server");
+      await processarLembretesLeilao();
+    } catch (error) {
+      console.error("[lembretes-leilao] falha no job em segundo plano:", error);
+    }
+  }, 5 * 60 * 1000);
+}
+
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     const url = new URL(request.url);

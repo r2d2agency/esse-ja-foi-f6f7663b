@@ -508,8 +508,19 @@ export async function salvarVeiculo(input: VeiculoInput) {
     await registrarLog({ entidade: "veiculo", entidadeId: input.id, acao: "ATUALIZADO", detalhe: `Placa ${placa}` });
 
     if (base.status === "AGUARDANDO_APROVACAO" && statusAnterior !== "AGUARDANDO_APROVACAO") {
+      const vendedorRows = (await d.execute(sql`
+        SELECT p.nome, p.email, p.whatsapp FROM veiculos v
+        LEFT JOIN profiles p ON p.id = v.perfil_id
+        WHERE v.id = ${input.id} LIMIT 1;
+      `)) as unknown as Array<{ nome: string | null; email: string | null; whatsapp: string | null }>;
       const { notificarAdminsCarroParaAnalise } = await import("./notificacoes-admin.server");
-      void notificarAdminsCarroParaAnalise({ id: input.id, placa: base.placa, marca: base.marca, modelo: base.modelo });
+      void notificarAdminsCarroParaAnalise({
+        id: input.id,
+        placa: base.placa,
+        marca: base.marca,
+        modelo: base.modelo,
+        vendedor: vendedorRows[0] ?? null,
+      });
     }
 
     return { id: input.id, percentualSobreFipe: percentual, alertaExpectativa: alerta, percentualAlerta: limite };
@@ -542,8 +553,17 @@ export async function salvarVeiculo(input: VeiculoInput) {
   await registrarLog({ entidade: "veiculo", entidadeId: id, acao: "CRIADO", para: base.status, detalhe: `Placa ${placa}` });
 
   if (base.status === "AGUARDANDO_APROVACAO") {
+    const vendedorRows = (await d.execute(sql`
+      SELECT nome, email, whatsapp FROM profiles WHERE id = ${base.perfilId}::uuid LIMIT 1;
+    `)) as unknown as Array<{ nome: string | null; email: string | null; whatsapp: string | null }>;
     const { notificarAdminsCarroParaAnalise } = await import("./notificacoes-admin.server");
-    void notificarAdminsCarroParaAnalise({ id, placa: base.placa, marca: base.marca, modelo: base.modelo });
+    void notificarAdminsCarroParaAnalise({
+      id,
+      placa: base.placa,
+      marca: base.marca,
+      modelo: base.modelo,
+      vendedor: vendedorRows[0] ?? null,
+    });
   }
 
   return { id, percentualSobreFipe: percentual, alertaExpectativa: alerta, percentualAlerta: limite };

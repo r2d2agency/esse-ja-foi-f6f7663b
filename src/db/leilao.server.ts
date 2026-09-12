@@ -470,11 +470,18 @@ export async function registrarLance(leilaoId: string, compradorId: string, valo
 
     try {
       const veiculoRes = await tx.execute(sql`
-        SELECT placa, marca, modelo FROM veiculos WHERE id = ${leilao.veiculo_id}::uuid LIMIT 1;
+        SELECT v.placa, v.marca, v.modelo, a.slug
+        FROM veiculos v
+        LEFT JOIN anuncios_veiculo a ON a.veiculo_id = v.id
+        WHERE v.id = ${leilao.veiculo_id}::uuid LIMIT 1;
       `);
       const veiculoLance = rowsOf(veiculoRes)[0];
+      const compradorRes = await tx.execute(sql`
+        SELECT nome, email FROM profiles WHERE id = ${compradorId}::uuid LIMIT 1;
+      `);
+      const compradorLance = rowsOf(compradorRes)[0];
       const { notificarAdminsNovoLance } = await import("./notificacoes-admin.server");
-      void notificarAdminsNovoLance({ leilaoId, valor: valorNum, veiculo: veiculoLance });
+      void notificarAdminsNovoLance({ leilaoId, valor: valorNum, veiculo: veiculoLance, comprador: compradorLance });
     } catch (e) {
       console.error("[leilao] falha ao notificar admins sobre novo lance", e);
     }
@@ -625,10 +632,59 @@ export async function processarCicloLeiloes() {
 
   // 2. Ativo/Prorrogado -> Encerrado
   await d.execute(sql`
-    UPDATE leiloes 
+    UPDATE leiloes
     SET status = 'ENCERRADO', atualizado_em = now()
     WHERE status IN ('ATIVO', 'PRORROGADO') AND fim_em <= ${agora}
   `);
+}
+
+/**
+ * Avisa por e-mail quem marcou "lembrar-me" num veículo cujo leilão já
+ * começou ou está prestes a começar (nos próximos 15 minutos). Cada
+ * lembrete é enviado uma única vez (`enviado = true`). Nunca lança erro —
+ * é chamada periodicamente em segundo plano.
+ */
+export async function processarLembretesLeilao() {
+  const d = requireDb();
+  try {
+    await ensureLeilaoSchema();
+    const { ensureCompradorSchema } = await import("./comprador.server");
+    await ensureCompradorSchema();
+    const pendentes = await d.execute(sql`
+      SELECT cl.id as lembrete_id, p.email, p.nome,
+             a.slug, v.marca, v.modelo,
+             le.status = 'ATIVO' as ja_comecou
+      FROM comprador_lembretes cl
+      JOIN anuncios_veiculo a ON a.id = cl.anuncio_id
+      JOIN veiculos v ON v.id = a.veiculo_id
+      JOIN leiloes le ON le.veiculo_id = v.id
+      JOIN profiles p ON p.id = cl.comprador_id
+      WHERE cl.enviado = false
+        AND a.slug IS NOT NULL
+        AND (
+          le.status = 'ATIVO'
+          OR (le.status = 'AGENDADO' AND le.inicio_em <= now() + interval '15 minutes')
+        )
+      LIMIT 200;
+    `);
+
+    const linhas = rowsOf(pendentes);
+    if (linhas.length === 0) return;
+
+    const { notificarCompradorLeilaoComecando } = await import("./notificacoes-admin.server");
+    for (const linha of linhas) {
+      if (!linha.email) continue;
+      await notificarCompradorLeilaoComecando({
+        destinatarioEmail: linha.email,
+        destinatarioNome: linha.nome,
+        veiculo: { marca: linha.marca, modelo: linha.modelo, slug: linha.slug },
+        jaComecou: !!linha.ja_comecou,
+      });
+      await d.execute(sql`UPDATE comprador_lembretes SET enviado = true WHERE id = ${linha.lembrete_id}::uuid;`);
+    }
+  } catch (e) {
+    console.error("[leilao] erro ao processar lembretes de leilão", e);
+  }
 }
 
 export async function listarLeiloesAdmin(status?: string) {

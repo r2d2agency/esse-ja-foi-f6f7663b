@@ -15,6 +15,10 @@ function rowsOf(res: any): any[] {
   return [];
 }
 
+function appUrl() {
+  return process.env["APP_URL"] || process.env["VITE_APP_URL"] || "https://www.essejafoi.com.br";
+}
+
 let prepared = false;
 
 /** Cria/ajusta a tabela de destinatários de notificação por e-mail. Idempotente. */
@@ -112,12 +116,19 @@ async function emailsParaNotificacao(coluna: "notificar_carro_analise" | "notifi
 }
 
 /** Dispara e-mail aos destinatários cadastrados quando um veículo entra na fila de análise. Nunca lança erro. */
-export async function notificarAdminsCarroParaAnalise(veiculo: { id: string; placa: string; marca: string; modelo: string }) {
+export async function notificarAdminsCarroParaAnalise(veiculo: {
+  id: string;
+  placa: string;
+  marca: string;
+  modelo: string;
+  vendedor?: { nome?: string | null; email?: string | null; whatsapp?: string | null } | null;
+}) {
   try {
     const emails = await emailsParaNotificacao("notificar_carro_analise");
     if (emails.length === 0) return;
 
     const { enviarEmailSimples } = await import("./mail.server");
+    const link = `${appUrl()}/admin/veiculo/${veiculo.id}`;
     const assunto = "Novo veículo para análise — Esse Já Foi";
     const html = `
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
@@ -127,8 +138,18 @@ export async function notificarAdminsCarroParaAnalise(veiculo: { id: string; pla
           <p style="margin: 0;"><strong>${veiculo.marca} ${veiculo.modelo}</strong></p>
           <p style="margin: 4px 0 0; color: #64748b;">Placa: ${veiculo.placa}</p>
         </div>
-        <p style="color: #64748b; font-size: 14px; margin-top: 20px;">
-          Acesse o painel administrativo para revisar o cadastro.
+        ${
+          veiculo.vendedor
+            ? `<div style="background: #f1f5f9; padding: 16px; border-radius: 8px; margin-top: 12px;">
+                <p style="margin: 0; color: #64748b; font-size: 13px; text-transform: uppercase; font-weight: bold;">Vendedor</p>
+                <p style="margin: 4px 0 0;"><strong>${veiculo.vendedor.nome || "Não informado"}</strong></p>
+                ${veiculo.vendedor.email ? `<p style="margin: 2px 0 0; color: #64748b;">${veiculo.vendedor.email}</p>` : ""}
+                ${veiculo.vendedor.whatsapp ? `<p style="margin: 2px 0 0; color: #64748b;">${veiculo.vendedor.whatsapp}</p>` : ""}
+              </div>`
+            : ""
+        }
+        <p style="margin-top: 20px;">
+          <a href="${link}" style="display: inline-block; background: #0d9488; color: #ffffff; text-decoration: none; padding: 10px 20px; border-radius: 8px; font-weight: bold;">Abrir ficha do veículo</a>
         </p>
       </div>
     `;
@@ -149,7 +170,8 @@ export async function notificarAdminsCarroParaAnalise(veiculo: { id: string; pla
 export async function notificarAdminsNovoLance(dados: {
   leilaoId: string;
   valor: number;
-  veiculo?: { placa?: string | null; marca?: string | null; modelo?: string | null } | null;
+  veiculo?: { placa?: string | null; marca?: string | null; modelo?: string | null; slug?: string | null } | null;
+  comprador?: { nome?: string | null; email?: string | null } | null;
 }) {
   try {
     const emails = await emailsParaNotificacao("notificar_novo_lance");
@@ -160,6 +182,7 @@ export async function notificarAdminsNovoLance(dados: {
     const veiculoLabel = dados.veiculo?.marca || dados.veiculo?.modelo
       ? `${dados.veiculo?.marca ?? ""} ${dados.veiculo?.modelo ?? ""}`.trim()
       : "Veículo";
+    const link = dados.veiculo?.slug ? `${appUrl()}/veiculos/${dados.veiculo.slug}` : `${appUrl()}/admin/leiloes/${dados.leilaoId}`;
     const assunto = "Novo lance registrado — Esse Já Foi";
     const html = `
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
@@ -170,8 +193,17 @@ export async function notificarAdminsNovoLance(dados: {
           ${dados.veiculo?.placa ? `<p style="margin: 4px 0 0; color: #64748b;">Placa: ${dados.veiculo.placa}</p>` : ""}
           <p style="margin: 8px 0 0; font-size: 20px; font-weight: bold; color: #0d9488;">${valorFmt}</p>
         </div>
-        <p style="color: #64748b; font-size: 14px; margin-top: 20px;">
-          Acesse o painel administrativo para acompanhar o leilão.
+        ${
+          dados.comprador
+            ? `<div style="background: #f1f5f9; padding: 16px; border-radius: 8px; margin-top: 12px;">
+                <p style="margin: 0; color: #64748b; font-size: 13px; text-transform: uppercase; font-weight: bold;">Quem deu o lance</p>
+                <p style="margin: 4px 0 0;"><strong>${dados.comprador.nome || "Não informado"}</strong></p>
+                ${dados.comprador.email ? `<p style="margin: 2px 0 0; color: #64748b;">${dados.comprador.email}</p>` : ""}
+              </div>`
+            : ""
+        }
+        <p style="margin-top: 20px;">
+          <a href="${link}" style="display: inline-block; background: #0d9488; color: #ffffff; text-decoration: none; padding: 10px 20px; border-radius: 8px; font-weight: bold;">Acompanhar leilão</a>
         </p>
       </div>
     `;
@@ -185,5 +217,38 @@ export async function notificarAdminsNovoLance(dados: {
     );
   } catch (e) {
     console.error("[notificacoes-admin] erro ao notificar novo lance", e);
+  }
+}
+
+/** Dispara e-mail ao comprador que marcou "lembrar-me" quando o leilão começa ou está prestes a começar. Nunca lança erro. */
+export async function notificarCompradorLeilaoComecando(dados: {
+  destinatarioEmail: string;
+  destinatarioNome?: string | null;
+  veiculo: { marca?: string | null; modelo?: string | null; slug: string };
+  jaComecou: boolean;
+}) {
+  try {
+    if (!dados.destinatarioEmail) return;
+    const { enviarEmailSimples } = await import("./mail.server");
+    const link = `${appUrl()}/veiculos/${dados.veiculo.slug}`;
+    const veiculoLabel = `${dados.veiculo.marca ?? ""} ${dados.veiculo.modelo ?? ""}`.trim() || "Veículo";
+    const assunto = dados.jaComecou
+      ? `O leilão do ${veiculoLabel} começou — Esse Já Foi`
+      : `O leilão do ${veiculoLabel} está prestes a começar — Esse Já Foi`;
+    const html = `
+      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+        <h2 style="color: #0f172a;">${dados.jaComecou ? "O leilão começou!" : "O leilão está quase começando!"}</h2>
+        <p>Olá${dados.destinatarioNome ? `, ${dados.destinatarioNome}` : ""}! Você pediu para ser avisado sobre este veículo:</p>
+        <div style="background: #f1f5f9; padding: 16px; border-radius: 8px;">
+          <p style="margin: 0;"><strong>${veiculoLabel}</strong></p>
+        </div>
+        <p style="margin-top: 20px;">
+          <a href="${link}" style="display: inline-block; background: #0d9488; color: #ffffff; text-decoration: none; padding: 10px 20px; border-radius: 8px; font-weight: bold;">Dar lance agora</a>
+        </p>
+      </div>
+    `;
+    await enviarEmailSimples(dados.destinatarioEmail, assunto, html);
+  } catch (e) {
+    console.error("[notificacoes-admin] erro ao notificar comprador sobre leilão começando", e);
   }
 }
