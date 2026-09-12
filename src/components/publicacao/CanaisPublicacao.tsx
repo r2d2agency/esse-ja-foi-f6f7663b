@@ -152,8 +152,11 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
 
     // Canal ainda não configurado: começa já com todas as fotos do vendedor
     // selecionadas — é mais fácil remover uma foto indesejada do que ter que
-    // adicionar uma por uma.
-    if (!c && fotosVendedor.length > 0) {
+    // adicionar uma por uma. getCanaisPublicacao() sempre devolve um objeto
+    // por canal (mesmo sem nunca ter sido salvo, com fotos: []), então "canal
+    // novo" não é `!c` — é a ausência de `atualizado_em`, que só existe numa
+    // linha real já salva no banco.
+    if (!c?.atualizado_em && fotosVendedor.length > 0) {
       let cancelado = false;
       setPreenchendoFotosPadrao(true);
       (async () => {
