@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { listarVendedoresFn } from "@/lib/vendedores-compliance.functions";
@@ -37,6 +37,7 @@ const STATUS_CONFIG: Record<string, { label: string, color: string, bg: string }
 };
 
 function VendedoresPage() {
+  const navigate = useNavigate();
   const search = Route.useSearch();
   const [busca, setBusca] = useState("");
   const [filtroStatus, setFiltroStatus] = useState<string | undefined>(search.status);
@@ -143,7 +144,11 @@ function VendedoresPage() {
               </TableRow>
             ) : (
               vendedores.map((v: any) => (
-                <TableRow key={v.id} className="hover:bg-slate-50 transition-colors border-slate-100">
+                <TableRow
+                  key={v.id}
+                  className="cursor-pointer hover:bg-slate-50 transition-colors border-slate-100"
+                  onClick={() => navigate({ to: "/admin/vendedor/$id", params: { id: v.id } })}
+                >
                   <TableCell>
                     <div className="flex flex-col">
                       <span className="font-bold text-slate-900">{v.nome}</span>
@@ -190,11 +195,7 @@ function VendedoresPage() {
                     </div>
                   </TableCell>
                   <TableCell className="text-right">
-                    <Link to="/admin/vendedor/$id" params={{ id: v.id }}>
-                      <Button variant="ghost" size="sm" className="text-teal-600 font-bold text-xs group">
-                        Ver cadastro <ChevronRight className="ml-1 h-3 w-3 transition-transform group-hover:translate-x-0.5" />
-                      </Button>
-                    </Link>
+                    <ChevronRight className="ml-auto h-4 w-4 text-slate-300" />
                   </TableCell>
                 </TableRow>
               ))

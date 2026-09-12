@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { listarCompradoresFn, preCadastrarCompradorFn } from "@/lib/admin-compradores.functions";
@@ -43,6 +43,7 @@ const STATUS_CONFIG: Record<string, { label: string, color: string, bg: string, 
 };
 
 function CompradoresPage() {
+  const navigate = useNavigate();
   const [busca, setBusca] = useState("");
   const [filtroStatus, setFiltroStatus] = useState<string | undefined>(undefined);
   
@@ -189,7 +190,11 @@ function CompradoresPage() {
               </TableRow>
             ) : (
               compradores.map((c: any) => (
-                <TableRow key={c.id} className="hover:bg-slate-50 transition-colors border-slate-100">
+                <TableRow
+                  key={c.id}
+                  className="cursor-pointer hover:bg-slate-50 transition-colors border-slate-100"
+                  onClick={() => navigate({ to: "/admin/comprador/$id", params: { id: c.id } as any })}
+                >
                   <TableCell>
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded bg-slate-100 flex items-center justify-center text-slate-400">
@@ -232,11 +237,7 @@ function CompradoresPage() {
                     </div>
                   </TableCell>
                   <TableCell className="text-right">
-                    <Link to="/admin/comprador/$id" params={{ id: c.id } as any}>
-                      <Button variant="ghost" size="sm" className="text-teal-600 font-bold text-xs group">
-                        Ver detalhes <ChevronRight className="ml-1 h-3 w-3 transition-transform group-hover:translate-x-0.5" />
-                      </Button>
-                    </Link>
+                    <ChevronRight className="ml-auto h-4 w-4 text-slate-300" />
                   </TableCell>
                 </TableRow>
               ))
