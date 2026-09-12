@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import { toast } from "sonner";
 import { Loader2, Lock, CheckCircle2 } from "lucide-react";
 import { LogoEsf } from "@/components/shared/LogoEsf";
@@ -46,11 +46,17 @@ function VistoriaPorTokenPage() {
     Object.fromEntries(FOTOS_VEICULO.map((f) => [f.id, null])),
   );
   const [fotosAnteriores, setFotosAnteriores] = useState<string[]>([]);
+  const [fotosExtras, setFotosExtras] = useState<string[]>([]);
   const [enviado, setEnviado] = useState(false);
   const [preenchidoAntes, setPreenchidoAntes] = useState(false);
 
   const setCondicaoCampo = (patch: Partial<CondicaoVeiculo>) =>
     setCondicao((c) => ({ ...c, ...patch }));
+  const setFotosNotas: Dispatch<SetStateAction<Record<string, string>>> = (valor) =>
+    setCondicao((c) => ({
+      ...c,
+      fotosNotas: typeof valor === "function" ? (valor as any)(c.fotosNotas || {}) : valor,
+    }));
 
   const { data, isLoading } = useQuery({
     queryKey: ["vistoria-token", token],
@@ -110,7 +116,7 @@ function VistoriaPorTokenPage() {
           cidade: veiculo.cidade || undefined,
           uf: veiculo.uf || undefined,
           documento_crlv_url: crlv || undefined,
-          fotos: Object.values(fotos).filter(Boolean) as string[],
+          fotos: [...Object.values(fotos), ...fotosExtras].filter(Boolean) as string[],
           condicao,
         },
       }),
@@ -208,6 +214,10 @@ function VistoriaPorTokenPage() {
             setCrlv={setCrlv}
             fotos={fotos}
             setFotos={setFotos}
+            fotosExtras={fotosExtras}
+            setFotosExtras={setFotosExtras}
+            fotosNotas={condicao.fotosNotas || {}}
+            setFotosNotas={setFotosNotas}
           />
 
           <Button

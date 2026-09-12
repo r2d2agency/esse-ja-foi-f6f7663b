@@ -8,6 +8,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { useEffect, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LaudosVeiculo } from "@/components/veiculo/LaudosVeiculo";
+import { AcessoriosVeiculo } from "@/components/veiculo/AcessoriosVeiculo";
+import { listarAcessorios } from "@/lib/veiculo-condicao";
 import { CanaisPublicacao } from "@/components/publicacao/CanaisPublicacao";
 import { EditorLogoFoto } from "@/components/publicacao/EditorLogoFoto";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -89,6 +91,7 @@ function desserializarObservacoesVeiculo(obsRaw?: string | null): Record<string,
 
     return {
       ...snapshot,
+      fotosNotas: snapshot.fotosNotas ?? {},
       emSeuNome: snapshot.emSeuNome ?? proprietario.emSeuNome ?? "",
       relacaoProprietario: snapshot.relacaoProprietario ?? proprietario.relacao ?? "",
       relacaoDescricao: snapshot.relacaoDescricao ?? proprietario.descricao ?? "",
@@ -749,12 +752,22 @@ function DetalheVeiculoAdminPage() {
                       <div className="flex justify-between gap-4"><span className="text-slate-400 font-medium">Chave reserva</span><span className="font-bold text-right">{observacoes.chaveReserva || "Não informado"}</span></div>
                       <div className="flex justify-between gap-4"><span className="text-slate-400 font-medium">Manual</span><span className="font-bold text-right">{observacoes.manual || "Não informado"}</span></div>
                       <div className="flex justify-between gap-4"><span className="text-slate-400 font-medium">Estepe</span><span className="font-bold text-right">{observacoes.estepe || "Não informado"}</span></div>
-                      <div className="flex justify-between gap-4"><span className="text-slate-400 font-medium">Acessórios</span><span className="font-bold text-right">{observacoes.acessorios || "Não informado"}</span></div>
                     </CardContent>
                   </Card>
                 </div>
 
-                {(observacoes.funcionamentoObs || observacoes.motorObs || observacoes.latariaObs || observacoes.historicoObs || observacoes.acessoriosQuais) && (
+                {listarAcessorios(observacoes).length > 0 && (
+                  <Card className="border-slate-200 shadow-none">
+                    <CardHeader className="pb-3 border-b border-slate-100">
+                      <CardTitle className="text-xs font-black uppercase text-slate-400">Opcionais e acessórios</CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-4 text-sm">
+                      <AcessoriosVeiculo itens={listarAcessorios(observacoes)} titulo="" />
+                    </CardContent>
+                  </Card>
+                )}
+
+                {(observacoes.funcionamentoObs || observacoes.motorObs || observacoes.latariaObs || observacoes.historicoObs) && (
                   <Card className="border-slate-200 shadow-none">
                     <CardHeader className="pb-3 border-b border-slate-100">
                       <CardTitle className="text-xs font-black uppercase text-slate-400">Observações declaradas</CardTitle>
@@ -764,7 +777,6 @@ function DetalheVeiculoAdminPage() {
                       {observacoes.motorObs && <div><p className="text-[10px] font-black uppercase text-slate-400 mb-1">Motor</p><p className="text-slate-700">{observacoes.motorObs}</p></div>}
                       {observacoes.latariaObs && <div><p className="text-[10px] font-black uppercase text-slate-400 mb-1">Lataria</p><p className="text-slate-700">{observacoes.latariaObs}</p></div>}
                       {observacoes.historicoObs && <div><p className="text-[10px] font-black uppercase text-slate-400 mb-1">Histórico</p><p className="text-slate-700">{observacoes.historicoObs}</p></div>}
-                      {observacoes.acessoriosQuais && <div><p className="text-[10px] font-black uppercase text-slate-400 mb-1">Acessórios adicionais</p><p className="text-slate-700">{observacoes.acessoriosQuais}</p></div>}
                     </CardContent>
                   </Card>
                 )}
@@ -805,6 +817,13 @@ function DetalheVeiculoAdminPage() {
                         <span className="absolute left-2 top-2 rounded-full bg-teal-600 px-2 py-0.5 text-[9px] font-black uppercase text-white">
                           Processada
                         </span>
+                      )}
+                      {observacoes.fotosNotas?.[foto] && (
+                        <div className="absolute inset-x-0 bottom-0 bg-slate-950/80 px-2 py-1.5">
+                          <p className="text-[10px] font-semibold leading-snug text-white break-words">
+                            {observacoes.fotosNotas[foto]}
+                          </p>
+                        </div>
                       )}
                     </div>
                   )) : (

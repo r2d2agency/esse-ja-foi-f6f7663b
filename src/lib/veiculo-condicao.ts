@@ -38,6 +38,8 @@ export type CondicaoVeiculo = {
   manual: string;
   estepe: string;
   acessoriosSelecionados: string[];
+  /** Observação opcional por foto (chave = URL da foto). Ex.: "risco na lataria". */
+  fotosNotas: Record<string, string>;
 };
 
 export const CONDICAO_INICIAL: CondicaoVeiculo = {
@@ -60,6 +62,7 @@ export const CONDICAO_INICIAL: CondicaoVeiculo = {
   manual: "",
   estepe: "",
   acessoriosSelecionados: [],
+  fotosNotas: {},
 };
 
 /**
@@ -76,6 +79,26 @@ export function serializarCondicao(condicao: CondicaoVeiculo) {
     acessoriosQuais: condicao.acessoriosSelecionados.join(", "),
   };
   return JSON.stringify({ versao: 2, snapshot });
+}
+
+/**
+ * Lista de acessórios marcados, preferindo o array canônico
+ * `acessoriosSelecionados` e caindo para o texto legado `acessoriosQuais`
+ * (formato "Item A, Item B") quando o veículo foi cadastrado antes do
+ * checklist existir.
+ */
+export function listarAcessorios(condicao?: Record<string, any> | null): string[] {
+  if (!condicao) return [];
+  if (Array.isArray(condicao.acessoriosSelecionados) && condicao.acessoriosSelecionados.length > 0) {
+    return condicao.acessoriosSelecionados;
+  }
+  if (typeof condicao.acessoriosQuais === "string" && condicao.acessoriosQuais.trim()) {
+    return condicao.acessoriosQuais
+      .split(",")
+      .map((item: string) => item.trim())
+      .filter(Boolean);
+  }
+  return [];
 }
 
 /**
@@ -100,6 +123,7 @@ export function desserializarCondicao(obsRaw?: string | null): Record<string, an
 
     return {
       ...snapshot,
+      fotosNotas: snapshot.fotosNotas ?? {},
       acidente: snapshot.acidente ?? historico.acidente ?? "",
       leilao: snapshot.leilao ?? historico.leilao ?? "",
       sinistro: snapshot.sinistro ?? historico.sinistro ?? "",

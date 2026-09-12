@@ -1,7 +1,9 @@
 import type { Dispatch, SetStateAction } from "react";
+import { Plus } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
 import { ComboboxSearch } from "@/components/ui/combobox-search";
 import { FileUpload } from "@/components/onboarding/FileUpload";
 import { FotoSlot } from "@/components/veiculo/FotoSlot";
@@ -28,6 +30,10 @@ export function FormularioVeiculoCondicao({
   setCrlv,
   fotos,
   setFotos,
+  fotosExtras,
+  setFotosExtras,
+  fotosNotas,
+  setFotosNotas,
 }: {
   veiculo: Record<string, string>;
   setVeiculo: Dispatch<SetStateAction<Record<string, string>>>;
@@ -37,6 +43,12 @@ export function FormularioVeiculoCondicao({
   setCrlv: Dispatch<SetStateAction<string | null>>;
   fotos: Record<string, string | null>;
   setFotos: Dispatch<SetStateAction<Record<string, string | null>>>;
+  /** Fotos extras, além dos ângulos guiados — cada item é uma URL já enviada. */
+  fotosExtras: string[];
+  setFotosExtras: Dispatch<SetStateAction<string[]>>;
+  /** Observação opcional por foto (chave = URL da foto). */
+  fotosNotas: Record<string, string>;
+  setFotosNotas: Dispatch<SetStateAction<Record<string, string>>>;
 }) {
   return (
     <>
@@ -187,15 +199,73 @@ export function FormularioVeiculoCondicao({
         <p className="text-sm font-bold text-slate-900">Documentos e fotos do veículo</p>
         <FileUpload label="CRLV-e do veículo" value={crlv} onChange={setCrlv} />
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {FOTOS_VEICULO.map((f) => (
-            <FotoSlot
-              key={f.id}
-              label={f.label}
-              dica={f.dica}
-              value={fotos[f.id] || null}
-              onChange={(url) => setFotos((atual) => ({ ...atual, [f.id]: url }))}
-            />
-          ))}
+          {FOTOS_VEICULO.map((f) => {
+            const url = fotos[f.id] || null;
+            return (
+              <FotoSlot
+                key={f.id}
+                label={f.label}
+                dica={f.dica}
+                value={url}
+                onChange={(novaUrl) => {
+                  setFotos((atual) => ({ ...atual, [f.id]: novaUrl }));
+                  if (!novaUrl && url) {
+                    setFotosNotas((atual) => {
+                      const { [url]: _removida, ...resto } = atual;
+                      return resto;
+                    });
+                  }
+                }}
+                observacao={url ? fotosNotas[url] : undefined}
+                onObservacaoChange={url ? (v) => setFotosNotas((atual) => ({ ...atual, [url]: v })) : undefined}
+              />
+            );
+          })}
+        </div>
+
+        <div className="space-y-3 pt-2">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-bold text-slate-900">Fotos adicionais</p>
+              <p className="text-xs text-slate-500">
+                Opcional. Use para mostrar algo específico, como um risco na lataria ou um detalhe do painel.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0 font-bold"
+              onClick={() => setFotosExtras((atual) => [...atual, ""])}
+            >
+              <Plus className="mr-1.5 h-4 w-4" /> Adicionar foto
+            </Button>
+          </div>
+          {fotosExtras.length > 0 && (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {fotosExtras.map((url, i) => (
+                <FotoSlot
+                  key={i}
+                  label={`Foto adicional ${i + 1}`}
+                  value={url || null}
+                  onChange={(novaUrl) =>
+                    setFotosExtras((atual) => atual.map((u, idx) => (idx === i ? novaUrl || "" : u)))
+                  }
+                  observacao={url ? fotosNotas[url] : undefined}
+                  onObservacaoChange={url ? (v) => setFotosNotas((atual) => ({ ...atual, [url]: v })) : undefined}
+                  onRemoverSlot={() => {
+                    setFotosExtras((atual) => atual.filter((_, idx) => idx !== i));
+                    if (url) {
+                      setFotosNotas((atual) => {
+                        const { [url]: _removida, ...resto } = atual;
+                        return resto;
+                      });
+                    }
+                  }}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </>

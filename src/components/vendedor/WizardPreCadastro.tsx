@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type Dispatch, type SetStateAction } from "react";
 import { toast } from "sonner";
 import { Copy, Loader2, MessageCircle, UserPlus } from "lucide-react";
 
@@ -92,9 +92,15 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
   const [fotos, setFotos] = useState<Record<string, string | null>>(
     Object.fromEntries(FOTOS_VEICULO.map((f) => [f.id, null])),
   );
+  const [fotosExtras, setFotosExtras] = useState<string[]>([]);
   const [condicao, setCondicao] = useState<CondicaoVeiculo>(CONDICAO_INICIAL);
   const setCondicaoCampo = (patch: Partial<CondicaoVeiculo>) =>
     setCondicao((c) => ({ ...c, ...patch }));
+  const setFotosNotas: Dispatch<SetStateAction<Record<string, string>>> = (valor) =>
+    setCondicao((c) => ({
+      ...c,
+      fotosNotas: typeof valor === "function" ? (valor as any)(c.fotosNotas || {}) : valor,
+    }));
 
   function set(campo: string, valor: string) {
     setDados((d) => ({ ...d, [campo]: valor }));
@@ -171,7 +177,7 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
           cidade: veiculo.cidade || undefined,
           uf: veiculo.uf || undefined,
           documento_crlv_url: crlv,
-          fotos: Object.values(fotos).filter(Boolean) as string[],
+          fotos: [...Object.values(fotos), ...fotosExtras].filter(Boolean) as string[],
           observacoes: serializarCondicao(condicao),
           status: "AGUARDANDO_APROVACAO",
         } as any,
@@ -367,6 +373,10 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
               setCrlv={setCrlv}
               fotos={fotos}
               setFotos={setFotos}
+              fotosExtras={fotosExtras}
+              setFotosExtras={setFotosExtras}
+              fotosNotas={condicao.fotosNotas || {}}
+              setFotosNotas={setFotosNotas}
             />
 
             <div className="flex gap-3">

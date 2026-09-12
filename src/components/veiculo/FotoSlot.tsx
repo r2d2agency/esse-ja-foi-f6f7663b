@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Camera, Check, Trash2, RefreshCw } from "lucide-react";
+import { Camera, Check, Trash2, RefreshCw, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { compressImage, extensaoPorMime } from "@/components/vistoria/ImageCompressor";
 import { toast } from "sonner";
@@ -9,9 +9,14 @@ interface FotoSlotProps {
   dica?: string | undefined;
   value?: string | null;
   onChange: (url: string | null) => void;
+  /** Observação opcional sobre a foto (ex.: "risco na lataria"). */
+  observacao?: string;
+  onObservacaoChange?: (valor: string) => void;
+  /** Quando informado, mostra um botão para remover o slot inteiro (usado nas fotos extras). */
+  onRemoverSlot?: () => void;
 }
 
-export function FotoSlot({ label, dica, value, onChange }: FotoSlotProps) {
+export function FotoSlot({ label, dica, value, onChange, observacao, onObservacaoChange, onRemoverSlot }: FotoSlotProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [carregando, setCarregando] = useState(false);
 
@@ -84,27 +89,48 @@ export function FotoSlot({ label, dica, value, onChange }: FotoSlotProps) {
           <p className="text-xs font-bold text-slate-900">{label}</p>
           {dica && <p className="text-[11px] leading-snug text-slate-400">{dica}</p>}
         </div>
-        {value && (
-          <div className="flex shrink-0 gap-1">
+        <div className="flex shrink-0 gap-1">
+          {value && (
+            <>
+              <button
+                type="button"
+                aria-label="Trocar foto"
+                onClick={() => inputRef.current?.click()}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-teal-700"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                aria-label="Excluir foto"
+                onClick={() => onChange(null)}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </>
+          )}
+          {onRemoverSlot && (
             <button
               type="button"
-              aria-label="Trocar foto"
-              onClick={() => inputRef.current?.click()}
-              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-teal-700"
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              aria-label="Excluir foto"
-              onClick={() => onChange(null)}
+              aria-label="Remover esta foto adicional"
+              onClick={onRemoverSlot}
               className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              <X className="h-3.5 w-3.5" />
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
+      {value && onObservacaoChange && (
+        <input
+          type="text"
+          value={observacao || ""}
+          onChange={(e) => onObservacaoChange(e.target.value)}
+          placeholder="Observação (opcional). Ex.: risco na lataria"
+          className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-teal-400"
+        />
+      )}
     </div>
   );
 }

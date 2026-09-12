@@ -13,6 +13,8 @@ import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 import { LogoEsf } from "@/components/shared/LogoEsf";
+import { AcessoriosVeiculo } from "@/components/veiculo/AcessoriosVeiculo";
+import { listarAcessorios } from "@/lib/veiculo-condicao";
 import { formatarTempoRestante } from "@/lib/tempo";
 
 
@@ -503,30 +505,35 @@ const OBS_VISTORIA: { chave: string; label: string }[] = [
   { chave: "motorObs", label: "Motor" },
   { chave: "latariaObs", label: "Lataria" },
   { chave: "historicoObs", label: "Histórico" },
-  { chave: "acessoriosQuais", label: "Acessórios" },
 ];
 
 function VistoriaSimplificada({ condicao }: { condicao?: Record<string, any> | null }) {
   const itens = ITENS_VISTORIA.filter((i) => condicao?.[i.chave]);
   const observacoes = OBS_VISTORIA.filter((o) => condicao?.[o.chave]);
+  const acessorios = listarAcessorios(condicao);
 
-  if (itens.length === 0) return null;
+  if (itens.length === 0 && acessorios.length === 0) return null;
 
   return (
     <div className="bg-slate-50 rounded-3xl p-8 space-y-6">
       <h2 className="text-xl font-black uppercase tracking-tight flex items-center gap-2">
         <ClipboardCheck className="h-5 w-5 text-teal-600" /> Vistoria simplificada
       </h2>
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-y-6 gap-x-8">
-        {itens.map((i) => (
-          <div key={i.chave}>
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
-              {i.label}
+      {itens.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-y-6 gap-x-8">
+          {itens.map((i) => (
+            <div key={i.chave}>
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                {i.label}
+              </div>
+              <div className="font-bold">{condicao?.[i.chave]}</div>
             </div>
-            <div className="font-bold">{condicao?.[i.chave]}</div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
+      {acessorios.length > 0 && (
+        <AcessoriosVeiculo itens={acessorios} className="border-t border-slate-200 pt-6" />
+      )}
       {observacoes.length > 0 && (
         <div className="space-y-4 border-t border-slate-200 pt-6">
           {observacoes.map((o) => (

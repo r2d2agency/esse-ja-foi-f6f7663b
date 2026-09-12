@@ -27,6 +27,7 @@ const condicaoSchema = z.object({
   manual: z.string().default(""),
   estepe: z.string().default(""),
   acessoriosSelecionados: z.array(z.string()).default([]),
+  fotosNotas: z.record(z.string(), z.string()).default({}),
 });
 
 export const gerarLinkVistoriaFn = createServerFn({ method: "POST" })

@@ -5,7 +5,8 @@ import { Loader2, Fuel, Settings2, MapPin, Gauge, Lock, Palette, X, ChevronLeft,
 
 import { LogoEsf } from "@/components/shared/LogoEsf";
 import { getVeiculoPorTokenFn } from "@/lib/publicacao.functions";
-import { desserializarCondicao } from "@/lib/veiculo-condicao";
+import { desserializarCondicao, listarAcessorios } from "@/lib/veiculo-condicao";
+import { AcessoriosVeiculo } from "@/components/veiculo/AcessoriosVeiculo";
 
 export const Route = createFileRoute("/v/$token")({
   head: () => ({
@@ -49,7 +50,6 @@ const OBS_VISTORIA: { chave: string; label: string }[] = [
   { chave: "motorObs", label: "Motor" },
   { chave: "latariaObs", label: "Lataria" },
   { chave: "historicoObs", label: "Histórico" },
-  { chave: "acessoriosQuais", label: "Opcionais / acessórios" },
 ];
 
 function VeiculoPorTokenPage() {
@@ -98,6 +98,7 @@ function VeiculoPorTokenPage() {
   const condicao = desserializarCondicao(veiculo.observacoes);
   const itensCondicao = ITENS_VISTORIA.filter((i) => condicao?.[i.chave]);
   const observacoesCondicao = OBS_VISTORIA.filter((o) => condicao?.[o.chave]);
+  const acessoriosCondicao = listarAcessorios(condicao);
 
   return (
     <div className="min-h-screen bg-slate-50 pb-16">
@@ -179,19 +180,24 @@ function VeiculoPorTokenPage() {
           </div>
         )}
 
-        {itensCondicao.length > 0 && (
+        {(itensCondicao.length > 0 || acessoriosCondicao.length > 0) && (
           <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
             <h2 className="flex items-center gap-2 text-sm font-black uppercase tracking-tight text-slate-900">
               <ClipboardCheck className="h-4 w-4 text-teal-600" /> Condição do veículo
             </h2>
-            <div className="mt-4 grid grid-cols-2 gap-y-4 gap-x-6 sm:grid-cols-3">
-              {itensCondicao.map((i) => (
-                <div key={i.chave}>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{i.label}</p>
-                  <p className="text-sm font-bold text-slate-800">{condicao[i.chave]}</p>
-                </div>
-              ))}
-            </div>
+            {itensCondicao.length > 0 && (
+              <div className="mt-4 grid grid-cols-2 gap-y-4 gap-x-6 sm:grid-cols-3">
+                {itensCondicao.map((i) => (
+                  <div key={i.chave}>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{i.label}</p>
+                    <p className="text-sm font-bold text-slate-800">{condicao[i.chave]}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+            {acessoriosCondicao.length > 0 && (
+              <AcessoriosVeiculo itens={acessoriosCondicao} className="mt-6 border-t border-slate-100 pt-6" />
+            )}
             {observacoesCondicao.length > 0 && (
               <div className="mt-6 space-y-4 border-t border-slate-100 pt-6">
                 {observacoesCondicao.map((o) => (
