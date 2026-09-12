@@ -559,8 +559,8 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
                   <p className="text-xs font-black uppercase tracking-widest text-emerald-700">
                     Prévia de como chega no grupo
                   </p>
-                  <div className="rounded-2xl bg-[#e5ddd5] p-4">
-                    <div className="ml-auto max-w-[280px] rounded-lg bg-[#d9fdd3] p-2 shadow">
+                  <div className="rounded-2xl bg-[#e5ddd5] p-4 overflow-hidden">
+                    <div className="ml-auto max-w-[85%] sm:max-w-[280px] rounded-lg bg-[#d9fdd3] p-2 shadow">
                       {fotoCapaMensagem && (
                         <img
                           src={fotoCapaMensagem}
