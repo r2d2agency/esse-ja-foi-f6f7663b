@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getVeiculoDetalheAdminFn, assumirAnaliseVeiculoFn, atualizarStatusAnaliseFn, atualizarStatusDocumentoVeiculoFn, aprovarParaPublicacaoFn } from "@/lib/admin-veiculo-detalhe.functions";
+import { removerVeiculoFn } from "@/lib/cadastro.functions";
 import { salvarConfiguracaoLeilao } from "@/lib/leilao.functions";
 import { useAuth } from "@/hooks/use-auth";
 import { useEffect, useState } from "react";
@@ -52,7 +53,8 @@ import {
   Gavel,
   MessageSquare,
   Calculator,
-  Wand2
+  Wand2,
+  Trash2
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -120,13 +122,15 @@ function DetalheVeiculoAdminPage() {
   const [rejectReason, setRejectReason] = useState("");
   const [rejectObservation, setRejectObservation] = useState("");
   const [editorFoto, setEditorFoto] = useState<{ url: string; index: number } | null>(null);
+  const [excluindo, setExcluindo] = useState(false);
   const queryClient = useQueryClient();
-  
+
   const getDetalhe = useServerFn(getVeiculoDetalheAdminFn);
   const assumir = useServerFn(assumirAnaliseVeiculoFn);
   const atualizarStatus = useServerFn(atualizarStatusAnaliseFn);
   const atualizarStatusDoc = useServerFn(atualizarStatusDocumentoVeiculoFn);
   const aprovarPublicacao = useServerFn(aprovarParaPublicacaoFn);
+  const removerVeiculo = useServerFn(removerVeiculoFn);
 
   const canReportDebug =
     typeof window !== "undefined" &&
@@ -249,6 +253,29 @@ function DetalheVeiculoAdminPage() {
     }
   };
 
+  const handleExcluirVeiculo = async () => {
+    if (!window.confirm(
+      "Excluir este veículo permanentemente? Essa ação não pode ser desfeita. Se houver vistoria, laudo, leilão ou negociação vinculados, a exclusão será bloqueada.",
+    )) {
+      return;
+    }
+    setExcluindo(true);
+    const toastId = toast.loading("Excluindo veículo...");
+    try {
+      const res = await removerVeiculo({ data: { id } });
+      if (res.ok) {
+        toast.success("Veículo excluído.", { id: toastId });
+        navigate({ to: "/admin/veiculos" });
+      } else {
+        toast.error(res.message || "Não foi possível excluir o veículo.", { id: toastId });
+      }
+    } catch (err) {
+      toast.error("Erro técnico ao excluir o veículo.", { id: toastId });
+    } finally {
+      setExcluindo(false);
+    }
+  };
+
   const handleAprovarDocumento = async () => {
     if (!user?.id) return;
     const toastId = toast.loading("Aprovando CRLV-e...");
@@ -367,6 +394,16 @@ function DetalheVeiculoAdminPage() {
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate({ to: "/admin/veiculos" })}>
             <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-slate-400 hover:bg-red-50 hover:text-red-600"
+            title="Excluir veículo"
+            disabled={excluindo}
+            onClick={handleExcluirVeiculo}
+          >
+            <Trash2 className="h-4 w-4" />
           </Button>
           <div>
             <div className="flex flex-wrap items-center gap-2">

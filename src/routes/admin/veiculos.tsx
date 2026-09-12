@@ -2,15 +2,17 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getVeiculosAdminFn } from "@/lib/admin-veiculos.functions";
+import { removerVeiculoFn } from "@/lib/cadastro.functions";
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Search, ChevronRight, Filter } from "lucide-react";
+import { Search, ChevronRight, Filter, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/veiculos")({
   validateSearch: (search: Record<string, unknown>): { status?: string } => ({
@@ -29,12 +31,29 @@ function AdminVeiculosPage() {
   }, [search.status]);
   
   const getVeiculos = useServerFn(getVeiculosAdminFn);
-  const { data: res, isLoading } = useQuery({
+  const removerVeiculo = useServerFn(removerVeiculoFn);
+  const { data: res, isLoading, refetch } = useQuery({
     queryKey: ["admin-veiculos", { busca, status }],
     queryFn: () => getVeiculos({ data: { busca, status_analise: status === "TODOS" ? undefined : status } })
   });
 
   const veiculos = res?.data || [];
+
+  async function handleExcluir(id: string, rotulo: string) {
+    if (!window.confirm(`Excluir "${rotulo}" permanentemente? Essa ação não pode ser desfeita.`)) return;
+    const toastId = toast.loading("Excluindo veículo...");
+    try {
+      const resp = await removerVeiculo({ data: { id } });
+      if (resp.ok) {
+        toast.success("Veículo excluído.", { id: toastId });
+        refetch();
+      } else {
+        toast.error(resp.message || "Não foi possível excluir o veículo.", { id: toastId });
+      }
+    } catch {
+      toast.error("Erro técnico ao excluir o veículo.", { id: toastId });
+    }
+  }
   const complianceLabel = (status?: string) => {
     if (!status) return "Sem compliance";
     return status.replaceAll("_", " ");
@@ -159,16 +178,27 @@ function AdminVeiculosPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <Button 
-                        asChild
-                        variant="ghost" 
-                        size="sm" 
-                        className="font-black text-[10px] uppercase tracking-wider text-slate-400 hover:text-teal-600 hover:bg-teal-50"
-                      >
-                        <Link to="/admin/veiculo/$id" params={{ id: v.id }}>
-                          Analisar <ChevronRight className="ml-1 h-3 w-3" />
-                        </Link>
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-slate-300 hover:bg-red-50 hover:text-red-600"
+                          title="Excluir veículo"
+                          onClick={() => handleExcluir(v.id, `${v.marca} ${v.modelo} — ${v.placa}`)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          asChild
+                          variant="ghost"
+                          size="sm"
+                          className="font-black text-[10px] uppercase tracking-wider text-slate-400 hover:text-teal-600 hover:bg-teal-50"
+                        >
+                          <Link to="/admin/veiculo/$id" params={{ id: v.id }}>
+                            Analisar <ChevronRight className="ml-1 h-3 w-3" />
+                          </Link>
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))

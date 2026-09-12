@@ -608,7 +608,25 @@ export async function timelineVeiculo(id: string) {
 export async function removerVeiculo(id: string) {
   await ensureCadastroSchema();
   const d = requireDb();
-  await d.execute(sql`DELETE FROM veiculos WHERE id = ${id};`);
+
+  const existe = (await d.execute(
+    sql`SELECT id FROM veiculos WHERE id = ${id} LIMIT 1;`,
+  )) as unknown as Array<{ id: string }>;
+  if (existe.length === 0) throw new RegraNegocioError("Veículo não encontrado.", 404);
+
+  try {
+    await d.execute(sql`DELETE FROM veiculos WHERE id = ${id};`);
+  } catch (error: any) {
+    const codigo = error?.cause?.code ?? error?.code;
+    if (codigo === "23503") {
+      throw new RegraNegocioError(
+        "Este veículo não pode ser excluído porque já tem vistoria, laudo, negociação, leilão ou outro registro vinculado.",
+        409,
+      );
+    }
+    throw error;
+  }
+
   await registrarLog({ entidade: "veiculo", entidadeId: id, acao: "EXCLUIDO" });
   return { ok: true };
 }
