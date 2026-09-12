@@ -180,15 +180,15 @@ export function LaudosVeiculo({ veiculoId }: { veiculoId: string }) {
               const ok = c.situacao === "OK" || c.status === "SUCESSO";
               return (
                 <div key={c.id} className="rounded-2xl border border-slate-200 p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-2">
                       {ok ? (
-                        <ShieldCheck className="h-5 w-5 text-teal-600" />
+                        <ShieldCheck className="h-5 w-5 shrink-0 text-teal-600" />
                       ) : (
-                        <ShieldAlert className="h-5 w-5 text-amber-600" />
+                        <ShieldAlert className="h-5 w-5 shrink-0 text-amber-600" />
                       )}
-                      <div>
-                        <p className="text-sm font-bold text-slate-900">
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-slate-900 break-words">
                           {c.produto || "Consulta veicular"} • {c.status}
                         </p>
                         <p className="text-xs text-slate-500">{dataBr(c.criado_em)}</p>
@@ -231,16 +231,16 @@ export function LaudosVeiculo({ veiculoId }: { veiculoId: string }) {
             {laudos.map((l) => (
               <div
                 key={l.id}
-                className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 p-4"
+                className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 p-4"
               >
-                <div className="flex items-center gap-3">
-                  <FileText className="h-5 w-5 text-teal-700" />
-                  <div>
-                    <p className="text-sm font-bold text-slate-900">
+                <div className="flex min-w-0 items-center gap-3">
+                  <FileText className="h-5 w-5 shrink-0 text-teal-700" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-slate-900 break-words">
                       {TIPOS.find((t) => t.id === l.tipo)?.label || l.tipo}
                       {l.fornecedor ? ` • ${l.fornecedor}` : ""}
                     </p>
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs text-slate-500 break-words">
                       {l.numero_laudo ? `Nº ${l.numero_laudo} • ` : ""}
                       {dataBr(l.data_laudo || l.criado_em)}
                       {l.resultado ? ` • ${l.resultado}` : ""}

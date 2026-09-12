@@ -340,8 +340,8 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
       </div>
 
       <div className="space-y-4 rounded-3xl border border-slate-200 bg-white p-6">
-        <div className="flex items-center justify-between">
-          <div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
             <p className="text-xs font-black uppercase tracking-widest text-slate-400">
               Publicar no canal {canalAtivo.toLowerCase()}
             </p>
@@ -370,7 +370,7 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
 
         {canalAtivo === "LEILAO" && (
           <div className="space-y-4 rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs font-black uppercase tracking-widest text-amber-700">
                 Parâmetros do leilão
               </p>
@@ -430,8 +430,8 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
               </div>
             </div>
 
-            <div className="flex items-center justify-between rounded-xl bg-white p-3">
-              <div>
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-white p-3">
+              <div className="min-w-0">
                 <p className="text-sm font-bold text-slate-800">Prorrogação automática</p>
                 <p className="text-xs text-slate-500">
                   Evita lances de última hora (anti-sniping).

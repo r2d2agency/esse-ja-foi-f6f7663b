@@ -1,8 +1,9 @@
 {
-  "name": "Esse Já Foi — Vistorias",
+  "id": "/",
+  "name": "Esse Já Foi — Compra e venda de veículos",
   "short_name": "Esse Já Foi",
-  "description": "App operacional de vistorias veiculares da plataforma Esse Já Foi.",
-  "start_url": "/vistoriador",
+  "description": "Compre e venda veículos vistoriados com negociação digital, documentação garantida e pagamento seguro.",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",

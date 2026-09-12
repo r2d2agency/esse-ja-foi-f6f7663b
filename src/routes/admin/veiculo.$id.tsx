@@ -415,7 +415,7 @@ function DetalheVeiculoAdminPage() {
                 v.status_analise === 'AGUARDANDO_ANALISE' ? "bg-amber-100 text-amber-700 hover:bg-amber-100" :
                 "bg-blue-100 text-blue-700 hover:bg-blue-100"
               )}>
-                {v.status_analise.replace('_', ' ')}
+                {v.status_analise.replaceAll('_', ' ')}
               </Badge>
             </div>
             <p className="text-xs text-slate-500 font-medium mt-1">
@@ -493,8 +493,8 @@ function DetalheVeiculoAdminPage() {
 
       <div className="flex-1 overflow-hidden">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-          <div className="bg-white border-b border-slate-200 px-3 sm:px-6 overflow-x-auto">
-            <TabsList className="bg-transparent border-none h-12 gap-4 sm:gap-6 p-0">
+          <div className="bg-white border-b border-slate-200 px-3 sm:px-6 py-1 sm:py-0">
+            <TabsList className="flex-wrap justify-start bg-transparent border-none h-auto sm:h-12 gap-x-4 gap-y-2 sm:gap-6 p-0">
               {["Resumo", "Dados", "Documentação", "Condição", "Fotos", "Valores", "Análise", "Publicação", "Laudos", "Histórico"].map((tab) => (
                 <TabsTrigger 
                   key={tab} 
@@ -1071,8 +1071,8 @@ function DetalheVeiculoAdminPage() {
                     </div>
 
                     <div className="pt-6">
-                      <Button 
-                        className="w-full bg-slate-950 hover:bg-slate-900 text-white font-black h-12 uppercase tracking-tight" 
+                      <Button
+                        className="w-full min-h-12 h-auto whitespace-normal py-2 text-center bg-slate-950 hover:bg-slate-900 text-white font-black uppercase tracking-tight"
                         disabled={v.status_analise === 'PRONTO_PARA_VISTORIA' || !podeLiberarVistoria}
                         onClick={() => handleMudarStatus('PRONTO_PARA_VISTORIA')}
                       >
@@ -1283,21 +1283,21 @@ function AuctionConfigCard({ veiculo }: { veiculo: any }) {
           </div>
         </div>
 
-        <div className="flex items-center justify-between p-4 bg-white rounded-xl border border-teal-100">
-          <div className="space-y-0.5">
+        <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-white rounded-xl border border-teal-100">
+          <div className="min-w-0 space-y-0.5">
             <Label className="text-xs font-bold text-slate-700">Prorrogação Automática (Anti-Sniping)</Label>
             <p className="text-[10px] text-slate-500">Adiciona tempo se houver lances no final.</p>
           </div>
-          <Switch 
-            checked={config.prorrogacao_ativa} 
-            onCheckedChange={checked => setConfig({...config, prorrogacao_ativa: checked})} 
+          <Switch
+            checked={config.prorrogacao_ativa}
+            onCheckedChange={checked => setConfig({...config, prorrogacao_ativa: checked})}
           />
         </div>
 
-        <Button 
+        <Button
           onClick={() => mutation.mutate({ ...config, anuncio_id: veiculo.anuncio_id || veiculo.id })}
           disabled={mutation.isPending}
-          className="w-full bg-teal-600 hover:bg-teal-700 text-white font-black uppercase tracking-tight h-12"
+          className="w-full min-h-12 h-auto whitespace-normal py-2 text-center bg-teal-600 hover:bg-teal-700 text-white font-black uppercase tracking-tight"
         >
           {mutation.isPending ? "Configurando..." : "Ativar Leilão Agora"}
         </Button>
