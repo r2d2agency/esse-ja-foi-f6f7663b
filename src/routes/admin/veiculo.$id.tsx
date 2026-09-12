@@ -35,6 +35,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { 
   Car, 
   User, 
@@ -57,7 +64,8 @@ import {
   Calculator,
   Wand2,
   Trash2,
-  PenSquare
+  PenSquare,
+  MoreVertical
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -435,7 +443,20 @@ function DetalheVeiculoAdminPage() {
     return [];
   })();
 
-  const salvarFotoProcessada = async (index: number, dataUrl: string) => {
+  const fotosCamadas: (any[] | null)[] = (() => {
+    if (Array.isArray(v.fotos_camadas)) return v.fotos_camadas;
+    if (typeof v.fotos_camadas === 'string') {
+      try {
+        const parsed = JSON.parse(v.fotos_camadas);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  })();
+
+  const salvarFotoProcessada = async (index: number, dataUrl: string, camadas?: any[]) => {
     const toastId = toast.loading("Salvando foto processada...");
     try {
       const blob = await fetch(dataUrl).then((r) => r.blob());
@@ -450,8 +471,14 @@ function DetalheVeiculoAdminPage() {
       while (novaLista.length < fotos.length) novaLista.push(fotos[novaLista.length]);
       novaLista[index] = json.url;
 
+      const novaListaCamadas = [...fotosCamadas];
+      while (novaListaCamadas.length < fotos.length) novaListaCamadas.push(null);
+      novaListaCamadas[index] = camadas ?? null;
+
       const { salvarFotosProcessadasFn } = await import("@/lib/fotos-anuncio.functions");
-      const resSalvar = await salvarFotosProcessadasFn({ data: { veiculoId: id, fotos: novaLista } });
+      const resSalvar = await salvarFotosProcessadasFn({
+        data: { veiculoId: id, fotos: novaLista, camadas: novaListaCamadas },
+      });
       if (!resSalvar?.ok) throw new Error(resSalvar?.message || "Erro ao salvar a foto processada.");
       toast.success("Foto processada e salva.", { id: toastId });
       refetch();
@@ -497,71 +524,91 @@ function DetalheVeiculoAdminPage() {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <Button
-            variant="outline"
-            className="font-bold border-teal-200 text-teal-700 hover:bg-teal-50"
-            onClick={() => navigate({ to: "/admin/comunicacoes" as any })}
-          >
-            <MessageSquare className="mr-2 h-4 w-4" /> Divulgar no WhatsApp
-          </Button>
+        {(() => {
+          const podeAprovarPublicacao = !["PRONTO_PARA_ANUNCIO", "ANUNCIADO", "EM_LEILAO"].includes(v.status_analise);
 
-          {!v.responsavel_analise_id ? (
-            <Button onClick={handleAssumir} className="bg-teal-600 hover:bg-teal-700 text-white font-bold">
-              <User className="mr-2 h-4 w-4" /> Assumir análise
-            </Button>
-          ) : (
-            <div className="text-right">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Responsável</p>
-              <p className="text-sm font-bold text-slate-700">{v.responsavel_nome}</p>
-            </div>
-          )}
-          
-          <Button variant="outline" className="font-bold border-red-200 text-red-600 hover:bg-red-50" onClick={() => handleMudarStatus('REPROVADO')}>
-            <XCircle className="mr-2 h-4 w-4" /> Reprovar
-          </Button>
-
-          {!["PRONTO_PARA_ANUNCIO", "ANUNCIADO", "EM_LEILAO"].includes(v.status_analise) && (
+          const botaoAprovarPublicacao = podeAprovarPublicacao ? (
             <Button
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+              size="sm"
+              className="h-9 w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
               onClick={handleAprovarPublicacao}
             >
-              <CheckCircle2 className="mr-2 h-4 w-4" />
+              <CheckCircle2 className="mr-2 h-4 w-4 shrink-0" />
               <span className="hidden sm:inline">Aprovar para publicação (sem vistoria)</span>
-              <span className="sm:hidden">Aprovar p/ publicação</span>
+              <span className="sm:hidden truncate">Aprovar p/ publicação</span>
             </Button>
-          )}
+          ) : null;
 
-          {v.status_analise === 'VISTORIADO' ? (
-            <Button 
-              className="bg-purple-600 hover:bg-purple-700 text-white font-bold"
+          const botaoFluxoVistoria = v.status_analise === 'VISTORIADO' ? (
+            <Button
+              size="sm"
+              className="h-9 w-full sm:w-auto bg-purple-600 hover:bg-purple-700 text-white font-bold"
               onClick={() => navigate({ to: `/admin/veiculo/${id}/pos-vistoria` } as any)}
             >
-              <Calculator className="mr-2 h-4 w-4" /> Análise Pós-Vistoria
+              <Calculator className="mr-2 h-4 w-4 shrink-0" /> <span className="truncate">Análise Pós-Vistoria</span>
             </Button>
           ) : v.status_analise === 'PRONTO_PARA_VISTORIA' ? (
-            <Button 
-              className="bg-teal-600 hover:bg-teal-700 text-white font-bold"
+            <Button
+              size="sm"
+              className="h-9 w-full sm:w-auto bg-teal-600 hover:bg-teal-700 text-white font-bold"
               onClick={() => navigate({ to: "/admin/vistorias", search: { tab: "aguardando", veiculoId: id } } as any)}
             >
-              <Calendar className="mr-2 h-4 w-4" /> Agendar vistoria
+              <Calendar className="mr-2 h-4 w-4 shrink-0" /> <span className="truncate">Agendar vistoria</span>
             </Button>
           ) : (
-            <Button 
-              className="bg-slate-950 hover:bg-slate-900 text-white font-bold"
-              disabled={v.status_analise === 'PRONTO_PARA_VISTORIA' || !podeLiberarVistoria}
+            <Button
+              size="sm"
+              className="h-9 w-full sm:w-auto bg-slate-950 hover:bg-slate-900 text-white font-bold"
+              disabled={!podeLiberarVistoria}
               onClick={() => handleMudarStatus('PRONTO_PARA_VISTORIA')}
             >
-              {v.status_analise === 'PRONTO_PARA_VISTORIA' ? (
-                <><CheckCircle2 className="mr-2 h-4 w-4" /> Liberado</>
-              ) : !podeLiberarVistoria ? (
-                <><AlertTriangle className="mr-2 h-4 w-4" /> Faltam requisitos</>
+              {!podeLiberarVistoria ? (
+                <><AlertTriangle className="mr-2 h-4 w-4 shrink-0" /> <span className="truncate">Faltam requisitos</span></>
               ) : (
-                <><CheckCircle2 className="mr-2 h-4 w-4" /> Liberar para vistoria</>
+                <><CheckCircle2 className="mr-2 h-4 w-4 shrink-0" /> <span className="truncate">Liberar para vistoria</span></>
               )}
             </Button>
-          )}
-        </div>
+          );
+
+          return (
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
+              <div className="flex items-center justify-between gap-2 sm:order-1 sm:justify-end">
+                {!v.responsavel_analise_id ? (
+                  <Button size="sm" onClick={handleAssumir} className="h-9 flex-1 sm:flex-none bg-teal-600 hover:bg-teal-700 text-white font-bold">
+                    <User className="mr-2 h-4 w-4 shrink-0" /> <span className="truncate">Assumir análise</span>
+                  </Button>
+                ) : (
+                  <div className="flex-1 sm:flex-none sm:text-right">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider leading-none">Responsável</p>
+                    <p className="text-sm font-bold text-slate-700 leading-tight truncate">{v.responsavel_nome}</p>
+                  </div>
+                )}
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" title="Mais ações">
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => navigate({ to: "/admin/comunicacoes" as any })}>
+                      <MessageSquare className="mr-2 h-4 w-4" /> Divulgar no WhatsApp
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem className="text-red-600 focus:text-red-600" onClick={() => handleMudarStatus('REPROVADO')}>
+                      <XCircle className="mr-2 h-4 w-4" /> Reprovar
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+
+              <div className={cn("grid gap-2 sm:order-2 sm:flex", podeAprovarPublicacao ? "grid-cols-2" : "grid-cols-1")}>
+                {botaoAprovarPublicacao}
+                {botaoFluxoVistoria}
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       <div className="flex-1 overflow-hidden">
