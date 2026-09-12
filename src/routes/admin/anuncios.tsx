@@ -5,7 +5,7 @@ import { listarPublicadosVitrineFn } from "@/lib/publicacao.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Megaphone, Plus, AlertCircle, Loader2 } from "lucide-react";
+import { Megaphone, Plus, AlertCircle, Loader2, ExternalLink } from "lucide-react";
 
 export const Route = createFileRoute("/admin/anuncios")({
   component: AnunciosAdminPage,
@@ -108,23 +108,33 @@ function AnunciosAdminPage() {
               ) : (
                 <div className="space-y-3">
                   {publicados.map((p: any, i: number) => (
-                    <div key={`${p.id}-${p.canal}-${i}`} className="flex items-center justify-between rounded-lg border border-slate-200 p-4">
-                      <div className="flex items-center gap-4">
-                        <div className="h-16 w-20 overflow-hidden rounded bg-slate-100">
+                    <div key={`${p.id}-${p.canal}-${i}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 p-4">
+                      <div className="flex min-w-0 items-center gap-4">
+                        <div className="h-16 w-20 shrink-0 overflow-hidden rounded bg-slate-100">
                           {Array.isArray(p.fotos) && p.fotos[0] ? (
                             <img src={p.fotos[0]} alt={`${p.marca} ${p.modelo}`} className="h-full w-full object-cover" />
                           ) : (
                             <div className="flex h-full w-full items-center justify-center text-xs text-slate-400">Sem foto</div>
                           )}
                         </div>
-                        <div>
-                          <p className="font-bold text-slate-900">{p.titulo || `${p.marca} ${p.modelo}`}</p>
+                        <div className="min-w-0">
+                          <p className="truncate font-bold text-slate-900">{p.titulo || `${p.marca} ${p.modelo}`}</p>
                           <p className="text-sm text-slate-500">{p.placa} • {p.ano_modelo} • canal {p.canal}</p>
                         </div>
                       </div>
-                      <Button variant="outline" onClick={() => { window.location.href = `/admin/veiculo/${p.id}`; }}>
-                        Abrir ficha
-                      </Button>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {p.slug && (
+                          <Button
+                            variant="outline"
+                            onClick={() => window.open(`/veiculos/${p.slug}`, "_blank", "noopener,noreferrer")}
+                          >
+                            <ExternalLink className="mr-2 h-4 w-4" /> Ver na vitrine
+                          </Button>
+                        )}
+                        <Button variant="outline" onClick={() => { window.location.href = `/admin/veiculo/${p.id}`; }}>
+                          Abrir ficha
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>

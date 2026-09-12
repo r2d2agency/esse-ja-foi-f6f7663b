@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
-import { UploadFotos } from "./UploadFotos";
+import { UploadFotos, processarComLogo } from "./UploadFotos";
 import {
   getCanaisPublicacaoFn,
   salvarCanalPublicacaoFn,
@@ -139,6 +139,8 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
     fotosProcessadasVeiculo.length > 0 ? fotosProcessadasVeiculo : normalizarFotos(veiculo?.fotos);
   const fotosVendedorJaProcessadas = fotosProcessadasVeiculo.length > 0;
 
+  const [preenchendoFotosPadrao, setPreenchendoFotosPadrao] = useState(false);
+
   useEffect(() => {
     const c = canais.find((x) => x.canal === canalAtivo);
     setForm({
@@ -147,6 +149,27 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
       descricao: c?.descricao || "",
       fotos: Array.isArray(c?.fotos) ? c.fotos : [],
     });
+
+    // Canal ainda não configurado: começa já com todas as fotos do vendedor
+    // selecionadas — é mais fácil remover uma foto indesejada do que ter que
+    // adicionar uma por uma.
+    if (!c && fotosVendedor.length > 0) {
+      let cancelado = false;
+      setPreenchendoFotosPadrao(true);
+      (async () => {
+        try {
+          const urls = fotosVendedorJaProcessadas
+            ? fotosVendedor
+            : await Promise.all(fotosVendedor.map((url) => processarComLogo(url)));
+          if (!cancelado) setForm((atual: any) => ({ ...atual, fotos: urls }));
+        } finally {
+          if (!cancelado) setPreenchendoFotosPadrao(false);
+        }
+      })();
+      return () => {
+        cancelado = true;
+      };
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canalAtivo, data]);
 
@@ -597,8 +620,13 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
         )}
 
         <div className="space-y-3">
-          <p className="text-xs font-black uppercase tracking-widest text-slate-400">
+          <p className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-slate-400">
             Fotos do canal
+            {preenchendoFotosPadrao && (
+              <span className="flex items-center gap-1 normal-case tracking-normal text-teal-600">
+                <Loader2 className="h-3 w-3 animate-spin" /> preenchendo com as fotos do vendedor...
+              </span>
+            )}
           </p>
           <UploadFotos
             fotos={form.fotos}

@@ -15,7 +15,7 @@ async function enviarArquivo(file: File): Promise<string | null> {
 }
 
 /** Detecta a placa via IA e cobre com a logo da Esse Já Foi; sem placa detectada, aplica a marca d'água padrão. */
-async function processarComLogo(url: string): Promise<string> {
+export async function processarComLogo(url: string): Promise<string> {
   let ajuste = AJUSTE_PADRAO;
   try {
     const res = await detectarPlacaFotoFn({ data: { imagemUrl: url } });

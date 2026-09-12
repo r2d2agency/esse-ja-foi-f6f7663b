@@ -663,6 +663,8 @@ function NotificacoesSection() {
       } else {
         toast.error(res?.message || "Erro ao cadastrar destinatário.");
       }
+    } catch (e: any) {
+      toast.error(e?.message || "Erro ao cadastrar destinatário. Confira o e-mail informado.");
     } finally {
       setAdicionando(false);
     }
@@ -670,25 +672,33 @@ function NotificacoesSection() {
 
   async function atualizarFlag(d: DestinatarioNotificacao, campo: "notificar_carro_analise" | "notificar_novo_lance", valor: boolean) {
     setDestinatarios((prev) => prev.map((item) => (item.id === d.id ? { ...item, [campo]: valor } : item)));
-    const res: any = await salvarDestinatarioNotificacaoFn({
-      data: {
-        id: d.id,
-        nome: d.nome,
-        email: d.email,
-        notificarCarroAnalise: campo === "notificar_carro_analise" ? valor : d.notificar_carro_analise,
-        notificarNovoLance: campo === "notificar_novo_lance" ? valor : d.notificar_novo_lance,
-      },
-    });
-    if (!res?.ok) toast.error(res?.message || "Erro ao salvar alteração.");
+    try {
+      const res: any = await salvarDestinatarioNotificacaoFn({
+        data: {
+          id: d.id,
+          nome: d.nome,
+          email: d.email,
+          notificarCarroAnalise: campo === "notificar_carro_analise" ? valor : d.notificar_carro_analise,
+          notificarNovoLance: campo === "notificar_novo_lance" ? valor : d.notificar_novo_lance,
+        },
+      });
+      if (!res?.ok) toast.error(res?.message || "Erro ao salvar alteração.");
+    } catch (e: any) {
+      toast.error(e?.message || "Erro ao salvar alteração.");
+    }
   }
 
   async function remover(id: string) {
-    const res: any = await removerDestinatarioNotificacaoFn({ data: { id } });
-    if (res?.ok) {
-      toast.success("Destinatário removido.");
-      setDestinatarios((prev) => prev.filter((d) => d.id !== id));
-    } else {
-      toast.error(res?.message || "Erro ao remover destinatário.");
+    try {
+      const res: any = await removerDestinatarioNotificacaoFn({ data: { id } });
+      if (res?.ok) {
+        toast.success("Destinatário removido.");
+        setDestinatarios((prev) => prev.filter((d) => d.id !== id));
+      } else {
+        toast.error(res?.message || "Erro ao remover destinatário.");
+      }
+    } catch (e: any) {
+      toast.error(e?.message || "Erro ao remover destinatário.");
     }
   }
 
