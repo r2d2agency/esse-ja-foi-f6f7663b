@@ -26,7 +26,8 @@ import {
   X,
   Building2,
   MapPin,
-  History
+  History,
+  Terminal
 } from "lucide-react";
 import { ReactNode, useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
@@ -226,8 +227,15 @@ const MENU_SECTIONS: MenuSection[] = [
         label: "Configurações",
         icon: Settings,
         to: "/admin/configuracoes",
-        activePrefixes: ["/admin/configuracoes", "/admin/logs"],
+        activePrefixes: ["/admin/configuracoes"],
         description: "Parâmetros do sistema",
+      },
+      {
+        label: "Logs do Sistema",
+        icon: Terminal,
+        to: "/admin/logs",
+        activePrefixes: ["/admin/logs"],
+        description: "Erros de usuários e auditoria",
       },
       {
         label: "Ambiente Demo",
