@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { UploadFotos, processarComLogo } from "./UploadFotos";
+import { desserializarCondicao } from "@/lib/veiculo-condicao";
 import {
   getCanaisPublicacaoFn,
   salvarCanalPublicacaoFn,
@@ -143,6 +144,18 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
     fotosProcessadasVeiculo.length > 0 ? fotosProcessadasVeiculo : normalizarFotos(veiculo?.fotos);
   const fotosVendedorJaProcessadas = fotosProcessadasVeiculo.length > 0;
 
+  // Nota escrita pelo vendedor/analista no momento do envio da foto (aba Fotos da análise),
+  // relacionada à foto pelo mesmo índice — repassada como ponto de partida da legenda: o
+  // admin não precisa reescrever do zero, e "Gerar com IA" já parte dessa nota.
+  const fotosNotasVeiculo: Record<string, string> = desserializarCondicao(veiculo?.observacoes).fotosNotas || {};
+  const fotosRawVeiculo = normalizarFotos(veiculo?.fotos);
+  const notasPorFotoVendedor: Record<string, string> = {};
+  fotosRawVeiculo.forEach((rawUrl, i) => {
+    const nota = fotosNotasVeiculo[rawUrl];
+    const chave = fotosVendedor[i];
+    if (nota && chave) notasPorFotoVendedor[chave] = nota;
+  });
+
   const [preenchendoFotosPadrao, setPreenchendoFotosPadrao] = useState(false);
 
   useEffect(() => {
@@ -160,21 +173,23 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
       fotos: Array.isArray(c?.fotos) ? c.fotos : [],
     });
 
-    // Canal ainda não configurado: começa já com todas as fotos do vendedor
-    // selecionadas — é mais fácil remover uma foto indesejada do que ter que
-    // adicionar uma por uma. getCanaisPublicacao() sempre devolve um objeto
-    // por canal (mesmo sem nunca ter sido salvo, com fotos: []), então "canal
-    // novo" não é `!c` — é a ausência de `atualizado_em`, que só existe numa
-    // linha real já salva no banco.
-    if (!c?.atualizado_em && fotosVendedor.length > 0) {
+    // Toda foto do vendedor que ainda não está na lista salva deste canal entra
+    // sozinha — é mais fácil remover uma foto indesejada do que ter que
+    // adicionar uma por uma. Isso cobre tanto o canal nunca salvo (lista vazia)
+    // quanto uma foto nova que o vendedor/analista processou depois do canal já
+    // configurado; uma foto removida e salva não volta, porque ela deixa de
+    // aparecer em `fotosSalvas` (não em `fotosVendedor`).
+    const fotosSalvas: string[] = Array.isArray(c?.fotos) ? c.fotos : [];
+    const faltantes = fotosVendedor.filter((url) => !fotosSalvas.includes(url));
+    if (faltantes.length > 0) {
       let cancelado = false;
       setPreenchendoFotosPadrao(true);
       (async () => {
         try {
           const urls = fotosVendedorJaProcessadas
-            ? fotosVendedor
-            : await Promise.all(fotosVendedor.map((url) => processarComLogo(url)));
-          if (!cancelado) setForm((atual: any) => ({ ...atual, fotos: urls }));
+            ? faltantes
+            : await Promise.all(faltantes.map((url) => processarComLogo(url)));
+          if (!cancelado) setForm((atual: any) => ({ ...atual, fotos: [...atual.fotos, ...urls] }));
         } finally {
           if (!cancelado) setPreenchendoFotosPadrao(false);
         }
@@ -705,6 +720,7 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
             veiculoId={veiculoId}
             legendas={legendasFotos}
             onChangeLegendas={setLegendasFotos}
+            notasVendedor={notasPorFotoVendedor}
             veiculoContexto={{ marca: veiculo?.marca, modelo: veiculo?.modelo, anoModelo: veiculo?.ano_modelo }}
           />
         </div>

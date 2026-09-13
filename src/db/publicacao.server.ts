@@ -89,7 +89,7 @@ export async function getCanaisPublicacao(veiculoId: string) {
 
   const vRes = await d.execute(sql`
     SELECT id, placa, marca, modelo, versao, ano_fabricacao, ano_modelo, km, cor,
-           cidade, uf, status_analise, fotos, fotos_processadas, fotos_legendas, valor_fipe
+           cidade, uf, status_analise, fotos, fotos_processadas, fotos_legendas, valor_fipe, observacoes
     FROM veiculos WHERE id = ${veiculoId}::uuid
   `);
   const veiculo = rowsOf(vRes)[0];

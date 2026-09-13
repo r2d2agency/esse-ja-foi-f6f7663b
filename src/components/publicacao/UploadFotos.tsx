@@ -41,6 +41,7 @@ export function UploadFotos({
   veiculoId,
   legendas = {},
   onChangeLegendas,
+  notasVendedor = {},
   veiculoContexto,
 }: {
   fotos: string[];
@@ -54,6 +55,8 @@ export function UploadFotos({
   /** Legendas atuais por URL de foto (compartilhadas entre os canais do mesmo veículo). */
   legendas?: Record<string, string>;
   onChangeLegendas?: (legendas: Record<string, string>) => void;
+  /** Nota original do vendedor/analista por URL de foto — ponto de partida da legenda. */
+  notasVendedor?: Record<string, string>;
   /** Dados do veículo usados pela IA para sugerir a legenda. */
   veiculoContexto?: { marca?: string; modelo?: string; anoModelo?: string | number };
 }) {
@@ -70,7 +73,7 @@ export function UploadFotos({
 
   function abrirEdicaoLegenda(url: string) {
     setEditandoLegendaUrl(url);
-    setRascunhoLegenda(legendas[url] || "");
+    setRascunhoLegenda(legendas[url] || notasVendedor[url] || "");
   }
 
   async function gerarLegendaComIA() {
@@ -203,9 +206,19 @@ export function UploadFotos({
                   onClick={() => abrirEdicaoLegenda(url)}
                   className={cn(
                     "absolute bottom-1 left-1 flex items-center gap-1 rounded-full px-1.5 py-1 text-white transition-colors",
-                    legendas[url] ? "bg-teal-600 hover:bg-teal-700" : "bg-slate-950/70 hover:bg-slate-950/90",
+                    legendas[url]
+                      ? "bg-teal-600 hover:bg-teal-700"
+                      : notasVendedor[url]
+                        ? "bg-amber-500 hover:bg-amber-600"
+                        : "bg-slate-950/70 hover:bg-slate-950/90",
                   )}
-                  title={legendas[url] ? "Editar legenda para o comprador" : "Adicionar legenda para o comprador"}
+                  title={
+                    legendas[url]
+                      ? "Editar legenda para o comprador"
+                      : notasVendedor[url]
+                        ? "Há uma nota do envio — clique para transformar em legenda"
+                        : "Adicionar legenda para o comprador"
+                  }
                 >
                   <MessageSquareText className="h-3 w-3" />
                 </button>
