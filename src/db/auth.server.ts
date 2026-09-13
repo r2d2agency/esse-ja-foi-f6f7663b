@@ -342,11 +342,59 @@ export async function authenticate(email: string, password: string) {
       role: user.role as any,
       pode_ver_valores: !!user.pode_ver_valores,
       tipo_pessoa: user.tipo_pessoa,
+      protegido: !!user.protegido,
     };
   } catch (err) {
     console.error("[auth.server] Erro durante autenticação:", err);
     throw err;
   }
+}
+
+/** Busca o perfil do dono de um token de sessão válido, ou null se o token for inválido/expirado. */
+export async function getUsuarioPorToken(token?: string | null) {
+  const userId = await verifyToken(token);
+  if (!userId || !db) return null;
+  const rows: any = await db.execute(sql`
+    SELECT id, nome, email, role, ativo, protegido FROM profiles WHERE id = ${userId}::uuid LIMIT 1
+  `);
+  const user = Array.isArray(rows) ? rows[0] : rows?.rows?.[0];
+  return user || null;
+}
+
+/**
+ * Só passa se o token pertencer a um perfil "protegido" (superadmin) ativo. Usado antes de
+ * qualquer ação crítica (forçar exclusão com vínculos, promover outro superadmin) — sem essa
+ * checagem no servidor, qualquer usuário autenticado poderia chamar essas server functions
+ * diretamente e contornar a restrição só-de-tela.
+ */
+export async function requireSuperAdmin(token?: string | null) {
+  const user = await getUsuarioPorToken(token);
+  if (!user || !user.ativo || user.role !== "admin" || !user.protegido) {
+    throw new Error("Apenas um superadmin pode realizar esta ação.");
+  }
+  return user as { id: string; nome: string; email: string; role: string; ativo: boolean; protegido: boolean };
+}
+
+/** Torna um perfil existente um superadmin protegido — só quem já é superadmin pode chamar isso. */
+export async function promoverSuperadmin(perfilId: string) {
+  if (!db) throw new Error("Banco de dados indisponível.");
+  const res: any = await db.execute(sql`
+    UPDATE profiles SET role = 'admin'::app_role, protegido = true, ativo = true
+    WHERE id = ${perfilId}::uuid
+    RETURNING id, nome, email
+  `);
+  const linha = (Array.isArray(res) ? res : res?.rows)?.[0];
+  if (!linha) throw new Error("Perfil não encontrado.");
+  return linha;
+}
+
+/** E-mails dos superadmins ativos — destino do código de confirmação de ações críticas. */
+export async function listarSuperadmins() {
+  if (!db) throw new Error("Banco de dados indisponível.");
+  const res: any = await db.execute(sql`
+    SELECT id, nome, email FROM profiles WHERE protegido = true AND ativo = true
+  `);
+  return (Array.isArray(res) ? res : res?.rows) || [];
 }
 
 export async function issueToken(userId: string) {

@@ -6,6 +6,7 @@ import { removerVeiculoFn, salvarVeiculoFn } from "@/lib/cadastro.functions";
 import { buscarPrecoFipeVeiculoFn } from "@/lib/fipe.functions";
 import { salvarConfiguracaoLeilao } from "@/lib/leilao.functions";
 import { useAuth } from "@/hooks/use-auth";
+import { useConfirmacaoAcaoCritica } from "@/components/admin/ConfirmacaoAcaoCritica";
 import { useEffect, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LaudosVeiculo } from "@/components/veiculo/LaudosVeiculo";
@@ -127,6 +128,7 @@ function DetalheVeiculoAdminPage() {
   const { id } = Route.useParams();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const confirmacaoCritica = useConfirmacaoAcaoCritica();
   const [activeTab, setActiveTab] = useState("resumo");
   const [showApproveDialog, setShowApproveDialog] = useState(false);
   const [showRejectDialog, setShowRejectDialog] = useState(false);
@@ -286,7 +288,22 @@ function DetalheVeiculoAdminPage() {
         toast.success("Veículo excluído.", { id: toastId });
         navigate({ to: "/admin/veiculos" });
       } else {
-        toast.error(res.message || "Não foi possível excluir o veículo.", { id: toastId });
+        toast.error(res.message || "Não foi possível excluir o veículo.", {
+          id: toastId,
+          duration: user?.protegido ? 15000 : undefined,
+          action: user?.protegido
+            ? {
+                label: "Forçar exclusão (superadmin)",
+                onClick: () =>
+                  confirmacaoCritica.iniciar({
+                    acao: "EXCLUIR_VEICULO_FORCADO",
+                    alvoId: id,
+                    alvoDescricao: `Veículo ${v.marca} ${v.modelo} — ${v.placa}`,
+                    onSucesso: () => navigate({ to: "/admin/veiculos" }),
+                  }),
+              }
+            : undefined,
+        });
       }
     } catch (err) {
       toast.error("Erro técnico ao excluir o veículo.", { id: toastId });
@@ -489,6 +506,7 @@ function DetalheVeiculoAdminPage() {
 
   return (
     <div className="flex flex-col h-full bg-slate-50">
+      {confirmacaoCritica.dialog}
       {/* Header */}
       <div className="bg-white border-b border-slate-200 p-4 md:p-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sticky top-0 z-10">
         <div className="flex flex-wrap items-center gap-3 sm:gap-4">

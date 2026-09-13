@@ -9,8 +9,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn, formatDate } from "@/lib/utils";
 import { gerenciarUsuarioFn, listarUsuariosInternosFn } from "@/lib/admin.functions";
-import { CheckCircle, Eye, Mail, ShieldCheck, UserCog, UserPlus, Wrench, XCircle } from "lucide-react";
+import { CheckCircle, Eye, Mail, ShieldCheck, ShieldAlert, UserCog, UserPlus, Wrench, XCircle } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/hooks/use-auth";
+import { useConfirmacaoAcaoCritica } from "@/components/admin/ConfirmacaoAcaoCritica";
 
 type InternalRole = "admin" | "operacao" | "vistoriador";
 
@@ -65,6 +67,8 @@ export const Route = createFileRoute("/admin/usuarios")({
 function UsuariosAdminPage() {
   const search = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
+  const { user: usuarioLogado } = useAuth();
+  const confirmacaoCritica = useConfirmacaoAcaoCritica();
   const [usuarios, setUsuarios] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [detalhes, setDetalhes] = useState<any | null>(null);
@@ -202,6 +206,7 @@ function UsuariosAdminPage() {
 
   return (
     <div className="space-y-6 p-6 text-slate-900">
+      {confirmacaoCritica.dialog}
       <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:flex-row lg:items-start lg:justify-between">
         <div className="space-y-3">
           <div>
@@ -491,10 +496,15 @@ function UsuariosAdminPage() {
                 </div>
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Status</p>
-                  <div className="mt-1">
+                  <div className="mt-1 flex flex-wrap gap-1.5">
                     <Badge className={detalhes.ativo ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"}>
                       {detalhes.ativo ? "Ativo" : "Inativo"}
                     </Badge>
+                    {detalhes.protegido && (
+                      <Badge className="gap-1 bg-red-100 text-red-800">
+                        <ShieldAlert className="h-3 w-3" /> Superadmin
+                      </Badge>
+                    )}
                   </div>
                 </div>
                 <div>
@@ -524,6 +534,27 @@ function UsuariosAdminPage() {
                   <Mail className="mr-2 h-4 w-4" />
                   Enviar recuperação de senha
                 </Button>
+                {usuarioLogado?.protegido && detalhes.role === "admin" && !detalhes.protegido && (
+                  <Button
+                    variant="outline"
+                    className="w-full border-red-200 text-red-700 hover:bg-red-50"
+                    onClick={() => {
+                      const alvo = detalhes;
+                      confirmacaoCritica.iniciar({
+                        acao: "PROMOVER_SUPERADMIN",
+                        alvoId: alvo.id,
+                        alvoDescricao: `Promover ${alvo.nome} (${alvo.email}) a superadmin`,
+                        onSucesso: () => {
+                          setDetalhes(null);
+                          void carregar();
+                        },
+                      });
+                    }}
+                  >
+                    <ShieldAlert className="mr-2 h-4 w-4" />
+                    Promover a superadmin
+                  </Button>
+                )}
               </div>
             </div>
           )}

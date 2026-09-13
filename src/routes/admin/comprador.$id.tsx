@@ -4,6 +4,8 @@ import { useServerFn } from "@tanstack/react-start";
 import { obterDetalheCompradorFn, aprovarCompradorFn, solicitarPendenciaCompradorFn } from "@/lib/admin-compradores.functions";
 import { reenviarSenhaTemporariaFn } from "@/lib/pre-cadastro.functions";
 import { gerenciarUsuarioFn, excluirPerfilFn } from "@/lib/admin.functions";
+import { useAuth } from "@/hooks/use-auth";
+import { useConfirmacaoAcaoCritica } from "@/components/admin/ConfirmacaoAcaoCritica";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -28,7 +30,9 @@ export const Route = createFileRoute("/admin/comprador/$id")({
 
 function DetalheCompradorPage() {
   const { id } = Route.useParams();
+  const { user } = useAuth();
   const navigate = useNavigate();
+  const confirmacaoCritica = useConfirmacaoAcaoCritica();
   const [selectedDoc, setSelectedDoc] = useState<{ url: string; tipo: string } | null>(null);
   const [showPendenciaDialog, setShowPendenciaDialog] = useState(false);
   const [campoPendencia, setCampoPendencia] = useState("documentacao");
@@ -137,7 +141,21 @@ function DetalheCompradorPage() {
       toast.success("Cadastro excluído.");
       navigate({ to: "/admin/compradores" });
     } catch (e: any) {
-      toast.error(e.message || "Erro ao excluir.");
+      toast.error(e.message || "Erro ao excluir.", {
+        duration: user?.protegido ? 15000 : undefined,
+        action: user?.protegido
+          ? {
+              label: "Forçar exclusão (superadmin)",
+              onClick: () =>
+                confirmacaoCritica.iniciar({
+                  acao: "EXCLUIR_PERFIL_FORCADO",
+                  alvoId: id,
+                  alvoDescricao: `Comprador ${comprador.nome}`,
+                  onSucesso: () => navigate({ to: "/admin/compradores" }),
+                }),
+            }
+          : undefined,
+      });
     } finally {
       toast.dismiss(loading);
     }
@@ -145,6 +163,7 @@ function DetalheCompradorPage() {
 
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-5xl mx-auto">
+      {confirmacaoCritica.dialog}
 
       <div className="flex items-center gap-4 flex-wrap">
         <Button variant="ghost" onClick={() => history.back()}><ArrowLeft className="mr-2 h-4 w-4" /> Voltar</Button>

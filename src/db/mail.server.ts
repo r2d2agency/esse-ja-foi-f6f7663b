@@ -176,6 +176,57 @@ export async function gerarEnviarOTP(email: string, type: 'LOGIN' | 'RECOVERY' |
   return { ok: true };
 }
 
+/**
+ * Gera UM código e manda pra todos os superadmins ativos (não pra quem solicitou) — qualquer
+ * um deles pode ler o e-mail e passar o código pra quem está confirmando a ação. O código fica
+ * associado ao e-mail de quem SOLICITOU (não de quem recebeu), porque é ele quem vai digitá-lo
+ * de volta em confirmarAcaoSuperadminFn.
+ */
+export async function enviarCodigoAcaoCriticaSuperadmins(descricaoAcao: string, solicitanteEmail: string) {
+  const d = requireDb();
+  await ensureMailSchema(true);
+
+  const { listarSuperadmins } = await import("./auth.server");
+  const superadmins = await listarSuperadmins();
+  if (!superadmins || superadmins.length === 0) {
+    throw new Error("Nenhum superadmin ativo encontrado para receber o código de confirmação.");
+  }
+
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+  await d.execute(sql`
+    INSERT INTO otp_codes (email, code, type, expires_at)
+    VALUES (${solicitanteEmail}, ${code}, 'ACAO_CRITICA', ${expiresAt.toISOString()}::timestamptz)
+  `);
+
+  const { transporter, from } = await getTransporter();
+  for (const s of superadmins as { email: string }[]) {
+    await transporter.sendMail({
+      from,
+      to: s.email,
+      subject: "Código de confirmação — ação crítica no sistema",
+      html: `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+          <h2 style="color: #0f172a;">Esse Já Foi</h2>
+          <p>Uma ação crítica foi solicitada no painel administrativo:</p>
+          <p style="font-weight: bold; color: #0f172a;">${descricaoAcao}</p>
+          <p>Código de confirmação:</p>
+          <div style="background: #fef2f2; padding: 20px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #dc2626; border-radius: 8px;">
+            ${code}
+          </div>
+          <p style="color: #64748b; font-size: 14px; margin-top: 20px;">
+            Este código expira em 10 minutos e deve ser informado por quem solicitou a ação.
+            Se você não reconhece esta solicitação, ignore este e-mail e revise os acessos do sistema.
+          </p>
+        </div>
+      `,
+    });
+  }
+
+  return superadmins.length;
+}
+
 export async function validarOTP(email: string, code: string, type: string) {
   const d = requireDb();
   const res = await d.execute(sql`

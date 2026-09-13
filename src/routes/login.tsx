@@ -54,7 +54,7 @@ function LoginPage() {
 
       const { user, accessToken } = result;
       login({
-        user: { id: user.id, nome: user.nome, email: user.email, role: user.role as any },
+        user: { id: user.id, nome: user.nome, email: user.email, role: user.role as any, protegido: (user as any).protegido },
         accessToken,
         refreshToken: accessToken,
       });

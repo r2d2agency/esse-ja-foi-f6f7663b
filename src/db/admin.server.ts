@@ -215,6 +215,7 @@ export async function listarUsuariosInternos(role?: string | null) {
       whatsapp,
       role,
       ativo,
+      protegido,
       criado_em,
       atualizado_em,
       cidade,

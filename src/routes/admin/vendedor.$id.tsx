@@ -11,6 +11,7 @@ import {
 } from "@/lib/vendedores-compliance.functions";
 import { reenviarSenhaTemporariaFn } from "@/lib/pre-cadastro.functions";
 import { gerenciarUsuarioFn, excluirPerfilFn } from "@/lib/admin.functions";
+import { useConfirmacaoAcaoCritica } from "@/components/admin/ConfirmacaoAcaoCritica";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -84,6 +85,7 @@ function DetalheVendedorPage() {
   const { id } = Route.useParams();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const confirmacaoCritica = useConfirmacaoAcaoCritica();
   const [activeTab, setActiveTab] = useState("resumo");
   const [selectedDoc, setSelectedDoc] = useState<{ url: string; tipo: string } | null>(null);
   const [docReprovacao, setDocReprovacao] = useState<{ tipo: string; label: string } | null>(null);
@@ -258,7 +260,21 @@ function DetalheVendedorPage() {
       toast.success("Cadastro excluído.");
       navigate({ to: "/admin/vendedores" });
     } catch (e: any) {
-      toast.error(e.message || "Erro ao excluir.");
+      toast.error(e.message || "Erro ao excluir.", {
+        duration: user?.protegido ? 15000 : undefined,
+        action: user?.protegido
+          ? {
+              label: "Forçar exclusão (superadmin)",
+              onClick: () =>
+                confirmacaoCritica.iniciar({
+                  acao: "EXCLUIR_PERFIL_FORCADO",
+                  alvoId: id,
+                  alvoDescricao: `Vendedor ${perfil.nome}`,
+                  onSucesso: () => navigate({ to: "/admin/vendedores", search: { status: undefined } }),
+                }),
+            }
+          : undefined,
+      });
     } finally {
       toast.dismiss(loading);
     }
@@ -266,6 +282,7 @@ function DetalheVendedorPage() {
 
   return (
     <div className="flex flex-col gap-6 p-4 md:p-6">
+      {confirmacaoCritica.dialog}
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">

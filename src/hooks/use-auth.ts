@@ -12,6 +12,8 @@ interface User {
   cpf?: string;
   pode_ver_valores?: boolean;
   tipo_pessoa?: "PF" | "PJ";
+  /** Superadmin: pode forçar exclusões com vínculos e promover outros superadmins. */
+  protegido?: boolean;
 }
 
 interface AuthState {
