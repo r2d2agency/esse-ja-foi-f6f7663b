@@ -154,51 +154,79 @@ function ChangelogAdminPage() {
         toast.error(res?.message || "Não foi possível exportar.");
         return;
       }
-      const { jsPDF } = await import("jspdf");
-      const doc = new jsPDF({ unit: "pt", format: "a4" });
-      const margem = 40;
-      let y = margem;
-      const largura = doc.internal.pageSize.getWidth() - margem * 2;
+      const itens = res.data as any[];
+      const { criarPdfComMarca } = await import("@/lib/pdf-branding");
+      const { doc, margem, largura: larguraPagina, cabecalho, finalizarComRodape } = await criarPdfComMarca(
+        `Changelog — ${new Date().toLocaleDateString("pt-BR")}`,
+      );
+      const largura = larguraPagina - margem * 2;
+      const alturaUtil = doc.internal.pageSize.getHeight() - 70;
 
-      doc.setFontSize(16);
+      let y = cabecalho();
+      doc.setFontSize(18);
       doc.setFont("helvetica", "bold");
-      doc.text("Changelog — Esse Já Foi", margem, y);
+      doc.setTextColor(15, 23, 42);
+      doc.text("Changelog", margem, y);
       y += 18;
       doc.setFontSize(9);
       doc.setFont("helvetica", "normal");
-      doc.text(`Gerado em ${new Date().toLocaleString("pt-BR")} • ${res.data.length} item(ns)`, margem, y);
-      y += 20;
+      doc.setTextColor(100, 116, 139);
+      doc.text(`Gerado em ${new Date().toLocaleString("pt-BR")} • ${itens.length} item(ns)`, margem, y);
+      y += 22;
 
-      for (const item of res.data as any[]) {
-        if (y > doc.internal.pageSize.getHeight() - 80) {
-          doc.addPage();
-          y = margem;
-        }
+      const CORES_TIPO: Record<string, [number, number, number]> = {
+        NOVIDADE: [13, 148, 136],
+        MELHORIA: [37, 99, 235],
+        CORRECAO: [217, 119, 6],
+        OUTRO: [100, 116, 139],
+      };
+
+      for (const item of itens) {
         doc.setFontSize(11);
         doc.setFont("helvetica", "bold");
-        const tituloLinhas = doc.splitTextToSize(item.titulo, largura);
-        doc.text(tituloLinhas, margem, y);
-        y += tituloLinhas.length * 13;
-
-        doc.setFontSize(9);
-        doc.setFont("helvetica", "normal");
+        const tituloLinhas = doc.splitTextToSize(item.titulo, largura - 12);
         const tipoLabel = TIPO_CONFIG[item.tipo]?.label || item.tipo;
         const statusLabel = STATUS_CONFIG[item.status]?.label || item.status;
-        doc.text(
-          `${formatDate(item.criado_em)} • ${tipoLabel} • ${statusLabel}${item.commit_hash ? ` • ${item.commit_hash}` : ""}`,
-          margem,
-          y,
-        );
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "normal");
+        const descLinhas = item.descricao ? doc.splitTextToSize(item.descricao, largura - 12) : [];
+        const blocoAltura = 8 + tituloLinhas.length * 13 + 12 + descLinhas.length * 11 + 12;
+
+        if (y + blocoAltura > alturaUtil) {
+          doc.addPage();
+          y = cabecalho();
+        }
+
+        const corTipo = CORES_TIPO[item.tipo] || CORES_TIPO.OUTRO;
+        doc.setFillColor(...corTipo);
+        doc.rect(margem, y - 10, 3, blocoAltura - 4, "F");
+
+        doc.setFontSize(11);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(15, 23, 42);
+        doc.text(tituloLinhas, margem + 12, y);
+        y += tituloLinhas.length * 13;
+
+        doc.setFontSize(8.5);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(...corTipo);
+        doc.text(`${tipoLabel.toUpperCase()} • ${statusLabel.toUpperCase()}`, margem + 12, y);
+        doc.setTextColor(148, 163, 184);
+        const dataTexto = `${formatDate(item.criado_em)}${item.commit_hash ? ` • ${item.commit_hash}` : ""}`;
+        const larguraTags = doc.getTextWidth(`${tipoLabel.toUpperCase()} • ${statusLabel.toUpperCase()}`);
+        doc.text(dataTexto, margem + 12 + larguraTags + 12, y);
         y += 12;
 
-        if (item.descricao) {
-          const descLinhas = doc.splitTextToSize(item.descricao, largura);
-          doc.text(descLinhas, margem, y);
-          y += descLinhas.length * 12;
+        if (descLinhas.length > 0) {
+          doc.setFontSize(9);
+          doc.setTextColor(71, 85, 105);
+          doc.text(descLinhas, margem + 12, y);
+          y += descLinhas.length * 11;
         }
-        y += 10;
+        y += 12;
       }
 
+      finalizarComRodape();
       doc.save(`changelog-esse-ja-foi-${new Date().toISOString().slice(0, 10)}.pdf`);
     } finally {
       setExportando(false);

@@ -461,6 +461,7 @@ function LandingPage() {
             </button>
           </div>
           <p className="text-sm text-center">© 2026 Esse Já Foi - Todos os direitos reservados.</p>
+          <p className="mt-2 text-xs text-center text-slate-500">Desenvolvido por TNS R2D2</p>
         </div>
       </footer>
     </div>
