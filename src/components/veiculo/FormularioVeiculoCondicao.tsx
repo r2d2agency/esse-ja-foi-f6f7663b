@@ -1,5 +1,6 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
-import { Plus } from "lucide-react";
+import { Plus, Search, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -14,6 +15,8 @@ import { maskKm, maskMoeda, maskPlaca } from "@/lib/brasil";
 import { COMBUSTIVEIS, CAMBIOS, ACESSORIOS_VEICULO } from "@/lib/constants-veiculos";
 import { FOTOS_VEICULO, type CondicaoVeiculo } from "@/lib/veiculo-condicao";
 import { obterConfiguracoesPublicasFn } from "@/lib/config-publica.functions";
+import { consultarAgregadosPorPlacaFn } from "@/lib/consulta-veicular.functions";
+import { cn } from "@/lib/utils";
 
 const CAMPO = "h-11";
 
@@ -57,6 +60,42 @@ export function FormularioVeiculoCondicao({
   setBlindado: Dispatch<SetStateAction<boolean>>;
 }) {
   const [opcionais, setOpcionais] = useState<string[]>(ACESSORIOS_VEICULO);
+  const [buscandoPlaca, setBuscandoPlaca] = useState(false);
+
+  async function buscarDadosPorPlaca() {
+    const placaLimpa = (veiculo.placa || "").toUpperCase().replace(/\W/g, "");
+    if (placaLimpa.length !== 7) {
+      toast.error("Informe a placa completa (7 caracteres).");
+      return;
+    }
+    setBuscandoPlaca(true);
+    try {
+      const res: any = await consultarAgregadosPorPlacaFn({ data: { placa: placaLimpa } });
+      if (res?.ok && res.dados) {
+        setVeiculo((v) => ({
+          ...v,
+          marca: res.dados.marca || v.marca,
+          modelo: res.dados.modelo || v.modelo,
+          cor: res.dados.cor || v.cor,
+          anoFabricacao: res.dados.anoFabricacao || v.anoFabricacao,
+          anoModelo: res.dados.anoModelo || v.anoModelo,
+          combustivel: res.dados.combustivel || v.combustivel,
+          cambio: res.dados.cambio || v.cambio,
+        }));
+        toast.success("Dados do veículo localizados e preenchidos automaticamente!");
+      } else {
+        toast.info(
+          res?.message
+            ? `Não encontramos os dados automaticamente (${res.message}) — preencha manualmente.`
+            : "Não encontramos os dados automaticamente — preencha manualmente.",
+        );
+      }
+    } catch (e: any) {
+      toast.info("Não encontramos os dados automaticamente — preencha manualmente.");
+    } finally {
+      setBuscandoPlaca(false);
+    }
+  }
 
   useEffect(() => {
     let cancelado = false;
@@ -78,7 +117,28 @@ export function FormularioVeiculoCondicao({
   return (
     <>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
-        <Campo label="Placa" valor={veiculo.placa} onChange={(v) => setVeiculo({ ...veiculo, placa: maskPlaca(v) })} placeholder="ABC1D23" />
+        <div className="space-y-1">
+          <Label className="text-xs font-bold text-slate-600">Placa</Label>
+          <div className="flex gap-2">
+            <Input
+              className={CAMPO}
+              value={veiculo.placa}
+              placeholder="ABC1D23"
+              onChange={(e) => setVeiculo({ ...veiculo, placa: maskPlaca(e.target.value) })}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className={cn(CAMPO, "w-11 shrink-0")}
+              disabled={buscandoPlaca}
+              onClick={buscarDadosPorPlaca}
+              title="Buscar dados do veículo pela placa"
+            >
+              {buscandoPlaca ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+            </Button>
+          </div>
+        </div>
         <Campo label="Marca" valor={veiculo.marca} onChange={(v) => setVeiculo({ ...veiculo, marca: v })} />
         <Campo label="Modelo" valor={veiculo.modelo} onChange={(v) => setVeiculo({ ...veiculo, modelo: v })} />
         <Campo label="Versão" valor={veiculo.versao} onChange={(v) => setVeiculo({ ...veiculo, versao: v })} />
