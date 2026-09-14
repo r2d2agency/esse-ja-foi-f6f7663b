@@ -321,18 +321,9 @@ type ResultadoConsulta = {
   diagnostico: { modo: string; httpStatus: number; mensagem: string }[];
 };
 
-/** Executa a chamada ao endpoint do produto Conferi Auto Pericia Gold (POST, JSON). */
-async function executarConsulta(
-  prov: any,
-  parametros: ConferiParametros,
-  opcoes: { codigoConsulta?: string; url?: string } = {},
-): Promise<ResultadoConsulta> {
-  const url =
-    opcoes.url ||
-    `${String(prov.base_url).replace(/\/+$/, "")}${prov.caminho_consulta || PROVEDOR_PADRAO.caminho_consulta}`;
-  const body = montarCorpo(prov, { ...parametros, produto: PROVEDOR_PADRAO.produto }, opcoes.codigoConsulta);
+/** Chamada HTTP crua (POST, JSON) + parse da resposta — compartilhada por qualquer produto Conferi. */
+async function chamarConferi(url: string, body: string): Promise<ResultadoConsulta> {
   const diagnostico: { modo: string; httpStatus: number; mensagem: string }[] = [];
-
   try {
     const resp = await fetch(url, {
       method: "POST",
@@ -359,6 +350,19 @@ async function executarConsulta(
     diagnostico.push({ modo: "POST JSON", httpStatus: 0, mensagem: erro });
     return { ok: false, httpStatus: 0, payload: null, erro, diagnostico };
   }
+}
+
+/** Executa a chamada ao endpoint do produto Conferi Auto Pericia Gold (POST, JSON). */
+async function executarConsulta(
+  prov: any,
+  parametros: ConferiParametros,
+  opcoes: { codigoConsulta?: string; url?: string } = {},
+): Promise<ResultadoConsulta> {
+  const url =
+    opcoes.url ||
+    `${String(prov.base_url).replace(/\/+$/, "")}${prov.caminho_consulta || PROVEDOR_PADRAO.caminho_consulta}`;
+  const body = montarCorpo(prov, { ...parametros, produto: PROVEDOR_PADRAO.produto }, opcoes.codigoConsulta);
+  return chamarConferi(url, body);
 }
 
 /** Junta valores não vazios de restrições em um único texto legível. */
@@ -585,4 +589,74 @@ export async function consultarPlacaAvulsa(placa: string) {
     resposta: r.payload,
     diagnostico: r.diagnostico,
   };
+}
+
+/**
+ * Caminho fixo do produto Conferi Agregados — diferente do produto Pericia Gold (cuja rota é
+ * configurável em `caminho_consulta`), este é só dados básicos do veículo (marca/modelo/ano/cor),
+ * então não precisa de tela própria de configuração. Mesma conta (usuario/senha) dos dois produtos.
+ */
+const AGREGADOS_CAMINHO_CONSULTA = "/conferi-agregados/json";
+
+/**
+ * Ao contrário da Pericia Gold, o corpo da requisição de Agregados NÃO leva o campo "produto" —
+ * é só { usuario, senha, parametros: { placa|chassi|motor|cambio } }, por isso não reaproveita
+ * `executarConsulta` (que sempre injeta o produto da Pericia Gold).
+ */
+async function executarConsultaAgregados(prov: any, parametros: ConferiParametros): Promise<ResultadoConsulta> {
+  const url = `${String(prov.base_url).replace(/\/+$/, "")}${AGREGADOS_CAMINHO_CONSULTA}`;
+  const body = montarCorpo(prov, parametros);
+  return chamarConferi(url, body);
+}
+
+/** Campos básicos do veículo (produto Conferi Agregados) prontos para pré-preencher um formulário. */
+export function mapearAgregadosParaFormulario(payload: any) {
+  const raiz = raizDoPayload(payload).agregados ?? raizDoPayload(payload);
+  return {
+    marca: primeiro(raiz, ["marca"]) || "",
+    modelo: primeiro(raiz, ["modelo"]) || "",
+    cor: primeiro(raiz, ["cor"]) || "",
+    anoFabricacao: primeiro(raiz, ["anoFabricacao"]) || "",
+    anoModelo: primeiro(raiz, ["anoModelo"]) || "",
+    combustivel: primeiro(raiz, ["combustivel"]) || "",
+    cambio: primeiro(raiz, ["caixaCambio"]) || "",
+    chassi: primeiro(raiz, ["chassi"]) || "",
+    renavam: primeiro(raiz, ["renavam"]) || "",
+    municipio: primeiro(raiz, ["municipio"]) || "",
+    uf: primeiro(raiz, ["Uf", "uf"]) || "",
+  };
+}
+
+/**
+ * Busca dados básicos do veículo pela placa (produto Conferi Agregados) para pré-preencher o
+ * cadastro assim que o vendedor digita a placa — evita erro de digitação em marca/modelo/ano/cor.
+ * Não grava nada; quem chama decide o que fazer com o retorno.
+ */
+export async function consultarAgregadosPorPlaca(placa: string) {
+  const prov = await getProvedorComChave();
+  const placaLimpa = placa.toUpperCase().replace(/\W/g, "");
+  if (placaLimpa.length !== 7) throw new Error("Informe uma placa válida (7 caracteres).");
+
+  const r = await executarConsultaAgregados(prov, { placa: placaLimpa });
+  if (!r.ok) {
+    return {
+      ok: false as const,
+      httpStatus: r.httpStatus,
+      message: r.erro || "Falha de comunicação com o provedor.",
+      dados: null,
+      diagnostico: r.diagnostico,
+    };
+  }
+  const dados = mapearAgregadosParaFormulario(r.payload);
+  const encontrado = Object.values(dados).some((v) => v);
+  if (!encontrado) {
+    return {
+      ok: false as const,
+      httpStatus: r.httpStatus,
+      message: "Nenhum registro encontrado para esta placa.",
+      dados: null,
+      diagnostico: r.diagnostico,
+    };
+  }
+  return { ok: true as const, httpStatus: r.httpStatus, message: "Dados localizados.", dados, diagnostico: r.diagnostico };
 }

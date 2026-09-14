@@ -23,6 +23,7 @@ import { OpcaoBotoes } from '@/components/veiculo/OpcaoBotoes';
 import { OpcaoMultipla } from '@/components/veiculo/OpcaoMultipla';
 import { useAuth } from '@/hooks/use-auth';
 import { cadastrarMeuVeiculoFn, listarMeusVeiculosFn } from '@/lib/vendedor.functions';
+import { consultarAgregadosPorPlacaFn } from '@/lib/consulta-veicular.functions';
 import { getOnboardingStatusFn } from '@/lib/onboarding.functions';
 import { getTermoVigenteFn, aceitarTermoFn } from '@/lib/termos.functions';
 import { obterConfiguracoesPublicasFn } from '@/lib/config-publica.functions';
@@ -181,6 +182,7 @@ function CadastrarVeiculo() {
   const getOnboardingStatus = useServerFn(getOnboardingStatusFn);
   const getTermo = useServerFn(getTermoVigenteFn);
   const aceitarTermo = useServerFn(aceitarTermoFn);
+  const consultarAgregados = useServerFn(consultarAgregadosPorPlacaFn);
 
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<Estado>(INICIAL);
@@ -392,10 +394,36 @@ function CadastrarVeiculo() {
     setBuscando(true);
     setVeiculoEncontrado(null);
 
-    setBuscando(false);
-    setBuscaFeita(true);
-    toast.success("Dados do veículo localizados!");
-    void avancar();
+    try {
+      const placaLimpa = form.placa.replace(/[^A-Z0-9]/g, '');
+      const res: any = await consultarAgregados({ data: { placa: placaLimpa } });
+      if (res?.ok && res.dados) {
+        set({
+          marca: res.dados.marca || form.marca,
+          modelo: res.dados.modelo || form.modelo,
+          cor: res.dados.cor || form.cor,
+          anoFabricacao: res.dados.anoFabricacao || form.anoFabricacao,
+          anoModelo: res.dados.anoModelo || form.anoModelo,
+          combustivel: res.dados.combustivel || form.combustivel,
+          cambio: res.dados.cambio || form.cambio,
+        });
+        setVeiculoEncontrado({
+          marca: res.dados.marca || '',
+          modelo: res.dados.modelo || '',
+          versao: '',
+          ano: res.dados.anoModelo || res.dados.anoFabricacao || '',
+        });
+        toast.success('Dados do veículo localizados e preenchidos automaticamente!');
+      } else {
+        toast.info('Não encontramos os dados automaticamente — confira e preencha na próxima etapa.');
+      }
+    } catch {
+      toast.info('Não encontramos os dados automaticamente — confira e preencha na próxima etapa.');
+    } finally {
+      setBuscando(false);
+      setBuscaFeita(true);
+      void avancar();
+    }
   };
 
 

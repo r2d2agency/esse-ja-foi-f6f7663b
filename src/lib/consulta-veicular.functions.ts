@@ -61,6 +61,18 @@ export const testarConsultaPlacaFn = createServerFn({ method: "POST" })
     }
   });
 
+/** Usada no cadastro do vendedor: preenche marca/modelo/ano/cor assim que ele digita a placa. */
+export const consultarAgregadosPorPlacaFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) => z.object({ placa: z.string().trim().min(7, "Informe a placa.") }).parse(d))
+  .handler(async ({ data }) => {
+    try {
+      const m = await import("@/db/consulta-veicular.server");
+      return await m.consultarAgregadosPorPlaca(data.placa);
+    } catch (e: any) {
+      return { ok: false as const, message: e?.message || "Erro ao consultar a placa." };
+    }
+  });
+
 export const consultarLaudoVeiculoFn = createServerFn({ method: "POST" })
   .validator((d: unknown) =>
     z.object({ token: z.string().nullable().optional(), veiculoId: z.string().uuid() }).parse(d),
