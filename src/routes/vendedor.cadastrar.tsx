@@ -415,9 +415,15 @@ function CadastrarVeiculo() {
         });
         toast.success('Dados do veículo localizados e preenchidos automaticamente!');
       } else {
-        toast.info('Não encontramos os dados automaticamente — confira e preencha na próxima etapa.');
+        console.warn('[vendedor.cadastrar] Consulta de agregados não retornou dados:', res?.message);
+        toast.info(
+          res?.message
+            ? `Não encontramos os dados automaticamente (${res.message}) — confira e preencha na próxima etapa.`
+            : 'Não encontramos os dados automaticamente — confira e preencha na próxima etapa.',
+        );
       }
-    } catch {
+    } catch (e: any) {
+      console.warn('[vendedor.cadastrar] Erro ao consultar agregados:', e);
       toast.info('Não encontramos os dados automaticamente — confira e preencha na próxima etapa.');
     } finally {
       setBuscando(false);

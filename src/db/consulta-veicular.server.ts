@@ -604,26 +604,45 @@ const AGREGADOS_CAMINHO_CONSULTA = "/conferi-agregados/json";
  * `executarConsulta` (que sempre injeta o produto da Pericia Gold).
  */
 async function executarConsultaAgregados(prov: any, parametros: ConferiParametros): Promise<ResultadoConsulta> {
-  const url = `${String(prov.base_url).replace(/\/+$/, "")}${AGREGADOS_CAMINHO_CONSULTA}`;
+  // base_url é um campo livre editado pelo admin (tela de configurações) e pode já conter o
+  // caminho de outro produto (ex.: alguém colou a URL completa da Pericia Gold ali) — remove
+  // qualquer sufixo de produto conhecido antes de montar a URL do Agregados, pra não gerar uma
+  // URL quebrada tipo ".../conferi-veiculo/json/conferi-agregados/json".
+  const raiz = String(prov.base_url)
+    .replace(/\/+$/, "")
+    .replace(/\/conferi-veiculo.*$/i, "")
+    .replace(/\/conferi-agregados.*$/i, "");
+  const url = `${raiz}${AGREGADOS_CAMINHO_CONSULTA}`;
   const body = montarCorpo(prov, parametros);
   return chamarConferi(url, body);
+}
+
+/**
+ * A resposta em produção vem em JSON (valores já são string), mas se algum dia vier em XML o
+ * conversor xmlParaObjeto embrulha texto de folha como { "#text": "valor" } — sem isso, um campo
+ * viraria um objeto em vez de string e quebraria o preenchimento do formulário.
+ */
+function textoDe(v: any): string {
+  if (v === null || v === undefined) return "";
+  if (typeof v === "object") return String((v as any)["#text"] ?? "");
+  return String(v);
 }
 
 /** Campos básicos do veículo (produto Conferi Agregados) prontos para pré-preencher um formulário. */
 export function mapearAgregadosParaFormulario(payload: any) {
   const raiz = raizDoPayload(payload).agregados ?? raizDoPayload(payload);
   return {
-    marca: primeiro(raiz, ["marca"]) || "",
-    modelo: primeiro(raiz, ["modelo"]) || "",
-    cor: primeiro(raiz, ["cor"]) || "",
-    anoFabricacao: primeiro(raiz, ["anoFabricacao"]) || "",
-    anoModelo: primeiro(raiz, ["anoModelo"]) || "",
-    combustivel: primeiro(raiz, ["combustivel"]) || "",
-    cambio: primeiro(raiz, ["caixaCambio"]) || "",
-    chassi: primeiro(raiz, ["chassi"]) || "",
-    renavam: primeiro(raiz, ["renavam"]) || "",
-    municipio: primeiro(raiz, ["municipio"]) || "",
-    uf: primeiro(raiz, ["Uf", "uf"]) || "",
+    marca: textoDe(primeiro(raiz, ["marca"])),
+    modelo: textoDe(primeiro(raiz, ["modelo"])),
+    cor: textoDe(primeiro(raiz, ["cor"])),
+    anoFabricacao: textoDe(primeiro(raiz, ["anoFabricacao"])),
+    anoModelo: textoDe(primeiro(raiz, ["anoModelo"])),
+    combustivel: textoDe(primeiro(raiz, ["combustivel"])),
+    cambio: textoDe(primeiro(raiz, ["caixaCambio"])),
+    chassi: textoDe(primeiro(raiz, ["chassi"])),
+    renavam: textoDe(primeiro(raiz, ["renavam"])),
+    municipio: textoDe(primeiro(raiz, ["municipio"])),
+    uf: textoDe(primeiro(raiz, ["Uf", "uf"])),
   };
 }
 
