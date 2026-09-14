@@ -67,6 +67,13 @@ export async function ensurePublicacaoSchema() {
 export async function listarVeiculosAptosPublicacao() {
   const d = requireDb();
   await ensurePublicacaoSchema();
+  // `= ANY(${array})` gera "ANY(($1, $2, $3))" nesse driver — uma lista entre parênteses, não
+  // um array de verdade — e o Postgres rejeita com "op ANY/ALL (array) requires array on right
+  // side". IN com sql.join é o padrão correto já usado no resto do projeto.
+  const statusAptos = sql.join(
+    STATUS_APTOS.map((s) => sql`${s}`),
+    sql`, `,
+  );
   const res = await d.execute(sql`
     SELECT
       v.id, v.placa, v.marca, v.modelo, v.versao, v.ano_fabricacao, v.ano_modelo,
@@ -76,7 +83,7 @@ export async function listarVeiculosAptosPublicacao() {
          FROM publicacao_canais pc WHERE pc.veiculo_id = v.id), '[]'
       ) as canais
     FROM veiculos v
-    WHERE v.status_analise = ANY(${STATUS_APTOS})
+    WHERE v.status_analise IN (${statusAptos})
     ORDER BY v.atualizado_em DESC NULLS LAST
     LIMIT 200
   `);

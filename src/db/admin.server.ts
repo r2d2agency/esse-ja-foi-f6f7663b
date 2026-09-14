@@ -359,8 +359,15 @@ export async function obterConfiguracoesPublicas(): Promise<ConfiguracoesPublica
 
   const d = requireDb();
   await ensureAdminTables();
+  // `= ANY(${array})` gera "ANY(($1, $2, ...))" nesse driver — uma lista entre parênteses, não
+  // um array de verdade — e o Postgres rejeita com "op ANY/ALL (array) requires array on right
+  // side". IN com sql.join é o padrão já usado (e comprovadamente correto) no resto do projeto.
+  const chaves = sql.join(
+    CHAVES_CONFIG_PUBLICAS.map((k) => sql`${k}`),
+    sql`, `,
+  );
   const rows = await d.execute(sql`
-    SELECT chave, valor FROM configuracoes_sistema WHERE chave = ANY(${CHAVES_CONFIG_PUBLICAS as unknown as string[]});
+    SELECT chave, valor FROM configuracoes_sistema WHERE chave IN (${chaves});
   `);
   const base = Object.fromEntries(CHAVES_CONFIG_PUBLICAS.map((k) => [k, ""])) as ConfiguracoesPublicas;
   for (const row of rowsOf(rows) || rows) {
