@@ -34,6 +34,7 @@ import {
   salvarProvedorConsultaFn,
   testarConexaoConsultaFn,
   testarConsultaPlacaFn,
+  consultarAgregadosPorPlacaFn,
 } from "@/lib/consulta-veicular.functions";
 import { getTermoVigenteFn, salvarTermoFn } from "@/lib/termos.functions";
 import {
@@ -1122,6 +1123,9 @@ function ConsultaVeicularSection() {
   const [placaTeste, setPlacaTeste] = useState("");
   const [testandoPlaca, setTestandoPlaca] = useState(false);
   const [resultadoTeste, setResultadoTeste] = useState<any>(null);
+  const [placaAgregados, setPlacaAgregados] = useState("");
+  const [testandoAgregados, setTestandoAgregados] = useState(false);
+  const [resultadoAgregados, setResultadoAgregados] = useState<any>(null);
 
 
   useEffect(() => {
@@ -1187,6 +1191,25 @@ function ConsultaVeicularSection() {
       else toast.error(res?.message || "Falha na consulta de teste.");
     } finally {
       setTestandoPlaca(false);
+    }
+  }
+
+  /** Mesma chamada usada no cadastro do vendedor (buscarPlaca) — testa aqui exatamente o que ele veria. */
+  async function testarAgregados() {
+    const placa = placaAgregados.toUpperCase().replace(/\W/g, "");
+    if (placa.length !== 7) {
+      toast.error("Informe uma placa válida (7 caracteres).");
+      return;
+    }
+    setTestandoAgregados(true);
+    setResultadoAgregados(null);
+    try {
+      const res: any = await consultarAgregadosPorPlacaFn({ data: { placa } });
+      setResultadoAgregados(res);
+      if (res?.ok) toast.success("Consulta de agregados concluída.");
+      else toast.error(res?.message || "Falha na consulta de agregados.");
+    } finally {
+      setTestandoAgregados(false);
     }
   }
 
@@ -1330,6 +1353,84 @@ function ConsultaVeicularSection() {
               <summary className="cursor-pointer font-bold">Ver retorno completo (JSON)</summary>
               <pre className="mt-2 max-h-72 overflow-auto">
                 {JSON.stringify(resultadoTeste.resposta ?? resultadoTeste, null, 2)}
+              </pre>
+            </details>
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-3 rounded-xl border border-dashed border-blue-300 bg-blue-50/40 p-4">
+        <p className="text-sm font-bold text-slate-800">
+          Testar Conferi Agregados (pré-preenchimento do cadastro do vendedor)
+        </p>
+        <p className="text-xs text-slate-500">
+          Simula exatamente a mesma consulta que roda quando o vendedor digita a placa no
+          cadastro (marca, modelo, cor, ano, combustível, câmbio) — mesma chamada, mesmo
+          mapeamento de campos. Nada é gravado. Salve o módulo antes de testar.
+        </p>
+        <div className="flex gap-2">
+          <Input
+            className="max-w-[180px] uppercase"
+            placeholder="ABC1D23"
+            value={placaAgregados}
+            onChange={(e) => setPlacaAgregados(e.target.value.toUpperCase())}
+            maxLength={8}
+          />
+          <Button
+            variant="outline"
+            className="border-blue-600 text-blue-700"
+            disabled={testandoAgregados || ocupado}
+            onClick={testarAgregados}
+          >
+            {testandoAgregados ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <ScanSearch className="mr-2 h-4 w-4" />
+            )}
+            Consultar agregados
+          </Button>
+        </div>
+
+        {resultadoAgregados && (
+          <div className="space-y-2">
+            <p
+              className={`text-xs font-bold ${
+                resultadoAgregados.ok ? "text-teal-700" : "text-red-600"
+              }`}
+            >
+              {resultadoAgregados.ok ? "Consulta concluída" : "Falha na consulta"}
+              {resultadoAgregados.httpStatus ? ` — HTTP ${resultadoAgregados.httpStatus}` : ""}
+              {resultadoAgregados.message ? `: ${resultadoAgregados.message}` : ""}
+            </p>
+
+            {resultadoAgregados.dados && (
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-lg bg-white p-3 text-xs sm:grid-cols-3">
+                {Object.entries(resultadoAgregados.dados)
+                  .filter(([, v]) => v)
+                  .map(([chave, valor]) => (
+                    <div key={chave}>
+                      <p className="font-bold uppercase text-slate-400">{chave}</p>
+                      <p className="text-slate-800">{String(valor)}</p>
+                    </div>
+                  ))}
+              </div>
+            )}
+
+            {Array.isArray(resultadoAgregados.diagnostico) && resultadoAgregados.diagnostico.length > 0 && (
+              <div className="space-y-1 rounded-lg bg-white p-3 text-xs text-slate-700">
+                <p className="font-bold text-slate-500">Detalhe da chamada</p>
+                {resultadoAgregados.diagnostico.map((d: any, i: number) => (
+                  <div key={i}>
+                    {d.modo} — HTTP {d.httpStatus || "sem resposta"}: {d.mensagem}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <details className="rounded-lg bg-slate-900 p-3 text-xs text-slate-100">
+              <summary className="cursor-pointer font-bold">Ver retorno completo (JSON)</summary>
+              <pre className="mt-2 max-h-72 overflow-auto">
+                {JSON.stringify(resultadoAgregados, null, 2)}
               </pre>
             </details>
           </div>
