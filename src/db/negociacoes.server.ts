@@ -169,8 +169,9 @@ async function proximoCodigo(tx: any) {
 export async function fecharLeilao(leilaoId: string) {
   const d = requireDb();
   const prazoHoras = await getPrazoPagamentoHoras();
+  let notificacaoVencedor: { compradorId: string; titulo: string; maiorLance: number; codigo: string } | null = null;
 
-  return await d.transaction(async (tx) => {
+  const resultado = await d.transaction(async (tx) => {
     // Já fechado? resultado é imutável
     const jaRes = await tx.execute(sql`SELECT * FROM leiloes_resultado WHERE leilao_id = ${leilaoId}::uuid`);
     if (rowsOf(jaRes)?.[0]) return { ok: true, jaFechado: true, resultado: rowsOf(jaRes)[0] };
@@ -275,38 +276,49 @@ export async function fecharLeilao(leilaoId: string) {
     await registrarEvento(tx, negociacao.id, "Aguardando pagamento.");
 
     await notificar(tx, negociacao.id, "COMPRADOR", vencedor.comprador_id, `Você venceu o leilão do ${ctx.titulo}.`, "Seu pagamento está pendente.");
+    await notificar(tx, negociacao.id, "VENDEDOR", ctx.vendedor_id, "Seu veículo recebeu a oferta vencedora.", "Estamos aguardando a confirmação do pagamento.");
+    await notificar(tx, negociacao.id, "ADMIN", null, "Leilão encerrado com vencedor", `Negociação ${negociacao.codigo} criada. Comprador aguardando pagamento.`);
+
+    // A notificação por push/e-mail ao vencedor roda DEPOIS que a transação commitar (fora do
+    // `tx`) — ver o bloco logo abaixo do `await d.transaction(...)`. Enviar e-mail (rede, sem
+    // timeout garantido) dentro da transação já deixou uma conexão presa em "idle in
+    // transaction" segurando lock por 24min e travando o resto do sistema atrás dela.
+    notificacaoVencedor = { compradorId: vencedor.comprador_id, titulo: ctx.titulo, maiorLance, codigo: negociacao.codigo };
+
+    return { ok: true, resultado: "ENCERRADO_COM_VENCEDOR", negociacao_id: negociacao.id, codigo: negociacao.codigo, maiorLance };
+  });
+
+  if (notificacaoVencedor) {
+    const info: { compradorId: string; titulo: string; maiorLance: number; codigo: string } = notificacaoVencedor;
     try {
       const { criarNotificacaoComprador } = await import("./comprador.server");
       await criarNotificacaoComprador(
-        vencedor.comprador_id,
+        info.compradorId,
         "LEILAO_VENCIDO",
-        `Parabéns! Você venceu o leilão do ${ctx.titulo}`,
-        `Lance vencedor de R$ ${maiorLance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}. Negociação ${negociacao.codigo} criada — conclua o pagamento.`,
+        `Parabéns! Você venceu o leilão do ${info.titulo}`,
+        `Lance vencedor de R$ ${info.maiorLance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}. Negociação ${info.codigo} criada — conclua o pagamento.`,
         "/comprador/negociacoes",
       );
-      const vRes = await tx.execute(sql`SELECT email, nome FROM profiles WHERE id = ${vencedor.comprador_id}::uuid`);
-      const ganhador = (Array.isArray(vRes) ? vRes : (vRes as any)?.rows || [])[0];
+      const vRes = await d.execute(sql`SELECT email, nome FROM profiles WHERE id = ${info.compradorId}::uuid`);
+      const ganhador = rowsOf(vRes)?.[0];
       if (ganhador?.email) {
         const { enviarEmailSimples } = await import("./mail.server");
         await enviarEmailSimples(
           ganhador.email,
-          `Parabéns! Você venceu o leilão do ${ctx.titulo}`,
+          `Parabéns! Você venceu o leilão do ${info.titulo}`,
           `<div style="font-family:Inter,Arial,sans-serif;color:#0f172a">
              <h2 style="margin:0 0 8px">🎉 Esse já foi seu!</h2>
-             <p>Olá ${ganhador.nome || "comprador"}, seu lance de <strong>R$ ${maiorLance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong> venceu o leilão do ${ctx.titulo}.</p>
-             <p>Negociação <strong>${negociacao.codigo}</strong> criada. Conclua o pagamento para seguir com a entrega.</p>
+             <p>Olá ${ganhador.nome || "comprador"}, seu lance de <strong>R$ ${info.maiorLance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong> venceu o leilão do ${info.titulo}.</p>
+             <p>Negociação <strong>${info.codigo}</strong> criada. Conclua o pagamento para seguir com a entrega.</p>
            </div>`,
         );
       }
     } catch (e) {
       console.error("[negociacoes] falha ao notificar vencedor", e);
     }
+  }
 
-    await notificar(tx, negociacao.id, "VENDEDOR", ctx.vendedor_id, "Seu veículo recebeu a oferta vencedora.", "Estamos aguardando a confirmação do pagamento.");
-    await notificar(tx, negociacao.id, "ADMIN", null, "Leilão encerrado com vencedor", `Negociação ${negociacao.codigo} criada. Comprador aguardando pagamento.`);
-
-    return { ok: true, resultado: "ENCERRADO_COM_VENCEDOR", negociacao_id: negociacao.id, codigo: negociacao.codigo, maiorLance };
-  });
+  return resultado;
 }
 
 /** Fecha automaticamente todos os leilões vencidos e expira prazos de pagamento. */

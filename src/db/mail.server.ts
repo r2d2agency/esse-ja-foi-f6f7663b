@@ -88,6 +88,11 @@ async function getTransporter() {
       // muitos servidores compartilhados usam certificado do provedor
       rejectUnauthorized: configs.smtp_reject_unauthorized === "true",
     },
+    // Sem isso, um SMTP fora do ar ou uma rede lenta prende a requisição (e, se chamado de
+    // dentro de uma transação de banco, o lock junto) por tempo indefinido — já aconteceu.
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 15_000,
   });
 
   // O remetente PRECISA ser um endereço aceito pelo servidor (erro 550 caso contrário)
