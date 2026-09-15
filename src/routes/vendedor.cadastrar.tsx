@@ -229,6 +229,15 @@ function CadastrarVeiculo() {
       return ACESSORIOS_VEICULO;
     }
   })();
+  const exemplosFotos: Record<string, string> = (() => {
+    try {
+      const bruto = (configPublicaData as any)?.data?.exemplos_fotos_veiculo;
+      const mapa = bruto ? JSON.parse(bruto) : null;
+      return mapa && typeof mapa === 'object' ? mapa : {};
+    } catch {
+      return {};
+    }
+  })();
   const onboardingEtapas = ((onboardingData as any)?.etapas || {}) as Record<string, string>;
   const cadastroLiberado = Object.keys(onboardingEtapas).length > 0
     ? Object.values(onboardingEtapas).every((status) => status === 'CONCLUIDO')
@@ -829,6 +838,7 @@ function CadastrarVeiculo() {
                   label={f.label}
                   dica={f.dica}
                   value={form.fotos[f.id] || null}
+                  exemploUrl={exemplosFotos[f.id]}
                   onChange={(url) => setForm((prev) => ({ ...prev, fotos: { ...prev.fotos, [f.id]: url } }))}
                 />
               ))}

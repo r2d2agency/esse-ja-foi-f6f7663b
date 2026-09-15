@@ -26,6 +26,7 @@ import {
   Tag,
   Code2,
   ImagePlus,
+  Camera,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
@@ -37,6 +38,7 @@ import {
   consultarAgregadosPorPlacaFn,
 } from "@/lib/consulta-veicular.functions";
 import { getTermoVigenteFn, salvarTermoFn } from "@/lib/termos.functions";
+import { FOTOS_VEICULO } from "@/lib/veiculo-condicao";
 import {
   listarConfiguracoesFn,
   salvarConfiguracaoFn,
@@ -290,6 +292,8 @@ function ConfiguracoesAdminPage() {
         <NotificacoesSection />
 
         <OpcionaisVeiculoSection getConfig={getConfig} setConfig={setConfig} salvar={salvar} />
+
+        <ExemplosFotosSection getConfig={getConfig} setConfig={setConfig} salvar={salvar} />
 
         <section className="space-y-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
@@ -882,6 +886,114 @@ function OpcionaisVeiculoSection({
         <Button onClick={adicionarItem} disabled={salvando || !novoItem.trim()}>
           <Plus className="mr-2 h-4 w-4" /> Adicionar
         </Button>
+      </div>
+    </section>
+  );
+}
+
+function ExemplosFotosSection({
+  getConfig,
+  setConfig,
+  salvar,
+}: {
+  getConfig: (chave: string) => string;
+  setConfig: (chave: string, valor: string) => void;
+  salvar: (chave: string, valor: string) => Promise<void>;
+}) {
+  const [enviandoId, setEnviandoId] = useState<string | null>(null);
+
+  let exemplos: Record<string, string> = {};
+  try {
+    const bruto = getConfig("exemplos_fotos_veiculo");
+    if (bruto) exemplos = JSON.parse(bruto);
+  } catch {
+    exemplos = {};
+  }
+
+  async function persistir(novoMapa: Record<string, string>) {
+    const json = JSON.stringify(novoMapa);
+    setConfig("exemplos_fotos_veiculo", json);
+    await salvar("exemplos_fotos_veiculo", json);
+  }
+
+  async function enviarExemplo(fotoId: string, file: File) {
+    setEnviandoId(fotoId);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/public/upload", { method: "POST", body: fd });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.url) throw new Error(json?.error || "Falha no upload da imagem.");
+      await persistir({ ...exemplos, [fotoId]: json.url });
+      toast.success("Foto-modelo salva.");
+    } catch (e: any) {
+      toast.error(e?.message || "Erro ao enviar a foto-modelo.");
+    } finally {
+      setEnviandoId(null);
+    }
+  }
+
+  async function removerExemplo(fotoId: string) {
+    const { [fotoId]: _removido, ...resto } = exemplos;
+    await persistir(resto);
+  }
+
+  return (
+    <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+        <Camera className="h-5 w-5 text-teal-700" />
+        Fotos-modelo do veículo
+      </div>
+      <p className="text-sm text-slate-500">
+        Envie um exemplo de cada ângulo. Ele aparece como fundo (esmaecido, com "Modelo") na
+        caixinha correspondente, em qualquer tela de cadastro de veículo, para quem só lê o nome
+        do ângulo não errar a foto.
+      </p>
+
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-5">
+        {FOTOS_VEICULO.map((foto) => {
+          const url = exemplos[foto.id];
+          return (
+            <div key={foto.id} className="space-y-1.5">
+              <label className="relative flex aspect-[4/3] w-full cursor-pointer flex-col items-center justify-center gap-1.5 overflow-hidden rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 hover:border-teal-300">
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  disabled={enviandoId === foto.id}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) void enviarExemplo(foto.id, file);
+                    e.target.value = "";
+                  }}
+                />
+                {enviandoId === foto.id ? (
+                  <Loader2 className="h-5 w-5 animate-spin text-teal-600" />
+                ) : url ? (
+                  <img src={url} alt={foto.label} className="h-full w-full object-cover" />
+                ) : (
+                  <>
+                    <ImagePlus className="h-5 w-5 text-slate-300" />
+                    <span className="px-1 text-center text-[10px] font-semibold text-slate-400">Enviar modelo</span>
+                  </>
+                )}
+              </label>
+              <div className="flex items-center justify-between gap-1">
+                <p className="text-[11px] font-bold text-slate-700">{foto.label}</p>
+                {url && (
+                  <button
+                    type="button"
+                    onClick={() => void removerExemplo(foto.id)}
+                    className="text-slate-400 hover:text-red-600"
+                    aria-label={`Remover modelo de ${foto.label}`}
+                  >
+                    <XCircle className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </section>
   );

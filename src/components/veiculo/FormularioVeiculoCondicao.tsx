@@ -61,6 +61,7 @@ export function FormularioVeiculoCondicao({
 }) {
   const [opcionais, setOpcionais] = useState<string[]>(ACESSORIOS_VEICULO);
   const [buscandoPlaca, setBuscandoPlaca] = useState(false);
+  const [exemplosFotos, setExemplosFotos] = useState<Record<string, string>>({});
 
   async function buscarDadosPorPlaca() {
     const placaLimpa = (veiculo.placa || "").toUpperCase().replace(/\W/g, "");
@@ -105,8 +106,12 @@ export function FormularioVeiculoCondicao({
         const bruto = res?.data?.opcionais_veiculo;
         const lista = bruto ? JSON.parse(bruto) : null;
         if (!cancelado && Array.isArray(lista) && lista.length > 0) setOpcionais(lista);
+
+        const brutoExemplos = res?.data?.exemplos_fotos_veiculo;
+        const mapa = brutoExemplos ? JSON.parse(brutoExemplos) : null;
+        if (!cancelado && mapa && typeof mapa === "object") setExemplosFotos(mapa);
       } catch {
-        // mantém a lista padrão do código
+        // mantém a lista padrão do código / sem fotos-modelo
       }
     })();
     return () => {
@@ -298,6 +303,7 @@ export function FormularioVeiculoCondicao({
                 label={f.label}
                 dica={f.dica}
                 value={url}
+                exemploUrl={exemplosFotos[f.id]}
                 onChange={(novaUrl) => {
                   setFotos((atual) => ({ ...atual, [f.id]: novaUrl }));
                   if (!novaUrl && url) {

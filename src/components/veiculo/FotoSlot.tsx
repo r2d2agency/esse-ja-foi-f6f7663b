@@ -14,9 +14,11 @@ interface FotoSlotProps {
   onObservacaoChange?: (valor: string) => void;
   /** Quando informado, mostra um botão para remover o slot inteiro (usado nas fotos extras). */
   onRemoverSlot?: () => void;
+  /** Foto-modelo configurada pelo admin, mostrada de fundo antes do envio — ajuda quem só lê o nome do ângulo a entender o que fotografar. */
+  exemploUrl?: string | null;
 }
 
-export function FotoSlot({ label, dica, value, onChange, observacao, onObservacaoChange, onRemoverSlot }: FotoSlotProps) {
+export function FotoSlot({ label, dica, value, onChange, observacao, onObservacaoChange, onRemoverSlot, exemploUrl }: FotoSlotProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [carregando, setCarregando] = useState(false);
 
@@ -76,6 +78,19 @@ export function FotoSlot({ label, dica, value, onChange, observacao, onObservaca
             <span className="absolute right-2 top-2 flex items-center gap-1 rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white">
               <Check className="h-3 w-3" /> Enviada
             </span>
+          </>
+        ) : exemploUrl ? (
+          <>
+            <img src={exemploUrl} alt={`Exemplo: ${label}`} className="h-full w-full object-cover opacity-40" />
+            <span className="absolute left-2 top-2 rounded-full bg-slate-950/70 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-white">
+              Modelo
+            </span>
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-950/10">
+              <Camera className="h-6 w-6 text-white drop-shadow" />
+              <span className="rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-slate-700 shadow">
+                Tirar foto assim
+              </span>
+            </div>
           </>
         ) : (
           <>

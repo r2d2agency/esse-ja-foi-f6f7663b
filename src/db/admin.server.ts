@@ -341,6 +341,7 @@ const CHAVES_CONFIG_PUBLICAS = [
   "tracking_body_html",
   "opcionais_veiculo",
   "termo_comprador_ativo",
+  "exemplos_fotos_veiculo",
 ] as const;
 
 export type ConfiguracoesPublicas = Record<(typeof CHAVES_CONFIG_PUBLICAS)[number], string>;
