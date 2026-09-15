@@ -88,6 +88,7 @@ import { Route as VistoriadorVistoriaIdRouteImport } from './routes/vistoriador.
 import { Route as AdminAnunciosNovoRouteImport } from './routes/admin/anuncios.novo.'
 import { Route as AdminVeiculoIdPosVistoriaRouteImport } from './routes/admin/veiculo.$id.pos-vistoria'
 import { Route as ApiPublicArquivoIdRouteImport } from './routes/api/public/arquivo.$id'
+import { Route as ApiPublicWebhooksConferiRouteImport } from './routes/api/public/webhooks/conferi'
 import { Route as ApiPublicWebhooksPagamentosRouteImport } from './routes/api/public/webhooks/pagamentos'
 import { Route as ApiPublicWebhooksWhatsappRouteImport } from './routes/api/public/webhooks/whatsapp'
 import { Route as VendedorVeiculoIdPropostaRouteImport } from './routes/vendedor.veiculo.$id.proposta'
@@ -488,6 +489,12 @@ const ApiPublicArquivoIdRoute = ApiPublicArquivoIdRouteImport.update({
   path: '/api/public/arquivo/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicWebhooksConferiRoute =
+  ApiPublicWebhooksConferiRouteImport.update({
+    id: '/api/public/webhooks/conferi',
+    path: '/api/public/webhooks/conferi',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicWebhooksPagamentosRoute =
   ApiPublicWebhooksPagamentosRouteImport.update({
     id: '/api/public/webhooks/pagamentos',
@@ -587,6 +594,7 @@ export interface FileRoutesByFullPath {
   '/admin/anuncios/novo/': typeof AdminAnunciosNovoRoute
   '/admin/veiculo/$id/pos-vistoria': typeof AdminVeiculoIdPosVistoriaRoute
   '/api/public/arquivo/$id': typeof ApiPublicArquivoIdRoute
+  '/api/public/webhooks/conferi': typeof ApiPublicWebhooksConferiRoute
   '/api/public/webhooks/pagamentos': typeof ApiPublicWebhooksPagamentosRoute
   '/api/public/webhooks/whatsapp': typeof ApiPublicWebhooksWhatsappRoute
   '/vendedor/veiculo/$id/proposta': typeof VendedorVeiculoIdPropostaRoute
@@ -666,6 +674,7 @@ export interface FileRoutesByTo {
   '/admin/anuncios/novo': typeof AdminAnunciosNovoRoute
   '/admin/veiculo/$id/pos-vistoria': typeof AdminVeiculoIdPosVistoriaRoute
   '/api/public/arquivo/$id': typeof ApiPublicArquivoIdRoute
+  '/api/public/webhooks/conferi': typeof ApiPublicWebhooksConferiRoute
   '/api/public/webhooks/pagamentos': typeof ApiPublicWebhooksPagamentosRoute
   '/api/public/webhooks/whatsapp': typeof ApiPublicWebhooksWhatsappRoute
   '/vendedor/veiculo/$id/proposta': typeof VendedorVeiculoIdPropostaRoute
@@ -751,6 +760,7 @@ export interface FileRoutesById {
   '/admin/anuncios/novo/': typeof AdminAnunciosNovoRoute
   '/admin/veiculo/$id/pos-vistoria': typeof AdminVeiculoIdPosVistoriaRoute
   '/api/public/arquivo/$id': typeof ApiPublicArquivoIdRoute
+  '/api/public/webhooks/conferi': typeof ApiPublicWebhooksConferiRoute
   '/api/public/webhooks/pagamentos': typeof ApiPublicWebhooksPagamentosRoute
   '/api/public/webhooks/whatsapp': typeof ApiPublicWebhooksWhatsappRoute
   '/vendedor/veiculo/$id/proposta': typeof VendedorVeiculoIdPropostaRoute
@@ -837,6 +847,7 @@ export interface FileRouteTypes {
     | '/admin/anuncios/novo/'
     | '/admin/veiculo/$id/pos-vistoria'
     | '/api/public/arquivo/$id'
+    | '/api/public/webhooks/conferi'
     | '/api/public/webhooks/pagamentos'
     | '/api/public/webhooks/whatsapp'
     | '/vendedor/veiculo/$id/proposta'
@@ -916,6 +927,7 @@ export interface FileRouteTypes {
     | '/admin/anuncios/novo'
     | '/admin/veiculo/$id/pos-vistoria'
     | '/api/public/arquivo/$id'
+    | '/api/public/webhooks/conferi'
     | '/api/public/webhooks/pagamentos'
     | '/api/public/webhooks/whatsapp'
     | '/vendedor/veiculo/$id/proposta'
@@ -1000,6 +1012,7 @@ export interface FileRouteTypes {
     | '/admin/anuncios/novo/'
     | '/admin/veiculo/$id/pos-vistoria'
     | '/api/public/arquivo/$id'
+    | '/api/public/webhooks/conferi'
     | '/api/public/webhooks/pagamentos'
     | '/api/public/webhooks/whatsapp'
     | '/vendedor/veiculo/$id/proposta'
@@ -1025,6 +1038,7 @@ export interface RootRouteChildren {
   VTokenRoute: typeof VTokenRoute
   ApiPublicUploadRoute: typeof ApiPublicUploadRoute
   ApiPublicArquivoIdRoute: typeof ApiPublicArquivoIdRoute
+  ApiPublicWebhooksConferiRoute: typeof ApiPublicWebhooksConferiRoute
   ApiPublicWebhooksPagamentosRoute: typeof ApiPublicWebhooksPagamentosRoute
   ApiPublicWebhooksWhatsappRoute: typeof ApiPublicWebhooksWhatsappRoute
 }
@@ -1584,6 +1598,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicArquivoIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/webhooks/conferi': {
+      id: '/api/public/webhooks/conferi'
+      path: '/api/public/webhooks/conferi'
+      fullPath: '/api/public/webhooks/conferi'
+      preLoaderRoute: typeof ApiPublicWebhooksConferiRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/webhooks/pagamentos': {
       id: '/api/public/webhooks/pagamentos'
       path: '/api/public/webhooks/pagamentos'
@@ -1827,6 +1848,7 @@ const rootRouteChildren: RootRouteChildren = {
   VTokenRoute: VTokenRoute,
   ApiPublicUploadRoute: ApiPublicUploadRoute,
   ApiPublicArquivoIdRoute: ApiPublicArquivoIdRoute,
+  ApiPublicWebhooksConferiRoute: ApiPublicWebhooksConferiRoute,
   ApiPublicWebhooksPagamentosRoute: ApiPublicWebhooksPagamentosRoute,
   ApiPublicWebhooksWhatsappRoute: ApiPublicWebhooksWhatsappRoute,
 }

@@ -12,6 +12,7 @@ import {
   Mail,
   Send,
   ScanSearch,
+  Copy,
   FileSignature,
   Loader2,
   PlugZap,
@@ -1242,7 +1243,7 @@ function ConsultaVeicularSection() {
   const [placaFipe, setPlacaFipe] = useState("");
   const [testandoFipe, setTestandoFipe] = useState(false);
   const [resultadoFipe, setResultadoFipe] = useState<any>(null);
-
+  const [webhookToken, setWebhookToken] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -1259,8 +1260,14 @@ function ConsultaVeicularSection() {
         ativo: !!p.ativo,
       }));
       setTemSenha(!!p.tem_senha);
+      setWebhookToken(p.webhook_token || null);
     })();
   }, []);
+
+  const urlWebhookConferi =
+    webhookToken && typeof window !== "undefined"
+      ? `${window.location.origin}/api/public/webhooks/conferi?token=${webhookToken}`
+      : "";
 
   async function salvarProvedor() {
     setOcupado(true);
@@ -1430,6 +1437,35 @@ function ConsultaVeicularSection() {
         correto, não que as credenciais são válidas. Para confirmar de fato o usuário e a senha, use o
         teste com placa real abaixo (ambiente de produção).
       </p>
+
+      <div className="space-y-2 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4">
+        <p className="text-sm font-bold text-slate-800">Webhook de retorno assíncrono</p>
+        <p className="text-xs text-slate-500">
+          Cadastre esta URL no painel da Company Conferi para que eles avisem assim que uma
+          consulta em processamento (Desvalorização Fipe, Auto Pericia Gold, etc.) terminar —
+          sem isso, o sistema depende só de tentar de novo sozinho de tempos em tempos. Ao
+          receber o aviso, resgatamos o resultado automaticamente e, no caso da FIPE, já
+          preenchemos o valor no cadastro do veículo, sem precisar reabrir a tela.
+        </p>
+        {urlWebhookConferi ? (
+          <div className="flex gap-2">
+            <Input readOnly value={urlWebhookConferi} className="font-mono text-xs" />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={() => {
+                navigator.clipboard.writeText(urlWebhookConferi);
+                toast.success("URL do webhook copiada.");
+              }}
+            >
+              <Copy className="h-4 w-4" />
+            </Button>
+          </div>
+        ) : (
+          <p className="text-xs text-slate-400">Carregando...</p>
+        )}
+      </div>
 
       <div className="space-y-3 rounded-xl border border-dashed border-teal-300 bg-teal-50/40 p-4">
         <p className="text-sm font-bold text-slate-800">

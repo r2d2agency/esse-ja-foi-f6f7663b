@@ -85,6 +85,13 @@ export async function ensureConsultaVeicularSchema() {
   await d.execute(
     sql`ALTER TABLE consulta_provedores ADD COLUMN IF NOT EXISTS auth_modo text DEFAULT 'AUTO';`,
   );
+  await d.execute(sql`ALTER TABLE consulta_provedores ADD COLUMN IF NOT EXISTS webhook_token text;`);
+  // Token usado para autenticar o webhook (a Conferi não assina a chamada) — gerado uma
+  // única vez por instalação, na primeira vez que a linha existir sem um.
+  await d.execute(sql`
+    UPDATE consulta_provedores SET webhook_token = replace(gen_random_uuid()::text, '-', '')
+    WHERE webhook_token IS NULL
+  `);
 
   const existe = rowsOf(
     await d.execute(sql`SELECT id FROM consulta_provedores WHERE slug = ${PROVEDOR_PADRAO.slug}`),
@@ -144,8 +151,19 @@ export async function getProvedorConsulta() {
     ativo: !!p.ativo,
     tem_senha: !!p.senha,
     chave_mascarada: mascarar(p.senha),
+    webhook_token: p.webhook_token,
     atualizado_em: p.atualizado_em,
   };
+}
+
+/** Usado só pelo endpoint público do webhook para validar o token recebido na URL. */
+export async function getWebhookTokenConferi() {
+  const d = requireDb();
+  await ensureConsultaVeicularSchema();
+  const p = rowsOf(
+    await d.execute(sql`SELECT webhook_token FROM consulta_provedores WHERE slug = ${PROVEDOR_PADRAO.slug} LIMIT 1`),
+  )[0];
+  return p?.webhook_token || null;
 }
 
 export async function salvarProvedorConsulta(data: {
@@ -886,4 +904,93 @@ export async function consultarDesvalorizacaoFipePorPlaca(placa: string) {
     };
   }
   return { ok: true as const, httpStatus: r.httpStatus, message: "Consulta concluída.", dados, diagnostico: r.diagnostico };
+}
+
+/**
+ * Processa a notificação do webhook da Company Conferi: eles avisam só o `codigo_consulta`
+ * (por GET), e o nosso lado é quem faz a segunda requisição de fato — reenviando o mesmo
+ * corpo do produto original mais o `codigo_consulta` — para resgatar o resultado completo.
+ * Localiza a consulta pendente pelo protocolo, atualiza `veiculo_consultas` e, no caso da
+ * Desvalorização Fipe, já grava o valor FIPE encontrado no veículo (sem exigir confirmação
+ * manual), preservando o valor de interesse do cliente já cadastrado.
+ */
+export async function processarWebhookConferi(codigoConsulta: string) {
+  const d = requireDb();
+  await ensureConsultaVeicularSchema();
+  const prov = await getProvedorComChave();
+
+  const pendente = rowsOf(
+    await d.execute(sql`
+      SELECT id, veiculo_id, produto, placa, chassi
+      FROM veiculo_consultas
+      WHERE protocolo = ${codigoConsulta}
+      ORDER BY criado_em DESC LIMIT 1
+    `),
+  )[0];
+  if (!pendente) {
+    return { ok: false as const, message: `codigo_consulta ${codigoConsulta} não corresponde a nenhuma consulta registrada.` };
+  }
+
+  let r: ResultadoConsulta;
+  if (pendente.produto === DESVALORIZACAO_PRODUTO) {
+    r = await executarConsultaDesvalorizacao(prov, { placa: pendente.placa }, codigoConsulta);
+  } else if (pendente.produto === PROVEDOR_PADRAO.produto) {
+    r = await executarConsulta(
+      prov,
+      { placa: pendente.placa || undefined, chassi: pendente.chassi || undefined },
+      { codigoConsulta },
+    );
+  } else {
+    return { ok: false as const, message: `Produto "${pendente.produto}" não é resgatado pelo webhook.` };
+  }
+
+  const payload = r.payload;
+  const raiz = raizDoPayload(payload);
+  const acao = primeiro(raiz, ["solicitacao.acao"]);
+  const emProcessamento = !r.ok && String(acao) === "4";
+  const status = r.ok ? "CONCLUIDA" : emProcessamento ? "PROCESSANDO" : "ERRO";
+
+  const dados: any =
+    status === "CONCLUIDA"
+      ? pendente.produto === DESVALORIZACAO_PRODUTO
+        ? mapearDesvalorizacaoFipe(payload)
+        : resumirRetorno(payload)
+      : null;
+
+  await d.execute(sql`
+    UPDATE veiculo_consultas SET
+      status = ${status},
+      resumo = ${JSON.stringify(dados ?? {})}::jsonb,
+      resposta = ${payload ? JSON.stringify(payload) : null}::jsonb,
+      erro = ${status === "ERRO" ? r.erro : null}
+    WHERE id = ${pendente.id}::uuid
+  `);
+
+  if (status === "CONCLUIDA" && pendente.produto === DESVALORIZACAO_PRODUTO && pendente.veiculo_id && dados?.valorNumero) {
+    const veiculo = rowsOf(
+      await d.execute(sql`
+        SELECT placa, marca, modelo, valor_interesse_cliente FROM veiculos WHERE id = ${pendente.veiculo_id}::uuid
+      `),
+    )[0];
+    if (veiculo) {
+      const { salvarVeiculo } = await import("./cadastro.server");
+      await salvarVeiculo({
+        id: pendente.veiculo_id,
+        placa: veiculo.placa,
+        marca: veiculo.marca,
+        modelo: veiculo.modelo,
+        valorFipe: dados.valorNumero,
+        valorInteresseCliente:
+          veiculo.valor_interesse_cliente != null ? Number(veiculo.valor_interesse_cliente) : undefined,
+      });
+    }
+  }
+
+  if (status === "ERRO") {
+    return { ok: false as const, message: r.erro || "Falha ao resgatar a consulta notificada pelo webhook." };
+  }
+  if (status === "PROCESSANDO") {
+    return { ok: true as const, message: "Ainda em processamento no provedor — aguardando novo webhook." };
+  }
+  return { ok: true as const, message: "Consulta atualizada com sucesso." };
 }
