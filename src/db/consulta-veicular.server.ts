@@ -679,3 +679,149 @@ export async function consultarAgregadosPorPlaca(placa: string) {
   }
   return { ok: true as const, httpStatus: r.httpStatus, message: "Dados localizados.", dados, diagnostico: r.diagnostico };
 }
+
+/**
+ * Caminho fixo do produto Conferi Desvalorização Fipe — como o Agregados, não leva o campo
+ * "produto" no corpo, só { usuario, senha, parametros: { placa }, codigo_consulta? }.
+ */
+const DESVALORIZACAO_CAMINHO_CONSULTA = "/conferi-desvalorizacao/json";
+const DESVALORIZACAO_PRODUTO = "conferi-desvalorizacao-fipe";
+
+async function executarConsultaDesvalorizacao(
+  prov: any,
+  parametros: ConferiParametros,
+  codigoConsulta?: string,
+): Promise<ResultadoConsulta> {
+  const raiz = String(prov.base_url)
+    .replace(/\/+$/, "")
+    .replace(/\/conferi-veiculo.*$/i, "")
+    .replace(/\/conferi-agregados.*$/i, "")
+    .replace(/\/conferi-desvalorizacao.*$/i, "");
+  const url = `${raiz}${DESVALORIZACAO_CAMINHO_CONSULTA}`;
+  const body = montarCorpo(prov, parametros, codigoConsulta);
+  return chamarConferi(url, body);
+}
+
+/** "R$ 71.123,00" -> 71123 (reais, não centavos) — mesma unidade da coluna veiculos.valor_fipe. */
+function valorMonetarioParaNumero(texto: any): number | null {
+  const t = textoDe(texto);
+  if (!t) return null;
+  const limpo = t.replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", ".");
+  const n = Number(limpo);
+  return Number.isFinite(n) ? n : null;
+}
+
+function numeroOuNulo(v: any): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(String(v).replace(",", "."));
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Mapeia a resposta do produto Desvalorização Fipe (valor atual + histórico de anos) para exibição. */
+export function mapearDesvalorizacaoFipe(payload: any) {
+  const raiz = raizDoPayload(payload);
+  const lista = raiz?.precificador?.precificador;
+  const item = Array.isArray(lista) ? lista[0] : lista;
+  if (!item) return null;
+
+  const historicoBruto = item.historico ?? item.Historicos?.historico ?? [];
+  const historico = (Array.isArray(historicoBruto) ? historicoBruto : [historicoBruto]).map((h: any) => ({
+    referencia: textoDe(h?.referencia),
+    valor: numeroOuNulo(h?.valor),
+    status: textoDe(h?.status),
+    variacaoNominal: numeroOuNulo(h?.variacao_nominal),
+    variacaoPercentual: numeroOuNulo(h?.variacao_percentual),
+  }));
+
+  const resumoBruto = item.resumo;
+  const resumo = resumoBruto
+    ? {
+        valorInicial: numeroOuNulo(resumoBruto.valor_inicial),
+        valorFinal: numeroOuNulo(resumoBruto.valor_final),
+        variacaoAcumuladaNominal: numeroOuNulo(resumoBruto.variacao_acumulada_nominal),
+        variacaoAcumuladaPercentual: numeroOuNulo(resumoBruto.variacao_acumulada_percentual),
+        anosAnalisados: numeroOuNulo(resumoBruto.anos_analisados),
+        anosIndisponiveis: numeroOuNulo(resumoBruto.anos_indisponiveis),
+      }
+    : null;
+
+  return {
+    valor: textoDe(primeiro(item, ["Valor"])),
+    valorNumero: valorMonetarioParaNumero(item.Valor),
+    marca: textoDe(primeiro(item, ["Marca"])),
+    modelo: textoDe(primeiro(item, ["Modelo"])),
+    combustivel: textoDe(primeiro(item, ["Combustivel"])),
+    anoModelo: textoDe(primeiro(item, ["AnoModelo"])),
+    codigoFipe: textoDe(primeiro(item, ["CodigoFipe"])),
+    mesReferencia: textoDe(primeiro(item, ["MesReferencia"])),
+    historico,
+    resumo,
+  };
+}
+
+/**
+ * Consulta o valor FIPE atual e o histórico de desvalorização do veículo pela placa (produto
+ * Conferi Desvalorização Fipe). Registra a consulta em `veiculo_consultas` — igual ao laudo
+ * completo — e reaproveita o protocolo de uma consulta anterior (até 60 dias) para não gerar
+ * cobrança em duplicidade. Quando o provedor ainda está processando (acao=4), devolve
+ * status "PROCESSANDO" para o chamador tentar novamente mais tarde, sem lançar erro.
+ */
+export async function consultarDesvalorizacaoFipe(veiculoId: string, criadoPor?: string | null) {
+  const d = requireDb();
+  await ensureConsultaVeicularSchema();
+  const prov = await getProvedorComChave();
+
+  const veiculo = rowsOf(
+    await d.execute(sql`SELECT id, placa FROM veiculos WHERE id = ${veiculoId}::uuid`),
+  )[0];
+  if (!veiculo) throw new Error("Veículo não encontrado.");
+  if (!veiculo.placa) throw new Error("Cadastre a placa do veículo antes de consultar a FIPE.");
+
+  const anterior = rowsOf(
+    await d.execute(sql`
+      SELECT protocolo FROM veiculo_consultas
+      WHERE veiculo_id = ${veiculoId}::uuid AND produto = ${DESVALORIZACAO_PRODUTO} AND protocolo IS NOT NULL
+        AND criado_em > now() - interval '60 days'
+      ORDER BY criado_em DESC LIMIT 1
+    `),
+  )[0];
+
+  const r = await executarConsultaDesvalorizacao(
+    prov,
+    { placa: veiculo.placa },
+    anterior?.protocolo ? String(anterior.protocolo) : undefined,
+  );
+
+  const payload = r.payload;
+  const raiz = raizDoPayload(payload);
+  const acao = primeiro(raiz, ["solicitacao.acao"]);
+  const protocolo = primeiro(raiz, ["solicitacao.codigoConsulta"]);
+  const emProcessamento = !r.ok && String(acao) === "4";
+
+  const status = r.ok ? "CONCLUIDA" : emProcessamento ? "PROCESSANDO" : "ERRO";
+  const dados = status === "CONCLUIDA" ? mapearDesvalorizacaoFipe(payload) : null;
+
+  await d.execute(sql`
+    INSERT INTO veiculo_consultas
+      (veiculo_id, provedor, produto, placa, status, protocolo, resumo, resposta, erro, criado_por)
+    VALUES (
+      ${veiculoId}::uuid, ${prov.nome}, ${DESVALORIZACAO_PRODUTO}, ${veiculo.placa},
+      ${status}, ${protocolo ? String(protocolo) : null}, ${JSON.stringify(dados ?? {})}::jsonb,
+      ${payload ? JSON.stringify(payload) : null}::jsonb, ${status === "ERRO" ? r.erro : null}, ${criadoPor || null}
+    )
+  `);
+
+  if (status === "ERRO") throw new Error(r.erro || "Não foi possível concluir a consulta FIPE.");
+  if (status === "PROCESSANDO") {
+    return {
+      ok: true as const,
+      status,
+      message: "Consulta registrada e em processamento no provedor — tente novamente em instantes.",
+      dados: null,
+    };
+  }
+  if (!dados) {
+    return { ok: true as const, status: "ERRO" as const, message: "Nenhum registro encontrado para esta placa.", dados: null };
+  }
+  return { ok: true as const, status, message: "Consulta concluída.", dados };
+}

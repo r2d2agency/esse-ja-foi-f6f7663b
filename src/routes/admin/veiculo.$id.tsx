@@ -4,7 +4,9 @@ import { useServerFn } from "@tanstack/react-start";
 import { getVeiculoDetalheAdminFn, assumirAnaliseVeiculoFn, atualizarStatusAnaliseFn, atualizarStatusDocumentoVeiculoFn, aprovarParaPublicacaoFn } from "@/lib/admin-veiculo-detalhe.functions";
 import { removerVeiculoFn, salvarVeiculoFn } from "@/lib/cadastro.functions";
 import { buscarPrecoFipeVeiculoFn } from "@/lib/fipe.functions";
+import { consultarDesvalorizacaoFipeFn } from "@/lib/consulta-veicular.functions";
 import { salvarConfiguracaoLeilao } from "@/lib/leilao.functions";
+import { getSessionToken } from "@/lib/session";
 import { useAuth } from "@/hooks/use-auth";
 import { useConfirmacaoAcaoCritica } from "@/components/admin/ConfirmacaoAcaoCritica";
 import { useEffect, useState } from "react";
@@ -142,6 +144,7 @@ function DetalheVeiculoAdminPage() {
   const [salvandoFipe, setSalvandoFipe] = useState(false);
   const [buscandoFipe, setBuscandoFipe] = useState(false);
   const [fonteFipe, setFonteFipe] = useState<string | null>(null);
+  const [buscandoFipeConferi, setBuscandoFipeConferi] = useState(false);
   const queryClient = useQueryClient();
 
   const getDetalhe = useServerFn(getVeiculoDetalheAdminFn);
@@ -152,6 +155,7 @@ function DetalheVeiculoAdminPage() {
   const removerVeiculo = useServerFn(removerVeiculoFn);
   const salvarVeiculo = useServerFn(salvarVeiculoFn);
   const buscarPrecoFipe = useServerFn(buscarPrecoFipeVeiculoFn);
+  const consultarDesvalorizacaoFipe = useServerFn(consultarDesvalorizacaoFipeFn);
 
   const canReportDebug =
     typeof window !== "undefined" &&
@@ -336,6 +340,42 @@ function DetalheVeiculoAdminPage() {
       toast.error(e?.message || "Erro ao consultar a FIPE.");
     } finally {
       setBuscandoFipe(false);
+    }
+  };
+
+  const buscarFipeConferi = async () => {
+    setBuscandoFipeConferi(true);
+    setFonteFipe(null);
+    try {
+      const res: any = await consultarDesvalorizacaoFipe({
+        data: { token: getSessionToken(), veiculoId: v.id },
+      });
+      if (!res?.ok) {
+        toast.error(res?.message || "Não foi possível consultar a FIPE pela placa.");
+        return;
+      }
+      if (res.status === "PROCESSANDO") {
+        toast.info(res.message || "Consulta em processamento — tente novamente em instantes.");
+        return;
+      }
+      const dados = res.dados;
+      if (!dados) {
+        toast.error(res.message || "Nenhum registro encontrado para esta placa.");
+        return;
+      }
+      if (dados.valorNumero != null) {
+        setValorFipeInput(String(dados.valorNumero).replace(".", ","));
+      }
+      const variacao = dados.resumo?.variacaoAcumuladaPercentual;
+      setFonteFipe(
+        `FIPE (Company Conferi): ${dados.marca} ${dados.modelo}${dados.anoModelo ? ` ${dados.anoModelo}` : ""} • ${dados.combustivel} • cód. ${dados.codigoFipe} • ref. ${dados.mesReferencia}${variacao != null ? ` • variação acumulada ${variacao > 0 ? "+" : ""}${variacao}%` : ""}`,
+      );
+      setEditandoFipe(true);
+      toast.success("Valor FIPE localizado pela placa — confira e salve.");
+    } catch (e: any) {
+      toast.error(e?.message || "Erro ao consultar a FIPE pela placa.");
+    } finally {
+      setBuscandoFipeConferi(false);
     }
   };
 
@@ -1059,6 +1099,16 @@ function DetalheVeiculoAdminPage() {
                               disabled={buscandoFipe}
                             >
                               {buscandoFipe ? "Buscando..." : "Buscar na FIPE"}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-[11px] font-bold"
+                              onClick={buscarFipeConferi}
+                              disabled={buscandoFipeConferi}
+                              title="Busca pela placa na Company Conferi (mais precisa, mas é uma consulta paga)"
+                            >
+                              {buscandoFipeConferi ? "Buscando..." : "Buscar por placa"}
                             </Button>
                           </div>
                         )}

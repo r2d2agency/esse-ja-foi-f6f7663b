@@ -87,6 +87,21 @@ export const consultarLaudoVeiculoFn = createServerFn({ method: "POST" })
     }
   });
 
+/** Usada no cadastro do veículo (admin): busca valor FIPE atual + histórico de desvalorização pela placa. */
+export const consultarDesvalorizacaoFipeFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) =>
+    z.object({ token: z.string().nullable().optional(), veiculoId: z.string().uuid() }).parse(d),
+  )
+  .handler(async ({ data }) => {
+    try {
+      const criadoPor = await userIdFrom(data.token ?? null);
+      const m = await import("@/db/consulta-veicular.server");
+      return await m.consultarDesvalorizacaoFipe(data.veiculoId, criadoPor);
+    } catch (e: any) {
+      return { ok: false as const, message: e?.message || "Erro ao consultar a FIPE." };
+    }
+  });
+
 export const listarConsultasVeiculoFn = createServerFn({ method: "POST" })
   .validator((d: unknown) => z.object({ veiculoId: z.string().uuid() }).parse(d))
   .handler(async ({ data }) => {
