@@ -779,7 +779,7 @@ export async function consultarDesvalorizacaoFipe(veiculoId: string, criadoPor?:
 
   const anterior = rowsOf(
     await d.execute(sql`
-      SELECT protocolo FROM veiculo_consultas
+      SELECT id, protocolo, status FROM veiculo_consultas
       WHERE veiculo_id = ${veiculoId}::uuid AND produto = ${DESVALORIZACAO_PRODUTO} AND protocolo IS NOT NULL
         AND criado_em > now() - interval '60 days'
       ORDER BY criado_em DESC LIMIT 1
@@ -801,15 +801,31 @@ export async function consultarDesvalorizacaoFipe(veiculoId: string, criadoPor?:
   const status = r.ok ? "CONCLUIDA" : emProcessamento ? "PROCESSANDO" : "ERRO";
   const dados = status === "CONCLUIDA" ? mapearDesvalorizacaoFipe(payload) : null;
 
-  await d.execute(sql`
-    INSERT INTO veiculo_consultas
-      (veiculo_id, provedor, produto, placa, status, protocolo, resumo, resposta, erro, criado_por)
-    VALUES (
-      ${veiculoId}::uuid, ${prov.nome}, ${DESVALORIZACAO_PRODUTO}, ${veiculo.placa},
-      ${status}, ${protocolo ? String(protocolo) : null}, ${JSON.stringify(dados ?? {})}::jsonb,
-      ${payload ? JSON.stringify(payload) : null}::jsonb, ${status === "ERRO" ? r.erro : null}, ${criadoPor || null}
-    )
-  `);
+  // Enquanto está recuperando uma consulta que já tinha protocolo (independente do status
+  // anterior), atualiza o mesmo registro em vez de inserir um novo a cada tentativa de
+  // polling — assim o histórico de `veiculo_consultas` não fica poluído com uma linha por
+  // tentativa enquanto o resultado ainda não chega.
+  if (anterior?.id) {
+    await d.execute(sql`
+      UPDATE veiculo_consultas SET
+        status = ${status},
+        protocolo = ${protocolo ? String(protocolo) : anterior.protocolo},
+        resumo = ${JSON.stringify(dados ?? {})}::jsonb,
+        resposta = ${payload ? JSON.stringify(payload) : null}::jsonb,
+        erro = ${status === "ERRO" ? r.erro : null}
+      WHERE id = ${anterior.id}::uuid
+    `);
+  } else {
+    await d.execute(sql`
+      INSERT INTO veiculo_consultas
+        (veiculo_id, provedor, produto, placa, status, protocolo, resumo, resposta, erro, criado_por)
+      VALUES (
+        ${veiculoId}::uuid, ${prov.nome}, ${DESVALORIZACAO_PRODUTO}, ${veiculo.placa},
+        ${status}, ${protocolo ? String(protocolo) : null}, ${JSON.stringify(dados ?? {})}::jsonb,
+        ${payload ? JSON.stringify(payload) : null}::jsonb, ${status === "ERRO" ? r.erro : null}, ${criadoPor || null}
+      )
+    `);
+  }
 
   if (status === "ERRO") throw new Error(r.erro || "Não foi possível concluir a consulta FIPE.");
   if (status === "PROCESSANDO") {
@@ -824,4 +840,50 @@ export async function consultarDesvalorizacaoFipe(veiculoId: string, criadoPor?:
     return { ok: true as const, status: "ERRO" as const, message: "Nenhum registro encontrado para esta placa.", dados: null };
   }
   return { ok: true as const, status, message: "Consulta concluída.", dados };
+}
+
+/**
+ * Versão "avulsa" do produto Desvalorização Fipe — só pela placa, sem vincular a um veículo
+ * cadastrado e sem gravar nada. Usada na tela de configurações para validar a integração,
+ * do mesmo jeito que `consultarAgregadosPorPlaca` é usada para testar o produto Agregados.
+ */
+export async function consultarDesvalorizacaoFipePorPlaca(placa: string) {
+  const prov = await getProvedorComChave();
+  const placaLimpa = placa.toUpperCase().replace(/\W/g, "");
+  if (placaLimpa.length !== 7) throw new Error("Informe uma placa válida (7 caracteres).");
+
+  const r = await executarConsultaDesvalorizacao(prov, { placa: placaLimpa });
+  const raiz = raizDoPayload(r.payload);
+  const acao = primeiro(raiz, ["solicitacao.acao"]);
+  const emProcessamento = !r.ok && String(acao) === "4";
+
+  if (!r.ok && !emProcessamento) {
+    return {
+      ok: false as const,
+      httpStatus: r.httpStatus,
+      message: r.erro || "Falha de comunicação com o provedor.",
+      dados: null,
+      diagnostico: r.diagnostico,
+    };
+  }
+  if (emProcessamento) {
+    return {
+      ok: true as const,
+      httpStatus: r.httpStatus,
+      message: "Consulta registrada e em processamento no provedor — tente novamente em instantes.",
+      dados: null,
+      diagnostico: r.diagnostico,
+    };
+  }
+  const dados = mapearDesvalorizacaoFipe(r.payload);
+  if (!dados) {
+    return {
+      ok: false as const,
+      httpStatus: r.httpStatus,
+      message: "Nenhum registro encontrado para esta placa.",
+      dados: null,
+      diagnostico: r.diagnostico,
+    };
+  }
+  return { ok: true as const, httpStatus: r.httpStatus, message: "Consulta concluída.", dados, diagnostico: r.diagnostico };
 }

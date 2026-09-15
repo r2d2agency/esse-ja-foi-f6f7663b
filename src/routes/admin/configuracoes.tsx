@@ -36,6 +36,7 @@ import {
   testarConexaoConsultaFn,
   testarConsultaPlacaFn,
   consultarAgregadosPorPlacaFn,
+  testarDesvalorizacaoFipeFn,
 } from "@/lib/consulta-veicular.functions";
 import { getTermoVigenteFn, salvarTermoFn } from "@/lib/termos.functions";
 import { FOTOS_VEICULO } from "@/lib/veiculo-condicao";
@@ -1238,6 +1239,9 @@ function ConsultaVeicularSection() {
   const [placaAgregados, setPlacaAgregados] = useState("");
   const [testandoAgregados, setTestandoAgregados] = useState(false);
   const [resultadoAgregados, setResultadoAgregados] = useState<any>(null);
+  const [placaFipe, setPlacaFipe] = useState("");
+  const [testandoFipe, setTestandoFipe] = useState(false);
+  const [resultadoFipe, setResultadoFipe] = useState<any>(null);
 
 
   useEffect(() => {
@@ -1322,6 +1326,26 @@ function ConsultaVeicularSection() {
       else toast.error(res?.message || "Falha na consulta de agregados.");
     } finally {
       setTestandoAgregados(false);
+    }
+  }
+
+  /** Mesma chamada usada no cadastro do veículo (aba Valores → "Buscar por placa"). */
+  async function testarFipe() {
+    const placa = placaFipe.toUpperCase().replace(/\W/g, "");
+    if (placa.length !== 7) {
+      toast.error("Informe uma placa válida (7 caracteres).");
+      return;
+    }
+    setTestandoFipe(true);
+    setResultadoFipe(null);
+    try {
+      const res: any = await testarDesvalorizacaoFipeFn({ data: { placa } });
+      setResultadoFipe(res);
+      if (res?.ok && res.dados) toast.success("Consulta de FIPE concluída.");
+      else if (res?.ok) toast.info(res.message || "Consulta em processamento.");
+      else toast.error(res?.message || "Falha na consulta de FIPE.");
+    } finally {
+      setTestandoFipe(false);
     }
   }
 
@@ -1543,6 +1567,129 @@ function ConsultaVeicularSection() {
               <summary className="cursor-pointer font-bold">Ver retorno completo (JSON)</summary>
               <pre className="mt-2 max-h-72 overflow-auto">
                 {JSON.stringify(resultadoAgregados, null, 2)}
+              </pre>
+            </details>
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-3 rounded-xl border border-dashed border-blue-300 bg-blue-50/40 p-4">
+        <p className="text-sm font-bold text-slate-800">
+          Testar Conferi Desvalorização Fipe (valor FIPE do cadastro do veículo)
+        </p>
+        <p className="text-xs text-slate-500">
+          Simula a mesma consulta usada na aba Valores do cadastro do veículo ("Buscar por
+          placa"): valor FIPE atual, marca/modelo/código FIPE e o histórico de desvalorização
+          por ano. Nada é gravado. Se o provedor ainda estiver processando, tente de novo em
+          instantes. Salve o módulo antes de testar.
+        </p>
+        <div className="flex gap-2">
+          <Input
+            className="max-w-[180px] uppercase"
+            placeholder="ABC1D23"
+            value={placaFipe}
+            onChange={(e) => setPlacaFipe(e.target.value.toUpperCase())}
+            maxLength={8}
+          />
+          <Button
+            variant="outline"
+            className="border-blue-600 text-blue-700"
+            disabled={testandoFipe || ocupado}
+            onClick={testarFipe}
+          >
+            {testandoFipe ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <ScanSearch className="mr-2 h-4 w-4" />
+            )}
+            Consultar FIPE
+          </Button>
+        </div>
+
+        {resultadoFipe && (
+          <div className="space-y-2">
+            <p
+              className={`text-xs font-bold ${
+                resultadoFipe.ok && resultadoFipe.dados ? "text-teal-700" : "text-red-600"
+              }`}
+            >
+              {resultadoFipe.ok && resultadoFipe.dados
+                ? "Consulta concluída"
+                : resultadoFipe.ok
+                  ? "Em processamento"
+                  : "Falha na consulta"}
+              {resultadoFipe.httpStatus ? ` — HTTP ${resultadoFipe.httpStatus}` : ""}
+              {resultadoFipe.message ? `: ${resultadoFipe.message}` : ""}
+            </p>
+
+            {resultadoFipe.dados && (
+              <>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-lg bg-white p-3 text-xs sm:grid-cols-3">
+                  {Object.entries(resultadoFipe.dados)
+                    .filter(([chave, v]) => v && chave !== "historico" && chave !== "resumo")
+                    .map(([chave, valor]) => (
+                      <div key={chave}>
+                        <p className="font-bold uppercase text-slate-400">{chave}</p>
+                        <p className="text-slate-800">{String(valor)}</p>
+                      </div>
+                    ))}
+                </div>
+
+                {resultadoFipe.dados.resumo && (
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-lg bg-white p-3 text-xs sm:grid-cols-3">
+                    {Object.entries(resultadoFipe.dados.resumo)
+                      .filter(([, v]) => v !== null && v !== undefined)
+                      .map(([chave, valor]) => (
+                        <div key={chave}>
+                          <p className="font-bold uppercase text-slate-400">{chave}</p>
+                          <p className="text-slate-800">{String(valor)}</p>
+                        </div>
+                      ))}
+                  </div>
+                )}
+
+                {Array.isArray(resultadoFipe.dados.historico) && resultadoFipe.dados.historico.length > 0 && (
+                  <div className="overflow-auto rounded-lg bg-white p-3 text-xs">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="text-slate-400">
+                          <th className="pr-3 font-bold uppercase">Referência</th>
+                          <th className="pr-3 font-bold uppercase">Valor</th>
+                          <th className="pr-3 font-bold uppercase">Variação</th>
+                          <th className="font-bold uppercase">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {resultadoFipe.dados.historico.map((h: any, i: number) => (
+                          <tr key={i} className="text-slate-800">
+                            <td className="pr-3">{h.referencia}</td>
+                            <td className="pr-3">{h.valor != null ? h.valor.toLocaleString("pt-BR") : "—"}</td>
+                            <td className="pr-3">{h.variacaoPercentual != null ? `${h.variacaoPercentual}%` : "—"}</td>
+                            <td>{h.status}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            )}
+
+            {Array.isArray(resultadoFipe.diagnostico) && resultadoFipe.diagnostico.length > 0 && (
+              <div className="space-y-1 rounded-lg bg-white p-3 text-xs text-slate-700">
+                <p className="font-bold text-slate-500">Detalhe da chamada</p>
+                {resultadoFipe.diagnostico.map((d: any, i: number) => (
+                  <div key={i}>
+                    {d.modo} — HTTP {d.httpStatus || "sem resposta"}: {d.mensagem}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <details className="rounded-lg bg-slate-900 p-3 text-xs text-slate-100">
+              <summary className="cursor-pointer font-bold">Ver retorno completo (JSON)</summary>
+              <pre className="mt-2 max-h-72 overflow-auto">
+                {JSON.stringify(resultadoFipe, null, 2)}
               </pre>
             </details>
           </div>

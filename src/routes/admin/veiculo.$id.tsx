@@ -3,13 +3,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getVeiculoDetalheAdminFn, assumirAnaliseVeiculoFn, atualizarStatusAnaliseFn, atualizarStatusDocumentoVeiculoFn, aprovarParaPublicacaoFn } from "@/lib/admin-veiculo-detalhe.functions";
 import { removerVeiculoFn, salvarVeiculoFn } from "@/lib/cadastro.functions";
-import { buscarPrecoFipeVeiculoFn } from "@/lib/fipe.functions";
-import { consultarDesvalorizacaoFipeFn } from "@/lib/consulta-veicular.functions";
+import { consultarDesvalorizacaoFipeFn, listarConsultasVeiculoFn } from "@/lib/consulta-veicular.functions";
 import { salvarConfiguracaoLeilao } from "@/lib/leilao.functions";
 import { getSessionToken } from "@/lib/session";
 import { useAuth } from "@/hooks/use-auth";
 import { useConfirmacaoAcaoCritica } from "@/components/admin/ConfirmacaoAcaoCritica";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LaudosVeiculo } from "@/components/veiculo/LaudosVeiculo";
 import { AcessoriosVeiculo } from "@/components/veiculo/AcessoriosVeiculo";
@@ -142,9 +141,10 @@ function DetalheVeiculoAdminPage() {
   const [editandoFipe, setEditandoFipe] = useState(false);
   const [valorFipeInput, setValorFipeInput] = useState("");
   const [salvandoFipe, setSalvandoFipe] = useState(false);
-  const [buscandoFipe, setBuscandoFipe] = useState(false);
   const [fonteFipe, setFonteFipe] = useState<string | null>(null);
   const [buscandoFipeConferi, setBuscandoFipeConferi] = useState(false);
+  const [statusFipeConferi, setStatusFipeConferi] = useState<string | null>(null);
+  const pollFipeConferiRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queryClient = useQueryClient();
 
   const getDetalhe = useServerFn(getVeiculoDetalheAdminFn);
@@ -154,8 +154,8 @@ function DetalheVeiculoAdminPage() {
   const aprovarPublicacao = useServerFn(aprovarParaPublicacaoFn);
   const removerVeiculo = useServerFn(removerVeiculoFn);
   const salvarVeiculo = useServerFn(salvarVeiculoFn);
-  const buscarPrecoFipe = useServerFn(buscarPrecoFipeVeiculoFn);
   const consultarDesvalorizacaoFipe = useServerFn(consultarDesvalorizacaoFipeFn);
+  const listarConsultasFipe = useServerFn(listarConsultasVeiculoFn);
 
   const canReportDebug =
     typeof window !== "undefined" &&
@@ -186,6 +186,37 @@ function DetalheVeiculoAdminPage() {
     fetch("http://127.0.0.1:7777/event", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: "admin-vehicle-detail", runId: "pre-fix", hypothesisId: "C", location: "src/routes/admin/veiculo.$id.tsx:useEffect:failed-response", msg: "[DEBUG] admin vehicle detail returned failed payload", data: { id, message: res.message ?? null }, ts: Date.now() }) }).catch(() => {});
     // #endregion
   }, [canReportDebug, res, id]);
+
+  // Retoma sozinho o polling se a página for reaberta com uma consulta FIPE ainda em
+  // processamento no provedor (ex.: o analista saiu e voltou antes do resultado chegar) —
+  // evita que ele precise clicar de novo e dispare outra consulta em cima da pendente.
+  useEffect(() => {
+    const veiculoId = res?.data?.id;
+    if (!veiculoId) return;
+    let cancelado = false;
+    (async () => {
+      try {
+        const r: any = await listarConsultasFipe({ data: { veiculoId } });
+        if (cancelado) return;
+        const lista = Array.isArray(r?.data) ? r.data : [];
+        const pendente = lista.find(
+          (c: any) => c.produto === "conferi-desvalorizacao-fipe" && c.status === "PROCESSANDO",
+        );
+        if (pendente) {
+          setBuscandoFipeConferi(true);
+          setStatusFipeConferi("Retomando consulta pendente na Company Conferi...");
+          pollFipeConferi(0);
+        }
+      } catch {
+        // silencioso — não bloqueia a página por causa disso
+      }
+    })();
+    return () => {
+      cancelado = true;
+      if (pollFipeConferiRef.current) clearTimeout(pollFipeConferiRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [res?.data?.id]);
 
   if (isLoading) return <div className="p-8">Carregando detalhes...</div>;
   if (!res?.ok || !res.data) {
@@ -322,42 +353,41 @@ function DetalheVeiculoAdminPage() {
     setEditandoFipe(true);
   };
 
-  const buscarNaFipe = async () => {
-    setBuscandoFipe(true);
-    setFonteFipe(null);
-    try {
-      const res: any = await buscarPrecoFipe({ data: { veiculoId: v.id } });
-      if (!res?.ok) {
-        toast.error(res?.message || "Não foi possível consultar a FIPE.");
-        return;
-      }
-      const d = res.data;
-      setValorFipeInput(String(d.precoCentavos / 100).replace(".", ","));
-      setFonteFipe(`FIPE: ${d.marca} ${d.modelo}${d.ano ? ` ${d.ano}` : " 0km"} • ${d.combustivel} • cód. ${d.fipeCode}`);
-      setEditandoFipe(true);
-      toast.success("Valor encontrado na FIPE — confira e salve.");
-    } catch (e: any) {
-      toast.error(e?.message || "Erro ao consultar a FIPE.");
-    } finally {
-      setBuscandoFipe(false);
-    }
-  };
+  const FIPE_POLL_INTERVALO_MS = 6000;
+  const FIPE_POLL_MAX_TENTATIVAS = 20; // ~2 minutos de tentativas automáticas
 
-  const buscarFipeConferi = async () => {
-    setBuscandoFipeConferi(true);
-    setFonteFipe(null);
+  /**
+   * Busca a FIPE pela placa (Company Conferi). Quando o provedor ainda está processando,
+   * não devolve o controle para o analista — continua tentando sozinho em segundo plano
+   * (reaproveitando o protocolo já registrado, sem custo adicional) até o valor chegar,
+   * mantendo o botão bloqueado nesse meio-tempo para não disparar uma nova consulta.
+   */
+  const pollFipeConferi = async (tentativa: number) => {
     try {
       const res: any = await consultarDesvalorizacaoFipe({
         data: { token: getSessionToken(), veiculoId: v.id },
       });
       if (!res?.ok) {
         toast.error(res?.message || "Não foi possível consultar a FIPE pela placa.");
+        setBuscandoFipeConferi(false);
+        setStatusFipeConferi(null);
         return;
       }
       if (res.status === "PROCESSANDO") {
-        toast.info(res.message || "Consulta em processamento — tente novamente em instantes.");
+        if (tentativa >= FIPE_POLL_MAX_TENTATIVAS) {
+          setBuscandoFipeConferi(false);
+          setStatusFipeConferi(
+            "Ainda em processamento na Company Conferi — reabra esta página em alguns minutos para o valor ser preenchido automaticamente.",
+          );
+          return;
+        }
+        setStatusFipeConferi(`Aguardando retorno da Company Conferi (tentativa ${tentativa + 1})...`);
+        pollFipeConferiRef.current = setTimeout(() => pollFipeConferi(tentativa + 1), FIPE_POLL_INTERVALO_MS);
         return;
       }
+
+      setBuscandoFipeConferi(false);
+      setStatusFipeConferi(null);
       const dados = res.dados;
       if (!dados) {
         toast.error(res.message || "Nenhum registro encontrado para esta placa.");
@@ -374,9 +404,16 @@ function DetalheVeiculoAdminPage() {
       toast.success("Valor FIPE localizado pela placa — confira e salve.");
     } catch (e: any) {
       toast.error(e?.message || "Erro ao consultar a FIPE pela placa.");
-    } finally {
       setBuscandoFipeConferi(false);
+      setStatusFipeConferi(null);
     }
+  };
+
+  const buscarFipeConferi = () => {
+    setBuscandoFipeConferi(true);
+    setStatusFipeConferi("Consultando a Company Conferi...");
+    setFonteFipe(null);
+    void pollFipeConferi(0);
   };
 
   const salvarValorFipe = async () => {
@@ -1095,24 +1132,18 @@ function DetalheVeiculoAdminPage() {
                               size="sm"
                               variant="outline"
                               className="h-7 text-[11px] font-bold"
-                              onClick={buscarNaFipe}
-                              disabled={buscandoFipe}
-                            >
-                              {buscandoFipe ? "Buscando..." : "Buscar na FIPE"}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 text-[11px] font-bold"
                               onClick={buscarFipeConferi}
                               disabled={buscandoFipeConferi}
-                              title="Busca pela placa na Company Conferi (mais precisa, mas é uma consulta paga)"
+                              title="Busca o valor FIPE atual pela placa na Company Conferi"
                             >
                               {buscandoFipeConferi ? "Buscando..." : "Buscar por placa"}
                             </Button>
                           </div>
                         )}
                       </div>
+                      {statusFipeConferi && (
+                        <p className="-mt-2 text-right text-[11px] font-medium text-amber-600">{statusFipeConferi}</p>
+                      )}
                       {fonteFipe && editandoFipe && (
                         <p className="-mt-2 text-right text-[11px] font-medium text-teal-700">{fonteFipe}</p>
                       )}

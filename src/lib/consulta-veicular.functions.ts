@@ -102,6 +102,18 @@ export const consultarDesvalorizacaoFipeFn = createServerFn({ method: "POST" })
     }
   });
 
+/** Usada na tela de configurações para testar o produto Desvalorização Fipe, só pela placa. */
+export const testarDesvalorizacaoFipeFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) => z.object({ placa: z.string().trim().min(7, "Informe a placa.") }).parse(d))
+  .handler(async ({ data }) => {
+    try {
+      const m = await import("@/db/consulta-veicular.server");
+      return await m.consultarDesvalorizacaoFipePorPlaca(data.placa);
+    } catch (e: any) {
+      return { ok: false as const, message: e?.message || "Erro ao consultar a FIPE." };
+    }
+  });
+
 export const listarConsultasVeiculoFn = createServerFn({ method: "POST" })
   .validator((d: unknown) => z.object({ veiculoId: z.string().uuid() }).parse(d))
   .handler(async ({ data }) => {
