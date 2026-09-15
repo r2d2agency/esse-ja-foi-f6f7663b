@@ -68,19 +68,42 @@ export const cadastrarVendedorFn = createServerFn({ method: "POST" })
       return { ok: true as const, user, accessToken };
 
     } catch (error: any) {
-      console.error("Erro detalhado ao cadastrar vendedor:", error);
-      
+      // O drizzle-orm/postgres-js embrulha o erro real do Postgres em `.cause` — `error.message`
+      // sozinho é só o texto genérico "Failed query: ... params: ...", sem o motivo de verdade.
+      // Ler apenas o topo (como este catch fazia antes) faz qualquer classificação de erro dar
+      // falso positivo (ex.: "app_role" aparece na própria query, não no motivo da falha) e
+      // nunca captura o motivo real nem no log.
+      const dbError = error?.cause ?? error;
+      const codigo = typeof dbError?.code === "string" ? dbError.code : undefined;
+      const detalhePg = typeof dbError?.detail === "string" ? dbError.detail : undefined;
+      const hint = typeof dbError?.hint === "string" ? dbError.hint : undefined;
+      const constraint = typeof dbError?.constraint_name === "string"
+        ? dbError.constraint_name
+        : typeof dbError?.constraint === "string"
+          ? dbError.constraint
+          : undefined;
+      const coluna = typeof dbError?.column_name === "string"
+        ? dbError.column_name
+        : typeof dbError?.column === "string"
+          ? dbError.column
+          : undefined;
+      const motivoReal = dbError?.message || error.message;
+
+      console.error("Erro detalhado ao cadastrar vendedor:", { motivoReal, codigo, detalhePg, hint, constraint, coluna, error });
+
       const { db: database } = await import("@/db/index");
       if (database) {
         try {
           const detail = {
-            mensagem: error.message,
-            codigo: error.code,
-            hint: error.hint,
-            stack: error.stack,
-            context: { email: data.email, nome: data.nome }
+            mensagem: motivoReal,
+            codigo,
+            detalhePg,
+            hint,
+            constraint,
+            coluna,
+            context: { email: data.email, nome: data.nome },
           };
-          
+
           await database.execute(sql`
             INSERT INTO logs (entidade, acao, detalhe, usuario)
             VALUES ('auth', 'CADASTRO_VENDEDOR_ERRO', ${JSON.stringify(detail)}, ${data.email})
@@ -90,16 +113,23 @@ export const cadastrarVendedorFn = createServerFn({ method: "POST" })
         }
       }
 
-      if (error.message?.includes("unique constraint") || error.message?.includes("already exists") || error.code === '23505') {
+      if (codigo === "23505" || motivoReal?.includes("unique constraint") || motivoReal?.includes("already exists")) {
         return { ok: false as const, message: "Este e-mail já está cadastrado." };
       }
-      
-      let userMessage = `Erro técnico: ${error.message || "Erro desconhecido"}`;
-      if (error.message?.includes("app_role") || error.message?.includes("permission") || error.code === '42P01') {
-        userMessage = `Erro de permissão ou estrutura de banco: ${error.message}. Use o Dashboard Admin para verificar a saúde do sistema.`;
+      if (codigo === "42501") {
+        return { ok: false as const, message: "O banco bloqueou a gravação do cadastro por permissão. Avise o suporte." };
       }
-      
-      return { ok: false as const, message: userMessage };
+      if (codigo === "23502") {
+        return { ok: false as const, message: `O banco exige o campo "${coluna || "não identificado"}" para criar o cadastro.` };
+      }
+      if (codigo === "23514") {
+        return { ok: false as const, message: `O cadastro não atende a uma regra do banco${constraint ? ` (${constraint})` : ""}.` };
+      }
+
+      return {
+        ok: false as const,
+        message: `Não foi possível concluir o cadastro${codigo ? ` (banco ${codigo})` : ""}${motivoReal ? `: ${motivoReal}` : "."}`,
+      };
     }
   });
 
