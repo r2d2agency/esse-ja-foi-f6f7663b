@@ -1,3 +1,4 @@
+import { useConsultaConferi } from "@/hooks/use-consulta-conferi";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -1244,6 +1245,8 @@ function ConsultaVeicularSection() {
   const [testandoFipe, setTestandoFipe] = useState(false);
   const [resultadoFipe, setResultadoFipe] = useState<any>(null);
   const [webhookToken, setWebhookToken] = useState<string | null>(null);
+  useConsultaConferi(resultadoTeste, setResultadoTeste);
+  useConsultaConferi(resultadoFipe, setResultadoFipe);
 
   useEffect(() => {
     void (async () => {
@@ -1310,8 +1313,11 @@ function ConsultaVeicularSection() {
     try {
       const res: any = await testarConsultaPlacaFn({ data: { placa } });
       setResultadoTeste(res);
-      if (res?.ok) toast.success("Consulta de teste concluída.");
+      if (res?.status === "PROCESSANDO") toast.info(res.message);
+      else if (res?.ok) toast.success("Consulta de teste concluída.");
       else toast.error(res?.message || "Falha na consulta de teste.");
+    } catch {
+      setResultadoTeste({ ok: false, message: "Não foi possível obter a resposta. Repita o teste para verificar a consulta registrada." });
     } finally {
       setTestandoPlaca(false);
     }
@@ -1351,6 +1357,8 @@ function ConsultaVeicularSection() {
       if (res?.ok && res.dados) toast.success("Consulta de FIPE concluída.");
       else if (res?.ok) toast.info(res.message || "Consulta em processamento.");
       else toast.error(res?.message || "Falha na consulta de FIPE.");
+    } catch {
+      setResultadoFipe({ ok: false, message: "Não foi possível obter a resposta. Repita o teste para verificar a consulta registrada." });
     } finally {
       setTestandoFipe(false);
     }
@@ -1499,13 +1507,14 @@ function ConsultaVeicularSection() {
         </div>
 
         {resultadoTeste && (
-          <div className="space-y-2">
+          <div className="space-y-2" role="status" aria-live="polite">
             <p
               className={`text-xs font-bold ${
-                resultadoTeste.ok ? "text-teal-700" : "text-red-600"
+                resultadoTeste.status === "PROCESSANDO" ? "text-amber-700" : resultadoTeste.ok ? "text-teal-700" : "text-red-600"
               }`}
             >
-              {resultadoTeste.ok ? "Consulta concluída" : "Falha na consulta"}
+              {resultadoTeste.status === "PROCESSANDO" ? "Aguardando resultado" : resultadoTeste.ok ? "Consulta concluída" : "Falha na consulta"}
+              {resultadoTeste.protocolo ? ` — Protocolo ${resultadoTeste.protocolo}` : ""}
               {resultadoTeste.httpStatus ? ` — HTTP ${resultadoTeste.httpStatus}` : ""}
               {resultadoTeste.message ? `: ${resultadoTeste.message}` : ""}
             </p>
@@ -1643,10 +1652,10 @@ function ConsultaVeicularSection() {
         </div>
 
         {resultadoFipe && (
-          <div className="space-y-2">
+          <div className="space-y-2" role="status" aria-live="polite">
             <p
               className={`text-xs font-bold ${
-                resultadoFipe.ok && resultadoFipe.dados ? "text-teal-700" : "text-red-600"
+                resultadoFipe.status === "PROCESSANDO" ? "text-amber-700" : resultadoFipe.ok && resultadoFipe.dados ? "text-teal-700" : "text-red-600"
               }`}
             >
               {resultadoFipe.ok && resultadoFipe.dados
@@ -1655,6 +1664,7 @@ function ConsultaVeicularSection() {
                   ? "Em processamento"
                   : "Falha na consulta"}
               {resultadoFipe.httpStatus ? ` — HTTP ${resultadoFipe.httpStatus}` : ""}
+              {resultadoFipe.protocolo ? ` — Protocolo ${resultadoFipe.protocolo}` : ""}
               {resultadoFipe.message ? `: ${resultadoFipe.message}` : ""}
             </p>
 

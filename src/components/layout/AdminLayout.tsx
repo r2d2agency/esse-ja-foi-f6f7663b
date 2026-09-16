@@ -235,7 +235,15 @@ const MENU_SECTIONS: MenuSection[] = [
         icon: Terminal,
         to: "/admin/logs",
         activePrefixes: ["/admin/logs"],
+        exact: true,
         description: "Erros de usuários e auditoria",
+      },
+      {
+        label: "Logs de consultas",
+        icon: History,
+        to: "/admin/logs-consultas",
+        activePrefixes: ["/admin/logs-consultas"],
+        description: "Company, placas e protocolos",
       },
       {
         label: "Ambiente Demo",

@@ -1,5 +1,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "./index";
+import { codigoConsultaDoPayload, conferiEmProcessamento } from "./conferi-protocolo";
+import { criarContextoConsultaLog, registrarEventoConsulta, type ContextoConsultaLog } from "./consulta-logs.server";
 
 function requireDb() {
   if (!db) throw new Error("Banco de dados indisponível.");
@@ -85,7 +87,15 @@ export async function ensureConsultaVeicularSchema() {
   await d.execute(
     sql`ALTER TABLE consulta_provedores ADD COLUMN IF NOT EXISTS auth_modo text DEFAULT 'AUTO';`,
   );
-  await d.execute(sql`ALTER TABLE consulta_provedores ADD COLUMN IF NOT EXISTS webhook_token text;`);
+  await d.execute(
+    sql`ALTER TABLE consulta_provedores ADD COLUMN IF NOT EXISTS webhook_token text;`,
+  );
+  // Testes usam o mesmo ciclo das consultas do cadastro, sem criar veículos fictícios.
+  await d.execute(sql`ALTER TABLE veiculo_consultas ALTER COLUMN veiculo_id DROP NOT NULL;`);
+  await d.execute(sql`ALTER TABLE veiculo_consultas ADD COLUMN IF NOT EXISTS parametros jsonb;`);
+  await d.execute(
+    sql`CREATE INDEX IF NOT EXISTS veiculo_consultas_protocolo_idx ON veiculo_consultas (protocolo);`,
+  );
   // Token usado para autenticar o webhook (a Conferi não assina a chamada) — gerado uma
   // única vez por instalação, na primeira vez que a linha existir sem um.
   await d.execute(sql`
@@ -138,7 +148,9 @@ export async function getProvedorConsulta() {
   const d = requireDb();
   await ensureConsultaVeicularSchema();
   const p = rowsOf(
-    await d.execute(sql`SELECT * FROM consulta_provedores WHERE slug = ${PROVEDOR_PADRAO.slug} LIMIT 1`),
+    await d.execute(
+      sql`SELECT * FROM consulta_provedores WHERE slug = ${PROVEDOR_PADRAO.slug} LIMIT 1`,
+    ),
   )[0];
   if (!p) return null;
   return {
@@ -161,7 +173,9 @@ export async function getWebhookTokenConferi() {
   const d = requireDb();
   await ensureConsultaVeicularSchema();
   const p = rowsOf(
-    await d.execute(sql`SELECT webhook_token FROM consulta_provedores WHERE slug = ${PROVEDOR_PADRAO.slug} LIMIT 1`),
+    await d.execute(
+      sql`SELECT webhook_token FROM consulta_provedores WHERE slug = ${PROVEDOR_PADRAO.slug} LIMIT 1`,
+    ),
   )[0];
   return p?.webhook_token || null;
 }
@@ -200,7 +214,9 @@ async function getProvedorComChave() {
   const d = requireDb();
   await ensureConsultaVeicularSchema();
   const p = rowsOf(
-    await d.execute(sql`SELECT * FROM consulta_provedores WHERE slug = ${PROVEDOR_PADRAO.slug} LIMIT 1`),
+    await d.execute(
+      sql`SELECT * FROM consulta_provedores WHERE slug = ${PROVEDOR_PADRAO.slug} LIMIT 1`,
+    ),
   )[0];
   if (!p) throw new Error("Provedor de consulta não configurado.");
   if (!p.ativo) throw new Error("O módulo de consulta veicular está desativado.");
@@ -214,7 +230,7 @@ type ConferiParametros = Record<string, string | number | undefined | null>;
 
 /**
  * Monta o corpo da requisição exatamente como descrito na documentação oficial:
- * { usuario: Number, senha: String, parametros: { placa|chassi, produto, codigo_consulta? } }
+ * { usuario: Number, senha: String, parametros: { placa|chassi, produto }, codigo_consulta? }
  * Não há cabeçalho de autenticação separado — usuario e senha viajam no corpo.
  */
 function montarCorpo(prov: any, parametros: ConferiParametros, codigoConsulta?: string) {
@@ -238,7 +254,8 @@ function montarCorpo(prov: any, parametros: ConferiParametros, codigoConsulta?: 
 function xmlParaObjeto(xml: string): any {
   const root: any = {};
   const pilha: any[] = [root];
-  const re = /<\?[^>]*\?>|<!--[\s\S]*?-->|<\/([\w:.-]+)\s*>|<([\w:.-]+)((?:\s+[\w:.-]+\s*=\s*"[^"]*")*)\s*(\/?)>|([^<]+)/g;
+  const re =
+    /<\?[^>]*\?>|<!--[\s\S]*?-->|<\/([\w:.-]+)\s*>|<([\w:.-]+)((?:\s+[\w:.-]+\s*=\s*"[^"]*")*)\s*(\/?)>|([^<]+)/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(xml))) {
     const [, fechamento, abertura, attrsRaw, autoFecha, texto] = m;
@@ -325,10 +342,13 @@ function falhaLogica(payload: any): string | null {
   const raiz = raizDoPayload(payload);
   const acao = primeiro(raiz, ["solicitacao.acao"]);
   if (acao === null) return null;
-  const codigo = String(acao);
+  const codigo = textoDe(acao);
   if (codigo === "1") return null;
   const msgApi = primeiro(raiz, ["solicitacao.mensagem"]);
-  return MENSAGENS_ACAO[codigo] || (msgApi ? String(msgApi) : `Solicitação recusada pelo provedor (acao=${codigo}).`);
+  return (
+    MENSAGENS_ACAO[codigo] ||
+    (msgApi ? String(msgApi) : `Solicitação recusada pelo provedor (acao=${codigo}).`)
+  );
 }
 
 type ResultadoConsulta = {
@@ -340,22 +360,40 @@ type ResultadoConsulta = {
 };
 
 /** Chamada HTTP crua (POST, JSON) + parse da resposta — compartilhada por qualquer produto Conferi. */
-async function chamarConferi(url: string, body: string): Promise<ResultadoConsulta> {
+async function chamarConferi(url: string, body: string, contexto?: ContextoConsultaLog): Promise<ResultadoConsulta> {
   const diagnostico: { modo: string; httpStatus: number; mensagem: string }[] = [];
+  const parametrosEnvio = JSON.parse(body);
+  const log = contexto || criarContextoConsultaLog({
+    origem: url.includes("homologacao") ? "HOMOLOGACAO" : "POR_PLACA",
+    placa: parametrosEnvio.parametros?.placa || null,
+    protocolo: parametrosEnvio.codigo_consulta ? String(parametrosEnvio.codigo_consulta) : null,
+    produto: parametrosEnvio.parametros?.produto || (url.includes("conferi-agregados") ? "conferi-agregados" : DESVALORIZACAO_PRODUTO),
+  });
+  const inicio = Date.now();
+  await registrarEventoConsulta(log, log.protocolo ? "RESGATE_ENVIADO" : "CONSULTA_ENVIADA", "PENDENTE", log.protocolo ? "Resgate enviado à Company com o código da consulta." : "Consulta enviada à Company. Aguardando resposta.");
   try {
     const resp = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json, application/xml" },
       body,
+      signal: AbortSignal.timeout(30000),
     });
     const payload = parse(await resp.text());
+    log.protocolo = codigoConsultaDoPayload(payload) || log.protocolo;
+    await registrarEventoConsulta(log, "RESPOSTA_RECEBIDA", "RECEBIDA", "Resposta HTTP recebida da Company.", resp.status, Date.now() - inicio);
     const falha = resp.ok ? falhaLogica(payload) : null;
     const msg = falha || mensagemDoRetorno(payload) || (resp.ok ? "OK" : `HTTP ${resp.status}`);
-    diagnostico.push({ modo: "POST JSON", httpStatus: resp.status, mensagem: String(msg).slice(0, 300) });
+    diagnostico.push({
+      modo: "POST JSON",
+      httpStatus: resp.status,
+      mensagem: String(msg).slice(0, 300),
+    });
 
     if (resp.ok && !falha) {
+      if (!contexto) await registrarEventoConsulta(log, "CONSULTA_CONCLUIDA", "CONCLUIDA", "Resposta disponível para preenchimento dos dados.", resp.status);
       return { ok: true, httpStatus: resp.status, payload, erro: null, diagnostico };
     }
+    if (!contexto) await registrarEventoConsulta(log, conferiEmProcessamento(payload) ? "AGUARDANDO_RESPOSTA" : "FALHA_CONSULTA", conferiEmProcessamento(payload) ? "PROCESSANDO" : "ERRO", conferiEmProcessamento(payload) ? "A Company ainda está processando a consulta." : "A Company não concluiu a consulta. Verifique o diagnóstico da pesquisa.", resp.status);
     return {
       ok: false,
       httpStatus: resp.status,
@@ -364,6 +402,7 @@ async function chamarConferi(url: string, body: string): Promise<ResultadoConsul
       diagnostico,
     };
   } catch (e: any) {
+    await registrarEventoConsulta(log, "FALHA_COMUNICACAO", "ERRO", "Falha de comunicação ou tempo de espera excedido ao chamar a Company.", 0, Date.now() - inicio);
     const erro = e?.message || "Falha de comunicação com o provedor.";
     diagnostico.push({ modo: "POST JSON", httpStatus: 0, mensagem: erro });
     return { ok: false, httpStatus: 0, payload: null, erro, diagnostico };
@@ -374,13 +413,17 @@ async function chamarConferi(url: string, body: string): Promise<ResultadoConsul
 async function executarConsulta(
   prov: any,
   parametros: ConferiParametros,
-  opcoes: { codigoConsulta?: string; url?: string } = {},
+  opcoes: { codigoConsulta?: string; url?: string; contexto?: ContextoConsultaLog } = {},
 ): Promise<ResultadoConsulta> {
   const url =
     opcoes.url ||
     `${String(prov.base_url).replace(/\/+$/, "")}${prov.caminho_consulta || PROVEDOR_PADRAO.caminho_consulta}`;
-  const body = montarCorpo(prov, { ...parametros, produto: PROVEDOR_PADRAO.produto }, opcoes.codigoConsulta);
-  return chamarConferi(url, body);
+  const body = montarCorpo(
+    prov,
+    { ...parametros, produto: PROVEDOR_PADRAO.produto },
+    opcoes.codigoConsulta,
+  );
+  return chamarConferi(url, body, opcoes.contexto);
 }
 
 /** Junta valores não vazios de restrições em um único texto legível. */
@@ -402,7 +445,9 @@ function juntarNaoVazios(valores: any[]): string | null {
 function achatarLeaves(node: any, prefixo = "", saida: Record<string, any> = {}, profundidade = 0) {
   if (node == null || profundidade > 4) return saida;
   if (Array.isArray(node)) {
-    node.forEach((item, i) => achatarLeaves(item, prefixo ? `${prefixo}[${i}]` : String(i), saida, profundidade + 1));
+    node.forEach((item, i) =>
+      achatarLeaves(item, prefixo ? `${prefixo}[${i}]` : String(i), saida, profundidade + 1),
+    );
     return saida;
   }
   if (typeof node === "object") {
@@ -419,7 +464,6 @@ function achatarLeaves(node: any, prefixo = "", saida: Record<string, any> = {},
 /** Mapeia a resposta (blocos agregados/estadual/historicoRouboFurto/sinistro/leilao/csv) para um resumo legível. */
 export function resumirRetorno(payload: any) {
   const raiz = raizDoPayload(payload);
-  const solicitacao = raiz.solicitacao ?? {};
   const agregados = raiz.agregados ?? {};
   const estadual = raiz.estadual ?? {};
   const bin = raiz.bin ?? {};
@@ -443,26 +487,33 @@ export function resumirRetorno(payload: any) {
     estadual.restricoes_05,
   ]);
 
-  const temRegistroLeilao = !!(leilao?.leiloes?.leilao);
+  const temRegistroLeilao = !!leilao?.leiloes?.leilao;
   const temDebito = [
     estadual.existeDebitoMulta,
     estadual.existeDebitoIPVA,
     estadual.existeDebitoLicenciamento,
     estadual.existeDebitoDpvat,
   ].some((v) => {
-    const norm = String(v ?? "").trim().toLowerCase();
+    const norm = String(v ?? "")
+      .trim()
+      .toLowerCase();
     return norm && norm !== "nao" && norm !== "não" && norm !== "0" && norm !== "false";
   });
 
   const resumo = {
-    protocolo: primeiro(solicitacao, ["codigoConsulta"]),
-    situacao: primeiro({ agregados, estadual, bin }, ["agregados.situacao", "estadual.situacao", "bin.situacao"]),
+    protocolo: codigoConsultaDoPayload(payload),
+    situacao: primeiro({ agregados, estadual, bin }, [
+      "agregados.situacao",
+      "estadual.situacao",
+      "bin.situacao",
+    ]),
     roubo_furto: historicoRF.alertaMensagem || null,
     restricoes,
     leilao: temRegistroLeilao ? "Consta ocorrência de leilão" : leilao?.mensagem || null,
     sinistro: sinistro.mensagem || indicioSinistro.mensagem || null,
     debitos: temDebito ? "Consta débito em aberto" : estadual.mensagem || null,
-    renajud: estadual.restricoesRenajud || estadual.restricaoRenajud || bin.restricaoRenajud || null,
+    renajud:
+      estadual.restricoesRenajud || estadual.restricaoRenajud || bin.restricaoRenajud || null,
     alerta_acidente: (alertaAcidente as any)?.mensagem || null,
     documento_url: csv?.retorno?.pdf_path || null,
     hash_pesquisa: raiz.hashPesquisa || null,
@@ -482,68 +533,7 @@ export function resumirRetorno(payload: any) {
 }
 
 export async function consultarLaudoVeiculo(veiculoId: string, criadoPor?: string | null) {
-  const d = requireDb();
-  await ensureConsultaVeicularSchema();
-  const prov = await getProvedorComChave();
-
-  const veiculo = rowsOf(
-    await d.execute(sql`SELECT id, placa, chassi FROM veiculos WHERE id = ${veiculoId}::uuid`),
-  )[0];
-  if (!veiculo) throw new Error("Veículo não encontrado.");
-  if (!veiculo.placa && !veiculo.chassi) {
-    throw new Error("Cadastre a placa ou o chassi do veículo antes de consultar.");
-  }
-
-  // Reaproveita o protocolo de uma consulta anterior (até 60 dias) para não gerar nova cobrança,
-  // conforme a seção "Atualização de uma consulta existente" da documentação.
-  const anterior = rowsOf(
-    await d.execute(sql`
-      SELECT protocolo FROM veiculo_consultas
-      WHERE veiculo_id = ${veiculoId}::uuid AND protocolo IS NOT NULL
-        AND criado_em > now() - interval '60 days'
-      ORDER BY criado_em DESC LIMIT 1
-    `),
-  )[0];
-
-  const r = await executarConsulta(
-    prov,
-    { placa: veiculo.placa || undefined, chassi: veiculo.chassi || undefined },
-    { codigoConsulta: anterior?.protocolo ? String(anterior.protocolo) : undefined },
-  );
-
-  const payload = r.payload;
-  const erro = r.ok ? null : r.erro;
-  const status = r.ok
-    ? "CONCLUIDA"
-    : r.httpStatus === 401 || r.httpStatus === 403
-      ? "NAO_AUTORIZADO"
-      : "ERRO";
-
-  const resumo = status === "CONCLUIDA" ? resumirRetorno(payload) : {};
-
-  const row = rowsOf(
-    await d.execute(sql`
-      INSERT INTO veiculo_consultas
-        (veiculo_id, provedor, produto, placa, chassi, status, protocolo, resumo, resposta, documento_url, erro, criado_por)
-      VALUES (
-        ${veiculoId}::uuid, ${prov.nome}, ${PROVEDOR_PADRAO.produto}, ${veiculo.placa || null}, ${veiculo.chassi || null},
-        ${status}, ${(resumo as any).protocolo || null}, ${JSON.stringify(resumo)}::jsonb,
-        ${payload ? JSON.stringify(payload) : null}::jsonb,
-        ${(resumo as any).documento_url || null}, ${erro}, ${criadoPor || null}
-      )
-      RETURNING id
-    `),
-  )[0];
-
-  if (status !== "CONCLUIDA") {
-    throw new Error(erro || "Não foi possível concluir a consulta.");
-  }
-
-  await d.execute(
-    sql`UPDATE veiculos SET consulta_habilitada = true WHERE id = ${veiculoId}::uuid`,
-  );
-
-  return { ok: true as const, id: String(row?.id ?? ""), status, resumo };
+  return iniciarConsultaRegistrada(PROVEDOR_PADRAO.produto, { veiculoId, criadoPor });
 }
 
 export async function listarConsultasVeiculo(veiculoId: string) {
@@ -584,29 +574,7 @@ export async function testarConexaoProvedor() {
  * Gera uma consulta real (e possível cobrança) — não grava nada no cadastro de veículos.
  */
 export async function consultarPlacaAvulsa(placa: string) {
-  const prov = await getProvedorComChave();
-  const placaLimpa = placa.toUpperCase().replace(/\W/g, "");
-  if (placaLimpa.length !== 7) throw new Error("Informe uma placa válida (7 caracteres).");
-
-  const r = await executarConsulta(prov, { placa: placaLimpa });
-  if (!r.ok) {
-    return {
-      ok: false as const,
-      httpStatus: r.httpStatus,
-      message: r.erro || "Falha de comunicação com o provedor.",
-      resumo: null,
-      resposta: r.payload,
-      diagnostico: r.diagnostico,
-    };
-  }
-  return {
-    ok: true as const,
-    httpStatus: r.httpStatus,
-    message: "Consulta concluída.",
-    resumo: resumirRetorno(r.payload),
-    resposta: r.payload,
-    diagnostico: r.diagnostico,
-  };
+  return iniciarConsultaRegistrada(PROVEDOR_PADRAO.produto, { placa });
 }
 
 /**
@@ -621,7 +589,10 @@ const AGREGADOS_CAMINHO_CONSULTA = "/conferi-agregados/json";
  * é só { usuario, senha, parametros: { placa|chassi|motor|cambio } }, por isso não reaproveita
  * `executarConsulta` (que sempre injeta o produto da Pericia Gold).
  */
-async function executarConsultaAgregados(prov: any, parametros: ConferiParametros): Promise<ResultadoConsulta> {
+async function executarConsultaAgregados(
+  prov: any,
+  parametros: ConferiParametros,
+): Promise<ResultadoConsulta> {
   // base_url é um campo livre editado pelo admin (tela de configurações) e pode já conter o
   // caminho de outro produto (ex.: alguém colou a URL completa da Pericia Gold ali) — remove
   // qualquer sufixo de produto conhecido antes de montar a URL do Agregados, pra não gerar uma
@@ -695,7 +666,13 @@ export async function consultarAgregadosPorPlaca(placa: string) {
       diagnostico: r.diagnostico,
     };
   }
-  return { ok: true as const, httpStatus: r.httpStatus, message: "Dados localizados.", dados, diagnostico: r.diagnostico };
+  return {
+    ok: true as const,
+    httpStatus: r.httpStatus,
+    message: "Dados localizados.",
+    dados,
+    diagnostico: r.diagnostico,
+  };
 }
 
 /**
@@ -709,6 +686,7 @@ async function executarConsultaDesvalorizacao(
   prov: any,
   parametros: ConferiParametros,
   codigoConsulta?: string,
+  contexto?: ContextoConsultaLog,
 ): Promise<ResultadoConsulta> {
   const raiz = String(prov.base_url)
     .replace(/\/+$/, "")
@@ -717,14 +695,20 @@ async function executarConsultaDesvalorizacao(
     .replace(/\/conferi-desvalorizacao.*$/i, "");
   const url = `${raiz}${DESVALORIZACAO_CAMINHO_CONSULTA}`;
   const body = montarCorpo(prov, parametros, codigoConsulta);
-  return chamarConferi(url, body);
+  return chamarConferi(url, body, contexto);
 }
 
 /** "R$ 71.123,00" -> 71123 (reais, não centavos) — mesma unidade da coluna veiculos.valor_fipe. */
 function valorMonetarioParaNumero(texto: any): number | null {
+  if (typeof texto === "number") return Number.isFinite(texto) ? texto : null;
   const t = textoDe(texto);
-  if (!t) return null;
-  const limpo = t.replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", ".");
+  if (!t || !/\d/.test(t)) return null;
+  const bruto = t.replace(/[^\d,.-]/g, "");
+  const limpo = bruto.includes(",")
+    ? bruto.replace(/\./g, "").replace(",", ".")
+    : /^-?\d{1,3}(\.\d{3})+$/.test(bruto)
+      ? bruto.replace(/\./g, "")
+      : bruto;
   const n = Number(limpo);
   return Number.isFinite(n) ? n : null;
 }
@@ -743,13 +727,15 @@ export function mapearDesvalorizacaoFipe(payload: any) {
   if (!item) return null;
 
   const historicoBruto = item.historico ?? item.Historicos?.historico ?? [];
-  const historico = (Array.isArray(historicoBruto) ? historicoBruto : [historicoBruto]).map((h: any) => ({
-    referencia: textoDe(h?.referencia),
-    valor: numeroOuNulo(h?.valor),
-    status: textoDe(h?.status),
-    variacaoNominal: numeroOuNulo(h?.variacao_nominal),
-    variacaoPercentual: numeroOuNulo(h?.variacao_percentual),
-  }));
+  const historico = (Array.isArray(historicoBruto) ? historicoBruto : [historicoBruto]).map(
+    (h: any) => ({
+      referencia: textoDe(h?.referencia),
+      valor: numeroOuNulo(h?.valor),
+      status: textoDe(h?.status),
+      variacaoNominal: numeroOuNulo(h?.variacao_nominal),
+      variacaoPercentual: numeroOuNulo(h?.variacao_percentual),
+    }),
+  );
 
   const resumoBruto = item.resumo;
   const resumo = resumoBruto
@@ -782,128 +768,204 @@ export function mapearDesvalorizacaoFipe(payload: any) {
  * Conferi Desvalorização Fipe). Registra a consulta em `veiculo_consultas` — igual ao laudo
  * completo — e reaproveita o protocolo de uma consulta anterior (até 60 dias) para não gerar
  * cobrança em duplicidade. Quando o provedor ainda está processando (acao=4), devolve
- * status "PROCESSANDO" para o chamador tentar novamente mais tarde, sem lançar erro.
+ * status "PROCESSANDO" enquanto aguarda o webhook; a tela acompanha apenas o banco.
  */
 export async function consultarDesvalorizacaoFipe(veiculoId: string, criadoPor?: string | null) {
-  const d = requireDb();
-  await ensureConsultaVeicularSchema();
-  const prov = await getProvedorComChave();
-
-  const veiculo = rowsOf(
-    await d.execute(sql`SELECT id, placa FROM veiculos WHERE id = ${veiculoId}::uuid`),
-  )[0];
-  if (!veiculo) throw new Error("Veículo não encontrado.");
-  if (!veiculo.placa) throw new Error("Cadastre a placa do veículo antes de consultar a FIPE.");
-
-  const anterior = rowsOf(
-    await d.execute(sql`
-      SELECT id, protocolo, status FROM veiculo_consultas
-      WHERE veiculo_id = ${veiculoId}::uuid AND produto = ${DESVALORIZACAO_PRODUTO} AND protocolo IS NOT NULL
-        AND criado_em > now() - interval '60 days'
-      ORDER BY criado_em DESC LIMIT 1
-    `),
-  )[0];
-
-  const r = await executarConsultaDesvalorizacao(
-    prov,
-    { placa: veiculo.placa },
-    anterior?.protocolo ? String(anterior.protocolo) : undefined,
-  );
-
-  const payload = r.payload;
-  const raiz = raizDoPayload(payload);
-  const acao = primeiro(raiz, ["solicitacao.acao"]);
-  const protocolo = primeiro(raiz, ["solicitacao.codigoConsulta"]);
-  const emProcessamento = !r.ok && String(acao) === "4";
-
-  const status = r.ok ? "CONCLUIDA" : emProcessamento ? "PROCESSANDO" : "ERRO";
-  const dados = status === "CONCLUIDA" ? mapearDesvalorizacaoFipe(payload) : null;
-
-  // Enquanto está recuperando uma consulta que já tinha protocolo (independente do status
-  // anterior), atualiza o mesmo registro em vez de inserir um novo a cada tentativa de
-  // polling — assim o histórico de `veiculo_consultas` não fica poluído com uma linha por
-  // tentativa enquanto o resultado ainda não chega.
-  if (anterior?.id) {
-    await d.execute(sql`
-      UPDATE veiculo_consultas SET
-        status = ${status},
-        protocolo = ${protocolo ? String(protocolo) : anterior.protocolo},
-        resumo = ${JSON.stringify(dados ?? {})}::jsonb,
-        resposta = ${payload ? JSON.stringify(payload) : null}::jsonb,
-        erro = ${status === "ERRO" ? r.erro : null}
-      WHERE id = ${anterior.id}::uuid
-    `);
-  } else {
-    await d.execute(sql`
-      INSERT INTO veiculo_consultas
-        (veiculo_id, provedor, produto, placa, status, protocolo, resumo, resposta, erro, criado_por)
-      VALUES (
-        ${veiculoId}::uuid, ${prov.nome}, ${DESVALORIZACAO_PRODUTO}, ${veiculo.placa},
-        ${status}, ${protocolo ? String(protocolo) : null}, ${JSON.stringify(dados ?? {})}::jsonb,
-        ${payload ? JSON.stringify(payload) : null}::jsonb, ${status === "ERRO" ? r.erro : null}, ${criadoPor || null}
-      )
-    `);
-  }
-
-  if (status === "ERRO") throw new Error(r.erro || "Não foi possível concluir a consulta FIPE.");
-  if (status === "PROCESSANDO") {
-    return {
-      ok: true as const,
-      status,
-      message: "Consulta registrada e em processamento no provedor — tente novamente em instantes.",
-      dados: null,
-    };
-  }
-  if (!dados) {
-    return { ok: true as const, status: "ERRO" as const, message: "Nenhum registro encontrado para esta placa.", dados: null };
-  }
-  return { ok: true as const, status, message: "Consulta concluída.", dados };
+  return iniciarConsultaRegistrada(DESVALORIZACAO_PRODUTO, { veiculoId, criadoPor });
 }
 
 /**
  * Versão "avulsa" do produto Desvalorização Fipe — só pela placa, sem vincular a um veículo
- * cadastrado e sem gravar nada. Usada na tela de configurações para validar a integração,
+ * cadastrado. Registra o teste para receber o webhook. Usada na tela de configurações para validar a integração,
  * do mesmo jeito que `consultarAgregadosPorPlaca` é usada para testar o produto Agregados.
  */
 export async function consultarDesvalorizacaoFipePorPlaca(placa: string) {
+  return iniciarConsultaRegistrada(DESVALORIZACAO_PRODUTO, { placa });
+}
+
+function retornoRegistrado(consulta: any) {
+  const fipe = consulta.produto === DESVALORIZACAO_PRODUTO;
+  const processando = consulta.status === "PROCESSANDO";
+  return {
+    ok: processando || consulta.status === "CONCLUIDA",
+    id: String(consulta.id),
+    status: consulta.status as string,
+    protocolo: consulta.protocolo as string | null,
+    message: processando
+      ? "Consulta em processamento. O resultado será atualizado automaticamente."
+      : consulta.status === "CONCLUIDA"
+        ? "Consulta concluída."
+        : consulta.erro || "Não foi possível concluir a consulta.",
+    dados: fipe && consulta.status === "CONCLUIDA" ? consulta.resumo : null,
+    resumo: fipe ? null : consulta.resumo,
+    resposta: consulta.resposta,
+  };
+}
+
+/** Apenas lê nosso banco: acompanhar uma pendência nunca inicia outra pesquisa. */
+export async function obterConsultaRegistrada(id: string) {
+  const consulta = rowsOf(
+    await requireDb().execute(sql`
+    SELECT id, produto, status, protocolo, resumo, resposta, erro
+    FROM veiculo_consultas WHERE id = ${id}::uuid
+  `),
+  )[0];
+  if (!consulta) throw new Error("Consulta não encontrada.");
+  return retornoRegistrado(consulta);
+}
+
+function resultadoRegistravel(produto: string, r: ResultadoConsulta, inicial = false) {
+  const parcial =
+    (inicial && produto === PROVEDOR_PADRAO.produto && r.ok) ||
+    (r.httpStatus >= 200 && r.httpStatus < 300 && conferiEmProcessamento(r.payload));
+  const dados: any =
+    produto === DESVALORIZACAO_PRODUTO
+      ? mapearDesvalorizacaoFipe(r.payload)
+      : resumirRetorno(r.payload);
+  // Para FIPE o objetivo é o valor atual, mesmo se o histórico estiver indisponível.
+  const temValor = produto === DESVALORIZACAO_PRODUTO && r.ok && (dados as any)?.valorNumero > 0;
+  const status = temValor ? "CONCLUIDA" : parcial ? "PROCESSANDO" : r.ok ? "CONCLUIDA" : "ERRO";
+  if (status === "CONCLUIDA" && produto === DESVALORIZACAO_PRODUTO && !temValor) {
+    return {
+      status: "ERRO",
+      resumo: {},
+      erro: "A consulta terminou sem um valor FIPE válido para esta placa.",
+    };
+  }
+  return { status, resumo: dados ?? {}, erro: status === "ERRO" ? r.erro : null };
+}
+
+async function executarProduto(
+  prov: any,
+  produto: string,
+  parametros: ConferiParametros,
+  protocolo?: string,
+  contexto?: ContextoConsultaLog,
+) {
+  if (produto === DESVALORIZACAO_PRODUTO)
+    return executarConsultaDesvalorizacao(prov, parametros, protocolo, contexto);
+  if (produto === PROVEDOR_PADRAO.produto)
+    return executarConsulta(prov, parametros, { codigoConsulta: protocolo, contexto });
+  throw new Error("Produto não suportado pelo webhook.");
+}
+
+/** Cadastro e testes compartilham persistência, estados e recuperação pelo webhook. */
+async function iniciarConsultaRegistrada(
+  produto: string,
+  entrada: { veiculoId?: string; placa?: string; criadoPor?: string | null },
+) {
+  await ensureConsultaVeicularSchema();
   const prov = await getProvedorComChave();
-  const placaLimpa = placa.toUpperCase().replace(/\W/g, "");
-  if (placaLimpa.length !== 7) throw new Error("Informe uma placa válida (7 caracteres).");
-
-  const r = await executarConsultaDesvalorizacao(prov, { placa: placaLimpa });
-  const raiz = raizDoPayload(r.payload);
-  const acao = primeiro(raiz, ["solicitacao.acao"]);
-  const emProcessamento = !r.ok && String(acao) === "4";
-
-  if (!r.ok && !emProcessamento) {
-    return {
-      ok: false as const,
-      httpStatus: r.httpStatus,
-      message: r.erro || "Falha de comunicação com o provedor.",
-      dados: null,
-      diagnostico: r.diagnostico,
-    };
+  const d = requireDb();
+  const veiculo = entrada.veiculoId
+    ? rowsOf(
+        await d.execute(sql`
+    SELECT id, placa, chassi FROM veiculos WHERE id = ${entrada.veiculoId}::uuid
+  `),
+      )[0]
+    : null;
+  if (entrada.veiculoId && !veiculo) throw new Error("Veículo não encontrado.");
+  const placa = String(veiculo?.placa || entrada.placa || "")
+    .toUpperCase()
+    .replace(/\W/g, "");
+  if (placa.length !== 7 && !(produto === PROVEDOR_PADRAO.produto && veiculo?.chassi)) {
+    throw new Error("Informe uma placa válida (7 caracteres).");
   }
-  if (emProcessamento) {
-    return {
-      ok: true as const,
-      httpStatus: r.httpStatus,
-      message: "Consulta registrada e em processamento no provedor — tente novamente em instantes.",
-      dados: null,
-      diagnostico: r.diagnostico,
-    };
+  const parametros: ConferiParametros = { placa: placa || undefined };
+  if (produto === PROVEDOR_PADRAO.produto && veiculo?.chassi) parametros.chassi = veiculo.chassi;
+  const contexto = criarContextoConsultaLog({ origem: entrada.veiculoId ? "CADASTRO" : "TESTE", veiculoId: entrada.veiculoId, placa: placa || null, produto });
+  try {
+  const retorno = await d.transaction(async (tx) => {
+    // Serializa cliques repetidos para não criar duas pesquisas antes de salvar o protocolo.
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext(${`${produto}:${entrada.veiculoId || placa}`}))`,
+    );
+    const anterior = rowsOf(
+      await tx.execute(sql`
+      SELECT * FROM veiculo_consultas
+      WHERE produto = ${produto} AND placa IS NOT DISTINCT FROM ${placa || null}
+        AND veiculo_id IS NOT DISTINCT FROM ${entrada.veiculoId || null}::uuid
+        AND chassi IS NOT DISTINCT FROM ${parametros.chassi || null}
+        AND criado_em > now() - interval '60 days'
+      ORDER BY criado_em DESC LIMIT 1
+    `),
+    )[0];
+    const protocoloAnterior =
+      anterior?.protocolo && anterior.protocolo !== "[object Object]"
+        ? String(anterior.protocolo).trim() || codigoConsultaDoPayload(anterior?.resposta)
+      : codigoConsultaDoPayload(anterior?.resposta);
+    contexto.protocolo = protocoloAnterior;
+    contexto.consultaId = anterior?.id;
+    const concluidaValida =
+      anterior?.status === "CONCLUIDA" &&
+      (produto === DESVALORIZACAO_PRODUTO
+        ? anterior.resumo?.valorNumero > 0
+        : !conferiEmProcessamento(anterior.resposta));
+    if (anterior && (anterior.status === "PROCESSANDO" || concluidaValida) && protocoloAnterior) {
+      if (anterior.protocolo !== protocoloAnterior) {
+        await tx.execute(
+          sql`UPDATE veiculo_consultas SET protocolo = ${protocoloAnterior} WHERE id = ${anterior.id}::uuid`,
+        );
+      }
+      return retornoRegistrado({ ...anterior, protocolo: protocoloAnterior });
+    }
+    const r = await executarProduto(
+      prov,
+      produto,
+      anterior?.parametros || parametros,
+      protocoloAnterior || undefined,
+      contexto,
+    );
+    const resultado = resultadoRegistravel(produto, r, !protocoloAnterior);
+    const protocolo = codigoConsultaDoPayload(r.payload) || protocoloAnterior || null;
+    if (resultado.status === "PROCESSANDO" && !protocolo) {
+      resultado.status = "ERRO";
+      resultado.erro =
+        "A Company retornou processamento sem código de consulta. Verifique a resposta antes de tentar novamente.";
+    }
+    const resumo = JSON.stringify(resultado.resumo);
+    const resposta = JSON.stringify(r.payload);
+    const registro =
+      anterior && protocoloAnterior
+        ? rowsOf(
+            await tx.execute(sql`
+          UPDATE veiculo_consultas SET status = ${resultado.status}, protocolo = ${protocolo},
+            resumo = ${resumo}::jsonb, resposta = ${resposta}::jsonb, erro = ${resultado.erro}
+          WHERE id = ${anterior.id}::uuid RETURNING *
+        `),
+          )[0]
+        : rowsOf(
+            await tx.execute(sql`
+          INSERT INTO veiculo_consultas (veiculo_id, provedor, produto, placa, chassi, parametros, status, protocolo, resumo, resposta, erro, criado_por)
+          VALUES (${entrada.veiculoId || null}::uuid, ${prov.nome}, ${produto}, ${placa || null}, ${parametros.chassi || null},
+            ${JSON.stringify(parametros)}::jsonb, ${resultado.status}, ${protocolo}, ${resumo}::jsonb, ${resposta}::jsonb, ${resultado.erro}, ${entrada.criadoPor || null}::uuid)
+          RETURNING *
+        `),
+          )[0];
+    contexto.consultaId = registro.id;
+    contexto.protocolo = protocolo;
+    if (produto === PROVEDOR_PADRAO.produto) {
+      await tx.execute(
+        sql`UPDATE veiculo_consultas SET documento_url = ${(resultado.resumo as any)?.documento_url || null} WHERE id = ${registro.id}::uuid`,
+      );
+    }
+    if (
+      produto === PROVEDOR_PADRAO.produto &&
+      entrada.veiculoId &&
+      resultado.status === "CONCLUIDA"
+    ) {
+      await tx.execute(
+        sql`UPDATE veiculos SET consulta_habilitada = true WHERE id = ${entrada.veiculoId}::uuid`,
+      );
+    }
+    return { ...retornoRegistrado(registro), httpStatus: r.httpStatus, diagnostico: r.diagnostico };
+  });
+  await registrarEventoConsulta(contexto, retorno.status === "PROCESSANDO" ? "AGUARDANDO_RESPOSTA" : retorno.ok ? "RESULTADO_DISPONIVEL" : "FALHA_CONSULTA", retorno.status, retorno.status === "PROCESSANDO" ? "Consulta registrada. Aguardando a conclusão e o webhook da Company." : retorno.ok ? "Resultado disponível no sistema." : "Consulta registrada com erro. Verifique o diagnóstico da pesquisa.");
+  return retorno;
+  } catch (erro) {
+    await registrarEventoConsulta(contexto, "FALHA_REGISTRO", "ERRO", "Não foi possível finalizar o registro da consulta no sistema.");
+    throw erro;
   }
-  const dados = mapearDesvalorizacaoFipe(r.payload);
-  if (!dados) {
-    return {
-      ok: false as const,
-      httpStatus: r.httpStatus,
-      message: "Nenhum registro encontrado para esta placa.",
-      dados: null,
-      diagnostico: r.diagnostico,
-    };
-  }
-  return { ok: true as const, httpStatus: r.httpStatus, message: "Consulta concluída.", dados, diagnostico: r.diagnostico };
 }
 
 /**
@@ -915,58 +977,76 @@ export async function consultarDesvalorizacaoFipePorPlaca(placa: string) {
  * manual), preservando o valor de interesse do cliente já cadastrado.
  */
 export async function processarWebhookConferi(codigoConsulta: string) {
+  const contexto = criarContextoConsultaLog({ origem: "WEBHOOK", protocolo: codigoConsulta });
+  await registrarEventoConsulta(contexto, "WEBHOOK_RECEBIDO", "RECEBIDA", "Notificação recebida da Company. Localizando a consulta.");
+  try {
   const d = requireDb();
   await ensureConsultaVeicularSchema();
   const prov = await getProvedorComChave();
 
-  const pendente = rowsOf(
+  let consultas = rowsOf(
     await d.execute(sql`
-      SELECT id, veiculo_id, produto, placa, chassi
-      FROM veiculo_consultas
-      WHERE protocolo = ${codigoConsulta}
-      ORDER BY criado_em DESC LIMIT 1
+    SELECT id, veiculo_id, produto, placa, chassi, parametros FROM veiculo_consultas
+    WHERE protocolo = ${codigoConsulta} ORDER BY criado_em DESC
+  `),
+  );
+  {
+    const legadas = rowsOf(
+      await d.execute(sql`
+      SELECT id, veiculo_id, produto, placa, chassi, parametros, resposta FROM veiculo_consultas
+      WHERE (protocolo IS NULL OR protocolo = '[object Object]' OR btrim(protocolo) = '') AND resposta IS NOT NULL
     `),
-  )[0];
-  if (!pendente) {
-    return { ok: false as const, message: `codigo_consulta ${codigoConsulta} não corresponde a nenhuma consulta registrada.` };
-  }
-
-  let r: ResultadoConsulta;
-  if (pendente.produto === DESVALORIZACAO_PRODUTO) {
-    r = await executarConsultaDesvalorizacao(prov, { placa: pendente.placa }, codigoConsulta);
-  } else if (pendente.produto === PROVEDOR_PADRAO.produto) {
-    r = await executarConsulta(
-      prov,
-      { placa: pendente.placa || undefined, chassi: pendente.chassi || undefined },
-      { codigoConsulta },
     );
-  } else {
-    return { ok: false as const, message: `Produto "${pendente.produto}" não é resgatado pelo webhook.` };
+    const recuperadas = legadas.filter(
+      (consulta) => codigoConsultaDoPayload(consulta.resposta) === codigoConsulta,
+    );
+    for (const consulta of recuperadas) {
+      await d.execute(
+        sql`UPDATE veiculo_consultas SET protocolo = ${codigoConsulta} WHERE id = ${consulta.id}::uuid`,
+      );
+    }
+    consultas = [...consultas, ...recuperadas];
   }
+  if (!consultas.length) {
+    await registrarEventoConsulta(contexto, "CONSULTA_NAO_LOCALIZADA", "ERRO", "O código recebido não corresponde a uma consulta registrada no sistema.");
+    return {
+      ok: false as const,
+      message: `codigo_consulta ${codigoConsulta} não corresponde a nenhuma consulta registrada.`,
+    };
+  }
+  // A Company pode reutilizar o código para a mesma pesquisa no dia: atualiza cadastro e testes.
+  const resultados = [];
+  for (const [indice, consulta] of consultas.entries()) {
+    const log = indice === 0 ? contexto : criarContextoConsultaLog({ origem: "WEBHOOK", protocolo: codigoConsulta });
+    Object.assign(log, { consultaId: consulta.id, veiculoId: consulta.veiculo_id, placa: consulta.placa, produto: consulta.produto });
+    resultados.push(await atualizarConsultaNotificada(prov, consulta, codigoConsulta, log));
+  }
+  return resultados.find((resultado) => !resultado.ok) || resultados[0];
+  } catch (erro) {
+    await registrarEventoConsulta(contexto, "FALHA_WEBHOOK", "ERRO", "Não foi possível processar a notificação ou salvar o resultado no sistema.");
+    throw erro;
+  }
+}
 
+async function atualizarConsultaNotificada(prov: any, pendente: any, codigoConsulta: string, contexto: ContextoConsultaLog) {
+  const d = requireDb();
+  const parametros = pendente.parametros || {
+    placa: pendente.placa || undefined,
+    ...(pendente.produto === PROVEDOR_PADRAO.produto
+      ? { chassi: pendente.chassi || undefined }
+      : {}),
+  };
+  const r = await executarProduto(prov, pendente.produto, parametros, codigoConsulta, contexto);
   const payload = r.payload;
-  const raiz = raizDoPayload(payload);
-  const acao = primeiro(raiz, ["solicitacao.acao"]);
-  const emProcessamento = !r.ok && String(acao) === "4";
-  const status = r.ok ? "CONCLUIDA" : emProcessamento ? "PROCESSANDO" : "ERRO";
+  const resultado = resultadoRegistravel(pendente.produto, r);
+  const { status, resumo: dados } = resultado;
 
-  const dados: any =
-    status === "CONCLUIDA"
-      ? pendente.produto === DESVALORIZACAO_PRODUTO
-        ? mapearDesvalorizacaoFipe(payload)
-        : resumirRetorno(payload)
-      : null;
-
-  await d.execute(sql`
-    UPDATE veiculo_consultas SET
-      status = ${status},
-      resumo = ${JSON.stringify(dados ?? {})}::jsonb,
-      resposta = ${payload ? JSON.stringify(payload) : null}::jsonb,
-      erro = ${status === "ERRO" ? r.erro : null}
-    WHERE id = ${pendente.id}::uuid
-  `);
-
-  if (status === "CONCLUIDA" && pendente.produto === DESVALORIZACAO_PRODUTO && pendente.veiculo_id && dados?.valorNumero) {
+  if (
+    status === "CONCLUIDA" &&
+    pendente.produto === DESVALORIZACAO_PRODUTO &&
+    pendente.veiculo_id &&
+    (dados as any)?.valorNumero
+  ) {
     const veiculo = rowsOf(
       await d.execute(sql`
         SELECT placa, marca, modelo, valor_interesse_cliente FROM veiculos WHERE id = ${pendente.veiculo_id}::uuid
@@ -979,18 +1059,47 @@ export async function processarWebhookConferi(codigoConsulta: string) {
         placa: veiculo.placa,
         marca: veiculo.marca,
         modelo: veiculo.modelo,
-        valorFipe: dados.valorNumero,
+        valorFipe: (dados as any).valorNumero,
         valorInteresseCliente:
-          veiculo.valor_interesse_cliente != null ? Number(veiculo.valor_interesse_cliente) : undefined,
+          veiculo.valor_interesse_cliente != null
+            ? Number(veiculo.valor_interesse_cliente)
+            : undefined,
       });
+      await registrarEventoConsulta(contexto, "VALOR_FIPE_ATUALIZADO", "CONCLUIDA", "Valor FIPE atualizado no cadastro do veículo.");
     }
   }
 
+  if (
+    status === "CONCLUIDA" &&
+    pendente.produto === PROVEDOR_PADRAO.produto &&
+    pendente.veiculo_id
+  ) {
+    await d.execute(
+      sql`UPDATE veiculos SET consulta_habilitada = true WHERE id = ${pendente.veiculo_id}::uuid`,
+    );
+  }
+  await d.execute(sql`
+    UPDATE veiculo_consultas SET
+      status = ${status},
+      resumo = ${JSON.stringify(dados ?? {})}::jsonb,
+      resposta = ${payload ? JSON.stringify(payload) : null}::jsonb,
+      documento_url = ${(dados as any)?.documento_url || null},
+      erro = ${resultado.erro}
+    WHERE id = ${pendente.id}::uuid
+  `);
+
+  await registrarEventoConsulta(contexto, status === "PROCESSANDO" ? "AGUARDANDO_RESPOSTA" : status === "ERRO" ? "FALHA_RESGATE" : "CONSULTA_CONCLUIDA", status, status === "PROCESSANDO" ? "Resposta ainda parcial. Aguardando nova notificação da Company." : status === "ERRO" ? "A Company não concluiu o resgate. Verifique o diagnóstico da pesquisa." : "Resposta recebida e salva no sistema.", r.httpStatus);
   if (status === "ERRO") {
-    return { ok: false as const, message: r.erro || "Falha ao resgatar a consulta notificada pelo webhook." };
+    return {
+      ok: false as const,
+      message: resultado.erro || "Falha ao resgatar a consulta notificada pelo webhook.",
+    };
   }
   if (status === "PROCESSANDO") {
-    return { ok: true as const, message: "Ainda em processamento no provedor — aguardando novo webhook." };
+    return {
+      ok: true as const,
+      message: "Ainda em processamento no provedor — aguardando novo webhook.",
+    };
   }
   return { ok: true as const, message: "Consulta atualizada com sucesso." };
 }

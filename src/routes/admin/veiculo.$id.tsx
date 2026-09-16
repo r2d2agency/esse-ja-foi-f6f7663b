@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getVeiculoDetalheAdminFn, assumirAnaliseVeiculoFn, atualizarStatusAnaliseFn, atualizarStatusDocumentoVeiculoFn, aprovarParaPublicacaoFn } from "@/lib/admin-veiculo-detalhe.functions";
 import { removerVeiculoFn, salvarVeiculoFn } from "@/lib/cadastro.functions";
-import { consultarDesvalorizacaoFipeFn, listarConsultasVeiculoFn } from "@/lib/consulta-veicular.functions";
+import { obterConsultaRegistradaFn, consultarDesvalorizacaoFipeFn, listarConsultasVeiculoFn } from "@/lib/consulta-veicular.functions";
 import { salvarConfiguracaoLeilao } from "@/lib/leilao.functions";
 import { getSessionToken } from "@/lib/session";
 import { useAuth } from "@/hooks/use-auth";
@@ -145,6 +145,7 @@ function DetalheVeiculoAdminPage() {
   const [buscandoFipeConferi, setBuscandoFipeConferi] = useState(false);
   const [statusFipeConferi, setStatusFipeConferi] = useState<string | null>(null);
   const pollFipeConferiRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const versaoAcompanhamentoFipe = useRef(0);
   const queryClient = useQueryClient();
 
   const getDetalhe = useServerFn(getVeiculoDetalheAdminFn);
@@ -205,7 +206,7 @@ function DetalheVeiculoAdminPage() {
         if (pendente) {
           setBuscandoFipeConferi(true);
           setStatusFipeConferi("Retomando consulta pendente na Company Conferi...");
-          pollFipeConferi(0);
+          pollFipeConferi(0, pendente.id);
         }
       } catch {
         // silencioso — não bloqueia a página por causa disso
@@ -213,6 +214,7 @@ function DetalheVeiculoAdminPage() {
     })();
     return () => {
       cancelado = true;
+      versaoAcompanhamentoFipe.current += 1;
       if (pollFipeConferiRef.current) clearTimeout(pollFipeConferiRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -362,11 +364,13 @@ function DetalheVeiculoAdminPage() {
    * (reaproveitando o protocolo já registrado, sem custo adicional) até o valor chegar,
    * mantendo o botão bloqueado nesse meio-tempo para não disparar uma nova consulta.
    */
-  const pollFipeConferi = async (tentativa: number) => {
+  const pollFipeConferi = async (tentativa: number, consultaId?: string) => {
+    const versao = versaoAcompanhamentoFipe.current;
     try {
-      const res: any = await consultarDesvalorizacaoFipe({
-        data: { token: getSessionToken(), veiculoId: v.id },
-      });
+      const res: any = consultaId
+        ? await obterConsultaRegistradaFn({ data: { id: consultaId, token: getSessionToken() || "" } })
+        : await consultarDesvalorizacaoFipe({ data: { token: getSessionToken(), veiculoId: v.id } });
+      if (versao !== versaoAcompanhamentoFipe.current) return;
       if (!res?.ok) {
         toast.error(res?.message || "Não foi possível consultar a FIPE pela placa.");
         setBuscandoFipeConferi(false);
@@ -377,12 +381,12 @@ function DetalheVeiculoAdminPage() {
         if (tentativa >= FIPE_POLL_MAX_TENTATIVAS) {
           setBuscandoFipeConferi(false);
           setStatusFipeConferi(
-            "Ainda em processamento na Company Conferi — reabra esta página em alguns minutos para o valor ser preenchido automaticamente.",
+            "Ainda aguardando a Company Conferi. O valor será atualizado automaticamente; você pode continuar trabalhando.",
           );
-          return;
+        } else {
+          setStatusFipeConferi("Aguardando o valor FIPE da Company Conferi...");
         }
-        setStatusFipeConferi(`Aguardando retorno da Company Conferi (tentativa ${tentativa + 1})...`);
-        pollFipeConferiRef.current = setTimeout(() => pollFipeConferi(tentativa + 1), FIPE_POLL_INTERVALO_MS);
+        pollFipeConferiRef.current = setTimeout(() => pollFipeConferi(tentativa + 1, res.id), tentativa >= FIPE_POLL_MAX_TENTATIVAS ? 15000 : FIPE_POLL_INTERVALO_MS);
         return;
       }
 
@@ -396,13 +400,19 @@ function DetalheVeiculoAdminPage() {
       if (dados.valorNumero != null) {
         setValorFipeInput(String(dados.valorNumero).replace(".", ","));
       }
-      const variacao = dados.resumo?.variacaoAcumuladaPercentual;
       setFonteFipe(
-        `FIPE (Company Conferi): ${dados.marca} ${dados.modelo}${dados.anoModelo ? ` ${dados.anoModelo}` : ""} • ${dados.combustivel} • cód. ${dados.codigoFipe} • ref. ${dados.mesReferencia}${variacao != null ? ` • variação acumulada ${variacao > 0 ? "+" : ""}${variacao}%` : ""}`,
+        `FIPE (Company Conferi): ${dados.marca} ${dados.modelo}${dados.anoModelo ? ` ${dados.anoModelo}` : ""} • cód. ${dados.codigoFipe} • ref. ${dados.mesReferencia}`,
       );
-      setEditandoFipe(true);
-      toast.success("Valor FIPE localizado pela placa — confira e salve.");
+      if (consultaId) {
+        void refetch();
+        setEditandoFipe(false);
+        toast.success("Valor FIPE atualizado no cadastro.");
+      } else {
+        setEditandoFipe(true);
+        toast.success("Valor FIPE localizado pela placa — confira e salve.");
+      }
     } catch (e: any) {
+      if (versao !== versaoAcompanhamentoFipe.current) return;
       toast.error(e?.message || "Erro ao consultar a FIPE pela placa.");
       setBuscandoFipeConferi(false);
       setStatusFipeConferi(null);
@@ -410,6 +420,8 @@ function DetalheVeiculoAdminPage() {
   };
 
   const buscarFipeConferi = () => {
+    versaoAcompanhamentoFipe.current += 1;
+    if (pollFipeConferiRef.current) clearTimeout(pollFipeConferiRef.current);
     setBuscandoFipeConferi(true);
     setStatusFipeConferi("Consultando a Company Conferi...");
     setFonteFipe(null);
@@ -1142,7 +1154,7 @@ function DetalheVeiculoAdminPage() {
                         )}
                       </div>
                       {statusFipeConferi && (
-                        <p className="-mt-2 text-right text-[11px] font-medium text-amber-600">{statusFipeConferi}</p>
+                        <p role="status" className="-mt-2 text-right text-[11px] font-medium text-amber-600">{statusFipeConferi}</p>
                       )}
                       {fonteFipe && editandoFipe && (
                         <p className="-mt-2 text-right text-[11px] font-medium text-teal-700">{fonteFipe}</p>

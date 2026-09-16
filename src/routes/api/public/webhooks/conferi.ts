@@ -12,14 +12,17 @@ export const Route = createFileRoute("/api/public/webhooks/conferi")({
     handlers: {
       GET: async ({ request }) => {
         const url = new URL(request.url);
-        const codigoConsulta = url.searchParams.get("codigo_consulta") || url.searchParams.get("codigoConsulta");
+        const codigoConsulta = (
+          url.searchParams.get("codigo_consulta") || url.searchParams.get("codigoConsulta")
+        )?.trim();
         const token = url.searchParams.get("token");
 
         if (!codigoConsulta) {
           return new Response("codigo_consulta ausente", { status: 400 });
         }
 
-        const { getWebhookTokenConferi, processarWebhookConferi } = await import("@/db/consulta-veicular.server");
+        const { getWebhookTokenConferi, processarWebhookConferi } =
+          await import("@/db/consulta-veicular.server");
         const tokenEsperado = await getWebhookTokenConferi();
         if (!tokenEsperado || token !== tokenEsperado) {
           return new Response("Token inválido", { status: 401 });
@@ -32,10 +35,13 @@ export const Route = createFileRoute("/api/public/webhooks/conferi")({
             headers: { "content-type": "application/json" },
           });
         } catch (e: any) {
-          return new Response(JSON.stringify({ ok: false, message: e?.message || "Erro ao processar webhook." }), {
-            status: 500,
-            headers: { "content-type": "application/json" },
-          });
+          return new Response(
+            JSON.stringify({ ok: false, message: e?.message || "Erro ao processar webhook." }),
+            {
+              status: 500,
+              headers: { "content-type": "application/json" },
+            },
+          );
         }
       },
     },

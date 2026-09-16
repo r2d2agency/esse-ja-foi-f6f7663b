@@ -7,6 +7,18 @@ async function userIdFrom(token?: string | null) {
   return verifyToken(token);
 }
 
+export const obterConsultaRegistradaFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) => z.object({ id: z.string().uuid(), token: z.string() }).parse(d))
+  .handler(async ({ data }) => {
+    try {
+      if (!(await userIdFrom(data.token))) throw new Error("Sessão expirada. Entre novamente.");
+      const m = await import("@/db/consulta-veicular.server");
+      return await m.obterConsultaRegistrada(data.id);
+    } catch (e: any) {
+      return { ok: false as const, message: e?.message || "Erro ao acompanhar a consulta." };
+    }
+  });
+
 export const getProvedorConsultaFn = createServerFn({ method: "POST" }).handler(async () => {
   try {
     const m = await import("@/db/consulta-veicular.server");

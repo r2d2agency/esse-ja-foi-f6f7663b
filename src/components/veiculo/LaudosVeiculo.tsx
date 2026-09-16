@@ -62,6 +62,7 @@ export function LaudosVeiculo({ veiculoId }: { veiculoId: string }) {
   const { data: consultasRes, refetch: refetchConsultas } = useQuery({
     queryKey: ["consultas-veiculo", veiculoId],
     queryFn: () => listarConsultasVeiculoFn({ data: { veiculoId } }),
+    refetchInterval: (query) => (query.state.data as any)?.data?.some((c: any) => c.status === "PROCESSANDO") ? 6000 : false,
   });
 
   const laudos: any[] = (laudosRes as any)?.data ?? [];
@@ -137,7 +138,8 @@ export function LaudosVeiculo({ veiculoId }: { veiculoId: string }) {
         toast.error(res?.message || "Não foi possível consultar.");
         return;
       }
-      toast.success("Consulta realizada e vinculada ao veículo.");
+      if (res.status === "PROCESSANDO") toast.info(res.message);
+      else toast.success("Consulta realizada e vinculada ao veículo.");
       refetchConsultas();
     } finally {
       setConsultando(false);
@@ -177,7 +179,7 @@ export function LaudosVeiculo({ veiculoId }: { veiculoId: string }) {
         ) : (
           <div className="space-y-3">
             {consultas.map((c) => {
-              const ok = c.situacao === "OK" || c.status === "SUCESSO";
+              const ok = c.situacao === "OK" || c.status === "SUCESSO" || c.status === "CONCLUIDA";
               return (
                 <div key={c.id} className="rounded-2xl border border-slate-200 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
@@ -194,9 +196,9 @@ export function LaudosVeiculo({ veiculoId }: { veiculoId: string }) {
                         <p className="text-xs text-slate-500">{dataBr(c.criado_em)}</p>
                       </div>
                     </div>
-                    {c.arquivo_url && (
+                    {c.documento_url && (
                       <a
-                        href={c.arquivo_url}
+                        href={c.documento_url}
                         target="_blank"
                         rel="noreferrer"
                         className="inline-flex items-center gap-1 text-xs font-bold text-teal-700"

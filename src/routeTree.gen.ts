@@ -36,6 +36,7 @@ import { Route as AdminConversasRouteImport } from './routes/admin/conversas'
 import { Route as AdminDemoRouteImport } from './routes/admin/demo'
 import { Route as AdminEntregasRouteImport } from './routes/admin/entregas'
 import { Route as AdminLogsRouteImport } from './routes/admin/logs'
+import { Route as AdminLogsConsultasRouteImport } from './routes/admin/logs-consultas'
 import { Route as AdminMapaRouteImport } from './routes/admin/mapa'
 import { Route as AdminNegociacoesRouteImport } from './routes/admin/negociacoes'
 import { Route as AdminPagamentosRouteImport } from './routes/admin/pagamentos'
@@ -226,6 +227,11 @@ const AdminEntregasRoute = AdminEntregasRouteImport.update({
 const AdminLogsRoute = AdminLogsRouteImport.update({
   id: '/logs',
   path: '/logs',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminLogsConsultasRoute = AdminLogsConsultasRouteImport.update({
+  id: '/logs-consultas',
+  path: '/logs-consultas',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminMapaRoute = AdminMapaRouteImport.update({
@@ -541,6 +547,7 @@ export interface FileRoutesByFullPath {
   '/admin/demo': typeof AdminDemoRoute
   '/admin/entregas': typeof AdminEntregasRoute
   '/admin/logs': typeof AdminLogsRoute
+  '/admin/logs-consultas': typeof AdminLogsConsultasRoute
   '/admin/mapa': typeof AdminMapaRoute
   '/admin/negociacoes': typeof AdminNegociacoesRoute
   '/admin/pagamentos': typeof AdminPagamentosRoute
@@ -621,6 +628,7 @@ export interface FileRoutesByTo {
   '/admin/demo': typeof AdminDemoRoute
   '/admin/entregas': typeof AdminEntregasRoute
   '/admin/logs': typeof AdminLogsRoute
+  '/admin/logs-consultas': typeof AdminLogsConsultasRoute
   '/admin/mapa': typeof AdminMapaRoute
   '/admin/negociacoes': typeof AdminNegociacoesRoute
   '/admin/pagamentos': typeof AdminPagamentosRoute
@@ -707,6 +715,7 @@ export interface FileRoutesById {
   '/admin/demo': typeof AdminDemoRoute
   '/admin/entregas': typeof AdminEntregasRoute
   '/admin/logs': typeof AdminLogsRoute
+  '/admin/logs-consultas': typeof AdminLogsConsultasRoute
   '/admin/mapa': typeof AdminMapaRoute
   '/admin/negociacoes': typeof AdminNegociacoesRoute
   '/admin/pagamentos': typeof AdminPagamentosRoute
@@ -794,6 +803,7 @@ export interface FileRouteTypes {
     | '/admin/demo'
     | '/admin/entregas'
     | '/admin/logs'
+    | '/admin/logs-consultas'
     | '/admin/mapa'
     | '/admin/negociacoes'
     | '/admin/pagamentos'
@@ -874,6 +884,7 @@ export interface FileRouteTypes {
     | '/admin/demo'
     | '/admin/entregas'
     | '/admin/logs'
+    | '/admin/logs-consultas'
     | '/admin/mapa'
     | '/admin/negociacoes'
     | '/admin/pagamentos'
@@ -959,6 +970,7 @@ export interface FileRouteTypes {
     | '/admin/demo'
     | '/admin/entregas'
     | '/admin/logs'
+    | '/admin/logs-consultas'
     | '/admin/mapa'
     | '/admin/negociacoes'
     | '/admin/pagamentos'
@@ -1232,6 +1244,13 @@ declare module '@tanstack/react-router' {
       path: '/logs'
       fullPath: '/admin/logs'
       preLoaderRoute: typeof AdminLogsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/logs-consultas': {
+      id: '/admin/logs-consultas'
+      path: '/logs-consultas'
+      fullPath: '/admin/logs-consultas'
+      preLoaderRoute: typeof AdminLogsConsultasRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/mapa': {
@@ -1666,6 +1685,7 @@ interface AdminRouteChildren {
   AdminDemoRoute: typeof AdminDemoRoute
   AdminEntregasRoute: typeof AdminEntregasRoute
   AdminLogsRoute: typeof AdminLogsRoute
+  AdminLogsConsultasRoute: typeof AdminLogsConsultasRoute
   AdminMapaRoute: typeof AdminMapaRoute
   AdminNegociacoesRoute: typeof AdminNegociacoesRoute
   AdminPagamentosRoute: typeof AdminPagamentosRoute
@@ -1699,6 +1719,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminDemoRoute: AdminDemoRoute,
   AdminEntregasRoute: AdminEntregasRoute,
   AdminLogsRoute: AdminLogsRoute,
+  AdminLogsConsultasRoute: AdminLogsConsultasRoute,
   AdminMapaRoute: AdminMapaRoute,
   AdminNegociacoesRoute: AdminNegociacoesRoute,
   AdminPagamentosRoute: AdminPagamentosRoute,
