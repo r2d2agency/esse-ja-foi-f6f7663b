@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getVitrine } from "@/lib/vitrine.functions";
 import { alternarFavoritoFn } from "@/lib/comprador.functions";
@@ -17,7 +17,7 @@ import {
   Gavel,
   SlidersHorizontal,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { LogoEsf } from "@/components/shared/LogoEsf";
 import { LegendaFotoBadge } from "@/components/veiculo/LegendaFotoBadge";
@@ -48,7 +48,14 @@ const brl = (v: any) =>
   Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 
 function VitrinePublica() {
-  const { isAuthenticated } = useAuth();
+  const { user, isAuthenticated, initialized } = useAuth();
+  const navigate = useNavigate();
+  const podeVerVitrine = isAuthenticated && user?.role === "comprador";
+
+  useEffect(() => {
+    if (initialized && !podeVerVitrine) navigate({ to: "/login", replace: true });
+  }, [initialized, podeVerVitrine, navigate]);
+
   const [menuOpen, setMenuOpen] = useState(false);
   const [busca, setBusca] = useState("");
   const [marca, setMarca] = useState("");
@@ -61,8 +68,9 @@ function VitrinePublica() {
   const { data: veiculos, isLoading, isError, error } = useQuery({
     queryKey: ["vitrine-veiculos"],
     queryFn: () => getVitrine({ data: { token: getSessionToken() } }),
-    // Lojistas logados acompanham valor de leilão em tempo real direto na vitrine.
-    refetchInterval: isAuthenticated ? 5000 : false,
+    enabled: podeVerVitrine,
+    // Compradores logados acompanham valor de leilão em tempo real direto na vitrine.
+    refetchInterval: podeVerVitrine ? 5000 : false,
   });
 
   const favoritar = useMutation({
@@ -104,6 +112,14 @@ function VitrinePublica() {
     setKmMax("");
     setSomenteLeilao(false);
   };
+
+  if (!initialized || !podeVerVitrine) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-slate-400 font-bold uppercase tracking-widest animate-pulse">
+        Carregando Esse Já Foi...
+      </div>
+    );
+  }
 
   const Filtros = (
     <div className="space-y-5">

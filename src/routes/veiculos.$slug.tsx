@@ -1,9 +1,9 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getAnuncioPublico } from "@/lib/vitrine.functions";
 import { getLeilaoInfo, darLanceFn } from "@/lib/leilao.functions";
 import { Button } from "@/components/ui/button";
-import { ShieldCheck, MapPin, Fuel, Settings2, Lock, ArrowLeft, Gavel, Clock, TrendingUp, Heart, BellPlus, ClipboardCheck, X, ChevronLeft, ChevronRight, ChevronDown, Maximize2 } from "lucide-react";
+import { ShieldCheck, MapPin, Fuel, Settings2, ArrowLeft, Gavel, Clock, TrendingUp, Heart, BellPlus, ClipboardCheck, X, ChevronLeft, ChevronRight, ChevronDown, Maximize2 } from "lucide-react";
 import { getSessionToken } from "@/lib/session";
 import { alternarFavoritoFn, salvarLembreteFn } from "@/lib/comprador.functions";
 import { useState, useEffect, useRef } from "react";
@@ -42,12 +42,19 @@ export const Route = createFileRoute("/veiculos/$slug")({
 
 function DetalheVeiculoPublico() {
   const { slug } = Route.useParams();
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, initialized } = useAuth();
+  const navigate = useNavigate();
+  const podeVerVitrine = isAuthenticated && user?.role === "comprador";
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (initialized && !podeVerVitrine) navigate({ to: "/login", replace: true });
+  }, [initialized, podeVerVitrine, navigate]);
 
   const { data: anuncio, isLoading: loadingAnuncio } = useQuery({
     queryKey: ["anuncio-publico", slug],
     queryFn: () => getAnuncioPublico({ data: { slug, token: getSessionToken() } }),
+    enabled: podeVerVitrine,
   });
 
   const acesso: any = (anuncio as any)?.acesso || {};
@@ -153,6 +160,14 @@ function DetalheVeiculoPublico() {
     return () => clearInterval(interval);
   }, [leilaoFimEm]);
 
+
+  if (!initialized || !podeVerVitrine) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-slate-400 font-bold uppercase tracking-widest animate-pulse">
+        Carregando Esse Já Foi...
+      </div>
+    );
+  }
 
   if (loadingAnuncio) return <div className="p-10 text-center">Carregando veículo...</div>;
   if (!anuncio) return <div className="p-10 text-center">Veículo não encontrado.</div>;
@@ -280,25 +295,7 @@ function DetalheVeiculoPublico() {
                 <p className="text-slate-400 mt-2 text-sm leading-relaxed">{anuncio.descricao}</p>
               </div>
 
-              {!isAuthenticated ? (
-                <div className="bg-white/5 border border-white/10 rounded-3xl p-6 mb-8 text-center">
-                  <div className="flex justify-center mb-3">
-                    <div className="w-12 h-12 rounded-full bg-teal-500/20 flex items-center justify-center text-teal-400">
-                      <Lock className="h-6 w-6" />
-                    </div>
-                  </div>
-                  <h3 className="font-bold text-lg mb-1">Valores Restritos</h3>
-                  <p className="text-sm text-slate-400 mb-6">Acesse sua conta para visualizar as condições e participar desta oferta.</p>
-                  <Link to="/login">
-                    <Button className="w-full h-12 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl mb-3">
-                      Entrar para participar
-                    </Button>
-                  </Link>
-                  <div className="text-xs text-slate-500">
-                    Ainda não possui cadastro? <Link to="/comprador/cadastro" className="text-teal-400 hover:underline">Criar conta de comprador</Link>
-                  </div>
-                </div>
-              ) : !podeVerValores ? (
+              {!podeVerValores ? (
                 <div className="bg-white/5 border border-white/10 rounded-3xl p-6 mb-8 text-center">
                   <div className="flex justify-center mb-3">
                     <div className="w-12 h-12 rounded-full bg-amber-500/20 flex items-center justify-center text-amber-400">
