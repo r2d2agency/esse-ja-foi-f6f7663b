@@ -100,3 +100,43 @@ export const veiculoTimeline = pgTable('veiculo_timeline', {
   responsavel_id: uuid('responsavel_id').references(() => profiles.id),
   criado_em: timestamp('criado_em').defaultNow().notNull(),
 });
+
+export const marketingContatos = pgTable('marketing_contatos', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  nome: text('nome').notNull(),
+  email: text('email'),
+  telefone: text('telefone'),
+  empresa: text('empresa'),
+  tipo: text('tipo').default('prospect').notNull(),
+  status: text('status').default('ativo').notNull(),
+  cep: text('cep'),
+  endereco: text('endereco'),
+  numero: text('numero'),
+  complemento: text('complemento'),
+  bairro: text('bairro'),
+  cidade: text('cidade'),
+  uf: text('uf'),
+  latitude: text('latitude'),
+  longitude: text('longitude'),
+  geo_status: text('geo_status').default('pendente').notNull(),
+  geo_erro: text('geo_erro'),
+  whatsapp_status: text('whatsapp_status').default('nao_verificado').notNull(),
+  origem: text('origem'),
+  observacoes: text('observacoes'),
+  comprador_id: uuid('comprador_id').references(() => profiles.id),
+  criado_em: timestamp('criado_em').defaultNow().notNull(),
+  atualizado_em: timestamp('atualizado_em').defaultNow().notNull(),
+});
+
+export const marketingTags = pgTable('marketing_tags', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  nome: text('nome').unique().notNull(),
+  cor: text('cor'),
+  criado_em: timestamp('criado_em').defaultNow().notNull(),
+});
+
+export const marketingContatoTags = pgTable('marketing_contato_tags', {
+  contato_id: uuid('contato_id').references(() => marketingContatos.id).notNull(),
+  tag_id: uuid('tag_id').references(() => marketingTags.id).notNull(),
+  criado_em: timestamp('criado_em').defaultNow().notNull(),
+});

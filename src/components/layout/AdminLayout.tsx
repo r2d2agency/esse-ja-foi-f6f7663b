@@ -163,6 +163,13 @@ const MENU_SECTIONS: MenuSection[] = [
         description: "Veículos aptos para venda",
       },
       {
+        label: "Marketing",
+        icon: Megaphone,
+        to: "/admin/marketing",
+        activePrefixes: ["/admin/marketing"],
+        description: "Base de prospects e contatos",
+      },
+      {
         label: "Campanhas",
         icon: Megaphone,
         to: "/admin/comunicacoes",
