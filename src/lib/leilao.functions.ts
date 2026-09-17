@@ -69,7 +69,7 @@ export const getLeilaoVeiculoFn = createServerFn({ method: "POST" })
       const { getLeilaoPorVeiculo } = await import("@/db/leilao.server");
       return { ok: true as const, data: await getLeilaoPorVeiculo(data.veiculoId) };
     } catch (e: any) {
-      return { ok: false as const, message: e?.message || "Erro ao carregar leilão." };
+      return { ok: false as const, message: e?.message || "Erro ao carregar lance." };
     }
   });
 
@@ -93,7 +93,7 @@ export const salvarLeilaoVeiculoFn = createServerFn({ method: "POST" })
       const { salvarLeilaoVeiculo } = await import("@/db/leilao.server");
       return { ok: true as const, data: await salvarLeilaoVeiculo(data) };
     } catch (e: any) {
-      return { ok: false as const, message: e?.message || "Erro ao salvar leilão." };
+      return { ok: false as const, message: e?.message || "Erro ao salvar lance." };
     }
   });
 
@@ -104,7 +104,7 @@ export const getResumoEncerramentoFn = createServerFn({ method: "POST" })
       const { resumoEncerramentoLeilao } = await import("@/db/leilao.server");
       return { ok: true as const, data: await resumoEncerramentoLeilao(data.leilaoId) };
     } catch (e: any) {
-      return { ok: false as const, message: e?.message || "Erro ao carregar o resumo do leilão." };
+      return { ok: false as const, message: e?.message || "Erro ao carregar o resumo do lance." };
     }
   });
 
@@ -115,7 +115,7 @@ export const encerrarLeilaoFn = createServerFn({ method: "POST" })
       const { encerrarLeilaoAgora } = await import("@/db/leilao.server");
       return { ok: true as const, data: await encerrarLeilaoAgora(data.leilaoId) };
     } catch (e: any) {
-      return { ok: false as const, message: e?.message || "Erro ao encerrar o leilão." };
+      return { ok: false as const, message: e?.message || "Erro ao encerrar o lance." };
     }
   });
 
@@ -128,6 +128,6 @@ export const cancelarLeilaoAdminFn = createServerFn({ method: "POST" })
       const { cancelarLeilaoAdmin } = await import("@/db/leilao.server");
       return { ok: true as const, data: await cancelarLeilaoAdmin(data.leilaoId, data.motivo) };
     } catch (e: any) {
-      return { ok: false as const, message: e?.message || "Erro ao cancelar o leilão." };
+      return { ok: false as const, message: e?.message || "Erro ao cancelar o lance." };
     }
   });

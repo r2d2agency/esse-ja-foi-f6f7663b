@@ -64,7 +64,7 @@ export async function ensureNegociacoesSchema() {
   `);
   await d.execute(sql`CREATE INDEX IF NOT EXISTS idx_negtimeline ON negociacoes_timeline(negociacao_id, criado_em);`);
 
-  /** Ranking final imutável dos lances de cada leilão encerrado */
+  /** Ranking final imutável dos lances de cada lance encerrado */
   await d.execute(sql`
     CREATE TABLE IF NOT EXISTS leiloes_resultado (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -163,7 +163,7 @@ async function proximoCodigo(tx: any) {
 }
 
 /**
- * Fechamento definitivo de um leilão encerrado.
+ * Fechamento definitivo de um lance encerrado.
  * Sequência obrigatória: maior lance -> validação final -> valor mínimo -> vencedor -> negociação -> aguardando pagamento.
  */
 export async function fecharLeilao(leilaoId: string) {
@@ -178,12 +178,12 @@ export async function fecharLeilao(leilaoId: string) {
 
     const lRes = await tx.execute(sql`SELECT * FROM leiloes WHERE id = ${leilaoId}::uuid FOR UPDATE`);
     const leilao = rowsOf(lRes)?.[0];
-    if (!leilao) throw new Error("Leilão não encontrado.");
+    if (!leilao) throw new Error("Lance não encontrado.");
 
     const agora = new Date();
     // 2. Validação final no servidor: encerrado de fato, sem prorrogação pendente
-    if (new Date(leilao.fim_em) > agora) throw new Error("O leilão ainda não foi encerrado.");
-    if (leilao.status === "CANCELADO") throw new Error("Leilão cancelado não pode ser fechado.");
+    if (new Date(leilao.fim_em) > agora) throw new Error("O lance ainda não foi encerrado.");
+    if (leilao.status === "CANCELADO") throw new Error("Lance cancelado não pode ser fechado.");
     await tx.execute(sql`UPDATE leiloes SET status = 'ENCERRADO', atualizado_em = now() WHERE id = ${leilaoId}::uuid`);
 
     // Ranking final imutável
@@ -211,7 +211,7 @@ export async function fecharLeilao(leilaoId: string) {
       WHERE le.id = ${leilaoId}::uuid
     `);
     const ctx = rowsOf(ctxRes)?.[0];
-    if (!ctx) throw new Error("Anúncio/veículo do leilão não localizado.");
+    if (!ctx) throw new Error("Anúncio/veículo do lance não localizado.");
 
     const valorMinimo = Number(ctx.valor_minimo_acordado || 0);
 
@@ -268,16 +268,16 @@ export async function fecharLeilao(leilaoId: string) {
     await tx.execute(sql`UPDATE veiculos SET status = 'AGUARDANDO_PAGAMENTO' WHERE id = ${ctx.veiculo_id}::uuid`);
     await tx.execute(sql`UPDATE anuncios_veiculo SET status = 'ENCERRADO', encerrado_em = now() WHERE id = ${ctx.anuncio_id}::uuid`);
 
-    await registrarEvento(tx, negociacao.id, "Leilão encerrado.");
+    await registrarEvento(tx, negociacao.id, "Lance encerrado.");
     await registrarEvento(tx, negociacao.id, "Maior lance validado.", `R$ ${maiorLance.toFixed(2)}`);
     await registrarEvento(tx, negociacao.id, `${vencedor.nome} confirmado como vencedor.`);
     await registrarEvento(tx, negociacao.id, `Negociação ${negociacao.codigo} criada.`);
     await registrarEvento(tx, negociacao.id, "Comprador notificado.");
     await registrarEvento(tx, negociacao.id, "Aguardando pagamento.");
 
-    await notificar(tx, negociacao.id, "COMPRADOR", vencedor.comprador_id, `Você venceu o leilão do ${ctx.titulo}.`, "Seu pagamento está pendente.");
+    await notificar(tx, negociacao.id, "COMPRADOR", vencedor.comprador_id, `Você venceu o lance do ${ctx.titulo}.`, "Seu pagamento está pendente.");
     await notificar(tx, negociacao.id, "VENDEDOR", ctx.vendedor_id, "Seu veículo recebeu a oferta vencedora.", "Estamos aguardando a confirmação do pagamento.");
-    await notificar(tx, negociacao.id, "ADMIN", null, "Leilão encerrado com vencedor", `Negociação ${negociacao.codigo} criada. Comprador aguardando pagamento.`);
+    await notificar(tx, negociacao.id, "ADMIN", null, "Lance encerrado com vencedor", `Negociação ${negociacao.codigo} criada. Comprador aguardando pagamento.`);
 
     // A notificação por push/e-mail ao vencedor roda DEPOIS que a transação commitar (fora do
     // `tx`) — ver o bloco logo abaixo do `await d.transaction(...)`. Enviar e-mail (rede, sem
@@ -295,7 +295,7 @@ export async function fecharLeilao(leilaoId: string) {
       await criarNotificacaoComprador(
         info.compradorId,
         "LEILAO_VENCIDO",
-        `Parabéns! Você venceu o leilão do ${info.titulo}`,
+        `Parabéns! Você venceu o lance do ${info.titulo}`,
         `Lance vencedor de R$ ${info.maiorLance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}. Negociação ${info.codigo} criada — conclua o pagamento.`,
         "/comprador/negociacoes",
       );
@@ -305,10 +305,10 @@ export async function fecharLeilao(leilaoId: string) {
         const { enviarEmailSimples } = await import("./mail.server");
         await enviarEmailSimples(
           ganhador.email,
-          `Parabéns! Você venceu o leilão do ${info.titulo}`,
+          `Parabéns! Você venceu o lance do ${info.titulo}`,
           `<div style="font-family:Inter,Arial,sans-serif;color:#0f172a">
              <h2 style="margin:0 0 8px">🎉 Esse já foi seu!</h2>
-             <p>Olá ${ganhador.nome || "comprador"}, seu lance de <strong>R$ ${info.maiorLance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong> venceu o leilão do ${info.titulo}.</p>
+             <p>Olá ${ganhador.nome || "comprador"}, seu lance de <strong>R$ ${info.maiorLance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong> venceu o lance do ${info.titulo}.</p>
              <p>Negociação <strong>${info.codigo}</strong> criada. Conclua o pagamento para seguir com a entrega.</p>
            </div>`,
         );
@@ -321,7 +321,7 @@ export async function fecharLeilao(leilaoId: string) {
   return resultado;
 }
 
-/** Fecha automaticamente todos os leilões vencidos e expira prazos de pagamento. */
+/** Fecha automaticamente todos os lances vencidos e expira prazos de pagamento. */
 export async function processarFechamentos() {
   const d = requireDb();
   const agora = new Date().toISOString();
@@ -406,7 +406,7 @@ export async function getNegociacoesComprador(compradorId: string) {
     ORDER BY n.criado_em DESC
   `);
 
-  // Participações encerradas: leilões em que deu lance e não venceu
+  // Participações encerradas: lances em que deu lance e não venceu
   const encerradas = await d.execute(sql`
     SELECT DISTINCT a.titulo, a.slug, a.codigo_publico, r.maior_lance, r.resultado, r.fechado_em
     FROM lances l

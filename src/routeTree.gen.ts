@@ -48,6 +48,7 @@ import { Route as AdminVendedoresRouteImport } from './routes/admin/vendedores'
 import { Route as AdminVistoriasRouteImport } from './routes/admin/vistorias'
 import { Route as CTokenRouteImport } from './routes/c.$token'
 import { Route as CompradorIndexRouteImport } from './routes/comprador/index'
+import { Route as CompradorAvaliacoesRouteImport } from './routes/comprador/avaliacoes'
 import { Route as CompradorDocumentosRouteImport } from './routes/comprador/documentos'
 import { Route as CompradorInteressesRouteImport } from './routes/comprador/interesses'
 import { Route as CompradorNegociacoesRouteImport } from './routes/comprador/negociacoes'
@@ -288,6 +289,11 @@ const CTokenRoute = CTokenRouteImport.update({
 const CompradorIndexRoute = CompradorIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => CompradorRoute,
+} as any)
+const CompradorAvaliacoesRoute = CompradorAvaliacoesRouteImport.update({
+  id: '/avaliacoes',
+  path: '/avaliacoes',
   getParentRoute: () => CompradorRoute,
 } as any)
 const CompradorDocumentosRoute = CompradorDocumentosRouteImport.update({
@@ -564,6 +570,7 @@ export interface FileRoutesByFullPath {
   '/admin/vendedores': typeof AdminVendedoresRoute
   '/admin/vistorias': typeof AdminVistoriasRoute
   '/c/$token': typeof CTokenRoute
+  '/comprador/avaliacoes': typeof CompradorAvaliacoesRoute
   '/comprador/documentos': typeof CompradorDocumentosRoute
   '/comprador/interesses': typeof CompradorInteressesRoute
   '/comprador/negociacoes': typeof CompradorNegociacoesRoute
@@ -646,6 +653,7 @@ export interface FileRoutesByTo {
   '/admin/vendedores': typeof AdminVendedoresRoute
   '/admin/vistorias': typeof AdminVistoriasRoute
   '/c/$token': typeof CTokenRoute
+  '/comprador/avaliacoes': typeof CompradorAvaliacoesRoute
   '/comprador/documentos': typeof CompradorDocumentosRoute
   '/comprador/interesses': typeof CompradorInteressesRoute
   '/comprador/negociacoes': typeof CompradorNegociacoesRoute
@@ -734,6 +742,7 @@ export interface FileRoutesById {
   '/admin/vendedores': typeof AdminVendedoresRoute
   '/admin/vistorias': typeof AdminVistoriasRoute
   '/c/$token': typeof CTokenRoute
+  '/comprador/avaliacoes': typeof CompradorAvaliacoesRoute
   '/comprador/documentos': typeof CompradorDocumentosRoute
   '/comprador/interesses': typeof CompradorInteressesRoute
   '/comprador/negociacoes': typeof CompradorNegociacoesRoute
@@ -823,6 +832,7 @@ export interface FileRouteTypes {
     | '/admin/vendedores'
     | '/admin/vistorias'
     | '/c/$token'
+    | '/comprador/avaliacoes'
     | '/comprador/documentos'
     | '/comprador/interesses'
     | '/comprador/negociacoes'
@@ -905,6 +915,7 @@ export interface FileRouteTypes {
     | '/admin/vendedores'
     | '/admin/vistorias'
     | '/c/$token'
+    | '/comprador/avaliacoes'
     | '/comprador/documentos'
     | '/comprador/interesses'
     | '/comprador/negociacoes'
@@ -992,6 +1003,7 @@ export interface FileRouteTypes {
     | '/admin/vendedores'
     | '/admin/vistorias'
     | '/c/$token'
+    | '/comprador/avaliacoes'
     | '/comprador/documentos'
     | '/comprador/interesses'
     | '/comprador/negociacoes'
@@ -1340,6 +1352,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/comprador/'
       preLoaderRoute: typeof CompradorIndexRouteImport
+      parentRoute: typeof CompradorRoute
+    }
+    '/comprador/avaliacoes': {
+      id: '/comprador/avaliacoes'
+      path: '/avaliacoes'
+      fullPath: '/comprador/avaliacoes'
+      preLoaderRoute: typeof CompradorAvaliacoesRouteImport
       parentRoute: typeof CompradorRoute
     }
     '/comprador/documentos': {
@@ -1764,6 +1783,7 @@ const AdminRouteChildren: AdminRouteChildren = {
 const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
 interface CompradorRouteChildren {
+  CompradorAvaliacoesRoute: typeof CompradorAvaliacoesRoute
   CompradorDocumentosRoute: typeof CompradorDocumentosRoute
   CompradorInteressesRoute: typeof CompradorInteressesRoute
   CompradorNegociacoesRoute: typeof CompradorNegociacoesRoute
@@ -1774,6 +1794,7 @@ interface CompradorRouteChildren {
 }
 
 const CompradorRouteChildren: CompradorRouteChildren = {
+  CompradorAvaliacoesRoute: CompradorAvaliacoesRoute,
   CompradorDocumentosRoute: CompradorDocumentosRoute,
   CompradorInteressesRoute: CompradorInteressesRoute,
   CompradorNegociacoesRoute: CompradorNegociacoesRoute,

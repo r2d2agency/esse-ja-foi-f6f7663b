@@ -177,7 +177,7 @@ const MENU_SECTIONS: MenuSection[] = [
         description: "Disparo para grupos e listas",
       },
       {
-        label: "Leilões",
+        label: "Lances",
         icon: Gavel,
         to: "/admin/leiloes",
         activePrefixes: ["/admin/leiloes"],
@@ -398,7 +398,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           <div className="hidden md:block flex-1 max-w-xl relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <Input
-              placeholder="Buscar vendedor, comprador, placa, veículo ou leilão"
+              placeholder="Buscar vendedor, comprador, placa, veículo ou lance"
               className="pl-10 bg-slate-50 border-none focus-visible:ring-1 focus-visible:ring-teal-500 h-10"
             />
           </div>

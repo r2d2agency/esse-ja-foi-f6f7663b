@@ -15,7 +15,7 @@ async function safe<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
   }
 }
 
-// Mantido apenas como atalho: o schema oficial de leilões vive em leilao.server.ts
+// Mantido apenas como atalho: o schema oficial de lances vive em leilao.server.ts
 // (definição antiga com veiculo_id causava divergência de colunas — ex.: l.anuncio_id).
 export async function ensureLeilaoSchema() {
   if (!db) return;

@@ -8,7 +8,7 @@ type Props = {
   onFechar: () => void;
 };
 
-/** Banner animado de vitória em leilão, com confetes em CSS puro. */
+/** Banner animado de vitória em lance, com confetes em CSS puro. */
 export function CelebracaoVitoria({ titulo, mensagem, onVer, onFechar }: Props) {
   const [visivel, setVisivel] = useState(false);
   useEffect(() => {

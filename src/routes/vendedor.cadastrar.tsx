@@ -793,7 +793,7 @@ function CadastrarVeiculo() {
             <div className="space-y-5 border-t border-slate-100 pt-6">
               <p className="text-sm text-slate-500">Essas informações serão verificadas durante a análise do veículo.</p>
               <OpcaoBotoes label="Já sofreu acidente?" opcoes={['Não', 'Sim', 'Não sei']} value={form.acidente} onChange={(v) => set({ acidente: v })} colunas={3} />
-              <OpcaoBotoes label="Já passou por leilão?" opcoes={['Não', 'Sim', 'Não sei']} value={form.leilao} onChange={(v) => set({ leilao: v })} colunas={3} />
+              <OpcaoBotoes label="Já passou por lance?" opcoes={['Não', 'Sim', 'Não sei']} value={form.leilao} onChange={(v) => set({ leilao: v })} colunas={3} />
               <OpcaoBotoes label="Possui sinistro conhecido?" opcoes={['Não', 'Sim', 'Não sei']} value={form.sinistro} onChange={(v) => set({ sinistro: v })} colunas={3} />
               <OpcaoBotoes label="Possui alguma restrição conhecida?" opcoes={['Não', 'Sim', 'Não sei']} value={form.restricao} onChange={(v) => set({ restricao: v })} colunas={3} />
               {[form.acidente, form.leilao, form.sinistro, form.restricao].includes('Sim') && (

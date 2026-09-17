@@ -326,7 +326,7 @@ export async function enviarCadastroCompradorParaAnalise(id: string) {
     id,
     "CADASTRO",
     "Cadastro enviado para análise",
-    "Assim que aprovado você poderá dar lances nos leilões.",
+    "Assim que aprovado você poderá dar lances nos lances.",
     "/comprador",
   );
 

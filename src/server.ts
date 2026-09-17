@@ -73,7 +73,7 @@ async function injetarTagsRastreamento(response: Response): Promise<Response> {
 }
 
 /**
- * Job em segundo plano: avisa por e-mail quem marcou "lembrar-me" num leilão
+ * Job em segundo plano: avisa por e-mail quem marcou "lembrar-me" num lance
  * que já começou ou está prestes a começar. Roda a cada 5 minutos no mesmo
  * processo Node do servidor — não depende de nenhuma página estar aberta.
  * O `globalThis` evita duplicar o intervalo se este módulo for reavaliado

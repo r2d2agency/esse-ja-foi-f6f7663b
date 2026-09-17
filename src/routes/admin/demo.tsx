@@ -23,12 +23,12 @@ export const Route = createFileRoute("/admin/demo")({
       {
         name: "description",
         content:
-          "Crie um vendedor e um veículo aprovado de demonstração para testar checklist, divulgação e leilão.",
+          "Crie um vendedor e um veículo aprovado de demonstração para testar checklist, divulgação e lance.",
       },
       { property: "og:title", content: "Ambiente de Demonstração | Esse Já Foi" },
       {
         property: "og:description",
-        content: "Ambiente de testes para checklist, divulgação e leilão da plataforma Esse Já Foi.",
+        content: "Ambiente de testes para checklist, divulgação e lance da plataforma Esse Já Foi.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -76,7 +76,7 @@ function DemoPage() {
           <Beaker className="h-6 w-6 text-teal-600" /> Ambiente de demonstração
         </h1>
         <p className="font-medium text-slate-500">
-          Vendedor e veículo modelo já aprovados para rodar o checklist quantas vezes quiser, validar a divulgação e o leilão.
+          Vendedor e veículo modelo já aprovados para rodar o checklist quantas vezes quiser, validar a divulgação e o lance.
         </p>
       </header>
 
@@ -103,7 +103,7 @@ function DemoPage() {
               />
               <Info titulo="Laudo" valor={st.laudo ? `${st.laudo.status} · ${st.laudo.itens} itens` : "não iniciado"} />
               <Info
-                titulo="Leilão"
+                titulo="Lance"
                 valor={st.leilao ? `${st.leilao.status} · ${st.leilao.lances} lance(s)` : "nenhum"}
               />
               <div>
@@ -152,16 +152,16 @@ function DemoPage() {
         <Acao
           icone={<CheckCircle2 className="h-4 w-4" />}
           titulo="3. Aprovar checklist e liberar divulgação"
-          texto="Marca o veículo como PRONTO_PARA_ANUNCIO e habilita os canais Leilão, Anúncio e Vitrine."
+          texto="Marca o veículo como PRONTO_PARA_ANUNCIO e habilita os canais Lance, Anúncio e Vitrine."
           loading={acao === "aprovar"}
           onClick={() => executar("aprovar", () => aprovar({ data: {} }), "Divulgação liberada.")}
         />
         <Acao
           icone={<Gavel className="h-4 w-4" />}
-          titulo="4. Abrir leilão de teste (24h)"
-          texto="Cria um leilão ativo com lance inicial de R$ 45.000 e incremento de R$ 500 para validar os lances."
+          titulo="4. Abrir lance de teste (24h)"
+          texto="Cria um lance ativo com lance inicial de R$ 45.000 e incremento de R$ 500 para validar os lances."
           loading={acao === "leilao"}
-          onClick={() => executar("leilao", () => leiloar({ data: { horas: 24 } }), "Leilão de teste ativo.")}
+          onClick={() => executar("leilao", () => leiloar({ data: { horas: 24 } }), "Lance de teste ativo.")}
         />
       </div>
 
@@ -179,7 +179,7 @@ function DemoPage() {
           </Link>
           <Link to="/admin/leiloes">
             <Button variant="outline" className="font-bold">
-              Leilões <ChevronRight className="ml-1 h-3 w-3" />
+              Lances <ChevronRight className="ml-1 h-3 w-3" />
             </Button>
           </Link>
         </div>

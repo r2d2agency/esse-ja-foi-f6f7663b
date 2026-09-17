@@ -110,7 +110,7 @@ function RelatoriosPage() {
             <Car className="h-4 w-4" /> Veículos
           </TabsTrigger>
           <TabsTrigger value="leiloes" className="gap-2">
-            <Gavel className="h-4 w-4" /> Leilões
+            <Gavel className="h-4 w-4" /> Lances
           </TabsTrigger>
           <TabsTrigger value="financeiro" className="gap-2">
             <DollarSign className="h-4 w-4" /> Financeiro

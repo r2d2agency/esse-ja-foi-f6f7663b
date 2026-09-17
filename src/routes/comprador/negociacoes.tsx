@@ -73,7 +73,7 @@ function CompradorNegociacoesPage() {
             </div>
             <CardContent className="space-y-5 p-6 md:p-8">
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-teal-600">Resultado do leilão</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-teal-600">Resultado do lance</p>
                 <h2 className="text-2xl font-black uppercase tracking-tight text-slate-900">Você venceu esta oportunidade!</h2>
                 <p className="mt-1 text-sm font-bold text-slate-600">{vencedora.titulo}</p>
               </div>
@@ -132,7 +132,7 @@ function CompradorNegociacoesPage() {
               <CardContent className="flex flex-col gap-3 p-5 md:flex-row md:items-center md:justify-between">
                 <div>
                   <p className="font-bold text-slate-800">{e.titulo}</p>
-                  <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Leilão encerrado</p>
+                  <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Lance encerrado</p>
                   <p className="mt-1 text-sm text-slate-500">Outro comprador apresentou a maior oferta desta vez.</p>
                 </div>
                 <Link to="/veiculos">

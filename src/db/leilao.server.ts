@@ -9,7 +9,7 @@ function requireDb() {
 export async function ensureLeilaoSchema() {
   const d = requireDb();
 
-  // Tabela de Leilões
+  // Tabela de Lances
   // Status: RASCUNHO, AGENDADO, ATIVO, PRORROGADO, ENCERRADO, PAUSADO, CANCELADO
   await d.execute(sql`
     CREATE TABLE IF NOT EXISTS leiloes (
@@ -84,7 +84,7 @@ export async function ensureLeilaoSchema() {
   }
 
   // O histórico precisa aceitar vários lances do mesmo comprador no mesmo
-  // leilão. Algumas bases antigas criaram UNIQUE(leilao_id, comprador_id),
+  // lance. Algumas bases antigas criaram UNIQUE(leilao_id, comprador_id),
   // o que faz o segundo lance falhar mesmo com todos os campos corretos.
   await d.execute(sql`
     DO $$
@@ -163,7 +163,7 @@ export async function configurarLeilao(data: any) {
   return rowsOf(res)[0];
 }
 
-/** Leilão vigente (ou último) de um veículo. */
+/** Lance vigente (ou último) de um veículo. */
 export async function getLeilaoPorVeiculo(veiculoId: string) {
   const d = requireDb();
   await ensureLeilaoSchema();
@@ -180,7 +180,7 @@ export async function getLeilaoPorVeiculo(veiculoId: string) {
   return rowsOf(res)[0] || null;
 }
 
-/** Cria ou atualiza o leilão do veículo com os parâmetros definidos pelo admin. */
+/** Cria ou atualiza o lance do veículo com os parâmetros definidos pelo admin. */
 export async function salvarLeilaoVeiculo(data: {
   veiculo_id: string;
   inicio_em: string;
@@ -213,7 +213,7 @@ export async function salvarLeilaoVeiculo(data: {
 
   if (editavel) {
     if (Number(atual.qtd_lances || 0) > 0 && Number(data.lance_inicial) !== Number(atual.lance_inicial)) {
-      throw new Error("Este leilão já recebeu lances: o lance inicial não pode ser alterado.");
+      throw new Error("Este lance já recebeu lances: o lance inicial não pode ser alterado.");
     }
     await d.execute(sql`
       UPDATE leiloes SET
@@ -244,8 +244,8 @@ export async function salvarLeilaoVeiculo(data: {
   return rowsOf(res)[0];
 }
 
-/** Cancela o leilão vigente do veículo (usado ao desativar o canal de leilão). */
-export async function cancelarLeilaoVeiculo(veiculoId: string, motivo = "Canal de leilão desativado") {
+/** Cancela o lance vigente do veículo (usado ao desativar o canal de lance). */
+export async function cancelarLeilaoVeiculo(veiculoId: string, motivo = "Canal de lance desativado") {
   const d = requireDb();
   await ensureLeilaoSchema();
   await d.execute(sql`
@@ -276,7 +276,7 @@ export async function resumoEncerramentoLeilao(leilaoId: string) {
 }
 
 /**
- * Encerra o leilão imediatamente: antecipa o fim, marca como ENCERRADO e
+ * Encerra o lance imediatamente: antecipa o fim, marca como ENCERRADO e
  * delega o fechamento definitivo (ranking, vencedor, negociação, notificações).
  */
 export async function encerrarLeilaoAgora(leilaoId: string, responsavelId?: string | null) {
@@ -284,8 +284,8 @@ export async function encerrarLeilaoAgora(leilaoId: string, responsavelId?: stri
   await ensureLeilaoSchema();
 
   const atual = rowsOf(await d.execute(sql`SELECT status FROM leiloes WHERE id = ${leilaoId}::uuid`))[0];
-  if (!atual) throw new Error("Leilão não encontrado.");
-  if (atual.status === "CANCELADO") throw new Error("Leilão cancelado não pode ser encerrado.");
+  if (!atual) throw new Error("Lance não encontrado.");
+  if (atual.status === "CANCELADO") throw new Error("Lance cancelado não pode ser encerrado.");
 
   await d.execute(sql`
     UPDATE leiloes
@@ -305,13 +305,13 @@ export async function encerrarLeilaoAgora(leilaoId: string, responsavelId?: stri
   return fecharLeilao(leilaoId);
 }
 
-/** Cancela um leilão a partir do painel administrativo. */
+/** Cancela um lance a partir do painel administrativo. */
 export async function cancelarLeilaoAdmin(leilaoId: string, motivo: string) {
   const d = requireDb();
   await ensureLeilaoSchema();
   const atual = rowsOf(await d.execute(sql`SELECT status FROM leiloes WHERE id = ${leilaoId}::uuid`))[0];
-  if (!atual) throw new Error("Leilão não encontrado.");
-  if (atual.status === "ENCERRADO") throw new Error("Leilão já encerrado não pode ser cancelado.");
+  if (!atual) throw new Error("Lance não encontrado.");
+  if (atual.status === "ENCERRADO") throw new Error("Lance já encerrado não pode ser cancelado.");
   await d.execute(sql`
     UPDATE leiloes SET status = 'CANCELADO', motivo_pausa_cancelamento = ${motivo}, atualizado_em = now()
     WHERE id = ${leilaoId}::uuid
@@ -332,7 +332,7 @@ export async function registrarLance(leilaoId: string, compradorId: string, valo
 
   // Usar transação para garantir atomicidade e evitar lances simultâneos com mesmo valor ou menores
   const resultado = await d.transaction(async (tx) => {
-    // 1. Validar leilão e buscar estado atual
+    // 1. Validar lance e buscar estado atual
     const lRes = await tx.execute(sql`
       SELECT l.*,
         (
@@ -351,14 +351,14 @@ export async function registrarLance(leilaoId: string, compradorId: string, valo
     `);
     const leilao = rowsOf(lRes)[0];
 
-    if (!leilao) throw new Error("Leilão não encontrado.");
+    if (!leilao) throw new Error("Lance não encontrado.");
     if (leilao.status !== 'ATIVO' && leilao.status !== 'PRORROGADO') {
-      throw new Error("Este leilão não está aceitando lances no momento.");
+      throw new Error("Este lance não está aceitando lances no momento.");
     }
     
     const agora = new Date();
     if (agora < new Date(leilao.inicio_em) || agora > new Date(leilao.fim_em)) {
-      throw new Error("O leilão está fora do horário permitido.");
+      throw new Error("O lance está fora do horário permitido.");
     }
 
     // 2. Validar comprador: precisa estar ativo, com cadastro completo e compliance APROVADO
@@ -380,13 +380,13 @@ export async function registrarLance(leilaoId: string, compradorId: string, valo
       throw new Error("Apenas empresas (pessoa jurídica) podem dar lances.");
     }
     if (!comprador.cadastro_completo) {
-      throw new Error("Complete seu cadastro para participar dos leilões.");
+      throw new Error("Complete seu cadastro para participar dos lances.");
     }
     if (comprador.status_compliance !== 'APROVADO') {
       throw new Error("Seu cadastro ainda está em análise. Você será avisado quando for aprovado.");
     }
 
-    // 3. O maior lance é lido junto ao bloqueio do leilão. Além de reduzir uma
+    // 3. O maior lance é lido junto ao bloqueio do lance. Além de reduzir uma
     // consulta, isso mantém compatibilidade com instalações que vieram de schemas antigos.
     const maiorLanceAnterior = leilao.maior_lance && typeof leilao.maior_lance === "object"
       ? leilao.maior_lance
@@ -450,10 +450,10 @@ export async function registrarLance(leilaoId: string, compradorId: string, valo
       });
 
       if (codigo === "42501") {
-        throw new Error("O banco bloqueou a gravação do lance por permissão. Reinicie o backend para aplicar a reconciliação do módulo de leilão.");
+        throw new Error("O banco bloqueou a gravação do lance por permissão. Reinicie o backend para aplicar a reconciliação do módulo de lance.");
       }
       if (codigo === "23503") {
-        throw new Error("O leilão ou o cadastro do comprador não existe mais. Atualize a página e entre novamente.");
+        throw new Error("O lance ou o cadastro do comprador não existe mais. Atualize a página e entre novamente.");
       }
       if (codigo === "23502") {
         throw new Error(`O banco exige o campo legado ${coluna || "não identificado"} para registrar o lance${detalhe ? `: ${detalhe}` : "."}`);
@@ -551,10 +551,10 @@ export async function registrarLance(leilaoId: string, compradorId: string, valo
           "Seu lance foi superado — Esse Já Foi",
           `<div style="font-family:Inter,Arial,sans-serif;color:#0f172a">
              <h2 style="margin:0 0 8px">Seu lance foi superado</h2>
-             <p style="margin:0 0 12px">Olá ${superado.nome || "comprador"}, um novo lance de <strong>${valorFmt}</strong> foi registrado no leilão que você acompanha.</p>
+             <p style="margin:0 0 12px">Olá ${superado.nome || "comprador"}, um novo lance de <strong>${valorFmt}</strong> foi registrado no lance que você acompanha.</p>
              <p style="margin:0 0 16px">Faça uma nova oferta para voltar à liderança antes do encerramento.</p>
              <a href="https://desenvolvimento-r2d2-essejafoi-front.ckilhl.easypanel.host/veiculos"
-                style="background:#0f766e;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:700">Ver leilão</a>
+                style="background:#0f766e;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:700">Ver lance</a>
            </div>`,
         );
       }
@@ -582,7 +582,7 @@ export async function getEstadoLeilao(leilaoId: string) {
   const temAnuncios = await tabelaExiste(d, "anuncios_veiculo");
 
   // Subconsultas correlacionadas escalares — um subselect em FROM não pode
-  // referenciar l.id sem LATERAL, o que quebrava o detalhe do leilão.
+  // referenciar l.id sem LATERAL, o que quebrava o detalhe do lance.
   const lRes = temAnuncios
     ? await d.execute(sql`
     SELECT l.*,
@@ -651,7 +651,7 @@ export async function processarCicloLeiloes() {
 }
 
 /**
- * Avisa por e-mail quem marcou "lembrar-me" num veículo cujo leilão já
+ * Avisa por e-mail quem marcou "lembrar-me" num veículo cujo lance já
  * começou ou está prestes a começar (nos próximos 15 minutos). Cada
  * lembrete é enviado uma única vez (`enviado = true`). Nunca lança erro —
  * é chamada periodicamente em segundo plano.
@@ -695,7 +695,7 @@ export async function processarLembretesLeilao() {
       await d.execute(sql`UPDATE comprador_lembretes SET enviado = true WHERE id = ${linha.lembrete_id}::uuid;`);
     }
   } catch (e) {
-    console.error("[leilao] erro ao processar lembretes de leilão", e);
+    console.error("[leilao] erro ao processar lembretes de lance", e);
   }
 }
 

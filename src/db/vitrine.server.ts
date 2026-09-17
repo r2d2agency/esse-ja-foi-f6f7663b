@@ -214,7 +214,7 @@ export async function getDetalheAnuncioPublico(slug: string, userId?: string | n
     lembrete,
     acesso,
     condicao: desserializarCondicao(anuncio.observacoes),
-    // Valores do leilão só são expostos para compradores habilitados
+    // Valores do lance só são expostos para compradores habilitados
     lance_inicial: acesso.pode_ver_valores ? anuncio.lance_inicial : null,
     lance_atual: acesso.pode_ver_valores ? anuncio.lance_atual : null,
     incremento_minimo: acesso.pode_ver_valores ? anuncio.incremento_minimo : null,

@@ -298,7 +298,7 @@ function CentralConversasPage() {
                       <p className="text-[10px] text-muted-foreground">Placa: {conversaAtiva.veiculo_placa}</p>
                     </div>
                   </div>
-                  <Badge className="w-full justify-center bg-teal-600">Leilão Ativo</Badge>
+                  <Badge className="w-full justify-center bg-teal-600">Lance Ativo</Badge>
                   <Button variant="ghost" size="sm" className="w-full text-xs h-7">Ver Veículo</Button>
                 </div>
               </div>
@@ -308,7 +308,7 @@ function CentralConversasPage() {
               <h4 className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Histórico Recente</h4>
               <div className="space-y-4">
                 {[
-                  { icon: Hash, label: 'Participou do leilão', date: '18/08' },
+                  { icon: Hash, label: 'Participou do lance', date: '18/08' },
                   { icon: AlertCircle, label: 'Lance superado', date: '18/08' },
                   { icon: Send, label: 'Enviou mensagem', date: '18/08' },
                 ].map((item, i) => (

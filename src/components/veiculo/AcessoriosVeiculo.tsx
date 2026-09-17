@@ -2,7 +2,7 @@ import { CheckCircle2 } from "lucide-react";
 
 /**
  * Checklist visual dos opcionais/acessórios marcados no cadastro — usado na
- * vitrine, na sala de leilão, no link exclusivo (WhatsApp) e no admin, para
+ * vitrine, na sala de lance, no link exclusivo (WhatsApp) e no admin, para
  * que os itens apareçam como checkmarks em vez de um texto corrido.
  */
 export function AcessoriosVeiculo({

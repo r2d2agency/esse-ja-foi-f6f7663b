@@ -558,7 +558,7 @@ export function resumirRetorno(payload: any) {
     ]),
     roubo_furto: historicoRF.alertaMensagem || null,
     restricoes,
-    leilao: temRegistroLeilao ? "Consta ocorrência de leilão" : leilao?.mensagem || null,
+    leilao: temRegistroLeilao ? "Consta ocorrência de lance" : leilao?.mensagem || null,
     sinistro: sinistro.mensagem || indicioSinistro.mensagem || null,
     debitos: temDebito ? "Consta débito em aberto" : estadual.mensagem || null,
     renajud:

@@ -648,7 +648,7 @@ export async function removerVeiculo(id: string) {
     const codigo = error?.cause?.code ?? error?.code;
     if (codigo === "23503") {
       throw new RegraNegocioError(
-        "Este veículo não pode ser excluído porque já tem vistoria, laudo, negociação, leilão ou outro registro vinculado.",
+        "Este veículo não pode ser excluído porque já tem vistoria, laudo, negociação, lance ou outro registro vinculado.",
         409,
       );
     }

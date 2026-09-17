@@ -142,7 +142,7 @@ function PropostaVendedorPage() {
           <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex gap-3">
             <Info className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
             <p className="text-[10px] text-slate-500 leading-relaxed font-medium">
-              Ao aceitar a proposta, seu veículo será preparado para publicação na vitrine de leilão. Este valor é líquido para você, descontadas as taxas administrativas da plataforma.
+              Ao aceitar a proposta, seu veículo será preparado para publicação na vitrine de lance. Este valor é líquido para você, descontadas as taxas administrativas da plataforma.
             </p>
           </div>
         </CardContent>

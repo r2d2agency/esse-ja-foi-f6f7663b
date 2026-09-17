@@ -32,7 +32,7 @@ export function CardOfertaVencedora({ vendedorId }: { vendedorId: string }) {
             Aguardando confirmação do pagamento
           </span>
           <p className="text-sm text-slate-500">
-            O leilão foi encerrado e estamos aguardando a conclusão do pagamento pelo comprador.
+            O lance foi encerrado e estamos aguardando a conclusão do pagamento pelo comprador.
           </p>
         </div>
       </div>

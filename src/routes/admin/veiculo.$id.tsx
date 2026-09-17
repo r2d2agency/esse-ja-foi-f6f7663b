@@ -296,7 +296,7 @@ function DetalheVeiculoAdminPage() {
 
   const handleAprovarPublicacao = async () => {
     if (!user?.id) return;
-    if (!window.confirm("Aprovar este veículo para publicação sem vistoria? Ele ficará disponível para Leilão, Anúncio e Vitrine.")) return;
+    if (!window.confirm("Aprovar este veículo para publicação sem vistoria? Ele ficará disponível para Lance, Anúncio e Vitrine.")) return;
     const toastId = toast.loading("Aprovando veículo para publicação...");
     try {
       const res = await aprovarPublicacao({ data: { veiculoId: id, responsavelId: user.id } });
@@ -313,7 +313,7 @@ function DetalheVeiculoAdminPage() {
 
   const handleExcluirVeiculo = async () => {
     if (!window.confirm(
-      "Excluir este veículo permanentemente? Essa ação não pode ser desfeita. Se houver vistoria, laudo, leilão ou negociação vinculados, a exclusão será bloqueada.",
+      "Excluir este veículo permanentemente? Essa ação não pode ser desfeita. Se houver vistoria, laudo, lance ou negociação vinculados, a exclusão será bloqueada.",
     )) {
       return;
     }
@@ -970,7 +970,7 @@ function DetalheVeiculoAdminPage() {
                     </CardHeader>
                     <CardContent className="pt-4 space-y-3 text-sm">
                       <div className="flex justify-between gap-4"><span className="text-slate-400 font-medium">Acidente</span><span className="font-bold text-right">{observacoes.acidente || "Não informado"}</span></div>
-                      <div className="flex justify-between gap-4"><span className="text-slate-400 font-medium">Leilão</span><span className="font-bold text-right">{observacoes.leilao || "Não informado"}</span></div>
+                      <div className="flex justify-between gap-4"><span className="text-slate-400 font-medium">Lance</span><span className="font-bold text-right">{observacoes.leilao || "Não informado"}</span></div>
                       <div className="flex justify-between gap-4"><span className="text-slate-400 font-medium">Sinistro</span><span className="font-bold text-right">{observacoes.sinistro || "Não informado"}</span></div>
                       <div className="flex justify-between gap-4"><span className="text-slate-400 font-medium">Débitos</span><span className="font-bold text-right">{observacoes.debitos || "Não informado"}</span></div>
                       <div className="flex justify-between gap-4"><span className="text-slate-400 font-medium">Restrição</span><span className="font-bold text-right">{observacoes.restricao || "Não informado"}</span></div>
@@ -1531,11 +1531,11 @@ function AuctionConfigCard({ veiculo }: { veiculo: any }) {
   const mutation = useMutation({
     mutationFn: (data: any) => salvarConfiguracaoLeilao({ data }),
     onSuccess: () => {
-      toast.success("Leilão configurado com sucesso!");
+      toast.success("Lance configurado com sucesso!");
       queryClient.invalidateQueries({ queryKey: ["admin-veiculo-detalhe", veiculo.id] });
     },
     onError: (err: any) => {
-      toast.error(err.message || "Erro ao configurar leilão.");
+      toast.error(err.message || "Erro ao configurar lance.");
     }
   });
 
@@ -1543,7 +1543,7 @@ function AuctionConfigCard({ veiculo }: { veiculo: any }) {
     <Card className="border-teal-100 bg-teal-50/30 shadow-none mt-6">
       <CardHeader className="pb-3 border-b border-teal-100/50">
         <CardTitle className="text-xs font-black uppercase text-teal-600 flex items-center gap-2">
-          <Gavel className="h-3 w-3" /> Configurar Leilão Competitivo
+          <Gavel className="h-3 w-3" /> Configurar Lance Competitivo
         </CardTitle>
       </CardHeader>
       <CardContent className="pt-6 space-y-6">
@@ -1602,7 +1602,7 @@ function AuctionConfigCard({ veiculo }: { veiculo: any }) {
           disabled={mutation.isPending}
           className="w-full min-h-12 h-auto whitespace-normal py-2 text-center bg-teal-600 hover:bg-teal-700 text-white font-black uppercase tracking-tight"
         >
-          {mutation.isPending ? "Configurando..." : "Ativar Leilão Agora"}
+          {mutation.isPending ? "Configurando..." : "Ativar Lance Agora"}
         </Button>
       </CardContent>
     </Card>

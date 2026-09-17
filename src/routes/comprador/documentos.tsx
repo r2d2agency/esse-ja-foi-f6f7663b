@@ -24,7 +24,7 @@ export const Route = createFileRoute("/comprador/documentos")({
       { title: "Documentos e compliance — ESSE JÁ FOI" },
       {
         name: "description",
-        content: "Envie seus documentos para liberar valores e lances nos leilões da plataforma.",
+        content: "Envie seus documentos para liberar valores e lances nos lances da plataforma.",
       },
       { property: "og:title", content: "Documentos e compliance — ESSE JÁ FOI" },
       { property: "og:description", content: "Compliance do comprador na plataforma Esse Já Foi." },
@@ -149,7 +149,7 @@ function CompradorDocumentosPage() {
             Compliance e documentos
           </h1>
           <p className="font-medium text-slate-500">
-            Mantenha sua documentação em dia para dar lances nos leilões.
+            Mantenha sua documentação em dia para dar lances nos lances.
           </p>
         </div>
         <div

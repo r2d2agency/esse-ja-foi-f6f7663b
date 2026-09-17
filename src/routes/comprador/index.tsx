@@ -34,12 +34,12 @@ export const Route = createFileRoute("/comprador/")({
       {
         name: "description",
         content:
-          "Acompanhe favoritos, lembretes de leilão e avisos de lance superado no seu painel de comprador.",
+          "Acompanhe favoritos, lembretes de lance e avisos de lance superado no seu painel de comprador.",
       },
       { property: "og:title", content: "Painel do comprador — ESSE JÁ FOI" },
       {
         property: "og:description",
-        content: "Seu centro de controle de leilões de veículos na plataforma Esse Já Foi.",
+        content: "Seu centro de controle de lances de veículos na plataforma Esse Já Foi.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -137,12 +137,12 @@ function CompradorDashboard() {
         <h1 className="text-2xl font-black uppercase tracking-tight text-slate-950">
           Olá, {user?.nome?.split(" ")[0] || "comprador"}
         </h1>
-        <p className="font-medium text-slate-500">Seu centro de leilões do Esse Já Foi.</p>
+        <p className="font-medium text-slate-500">Seu centro de lances do Esse Já Foi.</p>
       </div>
 
       {vitoria && !vitoriaFechada && (
         <CelebracaoVitoria
-          titulo={vitoria.titulo || "Você venceu o leilão!"}
+          titulo={vitoria.titulo || "Você venceu o lance!"}
           mensagem={vitoria.mensagem}
           onVer={() => {
             marcarLidas.mutate();
@@ -177,7 +177,7 @@ function CompradorDashboard() {
             </div>
             <p className="mt-3 max-w-md text-sm text-white/80">
               {aprovado
-                ? "Você está habilitado para ver valores e dar lances nos leilões."
+                ? "Você está habilitado para ver valores e dar lances nos lances."
                 : "Complete seu cadastro para liberar valores e participação nos lances."}
             </p>
           </div>
@@ -241,7 +241,7 @@ function CompradorDashboard() {
                   : "border-slate-200 text-slate-500 hover:border-teal-300",
               )}
             >
-              Só leilão
+              Só lance
             </button>
             <Button
               variant="ghost"

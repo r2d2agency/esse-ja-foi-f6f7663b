@@ -20,11 +20,11 @@ function AdminLeiloesPage() {
     queryFn: () => getLeiloesAdmin({ data: undefined }),
   });
 
-  if (isLoading) return <div className="p-8">Carregando leilões...</div>;
+  if (isLoading) return <div className="p-8">Carregando lances...</div>;
   if (isError)
     return (
       <div className="m-8 rounded-xl border border-red-200 bg-red-50 p-6 text-red-700">
-        <p className="font-bold">Erro ao carregar os leilões.</p>
+        <p className="font-bold">Erro ao carregar os lances.</p>
         <p className="text-sm break-words">{(error as any)?.message}</p>
       </div>
     );
@@ -40,7 +40,7 @@ function AdminLeiloesPage() {
 
       <div className="flex justify-between items-end">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tight">Gestão de Leilões</h1>
+          <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tight">Gestão de Lances</h1>
           <p className="text-slate-500">Acompanhamento em tempo real das negociações competitivas.</p>
         </div>
       </div>
@@ -48,7 +48,7 @@ function AdminLeiloesPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-slate-500 uppercase">Leilões Ativos</CardTitle>
+            <CardTitle className="text-sm font-medium text-slate-500 uppercase">Lances Ativos</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-black text-teal-600">{stats.ativos}</div>
@@ -99,8 +99,8 @@ function AdminLeiloesPage() {
                 {(!leiloes || leiloes.length === 0) && (
                   <TableRow>
                     <TableCell colSpan={8} className="py-10 text-center text-slate-500">
-                      Nenhum leilão criado ainda. Abra o veículo em Veículos → aba Publicação →
-                      canal Leilão para definir início, encerramento e lance inicial.
+                      Nenhum lance criado ainda. Abra o veículo em Veículos → aba Publicação →
+                      canal Lance para definir início, encerramento e lance inicial.
                     </TableCell>
                   </TableRow>
                 )}

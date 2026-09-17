@@ -26,16 +26,16 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/veiculos/")({
   head: () => ({
     meta: [
-      { title: "Veículos em leilão — ESSE JÁ FOI" },
+      { title: "Veículos em lance — ESSE JÁ FOI" },
       {
         name: "description",
         content:
-          "Vitrine de veículos vistoriados com filtros por marca, ano, quilometragem e leilões abertos.",
+          "Vitrine de veículos vistoriados com filtros por marca, ano, quilometragem e lances abertos.",
       },
-      { property: "og:title", content: "Veículos em leilão — ESSE JÁ FOI" },
+      { property: "og:title", content: "Veículos em lance — ESSE JÁ FOI" },
       {
         property: "og:description",
-        content: "Encontre veículos vistoriados e participe dos leilões da plataforma Esse Já Foi.",
+        content: "Encontre veículos vistoriados e participe dos lances da plataforma Esse Já Foi.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -69,7 +69,7 @@ function VitrinePublica() {
     queryKey: ["vitrine-veiculos"],
     queryFn: () => getVitrine({ data: { token: getSessionToken() } }),
     enabled: podeVerVitrine,
-    // Compradores logados acompanham valor de leilão em tempo real direto na vitrine.
+    // Compradores logados acompanham valor de lance em tempo real direto na vitrine.
     refetchInterval: podeVerVitrine ? 5000 : false,
   });
 
@@ -175,7 +175,7 @@ function VitrinePublica() {
         )}
       >
         <span className="flex items-center gap-2">
-          <Gavel className="h-4 w-4" /> Somente em leilão
+          <Gavel className="h-4 w-4" /> Somente em lance
         </span>
         <span className="text-[10px] font-black uppercase">{somenteLeilao ? "ON" : "OFF"}</span>
       </button>
@@ -313,7 +313,7 @@ function VitrinePublica() {
                           <div className="absolute left-3 top-3 flex gap-2">
                             {emLeilao && (
                               <span className="flex items-center gap-1 rounded bg-amber-500 px-2 py-1 text-[10px] font-black text-white">
-                                <Gavel className="h-3 w-3" /> LEILÃO
+                                <Gavel className="h-3 w-3" /> LANCE
                               </span>
                             )}
                           </div>

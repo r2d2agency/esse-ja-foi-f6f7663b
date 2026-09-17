@@ -26,12 +26,12 @@ export const Route = createFileRoute("/comprador_/cadastro")({
       {
         name: "description",
         content:
-          "Cadastre-se em poucos passos para acompanhar leilões, favoritar veículos e dar lances na plataforma Esse Já Foi.",
+          "Cadastre-se em poucos passos para acompanhar lances, favoritar veículos e dar lances na plataforma Esse Já Foi.",
       },
       { property: "og:title", content: "Criar conta de comprador — ESSE JÁ FOI" },
       {
         property: "og:description",
-        content: "Cadastro rápido para participar dos leilões de veículos vistoriados.",
+        content: "Cadastro rápido para participar dos lances de veículos vistoriados.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -453,7 +453,7 @@ function CadastroComprador() {
               <ShieldCheck className="h-6 w-6 text-teal-400" />
               <p className="mt-3 text-sm text-slate-300">
                 Após a aprovação você poderá ver valores, favoritar veículos, criar lembretes de
-                início de leilão e dar lances.
+                início de lance e dar lances.
               </p>
             </div>
 

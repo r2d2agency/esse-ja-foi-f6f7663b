@@ -27,7 +27,7 @@ export const Route = createFileRoute("/admin/analytics")({
       { title: "Dashboard analítico | ESSE JÁ FOI" },
       { name: "description", content: "Gráficos de veículos, vistorias, lances e vendas da operação." },
       { property: "og:title", content: "Dashboard analítico | ESSE JÁ FOI" },
-      { property: "og:description", content: "Indicadores e gráficos da operação de leilão de veículos." },
+      { property: "og:description", content: "Indicadores e gráficos da operação de lance de veículos." },
     ],
   }),
   component: Analytics,
@@ -200,14 +200,14 @@ function Analytics() {
         </Bloco>
       </div>
 
-      <Bloco titulo="Leilões por status">
+      <Bloco titulo="Lances por status">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={d?.leiloes ?? []}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
             <XAxis dataKey="nome" fontSize={11} />
             <YAxis fontSize={11} allowDecimals={false} />
             <Tooltip />
-            <Bar dataKey="total" name="Leilões" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="total" name="Lances" fill="#f59e0b" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </Bloco>

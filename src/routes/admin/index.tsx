@@ -106,10 +106,10 @@ function AdminDashboard() {
             },
             {
               title: "Comercial",
-              description: "Campanhas, leilões, negociações, pagamentos e entrega do veículo.",
+              description: "Campanhas, lances, negociações, pagamentos e entrega do veículo.",
               links: [
                 { label: "Campanhas", to: "/admin/comunicacoes" },
-                { label: "Leilões", to: "/admin/leiloes" },
+                { label: "Lances", to: "/admin/leiloes" },
                 { label: "Negociações", to: "/admin/negociacoes" },
               ],
             },

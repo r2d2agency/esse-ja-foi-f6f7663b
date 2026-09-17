@@ -78,7 +78,7 @@ function PropostaVendedorPage() {
           queryClient.invalidateQueries({ queryKey: ["propostas-pendentes-vendedor", user.id] }),
           queryClient.invalidateQueries({ queryKey: ["meus-veiculos", user.id] }),
         ]);
-        toast.success(aceite ? "Proposta aceita! Veículo liberado para preparação do leilão." : "Proposta recusada.", { id: tId });
+        toast.success(aceite ? "Proposta aceita! Veículo liberado para preparação do lance." : "Proposta recusada.", { id: tId });
         navigate({ to: "/vendedor/veiculo/$id", params: { id } });
       } else {
         toast.error((resResp as any).message || "Erro", { id: tId });
@@ -111,7 +111,7 @@ function PropostaVendedorPage() {
           <div className="space-y-4 border-t border-teal-100 pt-6">
              <h3 className="text-sm font-bold text-slate-900">O que acontece agora?</h3>
              <p className="text-xs text-slate-600 leading-relaxed">
-               Ao aceitar, seu veículo será liberado para o leilão. Os compradores verificados poderão fazer lances a partir deste valor inicial.
+               Ao aceitar, seu veículo será liberado para o lance. Os compradores verificados poderão fazer lances a partir deste valor inicial.
                Você não precisa aceitar nenhuma oferta abaixo do valor que você autorizou.
              </p>
           </div>
@@ -126,7 +126,7 @@ function PropostaVendedorPage() {
         ) : null}
         <div className="flex flex-col gap-3">
           <Button disabled={respondida || respondendo || !user?.id} onClick={() => handleAceite(true)} className="h-14 bg-teal-600 hover:bg-teal-700 text-white font-bold text-base rounded-2xl">
-             Aceitar e liberar para leilão
+             Aceitar e liberar para lance
           </Button>
           <Button disabled={respondida || respondendo || !user?.id} onClick={() => handleAceite(false)} variant="ghost" className="text-slate-400 hover:text-red-600 font-bold">
              Não concordo com o valor

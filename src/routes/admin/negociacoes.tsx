@@ -17,7 +17,7 @@ export const Route = createFileRoute("/admin/negociacoes")({
   head: () => ({
     meta: [
       { title: "Negociações | Esse Já Foi" },
-      { name: "description", content: "Acompanhe negociações criadas após o fechamento dos leilões e o prazo de pagamento dos compradores vencedores." },
+      { name: "description", content: "Acompanhe negociações criadas após o fechamento dos lances e o prazo de pagamento dos compradores vencedores." },
     ],
   }),
   component: AdminNegociacoesPage,
@@ -110,7 +110,7 @@ function AdminNegociacoesPage() {
     <div className="mx-auto max-w-7xl space-y-8 p-6">
       <div>
         <h1 className="text-3xl font-black uppercase tracking-tight text-slate-900">Negociações</h1>
-        <p className="text-slate-500">Fechamento dos leilões, vencedores confirmados e prazos de pagamento.</p>
+        <p className="text-slate-500">Fechamento dos lances, vencedores confirmados e prazos de pagamento.</p>
       </div>
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
@@ -172,7 +172,7 @@ function AdminNegociacoesPage() {
                 {semVenda.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={5} className="py-12 text-center text-sm font-medium italic text-slate-400">
-                      Nenhum leilão encerrado sem venda.
+                      Nenhum lance encerrado sem venda.
                     </TableCell>
                   </TableRow>
                 ) : (

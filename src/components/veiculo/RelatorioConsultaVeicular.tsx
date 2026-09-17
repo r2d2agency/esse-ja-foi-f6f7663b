@@ -260,7 +260,7 @@ export function RelatorioConsultaVeicular({
                 semOcorrencia
               />
               <CartaoSituacao
-                titulo="Leilão"
+                titulo="Lance"
                 valor={gold.dados.leilao}
                 icone={Gavel}
                 semOcorrencia

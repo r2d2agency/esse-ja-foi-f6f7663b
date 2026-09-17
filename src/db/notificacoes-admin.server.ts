@@ -166,7 +166,7 @@ export async function notificarAdminsCarroParaAnalise(veiculo: {
   }
 }
 
-/** Dispara e-mail aos destinatários cadastrados a cada novo lance registrado em um leilão. Nunca lança erro. */
+/** Dispara e-mail aos destinatários cadastrados a cada novo lance registrado em um lance. Nunca lança erro. */
 export async function notificarAdminsNovoLance(dados: {
   leilaoId: string;
   valor: number;
@@ -187,7 +187,7 @@ export async function notificarAdminsNovoLance(dados: {
     const html = `
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
         <h2 style="color: #0f172a;">Novo lance registrado</h2>
-        <p>Um novo lance foi registrado em um leilão:</p>
+        <p>Um novo lance foi registrado em um lance:</p>
         <div style="background: #f1f5f9; padding: 16px; border-radius: 8px;">
           <p style="margin: 0;"><strong>${veiculoLabel}</strong></p>
           ${dados.veiculo?.placa ? `<p style="margin: 4px 0 0; color: #64748b;">Placa: ${dados.veiculo.placa}</p>` : ""}
@@ -203,7 +203,7 @@ export async function notificarAdminsNovoLance(dados: {
             : ""
         }
         <p style="margin-top: 20px;">
-          <a href="${link}" style="display: inline-block; background: #0d9488; color: #ffffff; text-decoration: none; padding: 10px 20px; border-radius: 8px; font-weight: bold;">Acompanhar leilão</a>
+          <a href="${link}" style="display: inline-block; background: #0d9488; color: #ffffff; text-decoration: none; padding: 10px 20px; border-radius: 8px; font-weight: bold;">Acompanhar lance</a>
         </p>
       </div>
     `;
@@ -220,7 +220,7 @@ export async function notificarAdminsNovoLance(dados: {
   }
 }
 
-/** Dispara e-mail ao comprador que marcou "lembrar-me" quando o leilão começa ou está prestes a começar. Nunca lança erro. */
+/** Dispara e-mail ao comprador que marcou "lembrar-me" quando o lance começa ou está prestes a começar. Nunca lança erro. */
 export async function notificarCompradorLeilaoComecando(dados: {
   destinatarioEmail: string;
   destinatarioNome?: string | null;
@@ -233,11 +233,11 @@ export async function notificarCompradorLeilaoComecando(dados: {
     const link = `${appUrl()}/veiculos/${dados.veiculo.slug}`;
     const veiculoLabel = `${dados.veiculo.marca ?? ""} ${dados.veiculo.modelo ?? ""}`.trim() || "Veículo";
     const assunto = dados.jaComecou
-      ? `O leilão do ${veiculoLabel} começou — Esse Já Foi`
-      : `O leilão do ${veiculoLabel} está prestes a começar — Esse Já Foi`;
+      ? `O lance do ${veiculoLabel} começou — Esse Já Foi`
+      : `O lance do ${veiculoLabel} está prestes a começar — Esse Já Foi`;
     const html = `
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-        <h2 style="color: #0f172a;">${dados.jaComecou ? "O leilão começou!" : "O leilão está quase começando!"}</h2>
+        <h2 style="color: #0f172a;">${dados.jaComecou ? "O lance começou!" : "O lance está quase começando!"}</h2>
         <p>Olá${dados.destinatarioNome ? `, ${dados.destinatarioNome}` : ""}! Você pediu para ser avisado sobre este veículo:</p>
         <div style="background: #f1f5f9; padding: 16px; border-radius: 8px;">
           <p style="margin: 0;"><strong>${veiculoLabel}</strong></p>
@@ -249,6 +249,6 @@ export async function notificarCompradorLeilaoComecando(dados: {
     `;
     await enviarEmailSimples(dados.destinatarioEmail, assunto, html);
   } catch (e) {
-    console.error("[notificacoes-admin] erro ao notificar comprador sobre leilão começando", e);
+    console.error("[notificacoes-admin] erro ao notificar comprador sobre lance começando", e);
   }
 }

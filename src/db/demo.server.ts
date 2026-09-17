@@ -296,7 +296,7 @@ export async function aprovarChecklistDemo(valor?: number) {
 
   const titulo = "Chevrolet Onix 1.0 LT 2022 - Demonstração";
   const descricao =
-    "Veículo de demonstração aprovado na vistoria. Use esta ficha para validar leilão, anúncio e vitrine.";
+    "Veículo de demonstração aprovado na vistoria. Use esta ficha para validar lance, anúncio e vitrine.";
 
   for (const canal of ["LEILAO", "ANUNCIO", "VITRINE"]) {
     await d.execute(sql`
@@ -315,7 +315,7 @@ export async function aprovarChecklistDemo(valor?: number) {
   return { ok: true as const };
 }
 
-/** Cria/reinicia um leilão ativo de 24h para o veículo demo. */
+/** Cria/reinicia um lance ativo de 24h para o veículo demo. */
 export async function criarLeilaoDemo(horas = 24) {
   const d = requireDb();
   await ensureSchemas();

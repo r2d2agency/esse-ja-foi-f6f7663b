@@ -51,38 +51,38 @@ function AdminLeilaoAcompanhamentoPage() {
   const encerrar = useMutation({
     mutationFn: () => encerrarLeilaoFn({ data: { leilaoId: id } }),
     onSuccess: (res: any) => {
-      if (!res?.ok) { toast.error(res?.message || "Não foi possível encerrar o leilão."); return; }
+      if (!res?.ok) { toast.error(res?.message || "Não foi possível encerrar o lance."); return; }
       const r = res.data?.resultado;
       if (r === "ENCERRADO_COM_VENCEDOR") {
-        toast.success(`Leilão encerrado. Negociação ${res.data?.codigo} criada e comprador notificado.`);
+        toast.success(`Lance encerrado. Negociação ${res.data?.codigo} criada e comprador notificado.`);
       } else if (r === "ENCERRADO_SEM_MINIMO") {
-        toast.warning("Leilão encerrado: o maior lance não atingiu o valor mínimo acordado.");
+        toast.warning("Lance encerrado: o maior lance não atingiu o valor mínimo acordado.");
       } else if (r === "ENCERRADO_SEM_OFERTAS") {
-        toast.warning("Leilão encerrado sem ofertas válidas.");
+        toast.warning("Lance encerrado sem ofertas válidas.");
       } else {
-        toast.success("Leilão encerrado.");
+        toast.success("Lance encerrado.");
       }
       setDialogEncerrar(false);
       queryClient.invalidateQueries({ queryKey: ["admin-leilao-detalhe", id] });
     },
-    onError: (e: any) => toast.error(e?.message || "Erro ao encerrar o leilão."),
+    onError: (e: any) => toast.error(e?.message || "Erro ao encerrar o lance."),
   });
 
   const cancelar = useMutation({
     mutationFn: () => cancelarLeilaoAdminFn({ data: { leilaoId: id, motivo: motivo.trim() } }),
     onSuccess: (res: any) => {
-      if (!res?.ok) { toast.error(res?.message || "Não foi possível cancelar o leilão."); return; }
-      toast.success("Leilão cancelado.");
+      if (!res?.ok) { toast.error(res?.message || "Não foi possível cancelar o lance."); return; }
+      toast.success("Lance cancelado.");
       setDialogCancelar(false);
       setMotivo("");
       queryClient.invalidateQueries({ queryKey: ["admin-leilao-detalhe", id] });
     },
-    onError: (e: any) => toast.error(e?.message || "Erro ao cancelar o leilão."),
+    onError: (e: any) => toast.error(e?.message || "Erro ao cancelar o lance."),
   });
 
-  if (isLoading) return <div className="p-8">Carregando detalhes do leilão...</div>;
-  if (error) return <div className="p-8 text-center text-red-500">Erro ao carregar o leilão: {(error as Error).message}</div>;
-  if (!leilao) return <div className="p-8 text-center text-red-500">Leilão não encontrado.</div>;
+  if (isLoading) return <div className="p-8">Carregando detalhes do lance...</div>;
+  if (error) return <div className="p-8 text-center text-red-500">Erro ao carregar o lance: {(error as Error).message}</div>;
+  if (!leilao) return <div className="p-8 text-center text-red-500">Lance não encontrado.</div>;
 
   const lanceAtual = Number(leilao.ultimo_lance?.valor || leilao.lance_inicial);
   const fimEm = new Date(leilao.fim_em);
@@ -99,7 +99,7 @@ function AdminLeilaoAcompanhamentoPage() {
         </Button>
         <div>
           <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tight">{leilao.titulo}</h1>
-          <p className="text-slate-500 font-mono text-xs uppercase tracking-widest">Leilão ID: {leilao.id.substring(0,8)}</p>
+          <p className="text-slate-500 font-mono text-xs uppercase tracking-widest">Lance ID: {leilao.id.substring(0,8)}</p>
         </div>
         <Badge className={
           leilao.status === 'ATIVO' ? 'bg-teal-600' :
@@ -222,7 +222,7 @@ function AdminLeilaoAcompanhamentoPage() {
         <div className="space-y-6">
           <Card className="border-slate-200 shadow-none bg-slate-50">
             <CardHeader>
-              <CardTitle className="text-xs font-black uppercase text-slate-500">Controles do Leilão</CardTitle>
+              <CardTitle className="text-xs font-black uppercase text-slate-500">Controles do Lance</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <Button
@@ -230,7 +230,7 @@ function AdminLeilaoAcompanhamentoPage() {
                 disabled={encerrado || cancelado}
                 onClick={() => setDialogEncerrar(true)}
               >
-                <Gavel className="h-4 w-4 mr-2" /> Encerrar Leilão
+                <Gavel className="h-4 w-4 mr-2" /> Encerrar Lance
               </Button>
               <Button
                 className="w-full text-red-600 hover:text-red-700 hover:bg-red-50 font-bold text-xs uppercase border-red-100"
@@ -238,11 +238,11 @@ function AdminLeilaoAcompanhamentoPage() {
                 disabled={encerrado || cancelado}
                 onClick={() => setDialogCancelar(true)}
               >
-                Cancelar Leilão
+                Cancelar Lance
               </Button>
               {(encerrado || cancelado) && (
                 <p className="text-[11px] font-bold uppercase text-slate-400">
-                  Leilão {leilao.status.toLowerCase()} — controles indisponíveis.
+                  Lance {leilao.status.toLowerCase()} — controles indisponíveis.
                 </p>
               )}
               <div className="pt-4 mt-4 border-t border-slate-200">
@@ -314,7 +314,7 @@ function AdminLeilaoAcompanhamentoPage() {
             </div>
           ) : (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 font-medium">
-              Nenhum lance registrado. O leilão será encerrado sem vencedor.
+              Nenhum lance registrado. O lance será encerrado sem vencedor.
             </div>
           )}
 
@@ -334,9 +334,9 @@ function AdminLeilaoAcompanhamentoPage() {
       <Dialog open={dialogCancelar} onOpenChange={setDialogCancelar}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="uppercase font-black tracking-tight">Cancelar leilão</DialogTitle>
+            <DialogTitle className="uppercase font-black tracking-tight">Cancelar lance</DialogTitle>
             <DialogDescription>
-              O leilão será cancelado sem vencedor e sem criação de negociação. Informe o motivo para auditoria.
+              O lance será cancelado sem vencedor e sem criação de negociação. Informe o motivo para auditoria.
             </DialogDescription>
           </DialogHeader>
           <Textarea
@@ -352,7 +352,7 @@ function AdminLeilaoAcompanhamentoPage() {
               disabled={cancelar.isPending || motivo.trim().length < 3}
               onClick={() => cancelar.mutate()}
             >
-              {cancelar.isPending ? "Cancelando..." : "Cancelar leilão"}
+              {cancelar.isPending ? "Cancelando..." : "Cancelar lance"}
             </Button>
           </DialogFooter>
         </DialogContent>

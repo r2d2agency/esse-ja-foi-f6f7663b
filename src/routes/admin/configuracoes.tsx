@@ -850,7 +850,7 @@ function OpcionaisVeiculoSection({
       </div>
       <p className="text-sm text-slate-500">
         Itens que o vendedor pode marcar no cadastro (ar-condicionado, rodas de liga, som, etc.).
-        Aparecem como checklist na vitrine, no leilão e na ficha do veículo.
+        Aparecem como checklist na vitrine, no lance e na ficha do veículo.
       </p>
 
       <div className="flex flex-wrap gap-2">
@@ -1748,7 +1748,7 @@ function ConsultaVeicularSection() {
 const ITENS_RISCO: { chave: string; rotulo: string }[] = [
   { chave: "roubo_furto", rotulo: "Roubo / Furto" },
   { chave: "sinistro", rotulo: "Sinistro" },
-  { chave: "leilao", rotulo: "Histórico de leilão" },
+  { chave: "leilao", rotulo: "Histórico de lance" },
   { chave: "restricoes", rotulo: "Restrições" },
   { chave: "renajud", rotulo: "Renajud (judicial)" },
   { chave: "debitos", rotulo: "Débitos" },
@@ -1923,7 +1923,7 @@ function TermoAdesaoSection({
         <Textarea rows={12} value={conteudo} onChange={(e) => setConteudo(e.target.value)} />
         <p className="text-xs text-slate-500">
           Ao salvar, uma nova versão é publicada e passa a ser exigida dos {publico} antes de
-          liberar {tipo === "VENDEDOR" ? "o veículo para o funil normal" : "lances nos leilões"}.
+          liberar {tipo === "VENDEDOR" ? "o veículo para o funil normal" : "lances nos lances"}.
           O aceite registra data, hora, IP e navegador.
         </p>
       </div>

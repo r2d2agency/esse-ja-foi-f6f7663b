@@ -53,7 +53,7 @@ function lerValorMonetario(valor: string) {
 }
 
 const CANAIS = [
-  { id: "LEILAO", label: "Leilão", icon: Gavel, desc: "Sala de lances com cronômetro e incremento." },
+  { id: "LEILAO", label: "Lance", icon: Gavel, desc: "Sala de lances com cronômetro e incremento." },
   { id: "ANUNCIO", label: "Anúncio", icon: Megaphone, desc: "Peça comercial para divulgação direta." },
   { id: "VITRINE", label: "Vitrine", icon: Store, desc: "Listagem pública, sem exibir valores." },
   {
@@ -253,7 +253,7 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
           },
         });
         if (!resL?.ok) {
-          toast.error(resL?.message || "Erro ao salvar o leilão.");
+          toast.error(resL?.message || "Erro ao salvar o lance.");
           return;
         }
         refetchLeilao();
@@ -448,7 +448,7 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
           <div className="space-y-4 rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs font-black uppercase tracking-widest text-amber-700">
-                Parâmetros do leilão
+                Parâmetros do lance
               </p>
               {leilaoAtual && (
                 <span className="rounded-full bg-amber-600 px-2 py-0.5 text-[10px] font-black uppercase text-white">
@@ -555,7 +555,7 @@ export function CanaisPublicacao({ veiculoId }: { veiculoId: string }) {
             )}
 
             <p className="text-xs font-medium text-amber-800">
-              Ative o canal e salve para publicar o leilão. Ele fica AGENDADO até a data de início
+              Ative o canal e salve para publicar o lance. Ele fica AGENDADO até a data de início
               e passa a ATIVO automaticamente.
             </p>
           </div>

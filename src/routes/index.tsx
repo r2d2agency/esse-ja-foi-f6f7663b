@@ -41,7 +41,7 @@ export const Route = createFileRoute('/')({
     const titulo = cfg?.seo_titulo_site?.trim() || 'Esse Já Foi — Compra e venda de veículos vistoriados';
     const descricao =
       cfg?.seo_descricao_site?.trim() ||
-      'Venda ou compre veículos vistoriados com negociação digital, documentação garantida e pagamento seguro. Leilão online de carros com compradores verificados.';
+      'Venda ou compre veículos vistoriados com negociação digital, documentação garantida e pagamento seguro. Lance online de carros com compradores verificados.';
     const imagem = cfg?.seo_imagem_og_url?.trim() || `${DOMINIO}${landingHeroAsset.url}`;
 
     return {
@@ -51,7 +51,7 @@ export const Route = createFileRoute('/')({
         {
           name: 'keywords',
           content:
-            'comprar carro usado, vender carro, leilão de veículos online, veículos vistoriados, carros seminovos, leilão de carros, marketplace de veículos, compra e venda de carros',
+            'comprar carro usado, vender carro, lance de veículos online, veículos vistoriados, carros seminovos, lance de carros, marketplace de veículos, compra e venda de carros',
         },
         { name: 'robots', content: 'index, follow' },
         { name: 'author', content: 'Esse Já Foi' },

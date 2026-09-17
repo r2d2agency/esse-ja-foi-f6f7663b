@@ -285,7 +285,7 @@ function PoliticaPrivacidade() {
               para enviar informações relacionadas à conta ou às operações.
             </p>
             <p className="mt-3">
-              Podemos enviar comunicações relativas a cadastro, documentos, vistoria, veículos, ofertas, leilões,
+              Podemos enviar comunicações relativas a cadastro, documentos, vistoria, veículos, ofertas, lances,
               negociações, pagamento, entrega, repasse, segurança e suporte. Quando aplicável, poderão ser enviadas
               comunicações promocionais relacionadas a veículos ou serviços.
             </p>

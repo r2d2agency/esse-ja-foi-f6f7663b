@@ -115,8 +115,8 @@ function AjudaPage() {
                 <li><b>Execução</b> da vistoria pelo app do vistoriador (checklist + fotos + laudo)</li>
                 <li><b>Análise pós-vistoria</b> (checklist, fotos, proposta de valor ao vendedor)</li>
                 <li>Vendedor aceita → <b>Criar Anúncio</b> (fotos processadas: placa coberta pela logo)</li>
-                <li><b>Canais de Publicação</b>: Vitrine / Leilão / Anúncio / WhatsApp</li>
-                <li>Leilão encerra com lance válido → <b>Negociação</b> (pagamento do comprador)</li>
+                <li><b>Canais de Publicação</b>: Vitrine / Lance / Anúncio / WhatsApp</li>
+                <li>Lance encerra com lance válido → <b>Negociação</b> (pagamento do comprador)</li>
                 <li><b>Entrega</b> (retirada + código de confirmação)</li>
                 <li><b>Pagamentos</b> (repasse ao vendedor) → venda concluída</li>
               </ol>
@@ -224,7 +224,7 @@ function AjudaPage() {
               <div className="flex items-start gap-3 rounded-2xl bg-teal-50/70 p-4">
                 <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-teal-700" />
                 <p className="text-sm text-slate-700">
-                  Toda foto que vai pra vitrine, leilão ou divulgação externa passa por um
+                  Toda foto que vai pra vitrine, lance ou divulgação externa passa por um
                   processamento automático: a IA localiza a placa e cobre com a logo da{" "}
                   <b>Esse Já Foi</b>. A foto original com a placa visível nunca é exibida publicamente.
                 </p>
@@ -255,7 +255,7 @@ function AjudaPage() {
               <p>Dentro da ficha do veículo, quatro canais independentes — cada um com título, descrição e fotos próprios:</p>
               <ul className="list-disc space-y-1.5 pl-5">
                 <li><b>Vitrine</b> — ativar é o que publica o veículo na listagem pública.</li>
-                <li><b>Leilão</b> — ativar cria/agenda o leilão (fica agendado até a data de início).</li>
+                <li><b>Lance</b> — ativar cria/agenda o lance (fica agendado até a data de início).</li>
                 <li><b>Anúncio</b> — peça comercial para divulgação direta.</li>
                 <li><b>WhatsApp</b> — gera link privado com token; o veículo não aparece na vitrine por esse canal.</li>
               </ul>
@@ -268,7 +268,7 @@ function AjudaPage() {
                 Meta → variáveis → prévia → teste → agendar ou enviar.
               </p>
             </Topico>
-            <Topico value="leiloes" icon={Gavel} titulo="Leilões">
+            <Topico value="leiloes" icon={Gavel} titulo="Lances">
               <ul className="list-disc space-y-1.5 pl-5">
                 <li>Só compradores PJ com compliance aprovado dão lances.</li>
                 <li>Cada lance precisa superar o atual + incremento mínimo.</li>
@@ -328,7 +328,7 @@ function AjudaPage() {
             <Topico value="demo" icon={Beaker} titulo="Ambiente Demo">
               <p>
                 Cria vendedor/comprador/veículo/vistoriador de teste, refaz checklist, aprova e
-                libera divulgação, e abre um leilão de 24h — útil pra treinar a equipe sem usar
+                libera divulgação, e abre um lance de 24h — útil pra treinar a equipe sem usar
                 dados reais.
               </p>
             </Topico>

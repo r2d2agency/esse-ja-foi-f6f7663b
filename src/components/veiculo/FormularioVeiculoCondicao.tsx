@@ -263,7 +263,7 @@ export function FormularioVeiculoCondicao({
             Essas informações serão verificadas durante a análise do veículo.
           </p>
           <OpcaoBotoes label="Já sofreu acidente?" opcoes={["Não", "Sim", "Não sei"]} value={condicao.acidente} onChange={(v) => setCondicaoCampo({ acidente: v })} colunas={3} />
-          <OpcaoBotoes label="Já passou por leilão?" opcoes={["Não", "Sim", "Não sei"]} value={condicao.leilao} onChange={(v) => setCondicaoCampo({ leilao: v })} colunas={3} />
+          <OpcaoBotoes label="Já passou por lance?" opcoes={["Não", "Sim", "Não sei"]} value={condicao.leilao} onChange={(v) => setCondicaoCampo({ leilao: v })} colunas={3} />
           <OpcaoBotoes label="Possui sinistro conhecido?" opcoes={["Não", "Sim", "Não sei"]} value={condicao.sinistro} onChange={(v) => setCondicaoCampo({ sinistro: v })} colunas={3} />
           <OpcaoBotoes label="Possui débitos conhecidos (IPVA, multas, licenciamento)?" opcoes={["Não", "Sim", "Não sei"]} value={condicao.debitos} onChange={(v) => setCondicaoCampo({ debitos: v })} colunas={3} />
           <OpcaoBotoes label="Possui alguma restrição impeditiva de transferência (alienação, judicial, etc.)?" opcoes={["Não", "Sim", "Não sei"]} value={condicao.restricao} onChange={(v) => setCondicaoCampo({ restricao: v })} colunas={3} />

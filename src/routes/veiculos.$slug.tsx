@@ -22,13 +22,13 @@ import { formatarTempoRestante } from "@/lib/tempo";
 export const Route = createFileRoute("/veiculos/$slug")({
   head: () => ({
     meta: [
-      { title: "Veículo em leilão — ESSE JÁ FOI" },
+      { title: "Veículo em lance — ESSE JÁ FOI" },
       {
         name: "description",
         content:
           "Detalhes completos do veículo vistoriado: fotos, ficha técnica e sala de lances para compradores aprovados.",
       },
-      { property: "og:title", content: "Veículo em leilão — ESSE JÁ FOI" },
+      { property: "og:title", content: "Veículo em lance — ESSE JÁ FOI" },
       {
         property: "og:description",
         content: "Veículo vistoriado disponível para lances na plataforma Esse Já Foi.",
@@ -61,7 +61,7 @@ function DetalheVeiculoPublico() {
   const podeVerValores = !!acesso.pode_ver_valores;
   const podeDarLances = !!acesso.pode_dar_lances;
 
-  // Buscamos info do leilão em tempo real se o anúncio for carregado e o usuário puder ver
+  // Buscamos info do lance em tempo real se o anúncio for carregado e o usuário puder ver
   const { data: leilao, isLoading: loadingLeilao, isError: erroLeilao } = useQuery({
     queryKey: ["leilao-veiculo", anuncio?.id],
     queryFn: async () => {
@@ -112,7 +112,7 @@ function DetalheVeiculoPublico() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["anuncio-publico", slug] });
-      toast.success("Lembrete criado! Avisaremos antes do leilão começar.");
+      toast.success("Lembrete criado! Avisaremos antes do lance começar.");
     },
     onError: () => toast.error("Faça login para criar lembretes."),
   });
@@ -146,7 +146,7 @@ function DetalheVeiculoPublico() {
     return () => observer.disconnect();
   }, []);
 
-  // Fallback: o anúncio público já traz os parâmetros do leilão. Se a consulta
+  // Fallback: o anúncio público já traz os parâmetros do lance. Se a consulta
   // em tempo real falhar, usamos esses valores para nunca exibir R$ 0.
   const leilaoFimEm = leilao?.fim_em || anuncio?.fim_em || null;
 
@@ -342,7 +342,7 @@ function DetalheVeiculoPublico() {
                     {leilao?.ultimo_lance?.comprador_id === user?.id && (
                       <div className="bg-teal-500/10 border border-teal-500/20 rounded-xl p-3 flex items-center gap-3">
                         <TrendingUp className="h-5 w-5 text-teal-400" />
-                        <span className="text-xs font-bold text-teal-400 uppercase">Você é o líder deste leilão!</span>
+                        <span className="text-xs font-bold text-teal-400 uppercase">Você é o líder deste lance!</span>
                       </div>
                     )}
 
@@ -376,7 +376,7 @@ function DetalheVeiculoPublico() {
                             inputMode="numeric"
                             value={lanceCustom}
                             onChange={(e) => setLanceCustom(e.target.value.replace(/[^\d.,]/g, ""))}
-                            placeholder={proximoLanceMinimo > 0 ? proximoLanceMinimo.toLocaleString("pt-BR") : "Aguardando dados do leilão"}
+                            placeholder={proximoLanceMinimo > 0 ? proximoLanceMinimo.toLocaleString("pt-BR") : "Aguardando dados do lance"}
                             className="h-14 w-full rounded-2xl bg-white/5 border border-white/10 pl-11 pr-4 text-lg font-black text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-teal-500 tabular-nums"
                           />
                         </div>
@@ -525,7 +525,7 @@ const ITENS_VISTORIA: { chave: string; label: string }[] = [
   { chave: "interior", label: "Interior" },
   { chave: "pneus", label: "Pneus" },
   { chave: "acidente", label: "Já sofreu acidente" },
-  { chave: "leilao", label: "Já passou por leilão" },
+  { chave: "leilao", label: "Já passou por lance" },
   { chave: "sinistro", label: "Sinistro" },
   { chave: "debitos", label: "Débitos" },
   { chave: "restricao", label: "Restrição p/ transferência" },

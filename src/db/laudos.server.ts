@@ -163,7 +163,7 @@ export async function seedDepreciacaoRegras() {
     { item: 'Câmbio com Ruído', resposta: 'AVARIA', tipo: 'PERCENTUAL', valor: 3.0, fator_leve: 1.0, fator_media: 1.0, fator_grave: 1.0 },
     { item: 'Motor com Ruído/Fumaça', resposta: 'AVARIA', tipo: 'PERCENTUAL', valor: 6.0, fator_leve: 1.0, fator_media: 1.0, fator_grave: 1.0 },
     { item: 'Reparo Estrutural Longarina', resposta: 'AVARIA', tipo: 'PERCENTUAL', valor: 25.0, fator_leve: 1.0, fator_media: 1.0, fator_grave: 1.0 },
-    { item: 'Sinistro ou Leilão', resposta: 'AVARIA', tipo: 'PERCENTUAL', valor: 30.0, fator_leve: 1.0, fator_media: 1.0, fator_grave: 1.0 },
+    { item: 'Sinistro ou Lance', resposta: 'AVARIA', tipo: 'PERCENTUAL', valor: 30.0, fator_leve: 1.0, fator_media: 1.0, fator_grave: 1.0 },
   ];
   // Note: No sistema real, buscaríamos os IDs reais dos itens do checklist PADRAO. 
   // Por enquanto, faremos match por título se o item_id for nulo ou usaremos regras genéricas.

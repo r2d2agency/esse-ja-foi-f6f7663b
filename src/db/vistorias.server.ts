@@ -162,7 +162,7 @@ const SEED_CATEGORIAS_PADRAO: SeedCategoria[] = [
       { titulo: "CRLV (Certificado Registro)", descricao_ajuda: "Documento do veículo válido", tipo_item: "CONFORMIDADE", obrigatorio: true, foto_obrigatoria: true, permite_observacao: true, ordem: 1 },
       { titulo: "Documento Pessoal Vendedor", descricao_ajuda: "RG/CNH válido do vendedor", tipo_item: "CONFORMIDADE", obrigatorio: true, foto_obrigatoria: true, permite_observacao: true, ordem: 2 },
       { titulo: "Multas Pendentes", descricao_ajuda: "Verificar se existem multas pendentes no sistema", tipo_item: "CONFORMIDADE", obrigatorio: true, foto_obrigatoria: false, permite_observacao: true, ordem: 3 },
-      { titulo: "Restrições / Gravames", descricao_ajuda: "Financiamento, alienação, leilão anterior", tipo_item: "CONFORMIDADE", obrigatorio: true, foto_obrigatoria: false, permite_observacao: true, ordem: 4 },
+      { titulo: "Restrições / Gravames", descricao_ajuda: "Financiamento, alienação, lance anterior", tipo_item: "CONFORMIDADE", obrigatorio: true, foto_obrigatoria: false, permite_observacao: true, ordem: 4 },
       { titulo: "Sinistro / Roubo", descricao_ajuda: "Veículo já foi sinistrado ou recuperado?", tipo_item: "CONFORMIDADE", obrigatorio: true, foto_obrigatoria: false, permite_observacao: true, ordem: 5 },
     ],
   },

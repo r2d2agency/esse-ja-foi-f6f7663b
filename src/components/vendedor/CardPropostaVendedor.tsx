@@ -48,7 +48,7 @@ export function CardPropostaVendedor({ vendedorId }: { vendedorId: string }) {
                 {formatCurrency(Number(p.valor_minimo_acordado || 0))}
               </p>
               <p className="mt-1 text-[10px] font-medium text-teal-700">
-                Se você aceitar, o veículo será liberado para leilão.
+                Se você aceitar, o veículo será liberado para lance.
               </p>
             </div>
 
