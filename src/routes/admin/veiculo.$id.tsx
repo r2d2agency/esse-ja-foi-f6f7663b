@@ -1372,7 +1372,13 @@ function DetalheVeiculoAdminPage() {
               </TabsContent>
 
               <TabsContent value="laudos" className="mt-0 space-y-6">
-                <LaudosVeiculo veiculoId={id} />
+                <LaudosVeiculo
+                  veiculoId={id}
+                  placa={v.placa}
+                  marca={v.marca}
+                  modelo={v.modelo}
+                  ano={v.ano_modelo}
+                />
               </TabsContent>
 
               <TabsContent value="historico" className="mt-0">

@@ -1,7 +1,11 @@
 import { sql } from "drizzle-orm";
 import { db } from "./index";
 import { codigoConsultaDoPayload, conferiEmProcessamento } from "./conferi-protocolo";
-import { criarContextoConsultaLog, registrarEventoConsulta, type ContextoConsultaLog } from "./consulta-logs.server";
+import {
+  criarContextoConsultaLog,
+  registrarEventoConsulta,
+  type ContextoConsultaLog,
+} from "./consulta-logs.server";
 
 function requireDb() {
   if (!db) throw new Error("Banco de dados indisponível.");
@@ -360,17 +364,32 @@ type ResultadoConsulta = {
 };
 
 /** Chamada HTTP crua (POST, JSON) + parse da resposta — compartilhada por qualquer produto Conferi. */
-async function chamarConferi(url: string, body: string, contexto?: ContextoConsultaLog): Promise<ResultadoConsulta> {
+async function chamarConferi(
+  url: string,
+  body: string,
+  contexto?: ContextoConsultaLog,
+): Promise<ResultadoConsulta> {
   const diagnostico: { modo: string; httpStatus: number; mensagem: string }[] = [];
   const parametrosEnvio = JSON.parse(body);
-  const log = contexto || criarContextoConsultaLog({
-    origem: url.includes("homologacao") ? "HOMOLOGACAO" : "POR_PLACA",
-    placa: parametrosEnvio.parametros?.placa || null,
-    protocolo: parametrosEnvio.codigo_consulta ? String(parametrosEnvio.codigo_consulta) : null,
-    produto: parametrosEnvio.parametros?.produto || (url.includes("conferi-agregados") ? "conferi-agregados" : DESVALORIZACAO_PRODUTO),
-  });
+  const log =
+    contexto ||
+    criarContextoConsultaLog({
+      origem: url.includes("homologacao") ? "HOMOLOGACAO" : "POR_PLACA",
+      placa: parametrosEnvio.parametros?.placa || null,
+      protocolo: parametrosEnvio.codigo_consulta ? String(parametrosEnvio.codigo_consulta) : null,
+      produto:
+        parametrosEnvio.parametros?.produto ||
+        (url.includes("conferi-agregados") ? "conferi-agregados" : DESVALORIZACAO_PRODUTO),
+    });
   const inicio = Date.now();
-  await registrarEventoConsulta(log, log.protocolo ? "RESGATE_ENVIADO" : "CONSULTA_ENVIADA", "PENDENTE", log.protocolo ? "Resgate enviado à Company com o código da consulta." : "Consulta enviada à Company. Aguardando resposta.");
+  await registrarEventoConsulta(
+    log,
+    log.protocolo ? "RESGATE_ENVIADO" : "CONSULTA_ENVIADA",
+    "PENDENTE",
+    log.protocolo
+      ? "Resgate enviado à Company com o código da consulta."
+      : "Consulta enviada à Company. Aguardando resposta.",
+  );
   try {
     const resp = await fetch(url, {
       method: "POST",
@@ -380,7 +399,14 @@ async function chamarConferi(url: string, body: string, contexto?: ContextoConsu
     });
     const payload = parse(await resp.text());
     log.protocolo = codigoConsultaDoPayload(payload) || log.protocolo;
-    await registrarEventoConsulta(log, "RESPOSTA_RECEBIDA", "RECEBIDA", "Resposta HTTP recebida da Company.", resp.status, Date.now() - inicio);
+    await registrarEventoConsulta(
+      log,
+      "RESPOSTA_RECEBIDA",
+      "RECEBIDA",
+      "Resposta HTTP recebida da Company.",
+      resp.status,
+      Date.now() - inicio,
+    );
     const falha = resp.ok ? falhaLogica(payload) : null;
     const msg = falha || mensagemDoRetorno(payload) || (resp.ok ? "OK" : `HTTP ${resp.status}`);
     diagnostico.push({
@@ -390,10 +416,26 @@ async function chamarConferi(url: string, body: string, contexto?: ContextoConsu
     });
 
     if (resp.ok && !falha) {
-      if (!contexto) await registrarEventoConsulta(log, "CONSULTA_CONCLUIDA", "CONCLUIDA", "Resposta disponível para preenchimento dos dados.", resp.status);
+      if (!contexto)
+        await registrarEventoConsulta(
+          log,
+          "CONSULTA_CONCLUIDA",
+          "CONCLUIDA",
+          "Resposta disponível para preenchimento dos dados.",
+          resp.status,
+        );
       return { ok: true, httpStatus: resp.status, payload, erro: null, diagnostico };
     }
-    if (!contexto) await registrarEventoConsulta(log, conferiEmProcessamento(payload) ? "AGUARDANDO_RESPOSTA" : "FALHA_CONSULTA", conferiEmProcessamento(payload) ? "PROCESSANDO" : "ERRO", conferiEmProcessamento(payload) ? "A Company ainda está processando a consulta." : "A Company não concluiu a consulta. Verifique o diagnóstico da pesquisa.", resp.status);
+    if (!contexto)
+      await registrarEventoConsulta(
+        log,
+        conferiEmProcessamento(payload) ? "AGUARDANDO_RESPOSTA" : "FALHA_CONSULTA",
+        conferiEmProcessamento(payload) ? "PROCESSANDO" : "ERRO",
+        conferiEmProcessamento(payload)
+          ? "A Company ainda está processando a consulta."
+          : "A Company não concluiu a consulta. Verifique o diagnóstico da pesquisa.",
+        resp.status,
+      );
     return {
       ok: false,
       httpStatus: resp.status,
@@ -402,7 +444,14 @@ async function chamarConferi(url: string, body: string, contexto?: ContextoConsu
       diagnostico,
     };
   } catch (e: any) {
-    await registrarEventoConsulta(log, "FALHA_COMUNICACAO", "ERRO", "Falha de comunicação ou tempo de espera excedido ao chamar a Company.", 0, Date.now() - inicio);
+    await registrarEventoConsulta(
+      log,
+      "FALHA_COMUNICACAO",
+      "ERRO",
+      "Falha de comunicação ou tempo de espera excedido ao chamar a Company.",
+      0,
+      Date.now() - inicio,
+    );
     const erro = e?.message || "Falha de comunicação com o provedor.";
     diagnostico.push({ modo: "POST JSON", httpStatus: 0, mensagem: erro });
     return { ok: false, httpStatus: 0, payload: null, erro, diagnostico };
@@ -546,6 +595,38 @@ export async function listarConsultasVeiculo(veiculoId: string) {
     ORDER BY criado_em DESC
   `);
   return rowsOf(res);
+}
+
+/** Retorna as últimas consultas Gold e FIPE já normalizadas para o relatório visual. */
+export async function obterRelatorioConsultas(veiculoId: string) {
+  const d = requireDb();
+  await ensureConsultaVeicularSchema();
+  const rows = rowsOf(
+    await d.execute(sql`
+      SELECT id, produto, status, protocolo, resumo, resposta, erro, criado_em
+      FROM veiculo_consultas
+      WHERE veiculo_id = ${veiculoId}::uuid
+      ORDER BY criado_em DESC
+    `),
+  );
+  const gold = rows.find((r) => r.produto === PROVEDOR_PADRAO.produto);
+  const fipe = rows.find((r) => r.produto === DESVALORIZACAO_PRODUTO);
+  const normalizar = (consulta: any, tipo: "gold" | "fipe") => {
+    if (!consulta) return null;
+    const dados =
+      tipo === "gold"
+        ? resumirRetorno(consulta.resposta || consulta.resumo || {})
+        : mapearDesvalorizacaoFipe(consulta.resposta || consulta.resumo || {});
+    return {
+      id: String(consulta.id),
+      status: consulta.status,
+      protocolo: consulta.protocolo,
+      criadoEm: consulta.criado_em,
+      erro: consulta.erro,
+      dados,
+    };
+  };
+  return { gold: normalizar(gold, "gold"), fipe: normalizar(fipe, "fipe") };
 }
 
 /**
@@ -873,15 +954,20 @@ async function iniciarConsultaRegistrada(
   }
   const parametros: ConferiParametros = { placa: placa || undefined };
   if (produto === PROVEDOR_PADRAO.produto && veiculo?.chassi) parametros.chassi = veiculo.chassi;
-  const contexto = criarContextoConsultaLog({ origem: entrada.veiculoId ? "CADASTRO" : "TESTE", veiculoId: entrada.veiculoId, placa: placa || null, produto });
+  const contexto = criarContextoConsultaLog({
+    origem: entrada.veiculoId ? "CADASTRO" : "TESTE",
+    veiculoId: entrada.veiculoId,
+    placa: placa || null,
+    produto,
+  });
   try {
-  const retorno = await d.transaction(async (tx) => {
-    // Serializa cliques repetidos para não criar duas pesquisas antes de salvar o protocolo.
-    await tx.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtext(${`${produto}:${entrada.veiculoId || placa}`}))`,
-    );
-    const anterior = rowsOf(
-      await tx.execute(sql`
+    const retorno = await d.transaction(async (tx) => {
+      // Serializa cliques repetidos para não criar duas pesquisas antes de salvar o protocolo.
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${`${produto}:${entrada.veiculoId || placa}`}))`,
+      );
+      const anterior = rowsOf(
+        await tx.execute(sql`
       SELECT * FROM veiculo_consultas
       WHERE produto = ${produto} AND placa IS NOT DISTINCT FROM ${placa || null}
         AND veiculo_id IS NOT DISTINCT FROM ${entrada.veiculoId || null}::uuid
@@ -889,81 +975,103 @@ async function iniciarConsultaRegistrada(
         AND criado_em > now() - interval '60 days'
       ORDER BY criado_em DESC LIMIT 1
     `),
-    )[0];
-    const protocoloAnterior =
-      anterior?.protocolo && anterior.protocolo !== "[object Object]"
-        ? String(anterior.protocolo).trim() || codigoConsultaDoPayload(anterior?.resposta)
-      : codigoConsultaDoPayload(anterior?.resposta);
-    contexto.protocolo = protocoloAnterior;
-    contexto.consultaId = anterior?.id;
-    const concluidaValida =
-      anterior?.status === "CONCLUIDA" &&
-      (produto === DESVALORIZACAO_PRODUTO
-        ? anterior.resumo?.valorNumero > 0
-        : !conferiEmProcessamento(anterior.resposta));
-    if (anterior && (anterior.status === "PROCESSANDO" || concluidaValida) && protocoloAnterior) {
-      if (anterior.protocolo !== protocoloAnterior) {
-        await tx.execute(
-          sql`UPDATE veiculo_consultas SET protocolo = ${protocoloAnterior} WHERE id = ${anterior.id}::uuid`,
-        );
+      )[0];
+      const protocoloAnterior =
+        anterior?.protocolo && anterior.protocolo !== "[object Object]"
+          ? String(anterior.protocolo).trim() || codigoConsultaDoPayload(anterior?.resposta)
+          : codigoConsultaDoPayload(anterior?.resposta);
+      contexto.protocolo = protocoloAnterior;
+      contexto.consultaId = anterior?.id;
+      const concluidaValida =
+        anterior?.status === "CONCLUIDA" &&
+        (produto === DESVALORIZACAO_PRODUTO
+          ? anterior.resumo?.valorNumero > 0
+          : !conferiEmProcessamento(anterior.resposta));
+      if (anterior && (anterior.status === "PROCESSANDO" || concluidaValida) && protocoloAnterior) {
+        if (anterior.protocolo !== protocoloAnterior) {
+          await tx.execute(
+            sql`UPDATE veiculo_consultas SET protocolo = ${protocoloAnterior} WHERE id = ${anterior.id}::uuid`,
+          );
+        }
+        return retornoRegistrado({ ...anterior, protocolo: protocoloAnterior });
       }
-      return retornoRegistrado({ ...anterior, protocolo: protocoloAnterior });
-    }
-    const r = await executarProduto(
-      prov,
-      produto,
-      anterior?.parametros || parametros,
-      protocoloAnterior || undefined,
-      contexto,
-    );
-    const resultado = resultadoRegistravel(produto, r, !protocoloAnterior);
-    const protocolo = codigoConsultaDoPayload(r.payload) || protocoloAnterior || null;
-    if (resultado.status === "PROCESSANDO" && !protocolo) {
-      resultado.status = "ERRO";
-      resultado.erro =
-        "A Company retornou processamento sem código de consulta. Verifique a resposta antes de tentar novamente.";
-    }
-    const resumo = JSON.stringify(resultado.resumo);
-    const resposta = JSON.stringify(r.payload);
-    const registro =
-      anterior && protocoloAnterior
-        ? rowsOf(
-            await tx.execute(sql`
+      const r = await executarProduto(
+        prov,
+        produto,
+        anterior?.parametros || parametros,
+        protocoloAnterior || undefined,
+        contexto,
+      );
+      const resultado = resultadoRegistravel(produto, r, !protocoloAnterior);
+      const protocolo = codigoConsultaDoPayload(r.payload) || protocoloAnterior || null;
+      if (resultado.status === "PROCESSANDO" && !protocolo) {
+        resultado.status = "ERRO";
+        resultado.erro =
+          "A Company retornou processamento sem código de consulta. Verifique a resposta antes de tentar novamente.";
+      }
+      const resumo = JSON.stringify(resultado.resumo);
+      const resposta = JSON.stringify(r.payload);
+      const registro =
+        anterior && protocoloAnterior
+          ? rowsOf(
+              await tx.execute(sql`
           UPDATE veiculo_consultas SET status = ${resultado.status}, protocolo = ${protocolo},
             resumo = ${resumo}::jsonb, resposta = ${resposta}::jsonb, erro = ${resultado.erro}
           WHERE id = ${anterior.id}::uuid RETURNING *
         `),
-          )[0]
-        : rowsOf(
-            await tx.execute(sql`
+            )[0]
+          : rowsOf(
+              await tx.execute(sql`
           INSERT INTO veiculo_consultas (veiculo_id, provedor, produto, placa, chassi, parametros, status, protocolo, resumo, resposta, erro, criado_por)
           VALUES (${entrada.veiculoId || null}::uuid, ${prov.nome}, ${produto}, ${placa || null}, ${parametros.chassi || null},
             ${JSON.stringify(parametros)}::jsonb, ${resultado.status}, ${protocolo}, ${resumo}::jsonb, ${resposta}::jsonb, ${resultado.erro}, ${entrada.criadoPor || null}::uuid)
           RETURNING *
         `),
-          )[0];
-    contexto.consultaId = registro.id;
-    contexto.protocolo = protocolo;
-    if (produto === PROVEDOR_PADRAO.produto) {
-      await tx.execute(
-        sql`UPDATE veiculo_consultas SET documento_url = ${(resultado.resumo as any)?.documento_url || null} WHERE id = ${registro.id}::uuid`,
-      );
-    }
-    if (
-      produto === PROVEDOR_PADRAO.produto &&
-      entrada.veiculoId &&
-      resultado.status === "CONCLUIDA"
-    ) {
-      await tx.execute(
-        sql`UPDATE veiculos SET consulta_habilitada = true WHERE id = ${entrada.veiculoId}::uuid`,
-      );
-    }
-    return { ...retornoRegistrado(registro), httpStatus: r.httpStatus, diagnostico: r.diagnostico };
-  });
-  await registrarEventoConsulta(contexto, retorno.status === "PROCESSANDO" ? "AGUARDANDO_RESPOSTA" : retorno.ok ? "RESULTADO_DISPONIVEL" : "FALHA_CONSULTA", retorno.status, retorno.status === "PROCESSANDO" ? "Consulta registrada. Aguardando a conclusão e o webhook da Company." : retorno.ok ? "Resultado disponível no sistema." : "Consulta registrada com erro. Verifique o diagnóstico da pesquisa.");
-  return retorno;
+            )[0];
+      contexto.consultaId = registro.id;
+      contexto.protocolo = protocolo;
+      if (produto === PROVEDOR_PADRAO.produto) {
+        await tx.execute(
+          sql`UPDATE veiculo_consultas SET documento_url = ${(resultado.resumo as any)?.documento_url || null} WHERE id = ${registro.id}::uuid`,
+        );
+      }
+      if (
+        produto === PROVEDOR_PADRAO.produto &&
+        entrada.veiculoId &&
+        resultado.status === "CONCLUIDA"
+      ) {
+        await tx.execute(
+          sql`UPDATE veiculos SET consulta_habilitada = true WHERE id = ${entrada.veiculoId}::uuid`,
+        );
+      }
+      return {
+        ...retornoRegistrado(registro),
+        httpStatus: r.httpStatus,
+        diagnostico: r.diagnostico,
+      };
+    });
+    await registrarEventoConsulta(
+      contexto,
+      retorno.status === "PROCESSANDO"
+        ? "AGUARDANDO_RESPOSTA"
+        : retorno.ok
+          ? "RESULTADO_DISPONIVEL"
+          : "FALHA_CONSULTA",
+      retorno.status,
+      retorno.status === "PROCESSANDO"
+        ? "Consulta registrada. Aguardando a conclusão e o webhook da Company."
+        : retorno.ok
+          ? "Resultado disponível no sistema."
+          : "Consulta registrada com erro. Verifique o diagnóstico da pesquisa.",
+    );
+    return retorno;
   } catch (erro) {
-    await registrarEventoConsulta(contexto, "FALHA_REGISTRO", "ERRO", "Não foi possível finalizar o registro da consulta no sistema.");
+    await registrarEventoConsulta(
+      contexto,
+      "FALHA_REGISTRO",
+      "ERRO",
+      "Não foi possível finalizar o registro da consulta no sistema.",
+    );
     throw erro;
   }
 }
@@ -978,57 +1086,85 @@ async function iniciarConsultaRegistrada(
  */
 export async function processarWebhookConferi(codigoConsulta: string) {
   const contexto = criarContextoConsultaLog({ origem: "WEBHOOK", protocolo: codigoConsulta });
-  await registrarEventoConsulta(contexto, "WEBHOOK_RECEBIDO", "RECEBIDA", "Notificação recebida da Company. Localizando a consulta.");
+  await registrarEventoConsulta(
+    contexto,
+    "WEBHOOK_RECEBIDO",
+    "RECEBIDA",
+    "Notificação recebida da Company. Localizando a consulta.",
+  );
   try {
-  const d = requireDb();
-  await ensureConsultaVeicularSchema();
-  const prov = await getProvedorComChave();
+    const d = requireDb();
+    await ensureConsultaVeicularSchema();
+    const prov = await getProvedorComChave();
 
-  let consultas = rowsOf(
-    await d.execute(sql`
+    let consultas = rowsOf(
+      await d.execute(sql`
     SELECT id, veiculo_id, produto, placa, chassi, parametros FROM veiculo_consultas
     WHERE protocolo = ${codigoConsulta} ORDER BY criado_em DESC
   `),
-  );
-  {
-    const legadas = rowsOf(
-      await d.execute(sql`
+    );
+    {
+      const legadas = rowsOf(
+        await d.execute(sql`
       SELECT id, veiculo_id, produto, placa, chassi, parametros, resposta FROM veiculo_consultas
       WHERE (protocolo IS NULL OR protocolo = '[object Object]' OR btrim(protocolo) = '') AND resposta IS NOT NULL
     `),
-    );
-    const recuperadas = legadas.filter(
-      (consulta) => codigoConsultaDoPayload(consulta.resposta) === codigoConsulta,
-    );
-    for (const consulta of recuperadas) {
-      await d.execute(
-        sql`UPDATE veiculo_consultas SET protocolo = ${codigoConsulta} WHERE id = ${consulta.id}::uuid`,
       );
+      const recuperadas = legadas.filter(
+        (consulta) => codigoConsultaDoPayload(consulta.resposta) === codigoConsulta,
+      );
+      for (const consulta of recuperadas) {
+        await d.execute(
+          sql`UPDATE veiculo_consultas SET protocolo = ${codigoConsulta} WHERE id = ${consulta.id}::uuid`,
+        );
+      }
+      consultas = [...consultas, ...recuperadas];
     }
-    consultas = [...consultas, ...recuperadas];
-  }
-  if (!consultas.length) {
-    await registrarEventoConsulta(contexto, "CONSULTA_NAO_LOCALIZADA", "ERRO", "O código recebido não corresponde a uma consulta registrada no sistema.");
-    return {
-      ok: false as const,
-      message: `codigo_consulta ${codigoConsulta} não corresponde a nenhuma consulta registrada.`,
-    };
-  }
-  // A Company pode reutilizar o código para a mesma pesquisa no dia: atualiza cadastro e testes.
-  const resultados = [];
-  for (const [indice, consulta] of consultas.entries()) {
-    const log = indice === 0 ? contexto : criarContextoConsultaLog({ origem: "WEBHOOK", protocolo: codigoConsulta });
-    Object.assign(log, { consultaId: consulta.id, veiculoId: consulta.veiculo_id, placa: consulta.placa, produto: consulta.produto });
-    resultados.push(await atualizarConsultaNotificada(prov, consulta, codigoConsulta, log));
-  }
-  return resultados.find((resultado) => !resultado.ok) || resultados[0];
+    if (!consultas.length) {
+      await registrarEventoConsulta(
+        contexto,
+        "CONSULTA_NAO_LOCALIZADA",
+        "ERRO",
+        "O código recebido não corresponde a uma consulta registrada no sistema.",
+      );
+      return {
+        ok: false as const,
+        message: `codigo_consulta ${codigoConsulta} não corresponde a nenhuma consulta registrada.`,
+      };
+    }
+    // A Company pode reutilizar o código para a mesma pesquisa no dia: atualiza cadastro e testes.
+    const resultados = [];
+    for (const [indice, consulta] of consultas.entries()) {
+      const log =
+        indice === 0
+          ? contexto
+          : criarContextoConsultaLog({ origem: "WEBHOOK", protocolo: codigoConsulta });
+      Object.assign(log, {
+        consultaId: consulta.id,
+        veiculoId: consulta.veiculo_id,
+        placa: consulta.placa,
+        produto: consulta.produto,
+      });
+      resultados.push(await atualizarConsultaNotificada(prov, consulta, codigoConsulta, log));
+    }
+    return resultados.find((resultado) => !resultado.ok) || resultados[0];
   } catch (erro) {
-    await registrarEventoConsulta(contexto, "FALHA_WEBHOOK", "ERRO", "Não foi possível processar a notificação ou salvar o resultado no sistema.");
+    await registrarEventoConsulta(
+      contexto,
+      "FALHA_WEBHOOK",
+      "ERRO",
+      "Não foi possível processar a notificação ou salvar o resultado no sistema.",
+    );
     throw erro;
   }
 }
 
-async function atualizarConsultaNotificada(prov: any, pendente: any, codigoConsulta: string, contexto: ContextoConsultaLog) {
+async function atualizarConsultaNotificada(
+  prov: any,
+  pendente: any,
+  codigoConsulta: string,
+  contexto: ContextoConsultaLog,
+) {
   const d = requireDb();
   const parametros = pendente.parametros || {
     placa: pendente.placa || undefined,
@@ -1065,7 +1201,12 @@ async function atualizarConsultaNotificada(prov: any, pendente: any, codigoConsu
             ? Number(veiculo.valor_interesse_cliente)
             : undefined,
       });
-      await registrarEventoConsulta(contexto, "VALOR_FIPE_ATUALIZADO", "CONCLUIDA", "Valor FIPE atualizado no cadastro do veículo.");
+      await registrarEventoConsulta(
+        contexto,
+        "VALOR_FIPE_ATUALIZADO",
+        "CONCLUIDA",
+        "Valor FIPE atualizado no cadastro do veículo.",
+      );
     }
   }
 
@@ -1088,7 +1229,21 @@ async function atualizarConsultaNotificada(prov: any, pendente: any, codigoConsu
     WHERE id = ${pendente.id}::uuid
   `);
 
-  await registrarEventoConsulta(contexto, status === "PROCESSANDO" ? "AGUARDANDO_RESPOSTA" : status === "ERRO" ? "FALHA_RESGATE" : "CONSULTA_CONCLUIDA", status, status === "PROCESSANDO" ? "Resposta ainda parcial. Aguardando nova notificação da Company." : status === "ERRO" ? "A Company não concluiu o resgate. Verifique o diagnóstico da pesquisa." : "Resposta recebida e salva no sistema.", r.httpStatus);
+  await registrarEventoConsulta(
+    contexto,
+    status === "PROCESSANDO"
+      ? "AGUARDANDO_RESPOSTA"
+      : status === "ERRO"
+        ? "FALHA_RESGATE"
+        : "CONSULTA_CONCLUIDA",
+    status,
+    status === "PROCESSANDO"
+      ? "Resposta ainda parcial. Aguardando nova notificação da Company."
+      : status === "ERRO"
+        ? "A Company não concluiu o resgate. Verifique o diagnóstico da pesquisa."
+        : "Resposta recebida e salva no sistema.",
+    r.httpStatus,
+  );
   if (status === "ERRO") {
     return {
       ok: false as const,

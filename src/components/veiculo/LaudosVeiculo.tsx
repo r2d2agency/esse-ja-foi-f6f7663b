@@ -26,6 +26,7 @@ import {
   consultarLaudoVeiculoFn,
   listarConsultasVeiculoFn,
 } from "@/lib/consulta-veicular.functions";
+import { RelatorioConsultaVeicular } from "@/components/veiculo/RelatorioConsultaVeicular";
 
 const TIPOS = [
   { id: "CAUTELAR", label: "Laudo cautelar" },
@@ -40,7 +41,19 @@ function dataBr(valor?: string | null) {
   return isNaN(d.getTime()) ? "—" : d.toLocaleString("pt-BR");
 }
 
-export function LaudosVeiculo({ veiculoId }: { veiculoId: string }) {
+export function LaudosVeiculo({
+  veiculoId,
+  placa,
+  marca,
+  modelo,
+  ano,
+}: {
+  veiculoId: string;
+  placa?: string | null;
+  marca?: string | null;
+  modelo?: string | null;
+  ano?: string | null;
+}) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [enviando, setEnviando] = useState(false);
   const [consultando, setConsultando] = useState(false);
@@ -62,7 +75,8 @@ export function LaudosVeiculo({ veiculoId }: { veiculoId: string }) {
   const { data: consultasRes, refetch: refetchConsultas } = useQuery({
     queryKey: ["consultas-veiculo", veiculoId],
     queryFn: () => listarConsultasVeiculoFn({ data: { veiculoId } }),
-    refetchInterval: (query) => (query.state.data as any)?.data?.some((c: any) => c.status === "PROCESSANDO") ? 6000 : false,
+    refetchInterval: (query) =>
+      (query.state.data as any)?.data?.some((c: any) => c.status === "PROCESSANDO") ? 6000 : false,
   });
 
   const laudos: any[] = (laudosRes as any)?.data ?? [];
@@ -148,6 +162,13 @@ export function LaudosVeiculo({ veiculoId }: { veiculoId: string }) {
 
   return (
     <div className="space-y-6">
+      <RelatorioConsultaVeicular
+        veiculoId={veiculoId}
+        placa={placa}
+        marca={marca}
+        modelo={modelo}
+        ano={ano}
+      />
       <section className="space-y-4 rounded-3xl border border-slate-200 bg-white p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>

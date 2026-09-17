@@ -75,7 +75,9 @@ export const testarConsultaPlacaFn = createServerFn({ method: "POST" })
 
 /** Usada no cadastro do vendedor: preenche marca/modelo/ano/cor assim que ele digita a placa. */
 export const consultarAgregadosPorPlacaFn = createServerFn({ method: "POST" })
-  .validator((d: unknown) => z.object({ placa: z.string().trim().min(7, "Informe a placa.") }).parse(d))
+  .validator((d: unknown) =>
+    z.object({ placa: z.string().trim().min(7, "Informe a placa.") }).parse(d),
+  )
   .handler(async ({ data }) => {
     try {
       const m = await import("@/db/consulta-veicular.server");
@@ -116,7 +118,9 @@ export const consultarDesvalorizacaoFipeFn = createServerFn({ method: "POST" })
 
 /** Usada na tela de configurações para testar o produto Desvalorização Fipe, só pela placa. */
 export const testarDesvalorizacaoFipeFn = createServerFn({ method: "POST" })
-  .validator((d: unknown) => z.object({ placa: z.string().trim().min(7, "Informe a placa.") }).parse(d))
+  .validator((d: unknown) =>
+    z.object({ placa: z.string().trim().min(7, "Informe a placa.") }).parse(d),
+  )
   .handler(async ({ data }) => {
     try {
       const m = await import("@/db/consulta-veicular.server");
@@ -134,5 +138,16 @@ export const listarConsultasVeiculoFn = createServerFn({ method: "POST" })
       return { ok: true as const, data: await m.listarConsultasVeiculo(data.veiculoId) };
     } catch (e: any) {
       return { ok: false as const, message: e?.message || "Erro ao listar consultas." };
+    }
+  });
+
+export const obterRelatorioConsultasFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) => z.object({ veiculoId: z.string().uuid() }).parse(d))
+  .handler(async ({ data }) => {
+    try {
+      const m = await import("@/db/consulta-veicular.server");
+      return { ok: true as const, data: await m.obterRelatorioConsultas(data.veiculoId) };
+    } catch (e: any) {
+      return { ok: false as const, message: e?.message || "Erro ao montar relatório." };
     }
   });
