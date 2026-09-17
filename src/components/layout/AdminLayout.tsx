@@ -1,19 +1,19 @@
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useAuth } from "@/hooks/use-auth";
-import { 
-  LayoutDashboard, 
-  Users, 
-  Car, 
-  FileText, 
-  Camera, 
-  Megaphone, 
-  Gavel, 
+import {
+  LayoutDashboard,
+  Users,
+  Car,
+  FileText,
+  Camera,
+  Megaphone,
+  Gavel,
   Handshake,
-  ShoppingBag, 
-  DollarSign, 
-  Truck, 
-  BarChart3, 
-  UserCog, 
+  ShoppingBag,
+  DollarSign,
+  Truck,
+  BarChart3,
+  UserCog,
   Settings,
   ClipboardCheck,
   HelpCircle,
@@ -27,24 +27,25 @@ import {
   Building2,
   MapPin,
   History,
-  Terminal
+  Terminal,
 } from "lucide-react";
 import { ReactNode, useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuLabel, 
-  DropdownMenuSeparator, 
-  DropdownMenuTrigger 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { LogoEsf } from "@/components/shared/LogoEsf";
+import { listarConfiguracoesFn } from "@/lib/admin.functions";
 
 type MenuItem = {
   label: string;
@@ -275,12 +276,26 @@ interface AdminLayoutProps {
 }
 
 export function AdminLayout({ children }: AdminLayoutProps) {
-
   const { user, isAuthenticated, initialized, logout } = useAuth();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [appVistoriadorAtivo, setAppVistoriadorAtivo] = useState(true);
+
+  useEffect(() => {
+    let ativo = true;
+    listarConfiguracoesFn()
+      .then((res: any) => {
+        if (!ativo || !res?.ok) return;
+        const valor = res.data?.find((c: any) => c.chave === "app_vistoriador_ativo")?.valor;
+        setAppVistoriadorAtivo(valor !== "false");
+      })
+      .catch(() => undefined);
+    return () => {
+      ativo = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (initialized && !isAuthenticated) navigate({ to: "/login", replace: true });
@@ -292,9 +307,15 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     const prefixes = item.activePrefixes || [item.to];
     const prefixMatch = prefixes.some((prefix) => {
       if (item.exact) return pathname === prefix || pathname === `${prefix}/`;
-      return pathname === prefix || pathname.startsWith(`${prefix}/`) || pathname.startsWith(`${prefix}.`);
+      return (
+        pathname === prefix ||
+        pathname.startsWith(`${prefix}/`) ||
+        pathname.startsWith(`${prefix}.`)
+      );
     });
-    const includesMatch = (item.activeIncludes || []).some((fragment) => pathname.includes(fragment));
+    const includesMatch = (item.activeIncludes || []).some((fragment) =>
+      pathname.includes(fragment),
+    );
     return prefixMatch || includesMatch;
   };
 
@@ -307,36 +328,49 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               {section.label}
             </p>
           )}
-          {section.items.map((item) => (
-            <Link
-              key={item.label}
-              to={item.to}
-              search={item.search}
-              onClick={onNavigate}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all group",
-                isActive(item)
-                  ? "bg-teal-500 text-slate-950 font-bold"
-                  : "text-slate-400 hover:text-white hover:bg-slate-900"
-              )}
-              title={!expanded ? `${item.label} - ${item.description || section.label}` : undefined}
-            >
-              <item.icon className={cn("h-5 w-5 shrink-0", isActive(item) ? "text-slate-950" : "group-hover:text-teal-400")} />
-              {expanded && (
-                <div className="min-w-0">
-                  <span className="block truncate">{item.label}</span>
-                  {item.description && (
-                    <span className={cn(
-                      "block truncate text-[10px] font-semibold",
-                      isActive(item) ? "text-slate-900/70" : "text-slate-500 group-hover:text-slate-300"
-                    )}>
-                      {item.description}
-                    </span>
+          {section.items
+            .filter((item) => item.label !== "App Vistoriador" || appVistoriadorAtivo)
+            .map((item) => (
+              <Link
+                key={item.label}
+                to={item.to}
+                search={item.search}
+                onClick={onNavigate}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all group",
+                  isActive(item)
+                    ? "bg-teal-500 text-slate-950 font-bold"
+                    : "text-slate-400 hover:text-white hover:bg-slate-900",
+                )}
+                title={
+                  !expanded ? `${item.label} - ${item.description || section.label}` : undefined
+                }
+              >
+                <item.icon
+                  className={cn(
+                    "h-5 w-5 shrink-0",
+                    isActive(item) ? "text-slate-950" : "group-hover:text-teal-400",
                   )}
-                </div>
-              )}
-            </Link>
-          ))}
+                />
+                {expanded && (
+                  <div className="min-w-0">
+                    <span className="block truncate">{item.label}</span>
+                    {item.description && (
+                      <span
+                        className={cn(
+                          "block truncate text-[10px] font-semibold",
+                          isActive(item)
+                            ? "text-slate-900/70"
+                            : "text-slate-500 group-hover:text-slate-300",
+                        )}
+                      >
+                        {item.description}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </Link>
+            ))}
         </div>
       ))}
     </nav>
@@ -345,19 +379,19 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   return (
     <div className="flex h-screen bg-slate-50 font-sans text-slate-900">
       {/* Sidebar (desktop) */}
-      <aside className={cn(
-        "hidden md:flex bg-slate-950 text-white transition-all duration-300 flex-col",
-        sidebarOpen ? "w-64" : "w-20"
-      )}>
+      <aside
+        className={cn(
+          "hidden md:flex bg-slate-950 text-white transition-all duration-300 flex-col",
+          sidebarOpen ? "w-64" : "w-20",
+        )}
+      >
         <div className="h-16 flex items-center px-6 border-b border-slate-800">
           <Link to="/admin" className="flex items-center gap-2 overflow-hidden">
             <LogoEsf height={sidebarOpen ? 32 : 28} variant="dark" />
           </Link>
         </div>
 
-        <ScrollArea className="flex-1">
-          {renderNav(sidebarOpen)}
-        </ScrollArea>
+        <ScrollArea className="flex-1">{renderNav(sidebarOpen)}</ScrollArea>
 
         <div className="p-4 border-t border-slate-800">
           <button
@@ -371,7 +405,10 @@ export function AdminLayout({ children }: AdminLayoutProps) {
 
       {/* Sidebar (mobile drawer) */}
       <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-        <SheetContent side="left" className="w-72 max-w-[85vw] border-slate-800 bg-slate-950 p-0 text-white">
+        <SheetContent
+          side="left"
+          className="w-72 max-w-[85vw] border-slate-800 bg-slate-950 p-0 text-white"
+        >
           <SheetTitle className="sr-only">Menu</SheetTitle>
           <div className="h-16 flex items-center px-6 border-b border-slate-800">
             <LogoEsf to="/admin" height={32} variant="dark" />
@@ -419,11 +456,13 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               <DropdownMenuTrigger asChild>
                 <button className="flex items-center gap-3 p-1 rounded-lg hover:bg-slate-50 transition-colors">
                   <div className="text-right hidden sm:block">
-                    <p className="text-sm font-bold leading-none">{user?.nome?.split(' ')[0]}</p>
+                    <p className="text-sm font-bold leading-none">{user?.nome?.split(" ")[0]}</p>
                     <p className="text-[11px] text-slate-500 font-medium mt-1">Operações</p>
                   </div>
                   <Avatar className="h-9 w-9 border border-slate-200">
-                    <AvatarFallback className="bg-teal-50 text-teal-700 font-bold">{user?.nome?.charAt(0)}</AvatarFallback>
+                    <AvatarFallback className="bg-teal-50 text-teal-700 font-bold">
+                      {user?.nome?.charAt(0)}
+                    </AvatarFallback>
                   </Avatar>
                   <ChevronDown className="h-4 w-4 text-slate-400" />
                 </button>
@@ -442,7 +481,10 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
-                  <Link to="/admin/configuracoes" className="flex items-center gap-2 cursor-pointer">
+                  <Link
+                    to="/admin/configuracoes"
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
                     <Settings className="h-4 w-4" /> Configurações
                   </Link>
                 </DropdownMenuItem>
@@ -452,7 +494,10 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => logout()} className="text-red-600 focus:text-red-600 cursor-pointer">
+                <DropdownMenuItem
+                  onClick={() => logout()}
+                  className="text-red-600 focus:text-red-600 cursor-pointer"
+                >
                   <LogOut className="h-4 w-4 mr-2" /> Sair
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -461,9 +506,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         </header>
 
         {/* Page Area */}
-        <main className="flex-1 overflow-y-auto bg-slate-50">
-          {children || <Outlet />}
-        </main>
+        <main className="flex-1 overflow-y-auto bg-slate-50">{children || <Outlet />}</main>
       </div>
     </div>
   );

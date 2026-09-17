@@ -66,7 +66,6 @@ const TIPOS_DOCUMENTO_TESTE: { id: string; label: string }[] = [
   { id: "selfie", label: "Selfie segurando o documento" },
 ];
 
-
 export const Route = createFileRoute("/admin/configuracoes")({
   component: ConfiguracoesAdminPage,
 });
@@ -158,12 +157,12 @@ function ConfiguracoesAdminPage() {
     }
   }
 
-  const getConfig = (chave: string) => configs.find(c => c.chave === chave)?.valor ?? "";
-  
+  const getConfig = (chave: string) => configs.find((c) => c.chave === chave)?.valor ?? "";
+
   const setConfig = (chave: string, valor: string) => {
-    setConfigs(prev =>
-      prev.some(c => c.chave === chave)
-        ? prev.map(c => (c.chave === chave ? { ...c, valor } : c))
+    setConfigs((prev) =>
+      prev.some((c) => c.chave === chave)
+        ? prev.map((c) => (c.chave === chave ? { ...c, valor } : c))
         : [...prev, { chave, valor }],
     );
   };
@@ -172,453 +171,531 @@ function ConfiguracoesAdminPage() {
 
   return (
     <div className="max-w-4xl space-y-8 mb-12 p-6">
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+          <Settings className="h-6 w-6 text-teal-900" />
+          Configurações do Sistema
+        </h1>
+        <p className="text-sm text-slate-500">Ajuste os parâmetros globais da plataforma.</p>
+      </div>
 
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <Settings className="h-6 w-6 text-teal-900" />
-            Configurações do Sistema
-          </h1>
-          <p className="text-sm text-slate-500">Ajuste os parâmetros globais da plataforma.</p>
+      <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+          <Settings className="h-5 w-5 text-teal-700" />
+          Módulos visíveis
         </div>
+        <div className="flex items-center justify-between gap-4 rounded-lg border border-slate-100 bg-slate-50 p-4">
+          <div>
+            <p className="font-bold text-slate-900">App Vistoriador</p>
+            <p className="text-xs text-slate-500">
+              Exibe o atalho do aplicativo de execução de vistorias no menu administrativo.
+            </p>
+          </div>
+          <Switch
+            checked={getConfig("app_vistoriador_ativo") !== "false"}
+            onCheckedChange={async (checked) => {
+              const valor = checked ? "true" : "false";
+              setConfig("app_vistoriador_ativo", valor);
+              await salvar("app_vistoriador_ativo", valor);
+            }}
+          />
+        </div>
+      </section>
 
-        <section className="space-y-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
-            <Mail className="h-5 w-5 text-teal-700" />
-            Servidor de E-mail (SMTP)
+      <section className="space-y-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+          <Mail className="h-5 w-5 text-teal-700" />
+          Servidor de E-mail (SMTP)
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label>Host SMTP</Label>
+            <Input
+              value={getConfig("smtp_host")}
+              onChange={(e) => setConfig("smtp_host", e.target.value)}
+              placeholder="smtp.exemplo.com"
+            />
           </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Host SMTP</Label>
-              <Input 
-                value={getConfig("smtp_host")} 
-                onChange={(e) => setConfig("smtp_host", e.target.value)}
-                placeholder="smtp.exemplo.com" 
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Porta</Label>
-              <Input 
-                value={getConfig("smtp_port")} 
-                onChange={(e) => setConfig("smtp_port", e.target.value)}
-                placeholder="587" 
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Criptografia</Label>
-              <select
-                className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
-                value={getConfig("smtp_secure") || "tls"}
-                onChange={(e) => setConfig("smtp_secure", e.target.value)}
-              >
-                <option value="ssl">SSL/TLS direto (porta 465)</option>
-                <option value="tls">STARTTLS (porta 587)</option>
-                <option value="none">Sem criptografia (porta 25)</option>
-              </select>
-            </div>
-            <div className="space-y-2">
-              <Label>Validar certificado do servidor</Label>
-              <select
-                className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
-                value={getConfig("smtp_reject_unauthorized") || "false"}
-                onChange={(e) => setConfig("smtp_reject_unauthorized", e.target.value)}
-              >
-                <option value="false">Não (recomendado em hospedagem compartilhada)</option>
-                <option value="true">Sim</option>
-              </select>
-            </div>
-            <div className="space-y-2">
-              <Label>Usuário</Label>
-              <Input 
-                value={getConfig("smtp_user")} 
-                onChange={(e) => setConfig("smtp_user", e.target.value)}
-                placeholder="usuario@exemplo.com" 
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Senha</Label>
-              <Input 
-                type="password"
-                value={getConfig("smtp_pass")} 
-                onChange={(e) => setConfig("smtp_pass", e.target.value)}
-                placeholder="******" 
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>E-mail remetente (From)</Label>
-              <Input
-                value={getConfig("smtp_from")}
-                onChange={(e) => setConfig("smtp_from", e.target.value)}
-                placeholder="contato@seudominio.com.br"
-              />
-              <p className="text-xs text-slate-500">
-                Precisa ser um endereço autorizado pelo servidor SMTP, senão ocorre o erro 550 (sender not recognized). Se vazio, usa o usuário.
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label>Nome do remetente</Label>
-              <Input
-                value={getConfig("smtp_from_name")}
-                onChange={(e) => setConfig("smtp_from_name", e.target.value)}
-                placeholder="Esse Já Foi"
-              />
-            </div>
+          <div className="space-y-2">
+            <Label>Porta</Label>
+            <Input
+              value={getConfig("smtp_port")}
+              onChange={(e) => setConfig("smtp_port", e.target.value)}
+              placeholder="587"
+            />
           </div>
-          <div className="flex gap-2">
-            <Button className="bg-teal-900" onClick={() => {
+          <div className="space-y-2">
+            <Label>Criptografia</Label>
+            <select
+              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+              value={getConfig("smtp_secure") || "tls"}
+              onChange={(e) => setConfig("smtp_secure", e.target.value)}
+            >
+              <option value="ssl">SSL/TLS direto (porta 465)</option>
+              <option value="tls">STARTTLS (porta 587)</option>
+              <option value="none">Sem criptografia (porta 25)</option>
+            </select>
+          </div>
+          <div className="space-y-2">
+            <Label>Validar certificado do servidor</Label>
+            <select
+              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+              value={getConfig("smtp_reject_unauthorized") || "false"}
+              onChange={(e) => setConfig("smtp_reject_unauthorized", e.target.value)}
+            >
+              <option value="false">Não (recomendado em hospedagem compartilhada)</option>
+              <option value="true">Sim</option>
+            </select>
+          </div>
+          <div className="space-y-2">
+            <Label>Usuário</Label>
+            <Input
+              value={getConfig("smtp_user")}
+              onChange={(e) => setConfig("smtp_user", e.target.value)}
+              placeholder="usuario@exemplo.com"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Senha</Label>
+            <Input
+              type="password"
+              value={getConfig("smtp_pass")}
+              onChange={(e) => setConfig("smtp_pass", e.target.value)}
+              placeholder="******"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>E-mail remetente (From)</Label>
+            <Input
+              value={getConfig("smtp_from")}
+              onChange={(e) => setConfig("smtp_from", e.target.value)}
+              placeholder="contato@seudominio.com.br"
+            />
+            <p className="text-xs text-slate-500">
+              Precisa ser um endereço autorizado pelo servidor SMTP, senão ocorre o erro 550 (sender
+              not recognized). Se vazio, usa o usuário.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label>Nome do remetente</Label>
+            <Input
+              value={getConfig("smtp_from_name")}
+              onChange={(e) => setConfig("smtp_from_name", e.target.value)}
+              placeholder="Esse Já Foi"
+            />
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            className="bg-teal-900"
+            onClick={() => {
               void salvar("smtp_host", getConfig("smtp_host"));
               void salvar("smtp_port", getConfig("smtp_port"));
               void salvar("smtp_user", getConfig("smtp_user"));
               void salvar("smtp_pass", getConfig("smtp_pass"));
               void salvar("smtp_secure", getConfig("smtp_secure") || "tls");
-              void salvar("smtp_reject_unauthorized", getConfig("smtp_reject_unauthorized") || "false");
+              void salvar(
+                "smtp_reject_unauthorized",
+                getConfig("smtp_reject_unauthorized") || "false",
+              );
               void salvar("smtp_from", getConfig("smtp_from"));
               void salvar("smtp_from_name", getConfig("smtp_from_name"));
-            }}>
-              <Save className="mr-2 h-4 w-4" /> Salvar SMTP
-            </Button>
-            <Button 
-              variant="outline" 
-              onClick={async () => {
-                const email = prompt("Digite o e-mail para teste:");
-                if (!email) return;
-                const res = await enviarEmailTesteFn({ data: { email } });
-                if (res.ok) toast.success("E-mail de teste enviado!");
-                else toast.error(res.message || "Erro ao enviar teste.");
-              }}
-            >
-              <Send className="mr-2 h-4 w-4" /> Enviar Teste
-            </Button>
+            }}
+          >
+            <Save className="mr-2 h-4 w-4" /> Salvar SMTP
+          </Button>
+          <Button
+            variant="outline"
+            onClick={async () => {
+              const email = prompt("Digite o e-mail para teste:");
+              if (!email) return;
+              const res = await enviarEmailTesteFn({ data: { email } });
+              if (res.ok) toast.success("E-mail de teste enviado!");
+              else toast.error(res.message || "Erro ao enviar teste.");
+            }}
+          >
+            <Send className="mr-2 h-4 w-4" /> Enviar Teste
+          </Button>
+        </div>
+      </section>
+
+      <NotificacoesSection />
+
+      <OpcionaisVeiculoSection getConfig={getConfig} setConfig={setConfig} salvar={salvar} />
+
+      <ExemplosFotosSection getConfig={getConfig} setConfig={setConfig} salvar={salvar} />
+
+      <section className="space-y-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+          <BrainCircuit className="h-5 w-5 text-teal-700" />
+          Inteligência Artificial (OpenAI)
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label>Chave de API OpenAI</Label>
+            <Input
+              type="password"
+              value={getConfig("openai_api_key")}
+              onChange={(e) => setConfig("openai_api_key", e.target.value)}
+              placeholder="sk-..."
+            />
           </div>
-        </section>
-
-
-        <NotificacoesSection />
-
-        <OpcionaisVeiculoSection getConfig={getConfig} setConfig={setConfig} salvar={salvar} />
-
-        <ExemplosFotosSection getConfig={getConfig} setConfig={setConfig} salvar={salvar} />
-
-        <section className="space-y-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
-            <BrainCircuit className="h-5 w-5 text-teal-700" />
-            Inteligência Artificial (OpenAI)
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Chave de API OpenAI</Label>
-              <Input
-                type="password"
-                value={getConfig("openai_api_key")}
-                onChange={(e) => setConfig("openai_api_key", e.target.value)}
-                placeholder="sk-..."
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Modelo</Label>
-              <div className="flex gap-2">
-                <select
-                  className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
-                  value={getConfig("openai_model")}
-                  onChange={(e) => setConfig("openai_model", e.target.value)}
-                >
-                  {getConfig("openai_model") && !modelosOpenAI.includes(getConfig("openai_model")) && (
-                    <option value={getConfig("openai_model")}>{getConfig("openai_model")} (atual)</option>
-                  )}
-                  {modelosOpenAI.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
+          <div className="space-y-2">
+            <Label>Modelo</Label>
+            <div className="flex gap-2">
+              <select
+                className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+                value={getConfig("openai_model")}
+                onChange={(e) => setConfig("openai_model", e.target.value)}
+              >
+                {getConfig("openai_model") &&
+                  !modelosOpenAI.includes(getConfig("openai_model")) && (
+                    <option value={getConfig("openai_model")}>
+                      {getConfig("openai_model")} (atual)
                     </option>
-                  ))}
-                </select>
-                {modelosOpenAI.includes(getConfig("openai_model")) && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="shrink-0"
-                    title="Remover este modelo da lista"
-                    onClick={() => removerModeloOpenAI(getConfig("openai_model"))}
-                  >
-                    <Trash2 className="h-4 w-4 text-red-500" />
-                  </Button>
-                )}
-              </div>
-              <div className="flex gap-2">
-                <Input
-                  className="h-9 text-xs"
-                  placeholder="Cadastrar novo modelo (ex: gpt-4.1-mini)"
-                  value={novoModelo}
-                  onChange={(e) => setNovoModelo(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && adicionarModeloOpenAI()}
-                />
+                  )}
+                {modelosOpenAI.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+              {modelosOpenAI.includes(getConfig("openai_model")) && (
                 <Button
                   type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={!novoModelo.trim()}
-                  onClick={adicionarModeloOpenAI}
+                  variant="ghost"
+                  size="icon"
+                  className="shrink-0"
+                  title="Remover este modelo da lista"
+                  onClick={() => removerModeloOpenAI(getConfig("openai_model"))}
                 >
-                  <Plus className="h-4 w-4" />
+                  <Trash2 className="h-4 w-4 text-red-500" />
                 </Button>
-              </div>
-              <p className="text-xs text-slate-500">Precisa ser um modelo com suporte a visão (ex: gpt-4o), pois a IA lê a imagem do documento.</p>
+              )}
             </div>
-          </div>
-
-          <div className="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
-            <p className="text-sm font-semibold text-slate-900">Análise automática de documentos do vendedor</p>
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-sm font-medium text-slate-800">Analisar documentos automaticamente</p>
-                <p className="text-xs text-slate-500">Ao enviar CNH, CRLV, comprovante ou selfie, a IA confere se o tipo do documento bate com o esperado.</p>
-              </div>
-              <Switch
-                checked={getConfig("ia_analise_documentos_ativa") !== "false"}
-                onCheckedChange={(v: boolean) => setConfig("ia_analise_documentos_ativa", v ? "true" : "false")}
+            <div className="flex gap-2">
+              <Input
+                className="h-9 text-xs"
+                placeholder="Cadastrar novo modelo (ex: gpt-4.1-mini)"
+                value={novoModelo}
+                onChange={(e) => setNovoModelo(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && adicionarModeloOpenAI()}
               />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!novoModelo.trim()}
+                onClick={adicionarModeloOpenAI}
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
             </div>
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-sm font-medium text-slate-800">Reprovar automaticamente quando a IA tiver certeza</p>
-                <p className="text-xs text-slate-500">Se desativado, a IA só sinaliza a divergência para o admin decidir — não abre pendência sozinha.</p>
-              </div>
-              <Switch
-                checked={getConfig("ia_auto_reprovar") !== "false"}
-                onCheckedChange={(v: boolean) => setConfig("ia_auto_reprovar", v ? "true" : "false")}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Prompt da IA para análise de documentos</Label>
-            <Textarea
-              rows={14}
-              className="font-mono text-xs"
-              value={getConfig("ia_prompt_documentos")}
-              onChange={(e) => setConfig("ia_prompt_documentos", e.target.value)}
-            />
             <p className="text-xs text-slate-500">
-              Esse texto é enviado como instrução do sistema para a IA antes de cada análise. Ajuste o comportamento
-              (ex: nível de rigor, o que aceitar ou não) editando este prompt.
+              Precisa ser um modelo com suporte a visão (ex: gpt-4o), pois a IA lê a imagem do
+              documento.
             </p>
           </div>
+        </div>
 
-          <div className="flex gap-2">
-            <Button className="bg-teal-900" onClick={() => {
-              void salvar("openai_api_key", getConfig("openai_api_key"));
-              void salvar("openai_model", getConfig("openai_model"));
-              void salvar("ia_analise_documentos_ativa", getConfig("ia_analise_documentos_ativa") !== "false" ? "true" : "false");
-              void salvar("ia_auto_reprovar", getConfig("ia_auto_reprovar") !== "false" ? "true" : "false");
-              void salvar("ia_prompt_documentos", getConfig("ia_prompt_documentos"));
-            }}>
-              <Save className="mr-2 h-4 w-4" /> Salvar Configurações IA
-            </Button>
-          </div>
-        </section>
-
-        <section className="space-y-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
-            <Search className="h-5 w-5 text-teal-700" />
-            SEO do site
-          </div>
-          <p className="text-sm text-slate-500">
-            Título, descrição e imagem usados quando o Google indexa o site e quando ele é
-            compartilhado no WhatsApp, Facebook ou Twitter. Deixe em branco para usar o padrão.
+        <div className="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <p className="text-sm font-semibold text-slate-900">
+            Análise automática de documentos do vendedor
           </p>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Título do site</Label>
-              <Input
-                value={getConfig("seo_titulo_site")}
-                onChange={(e) => setConfig("seo_titulo_site", e.target.value)}
-                placeholder="Esse Já Foi — Compra e venda de veículos vistoriados"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Descrição do site</Label>
-              <Textarea
-                rows={3}
-                value={getConfig("seo_descricao_site")}
-                onChange={(e) => setConfig("seo_descricao_site", e.target.value)}
-                placeholder="Venda ou compre veículos vistoriados com negociação digital..."
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Imagem de compartilhamento (og:image)</Label>
-              <div className="flex flex-wrap items-center gap-3">
-                {getConfig("seo_imagem_og_url") && (
-                  <img
-                    src={getConfig("seo_imagem_og_url")}
-                    alt="Prévia da imagem de SEO"
-                    className="h-16 w-28 rounded-lg border border-slate-200 object-cover"
-                  />
-                )}
-                <Input
-                  className="flex-1 min-w-[240px]"
-                  value={getConfig("seo_imagem_og_url")}
-                  onChange={(e) => setConfig("seo_imagem_og_url", e.target.value)}
-                  placeholder="https://..."
-                />
-                <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-                  {enviandoImagemSeo ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
-                  Enviar imagem
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    disabled={enviandoImagemSeo}
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) void enviarImagemSeo(file);
-                      e.target.value = "";
-                    }}
-                  />
-                </label>
-              </div>
-              <p className="text-xs text-slate-500">Ideal em 1200×630px.</p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Button className="bg-teal-900" onClick={() => {
-              void salvar("seo_titulo_site", getConfig("seo_titulo_site"));
-              void salvar("seo_descricao_site", getConfig("seo_descricao_site"));
-              void salvar("seo_imagem_og_url", getConfig("seo_imagem_og_url"));
-            }}>
-              <Save className="mr-2 h-4 w-4" /> Salvar SEO
-            </Button>
-          </div>
-        </section>
-
-        <section className="space-y-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
-            <Tag className="h-5 w-5 text-teal-700" />
-            Tags de rastreamento
-          </div>
-          <p className="text-sm text-slate-500">
-            Google Tag Manager, Google Ads e Pixel do Meta são injetados automaticamente em
-            todas as páginas do site assim que o ID for salvo aqui.
-          </p>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Google Tag Manager (ID do container)</Label>
-              <Input
-                value={getConfig("tracking_gtm_id")}
-                onChange={(e) => setConfig("tracking_gtm_id", e.target.value)}
-                placeholder="GTM-XXXXXXX"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Google Ads (ID de conversão)</Label>
-              <Input
-                value={getConfig("tracking_google_ads_id")}
-                onChange={(e) => setConfig("tracking_google_ads_id", e.target.value)}
-                placeholder="AW-XXXXXXXXX"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Pixel do Meta (Facebook/Instagram Ads)</Label>
-              <Input
-                value={getConfig("tracking_meta_pixel_id")}
-                onChange={(e) => setConfig("tracking_meta_pixel_id", e.target.value)}
-                placeholder="123456789012345"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Token da Conversions API do Meta</Label>
-              <Input
-                type="password"
-                value={getConfig("tracking_meta_capi_token")}
-                onChange={(e) => setConfig("tracking_meta_capi_token", e.target.value)}
-                placeholder="Token gerado no Gerenciador de Eventos"
-              />
-              <p className="text-xs text-slate-500">
-                Fica só no servidor — nunca é enviado ao navegador do visitante.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <div className="flex items-center justify-between gap-4">
             <div>
-              <p className="text-sm font-medium text-slate-800">Enviar eventos pela Conversions API</p>
+              <p className="text-sm font-medium text-slate-800">
+                Analisar documentos automaticamente
+              </p>
               <p className="text-xs text-slate-500">
-                Envio servidor-a-servidor do Meta, além do Pixel no navegador (mais resistente a bloqueadores).
+                Ao enviar CNH, CRLV, comprovante ou selfie, a IA confere se o tipo do documento bate
+                com o esperado.
               </p>
             </div>
             <Switch
-              checked={getConfig("tracking_meta_capi_ativa") === "true"}
-              onCheckedChange={(v: boolean) => setConfig("tracking_meta_capi_ativa", v ? "true" : "false")}
+              checked={getConfig("ia_analise_documentos_ativa") !== "false"}
+              onCheckedChange={(v: boolean) =>
+                setConfig("ia_analise_documentos_ativa", v ? "true" : "false")
+              }
             />
           </div>
-          <div className="flex gap-2">
-            <Button className="bg-teal-900" onClick={() => {
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium text-slate-800">
+                Reprovar automaticamente quando a IA tiver certeza
+              </p>
+              <p className="text-xs text-slate-500">
+                Se desativado, a IA só sinaliza a divergência para o admin decidir — não abre
+                pendência sozinha.
+              </p>
+            </div>
+            <Switch
+              checked={getConfig("ia_auto_reprovar") !== "false"}
+              onCheckedChange={(v: boolean) => setConfig("ia_auto_reprovar", v ? "true" : "false")}
+            />
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label>Prompt da IA para análise de documentos</Label>
+          <Textarea
+            rows={14}
+            className="font-mono text-xs"
+            value={getConfig("ia_prompt_documentos")}
+            onChange={(e) => setConfig("ia_prompt_documentos", e.target.value)}
+          />
+          <p className="text-xs text-slate-500">
+            Esse texto é enviado como instrução do sistema para a IA antes de cada análise. Ajuste o
+            comportamento (ex: nível de rigor, o que aceitar ou não) editando este prompt.
+          </p>
+        </div>
+
+        <div className="flex gap-2">
+          <Button
+            className="bg-teal-900"
+            onClick={() => {
+              void salvar("openai_api_key", getConfig("openai_api_key"));
+              void salvar("openai_model", getConfig("openai_model"));
+              void salvar(
+                "ia_analise_documentos_ativa",
+                getConfig("ia_analise_documentos_ativa") !== "false" ? "true" : "false",
+              );
+              void salvar(
+                "ia_auto_reprovar",
+                getConfig("ia_auto_reprovar") !== "false" ? "true" : "false",
+              );
+              void salvar("ia_prompt_documentos", getConfig("ia_prompt_documentos"));
+            }}
+          >
+            <Save className="mr-2 h-4 w-4" /> Salvar Configurações IA
+          </Button>
+        </div>
+      </section>
+
+      <section className="space-y-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+          <Search className="h-5 w-5 text-teal-700" />
+          SEO do site
+        </div>
+        <p className="text-sm text-slate-500">
+          Título, descrição e imagem usados quando o Google indexa o site e quando ele é
+          compartilhado no WhatsApp, Facebook ou Twitter. Deixe em branco para usar o padrão.
+        </p>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Título do site</Label>
+            <Input
+              value={getConfig("seo_titulo_site")}
+              onChange={(e) => setConfig("seo_titulo_site", e.target.value)}
+              placeholder="Esse Já Foi — Compra e venda de veículos vistoriados"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Descrição do site</Label>
+            <Textarea
+              rows={3}
+              value={getConfig("seo_descricao_site")}
+              onChange={(e) => setConfig("seo_descricao_site", e.target.value)}
+              placeholder="Venda ou compre veículos vistoriados com negociação digital..."
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Imagem de compartilhamento (og:image)</Label>
+            <div className="flex flex-wrap items-center gap-3">
+              {getConfig("seo_imagem_og_url") && (
+                <img
+                  src={getConfig("seo_imagem_og_url")}
+                  alt="Prévia da imagem de SEO"
+                  className="h-16 w-28 rounded-lg border border-slate-200 object-cover"
+                />
+              )}
+              <Input
+                className="flex-1 min-w-[240px]"
+                value={getConfig("seo_imagem_og_url")}
+                onChange={(e) => setConfig("seo_imagem_og_url", e.target.value)}
+                placeholder="https://..."
+              />
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                {enviandoImagemSeo ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ImagePlus className="h-4 w-4" />
+                )}
+                Enviar imagem
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  disabled={enviandoImagemSeo}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) void enviarImagemSeo(file);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
+            <p className="text-xs text-slate-500">Ideal em 1200×630px.</p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            className="bg-teal-900"
+            onClick={() => {
+              void salvar("seo_titulo_site", getConfig("seo_titulo_site"));
+              void salvar("seo_descricao_site", getConfig("seo_descricao_site"));
+              void salvar("seo_imagem_og_url", getConfig("seo_imagem_og_url"));
+            }}
+          >
+            <Save className="mr-2 h-4 w-4" /> Salvar SEO
+          </Button>
+        </div>
+      </section>
+
+      <section className="space-y-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+          <Tag className="h-5 w-5 text-teal-700" />
+          Tags de rastreamento
+        </div>
+        <p className="text-sm text-slate-500">
+          Google Tag Manager, Google Ads e Pixel do Meta são injetados automaticamente em todas as
+          páginas do site assim que o ID for salvo aqui.
+        </p>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label>Google Tag Manager (ID do container)</Label>
+            <Input
+              value={getConfig("tracking_gtm_id")}
+              onChange={(e) => setConfig("tracking_gtm_id", e.target.value)}
+              placeholder="GTM-XXXXXXX"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Google Ads (ID de conversão)</Label>
+            <Input
+              value={getConfig("tracking_google_ads_id")}
+              onChange={(e) => setConfig("tracking_google_ads_id", e.target.value)}
+              placeholder="AW-XXXXXXXXX"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Pixel do Meta (Facebook/Instagram Ads)</Label>
+            <Input
+              value={getConfig("tracking_meta_pixel_id")}
+              onChange={(e) => setConfig("tracking_meta_pixel_id", e.target.value)}
+              placeholder="123456789012345"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Token da Conversions API do Meta</Label>
+            <Input
+              type="password"
+              value={getConfig("tracking_meta_capi_token")}
+              onChange={(e) => setConfig("tracking_meta_capi_token", e.target.value)}
+              placeholder="Token gerado no Gerenciador de Eventos"
+            />
+            <p className="text-xs text-slate-500">
+              Fica só no servidor — nunca é enviado ao navegador do visitante.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <div>
+            <p className="text-sm font-medium text-slate-800">
+              Enviar eventos pela Conversions API
+            </p>
+            <p className="text-xs text-slate-500">
+              Envio servidor-a-servidor do Meta, além do Pixel no navegador (mais resistente a
+              bloqueadores).
+            </p>
+          </div>
+          <Switch
+            checked={getConfig("tracking_meta_capi_ativa") === "true"}
+            onCheckedChange={(v: boolean) =>
+              setConfig("tracking_meta_capi_ativa", v ? "true" : "false")
+            }
+          />
+        </div>
+        <div className="flex gap-2">
+          <Button
+            className="bg-teal-900"
+            onClick={() => {
               void salvar("tracking_gtm_id", getConfig("tracking_gtm_id"));
               void salvar("tracking_google_ads_id", getConfig("tracking_google_ads_id"));
               void salvar("tracking_meta_pixel_id", getConfig("tracking_meta_pixel_id"));
               void salvar("tracking_meta_capi_token", getConfig("tracking_meta_capi_token"));
-              void salvar("tracking_meta_capi_ativa", getConfig("tracking_meta_capi_ativa") === "true" ? "true" : "false");
-            }}>
-              <Save className="mr-2 h-4 w-4" /> Salvar tags de rastreamento
-            </Button>
-          </div>
-        </section>
+              void salvar(
+                "tracking_meta_capi_ativa",
+                getConfig("tracking_meta_capi_ativa") === "true" ? "true" : "false",
+              );
+            }}
+          >
+            <Save className="mr-2 h-4 w-4" /> Salvar tags de rastreamento
+          </Button>
+        </div>
+      </section>
 
-        <section className="space-y-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
-            <Code2 className="h-5 w-5 text-teal-700" />
-            HTML customizado
+      <section className="space-y-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+          <Code2 className="h-5 w-5 text-teal-700" />
+          HTML customizado
+        </div>
+        <p className="text-sm text-slate-500">
+          Para snippets que não se encaixam nos campos acima (verificação de domínio, outros scripts
+          de terceiros etc). O conteúdo é injetado exatamente como colado, em todas as páginas.
+        </p>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>HTML no &lt;head&gt;</Label>
+            <Textarea
+              rows={6}
+              className="font-mono text-xs"
+              value={getConfig("tracking_head_html")}
+              onChange={(e) => setConfig("tracking_head_html", e.target.value)}
+              placeholder="<meta name=..."
+            />
           </div>
-          <p className="text-sm text-slate-500">
-            Para snippets que não se encaixam nos campos acima (verificação de domínio, outros
-            scripts de terceiros etc). O conteúdo é injetado exatamente como colado, em todas as páginas.
-          </p>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>HTML no &lt;head&gt;</Label>
-              <Textarea
-                rows={6}
-                className="font-mono text-xs"
-                value={getConfig("tracking_head_html")}
-                onChange={(e) => setConfig("tracking_head_html", e.target.value)}
-                placeholder="<meta name=..."
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>HTML logo após o &lt;body&gt;</Label>
-              <Textarea
-                rows={6}
-                className="font-mono text-xs"
-                value={getConfig("tracking_body_html")}
-                onChange={(e) => setConfig("tracking_body_html", e.target.value)}
-                placeholder="<script>..."
-              />
-            </div>
+          <div className="space-y-2">
+            <Label>HTML logo após o &lt;body&gt;</Label>
+            <Textarea
+              rows={6}
+              className="font-mono text-xs"
+              value={getConfig("tracking_body_html")}
+              onChange={(e) => setConfig("tracking_body_html", e.target.value)}
+              placeholder="<script>..."
+            />
           </div>
-          <div className="flex gap-2">
-            <Button className="bg-teal-900" onClick={() => {
+        </div>
+        <div className="flex gap-2">
+          <Button
+            className="bg-teal-900"
+            onClick={() => {
               void salvar("tracking_head_html", getConfig("tracking_head_html"));
               void salvar("tracking_body_html", getConfig("tracking_body_html"));
-            }}>
-              <Save className="mr-2 h-4 w-4" /> Salvar HTML customizado
-            </Button>
-          </div>
-        </section>
+            }}
+          >
+            <Save className="mr-2 h-4 w-4" /> Salvar HTML customizado
+          </Button>
+        </div>
+      </section>
 
-        <ValidacaoIASection
-          apiKey={getConfig("openai_api_key")}
-          model={getConfig("openai_model")}
-          prompt={getConfig("ia_prompt_documentos")}
-        />
+      <ValidacaoIASection
+        apiKey={getConfig("openai_api_key")}
+        model={getConfig("openai_model")}
+        prompt={getConfig("ia_prompt_documentos")}
+      />
 
-        <ComissaoSection />
-        <ConsultaVeicularSection />
-        <TermoAdesaoSection tipo="VENDEDOR" titulo="Termo de adesão do vendedor" />
-        <TermoAdesaoSection
-          tipo="COMPRADOR"
-          titulo="Termo de uso do comprador"
-          getConfig={getConfig}
-          setConfig={setConfig}
-          salvar={salvar}
-        />
-      </div>
+      <ComissaoSection />
+      <ConsultaVeicularSection />
+      <TermoAdesaoSection tipo="VENDEDOR" titulo="Termo de adesão do vendedor" />
+      <TermoAdesaoSection
+        tipo="COMPRADOR"
+        titulo="Termo de uso do comprador"
+        getConfig={getConfig}
+        setConfig={setConfig}
+        salvar={salvar}
+      />
+    </div>
   );
 }
 
@@ -686,15 +763,22 @@ function NotificacoesSection() {
     }
   }
 
-  async function atualizarFlag(d: DestinatarioNotificacao, campo: "notificar_carro_analise" | "notificar_novo_lance", valor: boolean) {
-    setDestinatarios((prev) => prev.map((item) => (item.id === d.id ? { ...item, [campo]: valor } : item)));
+  async function atualizarFlag(
+    d: DestinatarioNotificacao,
+    campo: "notificar_carro_analise" | "notificar_novo_lance",
+    valor: boolean,
+  ) {
+    setDestinatarios((prev) =>
+      prev.map((item) => (item.id === d.id ? { ...item, [campo]: valor } : item)),
+    );
     try {
       const res: any = await salvarDestinatarioNotificacaoFn({
         data: {
           id: d.id,
           nome: d.nome,
           email: d.email,
-          notificarCarroAnalise: campo === "notificar_carro_analise" ? valor : d.notificar_carro_analise,
+          notificarCarroAnalise:
+            campo === "notificar_carro_analise" ? valor : d.notificar_carro_analise,
           notificarNovoLance: campo === "notificar_novo_lance" ? valor : d.notificar_novo_lance,
         },
       });
@@ -725,7 +809,8 @@ function NotificacoesSection() {
         Notificações por E-mail
       </div>
       <p className="text-sm text-slate-500">
-        Cadastre quem deve receber e-mail automático e escolha, para cada pessoa, quais notificações ela recebe.
+        Cadastre quem deve receber e-mail automático e escolha, para cada pessoa, quais notificações
+        ela recebe.
       </p>
 
       {carregando ? (
@@ -736,13 +821,21 @@ function NotificacoesSection() {
             <p className="text-sm text-slate-400">Nenhum destinatário cadastrado ainda.</p>
           )}
           {destinatarios.map((d) => (
-            <div key={d.id} className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <div
+              key={d.id}
+              className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4"
+            >
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <p className="text-sm font-semibold text-slate-900">{d.nome}</p>
                   <p className="text-xs text-slate-500">{d.email}</p>
                 </div>
-                <Button variant="ghost" size="icon" onClick={() => remover(d.id)} title="Remover destinatário">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => remover(d.id)}
+                  title="Remover destinatário"
+                >
                   <Trash2 className="h-4 w-4 text-red-500" />
                 </Button>
               </div>
@@ -772,11 +865,19 @@ function NotificacoesSection() {
         <div className="grid gap-3 md:grid-cols-2">
           <div className="space-y-2">
             <Label>Nome</Label>
-            <Input value={novoNome} onChange={(e) => setNovoNome(e.target.value)} placeholder="Nome da pessoa" />
+            <Input
+              value={novoNome}
+              onChange={(e) => setNovoNome(e.target.value)}
+              placeholder="Nome da pessoa"
+            />
           </div>
           <div className="space-y-2">
             <Label>E-mail</Label>
-            <Input value={novoEmail} onChange={(e) => setNovoEmail(e.target.value)} placeholder="email@exemplo.com" />
+            <Input
+              value={novoEmail}
+              onChange={(e) => setNovoEmail(e.target.value)}
+              placeholder="email@exemplo.com"
+            />
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-6">
@@ -854,7 +955,9 @@ function OpcionaisVeiculoSection({
       </p>
 
       <div className="flex flex-wrap gap-2">
-        {itens.length === 0 && <p className="text-sm text-slate-400">Nenhum item cadastrado ainda.</p>}
+        {itens.length === 0 && (
+          <p className="text-sm text-slate-400">Nenhum item cadastrado ainda.</p>
+        )}
         {itens.map((item) => (
           <span
             key={item}
@@ -949,8 +1052,8 @@ function ExemplosFotosSection({
       </div>
       <p className="text-sm text-slate-500">
         Envie um exemplo de cada ângulo. Ele aparece como fundo (esmaecido, com "Modelo") na
-        caixinha correspondente, em qualquer tela de cadastro de veículo, para quem só lê o nome
-        do ângulo não errar a foto.
+        caixinha correspondente, em qualquer tela de cadastro de veículo, para quem só lê o nome do
+        ângulo não errar a foto.
       </p>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-5">
@@ -977,7 +1080,9 @@ function ExemplosFotosSection({
                 ) : (
                   <>
                     <ImagePlus className="h-5 w-5 text-slate-300" />
-                    <span className="px-1 text-center text-[10px] font-semibold text-slate-400">Enviar modelo</span>
+                    <span className="px-1 text-center text-[10px] font-semibold text-slate-400">
+                      Enviar modelo
+                    </span>
                   </>
                 )}
               </label>
@@ -1054,15 +1159,24 @@ function ComissaoSection() {
             onChange={(e) => setPercentTxt(e.target.value)}
           />
           <p className="text-xs text-slate-500">
-            Percentual padrão que a Esse Já Foi recebe sobre cada venda. Ele é sugerido automaticamente no
-            fechamento comercial de cada veículo (Análise pós-vistoria), onde ainda pode ser ajustado caso a caso.
-            Os totais de comissão a receber e recebidos aparecem em Relatórios &rarr; Comissões.
+            Percentual padrão que a Esse Já Foi recebe sobre cada venda. Ele é sugerido
+            automaticamente no fechamento comercial de cada veículo (Análise pós-vistoria), onde
+            ainda pode ser ajustado caso a caso. Os totais de comissão a receber e recebidos
+            aparecem em Relatórios &rarr; Comissões.
           </p>
         </div>
       </div>
       <div className="flex gap-2">
-        <Button className="bg-teal-900" onClick={() => void salvarComissao()} disabled={salvando || carregando}>
-          {salvando ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+        <Button
+          className="bg-teal-900"
+          onClick={() => void salvarComissao()}
+          disabled={salvando || carregando}
+        >
+          {salvando ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <Save className="mr-2 h-4 w-4" />
+          )}
           Salvar comissão
         </Button>
       </div>
@@ -1070,7 +1184,15 @@ function ComissaoSection() {
   );
 }
 
-function ValidacaoIASection({ apiKey, model, prompt }: { apiKey: string; model: string; prompt: string }) {
+function ValidacaoIASection({
+  apiKey,
+  model,
+  prompt,
+}: {
+  apiKey: string;
+  model: string;
+  prompt: string;
+}) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [tipoDocumento, setTipoDocumento] = useState(TIPOS_DOCUMENTO_TESTE[0]!.id);
   const [arquivoNome, setArquivoNome] = useState("");
@@ -1126,9 +1248,9 @@ function ValidacaoIASection({ apiKey, model, prompt }: { apiKey: string; model: 
       </div>
       <p className="text-sm text-slate-500">
         Envie um documento de exemplo para ver exatamente o que a IA responderia com o modelo e o
-        prompt preenchidos no card acima — mesmo sem salvar ainda. Ajuste o prompt, teste de novo, e só
-        salve as configurações quando o resultado estiver correto. Nada aqui é gravado no cadastro de
-        nenhum vendedor.
+        prompt preenchidos no card acima — mesmo sem salvar ainda. Ajuste o prompt, teste de novo, e
+        só salve as configurações quando o resultado estiver correto. Nada aqui é gravado no
+        cadastro de nenhum vendedor.
       </p>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -1207,12 +1329,15 @@ function ValidacaoIASection({ apiKey, model, prompt }: { apiKey: string; model: 
                   {resultado.resultado.confianca}
                 </div>
                 <div className="md:col-span-3">
-                  <span className="font-bold text-slate-500">Motivo:</span> {resultado.resultado.motivo}
+                  <span className="font-bold text-slate-500">Motivo:</span>{" "}
+                  {resultado.resultado.motivo}
                 </div>
               </div>
               <details className="rounded-lg bg-slate-900 p-3 text-xs text-slate-100">
                 <summary className="cursor-pointer font-bold">Ver resposta bruta da OpenAI</summary>
-                <pre className="mt-2 max-h-72 overflow-auto">{JSON.stringify(resultado.bruto, null, 2)}</pre>
+                <pre className="mt-2 max-h-72 overflow-auto">
+                  {JSON.stringify(resultado.bruto, null, 2)}
+                </pre>
               </details>
             </>
           ) : (
@@ -1301,7 +1426,6 @@ function ConsultaVeicularSection() {
     }
   }
 
-
   async function testarPlaca() {
     const placa = placaTeste.toUpperCase().replace(/\W/g, "");
     if (placa.length !== 7) {
@@ -1317,7 +1441,11 @@ function ConsultaVeicularSection() {
       else if (res?.ok) toast.success("Consulta de teste concluída.");
       else toast.error(res?.message || "Falha na consulta de teste.");
     } catch {
-      setResultadoTeste({ ok: false, message: "Não foi possível obter a resposta. Repita o teste para verificar a consulta registrada." });
+      setResultadoTeste({
+        ok: false,
+        message:
+          "Não foi possível obter a resposta. Repita o teste para verificar a consulta registrada.",
+      });
     } finally {
       setTestandoPlaca(false);
     }
@@ -1358,7 +1486,11 @@ function ConsultaVeicularSection() {
       else if (res?.ok) toast.info(res.message || "Consulta em processamento.");
       else toast.error(res?.message || "Falha na consulta de FIPE.");
     } catch {
-      setResultadoFipe({ ok: false, message: "Não foi possível obter a resposta. Repita o teste para verificar a consulta registrada." });
+      setResultadoFipe({
+        ok: false,
+        message:
+          "Não foi possível obter a resposta. Repita o teste para verificar a consulta registrada.",
+      });
     } finally {
       setTestandoFipe(false);
     }
@@ -1413,7 +1545,8 @@ function ConsultaVeicularSection() {
             inputMode="numeric"
           />
           <p className="text-xs text-slate-500">
-            É o mesmo código de acesso usado para entrar na plataforma da Company Conferi (numérico).
+            É o mesmo código de acesso usado para entrar na plataforma da Company Conferi
+            (numérico).
           </p>
         </div>
         <div className="space-y-2">
@@ -1425,14 +1558,20 @@ function ConsultaVeicularSection() {
             placeholder={temSenha ? "•••••••• (salva)" : "senha fornecida pelo provedor"}
           />
           <p className="text-xs text-slate-500">
-            {temSenha ? "Senha cadastrada. Deixe em branco para manter." : "Nenhuma senha cadastrada."}
+            {temSenha
+              ? "Senha cadastrada. Deixe em branco para manter."
+              : "Nenhuma senha cadastrada."}
           </p>
         </div>
       </div>
 
       <div className="flex gap-2">
         <Button className="bg-teal-900" disabled={ocupado} onClick={salvarProvedor}>
-          {ocupado ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+          {ocupado ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <Save className="mr-2 h-4 w-4" />
+          )}
           Salvar módulo
         </Button>
         <Button variant="outline" disabled={ocupado} onClick={testar}>
@@ -1440,20 +1579,20 @@ function ConsultaVeicularSection() {
         </Button>
       </div>
       <p className="text-xs text-amber-700">
-        &quot;Testar conexão&quot; usa o ambiente de homologação da Company Conferi (não gera cobrança), mas
-        esse ambiente aceita qualquer usuário/senha — ele só confirma que o formato da chamada está
-        correto, não que as credenciais são válidas. Para confirmar de fato o usuário e a senha, use o
-        teste com placa real abaixo (ambiente de produção).
+        &quot;Testar conexão&quot; usa o ambiente de homologação da Company Conferi (não gera
+        cobrança), mas esse ambiente aceita qualquer usuário/senha — ele só confirma que o formato
+        da chamada está correto, não que as credenciais são válidas. Para confirmar de fato o
+        usuário e a senha, use o teste com placa real abaixo (ambiente de produção).
       </p>
 
       <div className="space-y-2 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4">
         <p className="text-sm font-bold text-slate-800">Webhook de retorno assíncrono</p>
         <p className="text-xs text-slate-500">
-          Cadastre esta URL no painel da Company Conferi para que eles avisem assim que uma
-          consulta em processamento (Desvalorização Fipe, Auto Pericia Gold, etc.) terminar —
-          sem isso, o sistema depende só de tentar de novo sozinho de tempos em tempos. Ao
-          receber o aviso, resgatamos o resultado automaticamente e, no caso da FIPE, já
-          preenchemos o valor no cadastro do veículo, sem precisar reabrir a tela.
+          Cadastre esta URL no painel da Company Conferi para que eles avisem assim que uma consulta
+          em processamento (Desvalorização Fipe, Auto Pericia Gold, etc.) terminar — sem isso, o
+          sistema depende só de tentar de novo sozinho de tempos em tempos. Ao receber o aviso,
+          resgatamos o resultado automaticamente e, no caso da FIPE, já preenchemos o valor no
+          cadastro do veículo, sem precisar reabrir a tela.
         </p>
         {urlWebhookConferi ? (
           <div className="flex gap-2">
@@ -1476,12 +1615,11 @@ function ConsultaVeicularSection() {
       </div>
 
       <div className="space-y-3 rounded-xl border border-dashed border-teal-300 bg-teal-50/40 p-4">
-        <p className="text-sm font-bold text-slate-800">
-          Testar consulta com uma placa real
-        </p>
+        <p className="text-sm font-bold text-slate-800">Testar consulta com uma placa real</p>
         <p className="text-xs text-slate-500">
           Digite uma placa para executar uma consulta de verdade no provedor de produção (pode gerar
-          cobrança) e validar o retorno. Nada é gravado no cadastro de veículos. Salve o módulo antes de testar.
+          cobrança) e validar o retorno. Nada é gravado no cadastro de veículos. Salve o módulo
+          antes de testar.
         </p>
         <div className="flex gap-2">
           <Input
@@ -1510,10 +1648,18 @@ function ConsultaVeicularSection() {
           <div className="space-y-2" role="status" aria-live="polite">
             <p
               className={`text-xs font-bold ${
-                resultadoTeste.status === "PROCESSANDO" ? "text-amber-700" : resultadoTeste.ok ? "text-teal-700" : "text-red-600"
+                resultadoTeste.status === "PROCESSANDO"
+                  ? "text-amber-700"
+                  : resultadoTeste.ok
+                    ? "text-teal-700"
+                    : "text-red-600"
               }`}
             >
-              {resultadoTeste.status === "PROCESSANDO" ? "Aguardando resultado" : resultadoTeste.ok ? "Consulta concluída" : "Falha na consulta"}
+              {resultadoTeste.status === "PROCESSANDO"
+                ? "Aguardando resultado"
+                : resultadoTeste.ok
+                  ? "Consulta concluída"
+                  : "Falha na consulta"}
               {resultadoTeste.protocolo ? ` — Protocolo ${resultadoTeste.protocolo}` : ""}
               {resultadoTeste.httpStatus ? ` — HTTP ${resultadoTeste.httpStatus}` : ""}
               {resultadoTeste.message ? `: ${resultadoTeste.message}` : ""}
@@ -1545,9 +1691,9 @@ function ConsultaVeicularSection() {
           Testar Conferi Agregados (pré-preenchimento do cadastro do vendedor)
         </p>
         <p className="text-xs text-slate-500">
-          Simula exatamente a mesma consulta que roda quando o vendedor digita a placa no
-          cadastro (marca, modelo, cor, ano, combustível, câmbio) — mesma chamada, mesmo
-          mapeamento de campos. Nada é gravado. Salve o módulo antes de testar.
+          Simula exatamente a mesma consulta que roda quando o vendedor digita a placa no cadastro
+          (marca, modelo, cor, ano, combustível, câmbio) — mesma chamada, mesmo mapeamento de
+          campos. Nada é gravado. Salve o módulo antes de testar.
         </p>
         <div className="flex gap-2">
           <Input
@@ -1597,16 +1743,17 @@ function ConsultaVeicularSection() {
               </div>
             )}
 
-            {Array.isArray(resultadoAgregados.diagnostico) && resultadoAgregados.diagnostico.length > 0 && (
-              <div className="space-y-1 rounded-lg bg-white p-3 text-xs text-slate-700">
-                <p className="font-bold text-slate-500">Detalhe da chamada</p>
-                {resultadoAgregados.diagnostico.map((d: any, i: number) => (
-                  <div key={i}>
-                    {d.modo} — HTTP {d.httpStatus || "sem resposta"}: {d.mensagem}
-                  </div>
-                ))}
-              </div>
-            )}
+            {Array.isArray(resultadoAgregados.diagnostico) &&
+              resultadoAgregados.diagnostico.length > 0 && (
+                <div className="space-y-1 rounded-lg bg-white p-3 text-xs text-slate-700">
+                  <p className="font-bold text-slate-500">Detalhe da chamada</p>
+                  {resultadoAgregados.diagnostico.map((d: any, i: number) => (
+                    <div key={i}>
+                      {d.modo} — HTTP {d.httpStatus || "sem resposta"}: {d.mensagem}
+                    </div>
+                  ))}
+                </div>
+              )}
 
             <details className="rounded-lg bg-slate-900 p-3 text-xs text-slate-100">
               <summary className="cursor-pointer font-bold">Ver retorno completo (JSON)</summary>
@@ -1623,10 +1770,10 @@ function ConsultaVeicularSection() {
           Testar Conferi Desvalorização Fipe (valor FIPE do cadastro do veículo)
         </p>
         <p className="text-xs text-slate-500">
-          Simula a mesma consulta usada na aba Valores do cadastro do veículo ("Buscar por
-          placa"): valor FIPE atual, marca/modelo/código FIPE e o histórico de desvalorização
-          por ano. Nada é gravado. Se o provedor ainda estiver processando, tente de novo em
-          instantes. Salve o módulo antes de testar.
+          Simula a mesma consulta usada na aba Valores do cadastro do veículo ("Buscar por placa"):
+          valor FIPE atual, marca/modelo/código FIPE e o histórico de desvalorização por ano. Nada é
+          gravado. Se o provedor ainda estiver processando, tente de novo em instantes. Salve o
+          módulo antes de testar.
         </p>
         <div className="flex gap-2">
           <Input
@@ -1655,7 +1802,11 @@ function ConsultaVeicularSection() {
           <div className="space-y-2" role="status" aria-live="polite">
             <p
               className={`text-xs font-bold ${
-                resultadoFipe.status === "PROCESSANDO" ? "text-amber-700" : resultadoFipe.ok && resultadoFipe.dados ? "text-teal-700" : "text-red-600"
+                resultadoFipe.status === "PROCESSANDO"
+                  ? "text-amber-700"
+                  : resultadoFipe.ok && resultadoFipe.dados
+                    ? "text-teal-700"
+                    : "text-red-600"
               }`}
             >
               {resultadoFipe.ok && resultadoFipe.dados
@@ -1694,30 +1845,35 @@ function ConsultaVeicularSection() {
                   </div>
                 )}
 
-                {Array.isArray(resultadoFipe.dados.historico) && resultadoFipe.dados.historico.length > 0 && (
-                  <div className="overflow-auto rounded-lg bg-white p-3 text-xs">
-                    <table className="w-full text-left">
-                      <thead>
-                        <tr className="text-slate-400">
-                          <th className="pr-3 font-bold uppercase">Referência</th>
-                          <th className="pr-3 font-bold uppercase">Valor</th>
-                          <th className="pr-3 font-bold uppercase">Variação</th>
-                          <th className="font-bold uppercase">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {resultadoFipe.dados.historico.map((h: any, i: number) => (
-                          <tr key={i} className="text-slate-800">
-                            <td className="pr-3">{h.referencia}</td>
-                            <td className="pr-3">{h.valor != null ? h.valor.toLocaleString("pt-BR") : "—"}</td>
-                            <td className="pr-3">{h.variacaoPercentual != null ? `${h.variacaoPercentual}%` : "—"}</td>
-                            <td>{h.status}</td>
+                {Array.isArray(resultadoFipe.dados.historico) &&
+                  resultadoFipe.dados.historico.length > 0 && (
+                    <div className="overflow-auto rounded-lg bg-white p-3 text-xs">
+                      <table className="w-full text-left">
+                        <thead>
+                          <tr className="text-slate-400">
+                            <th className="pr-3 font-bold uppercase">Referência</th>
+                            <th className="pr-3 font-bold uppercase">Valor</th>
+                            <th className="pr-3 font-bold uppercase">Variação</th>
+                            <th className="font-bold uppercase">Status</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                        </thead>
+                        <tbody>
+                          {resultadoFipe.dados.historico.map((h: any, i: number) => (
+                            <tr key={i} className="text-slate-800">
+                              <td className="pr-3">{h.referencia}</td>
+                              <td className="pr-3">
+                                {h.valor != null ? h.valor.toLocaleString("pt-BR") : "—"}
+                              </td>
+                              <td className="pr-3">
+                                {h.variacaoPercentual != null ? `${h.variacaoPercentual}%` : "—"}
+                              </td>
+                              <td>{h.status}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
               </>
             )}
 
@@ -1754,11 +1910,27 @@ const ITENS_RISCO: { chave: string; rotulo: string }[] = [
   { chave: "debitos", rotulo: "Débitos" },
 ];
 
-const PADROES_NEGATIVO = ["nada consta", "nao consta", "não consta", "sem registro", "negativ", "nao", "não", "nenhum", "0", "false", "inexistente", "sem restricao", "sem restrição"];
+const PADROES_NEGATIVO = [
+  "nada consta",
+  "nao consta",
+  "não consta",
+  "sem registro",
+  "negativ",
+  "nao",
+  "não",
+  "nenhum",
+  "0",
+  "false",
+  "inexistente",
+  "sem restricao",
+  "sem restrição",
+];
 
 function classificarItem(valor: any): "positivo" | "negativo" | "neutro" {
   if (valor === null || valor === undefined || valor === "") return "neutro";
-  const norm = String(typeof valor === "object" ? JSON.stringify(valor) : valor).toLowerCase().trim();
+  const norm = String(typeof valor === "object" ? JSON.stringify(valor) : valor)
+    .toLowerCase()
+    .trim();
   if (!norm) return "neutro";
   if (PADROES_NEGATIVO.some((p) => norm === p || norm.startsWith(p))) return "negativo";
   return "positivo";
@@ -1788,9 +1960,11 @@ function PainelResultadoConsulta({ resumo }: { resumo: Record<string, any> }) {
                     ? "Nada encontrado"
                     : String(typeof valor === "object" ? JSON.stringify(valor) : valor)}
               </p>
-              {estado === "negativo" && valor != null && String(valor).toLowerCase() !== "nada encontrado" && (
-                <p className="mt-0.5 text-[11px] opacity-70">{String(valor)}</p>
-              )}
+              {estado === "negativo" &&
+                valor != null &&
+                String(valor).toLowerCase() !== "nada encontrado" && (
+                  <p className="mt-0.5 text-[11px] opacity-70">{String(valor)}</p>
+                )}
             </div>
           );
         })}
@@ -1799,7 +1973,8 @@ function PainelResultadoConsulta({ resumo }: { resumo: Record<string, any> }) {
         <div className="grid gap-1 rounded-lg bg-white p-3 text-xs text-slate-700 md:grid-cols-2">
           {resumo.protocolo && (
             <div>
-              <span className="font-bold text-slate-500">Protocolo:</span> {String(resumo.protocolo)}
+              <span className="font-bold text-slate-500">Protocolo:</span>{" "}
+              {String(resumo.protocolo)}
             </div>
           )}
           {resumo.situacao && (
@@ -1810,7 +1985,12 @@ function PainelResultadoConsulta({ resumo }: { resumo: Record<string, any> }) {
           {resumo.documento_url && (
             <div className="md:col-span-2">
               <span className="font-bold text-slate-500">Documento:</span>{" "}
-              <a href={String(resumo.documento_url)} target="_blank" rel="noreferrer" className="text-teal-700 underline">
+              <a
+                href={String(resumo.documento_url)}
+                target="_blank"
+                rel="noreferrer"
+                className="text-teal-700 underline"
+              >
                 {String(resumo.documento_url)}
               </a>
             </div>
@@ -1898,7 +2078,9 @@ function TermoAdesaoSection({
         </div>
         {tipo === "COMPRADOR" && setConfig && (
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-slate-500">{termoAtivo ? "Exigindo aceite" : "Desativado"}</span>
+            <span className="text-xs font-bold text-slate-500">
+              {termoAtivo ? "Exigindo aceite" : "Desativado"}
+            </span>
             <Switch checked={termoAtivo} onCheckedChange={alternarAtivo} />
           </div>
         )}
@@ -1923,15 +2105,18 @@ function TermoAdesaoSection({
         <Textarea rows={12} value={conteudo} onChange={(e) => setConteudo(e.target.value)} />
         <p className="text-xs text-slate-500">
           Ao salvar, uma nova versão é publicada e passa a ser exigida dos {publico} antes de
-          liberar {tipo === "VENDEDOR" ? "o veículo para o funil normal" : "lances nos lances"}.
-          O aceite registra data, hora, IP e navegador.
+          liberar {tipo === "VENDEDOR" ? "o veículo para o funil normal" : "lances nos lances"}. O
+          aceite registra data, hora, IP e navegador.
         </p>
       </div>
       <Button className="bg-teal-900" disabled={ocupado} onClick={salvarTermoAtual}>
-        {ocupado ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+        {ocupado ? (
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        ) : (
+          <Save className="mr-2 h-4 w-4" />
+        )}
         Publicar versão do termo
       </Button>
     </section>
   );
 }
-
