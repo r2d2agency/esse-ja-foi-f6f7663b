@@ -42,6 +42,8 @@ export async function resetBaseOperacional(confirmacao: string) {
     for (let tentativa = 0; tentativa < alvos.length + 2 && restantes.size; tentativa++) {
       let apagou = false;
       for (const tabela of [...restantes]) {
+        const savepoint = `reset_${tentativa}_${tabela}`;
+        await tx.execute(sql.raw(`SAVEPOINT ${savepoint}`));
         try {
           let total = 0;
           if (tabela === "arquivos_upload") {
@@ -64,12 +66,20 @@ export async function resetBaseOperacional(confirmacao: string) {
             const result: any = await tx.execute(sql`DELETE FROM public.${sql.raw(tabela)}`);
             total = Number(result?.count ?? result?.rowCount ?? 0);
           }
+          await tx.execute(sql.raw(`RELEASE SAVEPOINT ${savepoint}`));
           if (total) resumo[tabela] = (resumo[tabela] || 0) + total;
           restantes.delete(tabela);
           apagou = true;
         } catch (error: any) {
           const code = error?.cause?.code ?? error?.code;
-          if (code !== "23503") throw error;
+          if (code !== "23503") {
+            await tx.execute(sql.raw(`ROLLBACK TO SAVEPOINT ${savepoint}`));
+            await tx.execute(sql.raw(`RELEASE SAVEPOINT ${savepoint}`));
+            throw error;
+          }
+          // Tabela filha ainda possui referências; deixe para a próxima rodada.
+          await tx.execute(sql.raw(`ROLLBACK TO SAVEPOINT ${savepoint}`));
+          await tx.execute(sql.raw(`RELEASE SAVEPOINT ${savepoint}`));
         }
       }
       if (!apagou) break;
