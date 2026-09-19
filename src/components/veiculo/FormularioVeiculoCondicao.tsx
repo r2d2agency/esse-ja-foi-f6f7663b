@@ -61,6 +61,7 @@ export function FormularioVeiculoCondicao({
 }) {
   const [opcionais, setOpcionais] = useState<string[]>(ACESSORIOS_VEICULO);
   const [buscandoPlaca, setBuscandoPlaca] = useState(false);
+  const [ultimaPlacaConsultada, setUltimaPlacaConsultada] = useState("");
   const [exemplosFotos, setExemplosFotos] = useState<Record<string, string>>({});
 
   async function buscarDadosPorPlaca() {
@@ -69,9 +70,11 @@ export function FormularioVeiculoCondicao({
       toast.error("Informe a placa completa (7 caracteres).");
       return;
     }
+    if (placaLimpa === ultimaPlacaConsultada) return;
     setBuscandoPlaca(true);
     try {
       const res: any = await consultarAgregadosPorPlacaFn({ data: { placa: placaLimpa } });
+      setUltimaPlacaConsultada(placaLimpa);
       if (res?.ok && res.dados) {
         setVeiculo((v) => ({
           ...v,
@@ -119,9 +122,26 @@ export function FormularioVeiculoCondicao({
     };
   }, []);
 
+  useEffect(() => {
+    const placa = (veiculo.placa || "").toUpperCase().replace(/\W/g, "");
+    if (placa.length !== 7 || placa === ultimaPlacaConsultada || buscandoPlaca) return;
+    const timer = window.setTimeout(() => { void buscarDadosPorPlaca(); }, 350);
+    return () => window.clearTimeout(timer);
+  }, [veiculo.placa, ultimaPlacaConsultada, buscandoPlaca]);
+
   return (
     <>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
+        <div className="space-y-1">
+          <Label className="text-xs font-bold text-slate-600">Tipo de veículo</Label>
+          <div className="flex gap-2">
+            {[['CARRO', 'Carro'], ['MOTO', 'Moto']].map(([valor, label]) => (
+              <Button key={valor} type="button" variant={veiculo.tipoVeiculo === valor ? "default" : "outline"}
+                className={cn("h-11 flex-1", veiculo.tipoVeiculo === valor && "bg-teal-600 hover:bg-teal-700")}
+                onClick={() => setVeiculo({ ...veiculo, tipoVeiculo: valor })}>{label}</Button>
+            ))}
+          </div>
+        </div>
         <div className="space-y-1">
           <Label className="text-xs font-bold text-slate-600">Placa</Label>
           <div className="flex gap-2">
@@ -263,7 +283,7 @@ export function FormularioVeiculoCondicao({
             Essas informações serão verificadas durante a análise do veículo.
           </p>
           <OpcaoBotoes label="Já sofreu acidente?" opcoes={["Não", "Sim", "Não sei"]} value={condicao.acidente} onChange={(v) => setCondicaoCampo({ acidente: v })} colunas={3} />
-          <OpcaoBotoes label="Já passou por lance?" opcoes={["Não", "Sim", "Não sei"]} value={condicao.leilao} onChange={(v) => setCondicaoCampo({ leilao: v })} colunas={3} />
+          <OpcaoBotoes label="Já passou por leilão?" opcoes={["Não", "Sim", "Não sei"]} value={condicao.leilao} onChange={(v) => setCondicaoCampo({ leilao: v })} colunas={3} />
           <OpcaoBotoes label="Possui sinistro conhecido?" opcoes={["Não", "Sim", "Não sei"]} value={condicao.sinistro} onChange={(v) => setCondicaoCampo({ sinistro: v })} colunas={3} />
           <OpcaoBotoes label="Possui débitos conhecidos (IPVA, multas, licenciamento)?" opcoes={["Não", "Sim", "Não sei"]} value={condicao.debitos} onChange={(v) => setCondicaoCampo({ debitos: v })} colunas={3} />
           <OpcaoBotoes label="Possui alguma restrição impeditiva de transferência (alienação, judicial, etc.)?" opcoes={["Não", "Sim", "Não sei"]} value={condicao.restricao} onChange={(v) => setCondicaoCampo({ restricao: v })} colunas={3} />

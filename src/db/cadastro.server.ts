@@ -126,6 +126,7 @@ export async function ensureCadastroSchema(silent = true) {
       status_analise text DEFAULT 'AGUARDANDO_ANALISE',
       documento_crlv_url text,
       blindado boolean NOT NULL DEFAULT false,
+      tipo_veiculo text NOT NULL DEFAULT 'CARRO',
       fotos_processadas jsonb,
       fotos_camadas jsonb,
       fotos_legendas jsonb
@@ -160,6 +161,9 @@ export async function ensureCadastroSchema(silent = true) {
         END IF;
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'veiculos' AND column_name = 'blindado') THEN
           ALTER TABLE veiculos ADD COLUMN blindado boolean NOT NULL DEFAULT false;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'veiculos' AND column_name = 'tipo_veiculo') THEN
+          ALTER TABLE veiculos ADD COLUMN tipo_veiculo text NOT NULL DEFAULT 'CARRO';
         END IF;
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'veiculos' AND column_name = 'fotos_processadas') THEN
           ALTER TABLE veiculos ADD COLUMN fotos_processadas jsonb;
@@ -374,6 +378,7 @@ export type VeiculoInput = {
   status?: string | null;
   documento_crlv_url?: string | null;
   blindado?: boolean | null;
+  tipoVeiculo?: "CARRO" | "MOTO" | null;
 };
 
 export async function listarVeiculos(filtros: {
@@ -457,6 +462,7 @@ export async function salvarVeiculo(input: VeiculoInput) {
     status: (input.status ?? "CADASTRADO").toUpperCase(),
     documento_crlv_url: input.documento_crlv_url || null,
     blindado: Boolean(input.blindado),
+    tipoVeiculo: input.tipoVeiculo === "MOTO" ? "MOTO" : "CARRO",
   };
 
   if (input.id) {
@@ -500,6 +506,7 @@ export async function salvarVeiculo(input: VeiculoInput) {
     if (input.status !== undefined) setClauses.push(sql`status = ${base.status}`);
     if (input.documento_crlv_url !== undefined) setClauses.push(sql`documento_crlv_url = ${base.documento_crlv_url}`);
     if (input.blindado !== undefined) setClauses.push(sql`blindado = ${base.blindado}`);
+    if (input.tipoVeiculo !== undefined) setClauses.push(sql`tipo_veiculo = ${base.tipoVeiculo}`);
 
     let statusAnterior: string | null = null;
     if (input.status !== undefined) {
@@ -537,12 +544,12 @@ export async function salvarVeiculo(input: VeiculoInput) {
   const rows = (await d.execute(sql`
     INSERT INTO veiculos (placa, marca, modelo, versao, cor, km, ano_fabricacao, ano_modelo, combustivel, cambio,
       cliente_id, valor_fipe, valor_interesse_cliente, tipo_expectativa, percentual_sobre_fipe, alerta_expectativa,
-      ciente_expectativa, cep, endereco, cidade, uf, latitude, longitude, observacoes, perfil_id, vendedor_id, fotos, status, status_analise, documento_crlv_url, blindado)
+      ciente_expectativa, cep, endereco, cidade, uf, latitude, longitude, observacoes, perfil_id, vendedor_id, fotos, status, status_analise, documento_crlv_url, blindado, tipo_veiculo)
     VALUES (${base.placa}, ${base.marca}, ${base.modelo}, ${base.versao}, ${base.cor}, ${base.km},
       ${base.anoFabricacao}, ${base.anoModelo}, ${base.combustivel}, ${base.cambio}, ${base.clienteId},
       ${base.fipe}, ${base.interesse}, ${base.tipoExpectativa}, ${base.percentual}, ${base.alerta},
       ${base.ciente}, ${base.cep}, ${base.endereco}, ${base.cidade}, ${base.uf}, ${base.latitude},
-      ${base.longitude}, ${base.observacoes}, ${base.perfilId}::uuid, ${base.perfilId}::uuid, ${base.fotos}::jsonb, ${base.status}, 'AGUARDANDO_ANALISE', ${input.documento_crlv_url || null}, ${base.blindado})
+      ${base.longitude}, ${base.observacoes}, ${base.perfilId}::uuid, ${base.perfilId}::uuid, ${base.fotos}::jsonb, ${base.status}, 'AGUARDANDO_ANALISE', ${input.documento_crlv_url || null}, ${base.blindado}, ${base.tipoVeiculo})
     ON CONFLICT (placa) DO UPDATE SET
       marca = EXCLUDED.marca, modelo = EXCLUDED.modelo, versao = EXCLUDED.versao, cor = EXCLUDED.cor,
       km = EXCLUDED.km, ano_fabricacao = EXCLUDED.ano_fabricacao, ano_modelo = EXCLUDED.ano_modelo,
@@ -554,7 +561,7 @@ export async function salvarVeiculo(input: VeiculoInput) {
       observacoes = EXCLUDED.observacoes,
       fotos = CASE WHEN EXCLUDED.fotos IS NOT NULL THEN EXCLUDED.fotos ELSE veiculos.fotos END,
       status = EXCLUDED.status,
-      documento_crlv_url = EXCLUDED.documento_crlv_url, blindado = EXCLUDED.blindado, atualizado_em = now()
+      documento_crlv_url = EXCLUDED.documento_crlv_url, blindado = EXCLUDED.blindado, tipo_veiculo = EXCLUDED.tipo_veiculo, atualizado_em = now()
     RETURNING id;
   `)) as unknown as Array<{ id: string }>;
   const id = rows[0]?.id as string;

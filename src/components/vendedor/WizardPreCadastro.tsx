@@ -72,6 +72,7 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
   });
 
   const [veiculo, setVeiculo] = useState<Record<string, string>>({
+    tipoVeiculo: "CARRO",
     placa: "",
     marca: "",
     modelo: "",
@@ -131,7 +132,6 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
       { toast.error("Informe o CPF do vendedor."); return; }
     if (!docs.doc_cnh_frente || !docs.doc_cnh_verso)
       { toast.error("Envie a CNH (frente e verso)."); return; }
-    if (!docs.doc_comprovante) { toast.error("Envie o comprovante de residência."); return; }
 
     setSalvando(true);
     try {
@@ -179,6 +179,7 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
           uf: veiculo.uf || undefined,
           documento_crlv_url: crlv,
           blindado,
+          tipoVeiculo: veiculo.tipoVeiculo === "MOTO" ? "MOTO" : "CARRO",
           fotos: [...Object.values(fotos), ...fotosExtras].filter(Boolean) as string[],
           observacoes: serializarCondicao(condicao),
           status: "AGUARDANDO_APROVACAO",
@@ -334,7 +335,7 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
                 onChange={(u) => setDocs((d) => ({ ...d, doc_cnh_verso: u }))}
               />
               <FileUpload
-                label="Comprovante de residência"
+                label="Comprovante de residência (opcional)"
                 value={docs.doc_comprovante}
                 onChange={(u) => setDocs((d) => ({ ...d, doc_comprovante: u }))}
               />

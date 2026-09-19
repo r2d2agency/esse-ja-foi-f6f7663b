@@ -29,7 +29,7 @@ export function montarEtapas(profile: any): EtapaCadastro[] {
     { 
       id: "endereco", 
       label: "Endereço e Comprovante", 
-      concluida: Boolean(p.cep && p.cidade && (p.documento_comprovante_endereco_url || p.comprovante_endereco_url)) 
+      concluida: Boolean(p.cep && p.cidade)
     },
     {
       id: "documentos",

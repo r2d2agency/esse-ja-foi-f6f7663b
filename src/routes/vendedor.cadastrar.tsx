@@ -58,6 +58,7 @@ const FOTOS = [
 ];
 
 type Estado = {
+  tipoVeiculo: string;
   placa: string;
   marca: string; modelo: string; versao: string;
   anoFabricacao: string; anoModelo: string; cor: string;
@@ -77,6 +78,7 @@ type Estado = {
 };
 
 const INICIAL: Estado = {
+  tipoVeiculo: 'CARRO',
   placa: '', marca: '', modelo: '', versao: '', anoFabricacao: '', anoModelo: '', cor: '',
   combustivel: '', cambio: '', portas: '', blindado: false, km: '', cep: '', cidade: '', uf: '',
   emSeuNome: 'Sim', relacaoProprietario: '', relacaoDescricao: '',
@@ -253,6 +255,7 @@ function CadastrarVeiculo() {
   const montarPayloadVeiculo = (status: string) => ({
     id: idExistente,
     perfilId: user?.id || '',
+    tipoVeiculo: form.tipoVeiculo === 'MOTO' ? 'MOTO' : 'CARRO',
     placa: form.placa.replace(/[^A-Z0-9]/g, ''),
     marca: form.marca || 'Em preenchimento',
     modelo: form.modelo || 'Em preenchimento',
@@ -554,7 +557,14 @@ function CadastrarVeiculo() {
           <div className="space-y-6">
             <div>
               <h2 className="text-2xl font-black text-slate-900">Qual veículo você quer vender?</h2>
-              <p className="mt-1 text-sm text-slate-500">Informe a placa do carro.</p>
+              <p className="mt-1 text-sm text-slate-500">Selecione o tipo e informe a placa do veículo.</p>
+            </div>
+            <div className="flex gap-2">
+              {[['CARRO', 'Carro'], ['MOTO', 'Moto']].map(([valor, label]) => (
+                <Button key={valor} type="button" variant={form.tipoVeiculo === valor ? 'default' : 'outline'}
+                  className={form.tipoVeiculo === valor ? 'bg-teal-700 hover:bg-teal-800' : ''}
+                  onClick={() => set({ tipoVeiculo: valor })}>{label}</Button>
+              ))}
             </div>
             <div className="space-y-4">
               <div className="space-y-2">

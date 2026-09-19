@@ -83,9 +83,8 @@ export function calcularProgressoVendedor(p: any) {
     etapas.dados_pessoais = "CONCLUIDO";
   }
 
-  // 2. Endereço: CEP, Logradouro, Número, Bairro, Cidade, UF e Comprovante
-  if (p.cep && p.endereco && p.numero && p.bairro && p.cidade && p.uf && 
-     (p.documento_comprovante_endereco_url || p.doc_comprovante || p.comprovante_endereco_url)) {
+  // 2. Endereço: CEP, Logradouro, Número, Bairro, Cidade e UF
+  if (p.cep && p.endereco && p.numero && p.bairro && p.cidade && p.uf) {
     etapas.endereco = "CONCLUIDO";
   }
 

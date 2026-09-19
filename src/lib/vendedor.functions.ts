@@ -183,6 +183,7 @@ export const cadastrarMeuVeiculoFn = createServerFn({ method: "POST" })
     versao: z.string().optional().nullable(),
     cor: z.string().optional().nullable(),
     blindado: z.boolean().optional(),
+    tipoVeiculo: z.enum(["CARRO", "MOTO"]).optional(),
     status: z.string().optional(),
     id: z.string().uuid().optional(),
   }))
