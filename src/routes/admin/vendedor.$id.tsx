@@ -10,7 +10,7 @@ import {
   solicitarPendenciaComplianceFn
 } from "@/lib/vendedores-compliance.functions";
 import { reenviarSenhaTemporariaFn } from "@/lib/pre-cadastro.functions";
-import { gerenciarUsuarioFn, excluirPerfilFn } from "@/lib/admin.functions";
+import { gerenciarUsuarioFn } from "@/lib/admin.functions";
 import { useConfirmacaoAcaoCritica } from "@/components/admin/ConfirmacaoAcaoCritica";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -99,7 +99,6 @@ function DetalheVendedorPage() {
   const solicitarPendencia = useServerFn(solicitarPendenciaComplianceFn);
   const reenviarSenha = useServerFn(reenviarSenhaTemporariaFn);
   const gerenciarUsuario = useServerFn(gerenciarUsuarioFn);
-  const excluirPerfil = useServerFn(excluirPerfilFn);
 
   const { data: res, refetch } = useQuery({
     queryKey: ["admin-vendedor", id],
@@ -253,29 +252,15 @@ function DetalheVendedorPage() {
       toast.info("Exclusão cancelada.");
       return;
     }
-    const loading = toast.loading("Excluindo cadastro...");
-    try {
-      const resp: any = await excluirPerfil({ data: { id } });
-      if (!resp?.ok) throw new Error(resp?.message || "Erro ao excluir.");
-      toast.success("Cadastro excluído.");
-      navigate({ to: "/admin/vendedores" });
-    } catch (e: any) {
-      toast.error(e.message || "Erro ao excluir.", {
-        duration: 15000,
-        action: {
-          label: "Limpar vínculos (superadmin)",
-          onClick: () =>
-            confirmacaoCritica.iniciar({
-              acao: "EXCLUIR_PERFIL_FORCADO",
-              alvoId: id,
-              alvoDescricao: `Vendedor ${perfil.nome}`,
-              onSucesso: () => navigate({ to: "/admin/vendedores", search: { status: undefined } }),
-            }),
-        },
-      });
-    } finally {
-      toast.dismiss(loading);
-    }
+    confirmacaoCritica.iniciar({
+      acao: "EXCLUIR_PERFIL_FORCADO",
+      alvoId: id,
+      alvoDescricao: `Vendedor ${perfil.nome} — serão removidos todos os vínculos e registros dependentes`,
+      onSucesso: () => {
+        toast.success("Cadastro e vínculos excluídos.");
+        navigate({ to: "/admin/vendedores", search: { status: undefined } });
+      },
+    });
   };
 
   return (

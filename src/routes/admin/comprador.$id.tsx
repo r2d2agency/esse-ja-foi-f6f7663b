@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { obterDetalheCompradorFn, aprovarCompradorFn, solicitarPendenciaCompradorFn } from "@/lib/admin-compradores.functions";
 import { reenviarSenhaTemporariaFn } from "@/lib/pre-cadastro.functions";
-import { gerenciarUsuarioFn, excluirPerfilFn } from "@/lib/admin.functions";
+import { gerenciarUsuarioFn } from "@/lib/admin.functions";
 import { useAuth } from "@/hooks/use-auth";
 import { useConfirmacaoAcaoCritica } from "@/components/admin/ConfirmacaoAcaoCritica";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -43,7 +43,6 @@ function DetalheCompradorPage() {
   const solicitarPendencia = useServerFn(solicitarPendenciaCompradorFn);
   const reenviarSenha = useServerFn(reenviarSenhaTemporariaFn);
   const gerenciarUsuario = useServerFn(gerenciarUsuarioFn);
-  const excluirPerfil = useServerFn(excluirPerfilFn);
 
   const { data: res, refetch } = useQuery({
     queryKey: ["admin-comprador", id],
@@ -134,29 +133,15 @@ function DetalheCompradorPage() {
       toast.info("Exclusão cancelada.");
       return;
     }
-    const loading = toast.loading("Excluindo cadastro...");
-    try {
-      const resp: any = await excluirPerfil({ data: { id } });
-      if (!resp?.ok) throw new Error(resp?.message || "Erro ao excluir.");
-      toast.success("Cadastro excluído.");
-      navigate({ to: "/admin/compradores" });
-    } catch (e: any) {
-      toast.error(e.message || "Erro ao excluir.", {
-        duration: 15000,
-        action: {
-          label: "Limpar vínculos (superadmin)",
-          onClick: () =>
-            confirmacaoCritica.iniciar({
-              acao: "EXCLUIR_PERFIL_FORCADO",
-              alvoId: id,
-              alvoDescricao: `Comprador ${comprador.nome}`,
-              onSucesso: () => navigate({ to: "/admin/compradores" }),
-            }),
-        },
-      });
-    } finally {
-      toast.dismiss(loading);
-    }
+    confirmacaoCritica.iniciar({
+      acao: "EXCLUIR_PERFIL_FORCADO",
+      alvoId: id,
+      alvoDescricao: `Comprador ${comprador.nome} — serão removidos todos os vínculos e registros dependentes`,
+      onSucesso: () => {
+        toast.success("Cadastro e vínculos excluídos.");
+        navigate({ to: "/admin/compradores" });
+      },
+    });
   };
 
   return (
