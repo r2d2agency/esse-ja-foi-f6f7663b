@@ -43,9 +43,24 @@ export async function resetBaseOperacional(confirmacao: string) {
       let apagou = false;
       for (const tabela of [...restantes]) {
         try {
-          const result: any = await tx.execute(sql`DELETE FROM public.${sql.raw(tabela)}`);
-          const count = Number(result?.count ?? result?.rowCount ?? 0);
-          if (count) resumo[tabela] = (resumo[tabela] || 0) + count;
+          let total = 0;
+          if (tabela === "arquivos_upload") {
+            // Arquivos podem conter blobs grandes; apague em lotes para evitar
+            // timeout e bloqueios longos durante o reset global.
+            for (;;) {
+              const result: any = await tx.execute(sql`
+                DELETE FROM public.arquivos_upload
+                WHERE ctid IN (SELECT ctid FROM public.arquivos_upload LIMIT 250)
+              `);
+              const count = Number(result?.count ?? result?.rowCount ?? 0);
+              total += count;
+              if (count === 0) break;
+            }
+          } else {
+            const result: any = await tx.execute(sql`DELETE FROM public.${sql.raw(tabela)}`);
+            total = Number(result?.count ?? result?.rowCount ?? 0);
+          }
+          if (total) resumo[tabela] = (resumo[tabela] || 0) + total;
           restantes.delete(tabela);
           apagou = true;
         } catch (error: any) {
