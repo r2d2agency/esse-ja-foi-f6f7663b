@@ -50,7 +50,11 @@ export async function resetBaseOperacional(confirmacao: string) {
             for (;;) {
               const result: any = await tx.execute(sql`
                 DELETE FROM public.arquivos_upload
-                WHERE ctid IN (SELECT ctid FROM public.arquivos_upload LIMIT 250)
+                WHERE id IN (
+                  SELECT id FROM public.arquivos_upload
+                  ORDER BY criado_em, id
+                  LIMIT 25
+                )
               `);
               const count = Number(result?.count ?? result?.rowCount ?? 0);
               total += count;
