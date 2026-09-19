@@ -55,14 +55,25 @@ async function apagarComCascataManual(
   }
 
   for (let tentativa = 0; tentativa < LIMITE_TENTATIVAS; tentativa++) {
+    // Uma violação de FK aborta a transação PostgreSQL inteira. O savepoint permite
+    // desfazer somente o DELETE que falhou e consultar o catálogo na mesma transação.
+    const savepoint = `exclusao_fk_${tentativa}`;
+    await executor.execute(sql.raw(`SAVEPOINT ${savepoint}`));
     try {
       await executor.execute(sql`DELETE FROM public.${sql.raw(tabelaSegura)} WHERE id = ${id}::uuid`);
+      await executor.execute(sql.raw(`RELEASE SAVEPOINT ${savepoint}`));
       resumo[tabelaSegura] = (resumo[tabelaSegura] || 0) + 1;
       return;
     } catch (err: any) {
       const codigo = err?.cause?.code ?? err?.code;
       const constraint = err?.cause?.constraint_name ?? err?.constraint_name;
-      if (codigo !== "23503" || !constraint) throw err;
+      if (codigo !== "23503" || !constraint) {
+        await executor.execute(sql.raw(`ROLLBACK TO SAVEPOINT ${savepoint}`));
+        await executor.execute(sql.raw(`RELEASE SAVEPOINT ${savepoint}`));
+        throw err;
+      }
+      await executor.execute(sql.raw(`ROLLBACK TO SAVEPOINT ${savepoint}`));
+      await executor.execute(sql.raw(`RELEASE SAVEPOINT ${savepoint}`));
 
       const infoRes = await executor.execute(sql`
         SELECT tc.table_name AS tabela, kcu.column_name AS coluna
