@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getVeiculoDetalheAdminFn, assumirAnaliseVeiculoFn, atualizarStatusAnaliseFn, atualizarStatusDocumentoVeiculoFn, aprovarParaPublicacaoFn } from "@/lib/admin-veiculo-detalhe.functions";
-import { removerVeiculoFn, salvarVeiculoFn } from "@/lib/cadastro.functions";
+import { salvarVeiculoFn } from "@/lib/cadastro.functions";
 import { obterConsultaRegistradaFn, consultarDesvalorizacaoFipeFn, listarConsultasVeiculoFn } from "@/lib/consulta-veicular.functions";
 import { salvarConfiguracaoLeilao } from "@/lib/leilao.functions";
 import { getSessionToken } from "@/lib/session";
@@ -153,7 +153,6 @@ function DetalheVeiculoAdminPage() {
   const atualizarStatus = useServerFn(atualizarStatusAnaliseFn);
   const atualizarStatusDoc = useServerFn(atualizarStatusDocumentoVeiculoFn);
   const aprovarPublicacao = useServerFn(aprovarParaPublicacaoFn);
-  const removerVeiculo = useServerFn(removerVeiculoFn);
   const salvarVeiculo = useServerFn(salvarVeiculoFn);
   const consultarDesvalorizacaoFipe = useServerFn(consultarDesvalorizacaoFipeFn);
   const listarConsultasFipe = useServerFn(listarConsultasVeiculoFn);
@@ -317,34 +316,16 @@ function DetalheVeiculoAdminPage() {
     )) {
       return;
     }
-    setExcluindo(true);
-    const toastId = toast.loading("Excluindo veículo...");
-    try {
-      const res = await removerVeiculo({ data: { id } });
-      if (res.ok) {
-        toast.success("Veículo excluído.", { id: toastId });
+    setExcluindo(false);
+    confirmacaoCritica.iniciar({
+      acao: "EXCLUIR_VEICULO_FORCADO",
+      alvoId: id,
+      alvoDescricao: `Veículo ${v.marca} ${v.modelo} — serão removidos todos os vínculos e registros dependentes`,
+      onSucesso: () => {
+        toast.success("Veículo e vínculos excluídos.");
         navigate({ to: "/admin/veiculos" });
-      } else {
-        toast.error(res.message || "Não foi possível excluir o veículo.", {
-          id: toastId,
-          duration: 15000,
-          action: {
-            label: "Limpar vínculos (superadmin)",
-            onClick: () =>
-              confirmacaoCritica.iniciar({
-                acao: "EXCLUIR_VEICULO_FORCADO",
-                alvoId: id,
-                alvoDescricao: `Veículo ${v.marca} ${v.modelo} — ${v.placa}`,
-                onSucesso: () => navigate({ to: "/admin/veiculos" }),
-              }),
-          },
-        });
-      }
-    } catch (err) {
-      toast.error("Erro técnico ao excluir o veículo.", { id: toastId });
-    } finally {
-      setExcluindo(false);
-    }
+      },
+    });
   };
 
   const iniciarEdicaoFipe = () => {
