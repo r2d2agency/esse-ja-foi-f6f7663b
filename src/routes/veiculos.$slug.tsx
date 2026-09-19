@@ -525,7 +525,7 @@ const ITENS_VISTORIA: { chave: string; label: string }[] = [
   { chave: "interior", label: "Interior" },
   { chave: "pneus", label: "Pneus" },
   { chave: "acidente", label: "Já sofreu acidente" },
-  { chave: "leilao", label: "Já passou por lance" },
+  { chave: "leilao", label: "Já passou por leilão" },
   { chave: "sinistro", label: "Sinistro" },
   { chave: "debitos", label: "Débitos" },
   { chave: "restricao", label: "Restrição p/ transferência" },

@@ -949,7 +949,7 @@ function DetalheVeiculoAdminPage() {
                     </CardHeader>
                     <CardContent className="pt-4 space-y-3 text-sm">
                       <div className="flex justify-between gap-4"><span className="text-slate-400 font-medium">Acidente</span><span className="font-bold text-right">{observacoes.acidente || "Não informado"}</span></div>
-                      <div className="flex justify-between gap-4"><span className="text-slate-400 font-medium">Lance</span><span className="font-bold text-right">{observacoes.leilao || "Não informado"}</span></div>
+                      <div className="flex justify-between gap-4"><span className="text-slate-400 font-medium">Leilão</span><span className="font-bold text-right">{observacoes.leilao || "Não informado"}</span></div>
                       <div className="flex justify-between gap-4"><span className="text-slate-400 font-medium">Sinistro</span><span className="font-bold text-right">{observacoes.sinistro || "Não informado"}</span></div>
                       <div className="flex justify-between gap-4"><span className="text-slate-400 font-medium">Débitos</span><span className="font-bold text-right">{observacoes.debitos || "Não informado"}</span></div>
                       <div className="flex justify-between gap-4"><span className="text-slate-400 font-medium">Restrição</span><span className="font-bold text-right">{observacoes.restricao || "Não informado"}</span></div>
