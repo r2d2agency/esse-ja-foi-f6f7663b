@@ -142,19 +142,17 @@ function DetalheCompradorPage() {
       navigate({ to: "/admin/compradores" });
     } catch (e: any) {
       toast.error(e.message || "Erro ao excluir.", {
-        duration: user?.protegido ? 15000 : undefined,
-        action: user?.protegido
-          ? {
-              label: "Forçar exclusão (superadmin)",
-              onClick: () =>
-                confirmacaoCritica.iniciar({
-                  acao: "EXCLUIR_PERFIL_FORCADO",
-                  alvoId: id,
-                  alvoDescricao: `Comprador ${comprador.nome}`,
-                  onSucesso: () => navigate({ to: "/admin/compradores" }),
-                }),
-            }
-          : undefined,
+        duration: 15000,
+        action: {
+          label: "Limpar vínculos (superadmin)",
+          onClick: () =>
+            confirmacaoCritica.iniciar({
+              acao: "EXCLUIR_PERFIL_FORCADO",
+              alvoId: id,
+              alvoDescricao: `Comprador ${comprador.nome}`,
+              onSucesso: () => navigate({ to: "/admin/compradores" }),
+            }),
+        },
       });
     } finally {
       toast.dismiss(loading);

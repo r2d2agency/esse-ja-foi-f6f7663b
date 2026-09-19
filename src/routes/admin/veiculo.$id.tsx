@@ -327,19 +327,17 @@ function DetalheVeiculoAdminPage() {
       } else {
         toast.error(res.message || "Não foi possível excluir o veículo.", {
           id: toastId,
-          duration: user?.protegido ? 15000 : undefined,
-          action: user?.protegido
-            ? {
-                label: "Forçar exclusão (superadmin)",
-                onClick: () =>
-                  confirmacaoCritica.iniciar({
-                    acao: "EXCLUIR_VEICULO_FORCADO",
-                    alvoId: id,
-                    alvoDescricao: `Veículo ${v.marca} ${v.modelo} — ${v.placa}`,
-                    onSucesso: () => navigate({ to: "/admin/veiculos" }),
-                  }),
-              }
-            : undefined,
+          duration: 15000,
+          action: {
+            label: "Limpar vínculos (superadmin)",
+            onClick: () =>
+              confirmacaoCritica.iniciar({
+                acao: "EXCLUIR_VEICULO_FORCADO",
+                alvoId: id,
+                alvoDescricao: `Veículo ${v.marca} ${v.modelo} — ${v.placa}`,
+                onSucesso: () => navigate({ to: "/admin/veiculos" }),
+              }),
+          },
         });
       }
     } catch (err) {
