@@ -37,6 +37,8 @@ export async function resetBaseOperacional(confirmacao: string) {
       WHERE schemaname = 'public' ORDER BY tablename
     `)).map((row) => ident(row.tablename));
 
+    // Logs e OTP também são dados da execução; preservamos somente configurações.
+    // O log de auditoria é inserido após a limpeza, dentro da mesma transação.
     const alvos = tables.filter((table) => !PRESERVAR.has(table));
     let restantes = new Set(alvos);
     for (let tentativa = 0; tentativa < alvos.length + 2 && restantes.size; tentativa++) {
@@ -72,7 +74,9 @@ export async function resetBaseOperacional(confirmacao: string) {
           apagou = true;
         } catch (error: any) {
           const code = error?.cause?.code ?? error?.code;
-          if (code !== "23503") {
+          const message = String(error?.cause?.message ?? error?.message ?? "");
+          const isForeignKey = code === "23503" || /violates foreign key constraint/i.test(message);
+          if (!isForeignKey) {
             await tx.execute(sql.raw(`ROLLBACK TO SAVEPOINT ${savepoint}`));
             await tx.execute(sql.raw(`RELEASE SAVEPOINT ${savepoint}`));
             throw error;
@@ -96,10 +100,16 @@ export async function resetBaseOperacional(confirmacao: string) {
     const perfisRemovidos = Number((perfis as any)?.count ?? (perfis as any)?.rowCount ?? 0);
     if (perfisRemovidos) resumo.profiles = perfisRemovidos;
 
-    await tx.execute(sql`
-      INSERT INTO logs (entidade, acao, detalhe)
-      VALUES ('sistema', 'RESET_BASE_OPERACIONAL', ${JSON.stringify(resumo)})
-    `);
+    // A tabela de auditoria pode não existir em instalações antigas; não fazemos
+    // o reset falhar por isso, pois a própria transação continua protegida.
+    try {
+      await tx.execute(sql`
+        INSERT INTO logs (entidade, acao, detalhe)
+        VALUES ('sistema', 'RESET_BASE_OPERACIONAL', ${JSON.stringify(resumo)})
+      `);
+    } catch (error) {
+      console.warn("[purge] Não foi possível registrar auditoria do reset:", error);
+    }
   });
   return resumo;
 }
