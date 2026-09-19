@@ -42,6 +42,7 @@ import {
 } from "@/lib/consulta-veicular.functions";
 import { getTermoVigenteFn, salvarTermoFn } from "@/lib/termos.functions";
 import { FOTOS_VEICULO } from "@/lib/veiculo-condicao";
+import { useConfirmacaoAcaoCritica } from "@/components/admin/ConfirmacaoAcaoCritica";
 import {
   listarConfiguracoesFn,
   salvarConfiguracaoFn,
@@ -76,6 +77,7 @@ function ConfiguracoesAdminPage() {
   const [modelosOpenAI, setModelosOpenAI] = useState<string[]>([]);
   const [novoModelo, setNovoModelo] = useState("");
   const [enviandoImagemSeo, setEnviandoImagemSeo] = useState(false);
+  const confirmacaoCritica = useConfirmacaoAcaoCritica();
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -171,6 +173,34 @@ function ConfiguracoesAdminPage() {
 
   return (
     <div className="max-w-4xl space-y-8 mb-12 p-6">
+      {confirmacaoCritica.dialog}
+      <section className="space-y-4 rounded-xl border border-red-300 bg-red-50 p-6 shadow-sm">
+        <div>
+          <h2 className="text-lg font-bold text-red-800">Zona de perigo</h2>
+          <p className="mt-1 text-sm text-red-700">
+            Remove vendedores, compradores, veículos, vistorias, laudos, análises, lances,
+            negociações, documentos e arquivos. Mantém usuários internos e configurações.
+            Esta operação é irreversível.
+          </p>
+        </div>
+        <Button
+          variant="destructive"
+          onClick={() => {
+            if (window.prompt("Digite LIMPAR BASE para continuar:") !== "LIMPAR BASE") {
+              toast.info("Limpeza cancelada.");
+              return;
+            }
+            confirmacaoCritica.iniciar({
+              acao: "RESET_BASE_OPERACIONAL",
+              alvoId: "00000000-0000-0000-0000-000000000000",
+              alvoDescricao: "RESET GLOBAL — todos os dados operacionais serão apagados",
+              onSucesso: () => toast.success("Base operacional limpa. Usuários internos preservados."),
+            });
+          }}
+        >
+          Limpar base operacional
+        </Button>
+      </section>
       <div>
         <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
           <Settings className="h-6 w-6 text-teal-900" />

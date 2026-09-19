@@ -14,7 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-type AcaoCritica = "PROMOVER_SUPERADMIN" | "EXCLUIR_VEICULO_FORCADO" | "EXCLUIR_PERFIL_FORCADO";
+type AcaoCritica = "PROMOVER_SUPERADMIN" | "EXCLUIR_VEICULO_FORCADO" | "EXCLUIR_PERFIL_FORCADO" | "RESET_BASE_OPERACIONAL";
 
 /**
  * Hook + diálogo reutilizável para qualquer ação que exija confirmação de superadmin por
@@ -32,7 +32,7 @@ export function useConfirmacaoAcaoCritica() {
   const [etapa, setEtapa] = useState<"enviando" | "aguardando_codigo" | "confirmando">("enviando");
   const [callback, setCallback] = useState<(() => void) | null>(null);
 
-  async function iniciar(params: { acao: AcaoCritica; alvoId: string; alvoDescricao?: string; onSucesso?: () => void }) {
+  async function iniciar(params: { acao: AcaoCritica; alvoId: string; alvoDescricao?: string; confirmacao?: string; onSucesso?: () => void }) {
     if (!accessToken) {
       toast.error("Sessão inválida. Faça login novamente.");
       return;
@@ -60,7 +60,7 @@ export function useConfirmacaoAcaoCritica() {
   async function confirmar() {
     if (!acao || !alvoId || !accessToken) return;
     setEtapa("confirmando");
-    const res: any = await confirmarAcaoSuperadminFn({ data: { token: accessToken, acao, alvoId, codigo } });
+    const res: any = await confirmarAcaoSuperadminFn({ data: { token: accessToken, acao, alvoId, codigo, confirmacao: acao === "RESET_BASE_OPERACIONAL" ? "LIMPAR BASE" : undefined } });
     if (!res?.ok) {
       toast.error(res?.message || "Código inválido ou expirado.");
       setEtapa("aguardando_codigo");

@@ -1,13 +1,14 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-const ACOES = ["PROMOVER_SUPERADMIN", "EXCLUIR_VEICULO_FORCADO", "EXCLUIR_PERFIL_FORCADO"] as const;
+const ACOES = ["PROMOVER_SUPERADMIN", "EXCLUIR_VEICULO_FORCADO", "EXCLUIR_PERFIL_FORCADO", "RESET_BASE_OPERACIONAL"] as const;
 type AcaoCritica = (typeof ACOES)[number];
 
 const LABEL_ACOES: Record<AcaoCritica, string> = {
   PROMOVER_SUPERADMIN: "Promover um usuário a superadmin",
   EXCLUIR_VEICULO_FORCADO: "Excluir veículo com vínculos no sistema",
   EXCLUIR_PERFIL_FORCADO: "Excluir vendedor/comprador com vínculos no sistema",
+  RESET_BASE_OPERACIONAL: "Limpar todos os dados operacionais da base",
 };
 
 /** Envia o código de confirmação (por e-mail, a todos os superadmins) para uma ação crítica. */
@@ -44,6 +45,7 @@ export const confirmarAcaoSuperadminFn = createServerFn({ method: "POST" })
         acao: z.enum(ACOES),
         alvoId: z.string().uuid(),
         codigo: z.string().min(4),
+        confirmacao: z.string().optional(),
       })
       .parse(d),
   )
@@ -65,6 +67,9 @@ export const confirmarAcaoSuperadminFn = createServerFn({ method: "POST" })
       } else if (data.acao === "EXCLUIR_PERFIL_FORCADO") {
         const { excluirPerfilForcado } = await import("@/db/exclusao-forcada.server");
         await excluirPerfilForcado(data.alvoId);
+      } else if (data.acao === "RESET_BASE_OPERACIONAL") {
+        const { resetBaseOperacional } = await import("@/db/purge-operacional.server");
+        await resetBaseOperacional(data.confirmacao || "");
       }
 
       return { ok: true as const };
