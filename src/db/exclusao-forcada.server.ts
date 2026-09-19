@@ -66,7 +66,11 @@ async function apagarComCascataManual(
       return;
     } catch (err: any) {
       const codigo = err?.cause?.code ?? err?.code;
-      const constraint = err?.cause?.constraint_name ?? err?.constraint_name;
+      const constraint =
+        err?.cause?.constraint_name ??
+        err?.constraint_name ??
+        err?.cause?.constraint ??
+        err?.constraint;
       if (codigo !== "23503" || !constraint) {
         await executor.execute(sql.raw(`ROLLBACK TO SAVEPOINT ${savepoint}`));
         await executor.execute(sql.raw(`RELEASE SAVEPOINT ${savepoint}`));
@@ -87,7 +91,9 @@ async function apagarComCascataManual(
         LIMIT 1
       `);
       const info = rowsOf(infoRes)[0];
-      if (!info) throw err;
+      if (!info) {
+        throw new Error(`Não foi possível localizar a tabela filha da restrição ${String(constraint)}.`);
+      }
 
       const tabelaFilha = identifier(info.tabela, "tabela filha");
       const colunaFilha = identifier(info.coluna, "coluna filha");
