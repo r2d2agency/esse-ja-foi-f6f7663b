@@ -40,6 +40,36 @@ export async function resetBaseOperacional(confirmacao: string) {
     // Logs e OTP também são dados da execução; preservamos somente configurações.
     // O log de auditoria é inserido após a limpeza, dentro da mesma transação.
     const alvos = tables.filter((table) => !PRESERVAR.has(table));
+    // Ordena dependentes antes dos pais. Assim negociacoes é removida antes de
+    // anuncios_veiculo, evitando a FK negociacoes_anuncio_id_fkey sem depender
+    // da ordem alfabética de pg_tables.
+    const fkRows = rowsOf(await tx.execute(sql`
+      SELECT child.relname AS filha, parent.relname AS pai
+      FROM pg_constraint c
+      JOIN pg_class child ON child.oid = c.conrelid
+      JOIN pg_namespace child_ns ON child_ns.oid = child.relnamespace
+      JOIN pg_class parent ON parent.oid = c.confrelid
+      JOIN pg_namespace parent_ns ON parent_ns.oid = parent.relnamespace
+      WHERE c.contype = 'f'
+        AND child_ns.nspname = 'public'
+        AND parent_ns.nspname = 'public'
+    `));
+    const pais = new Map<string, string[]>();
+    for (const row of fkRows) {
+      const filha = ident(row.filha);
+      const pai = ident(row.pai);
+      pais.set(filha, [...(pais.get(filha) || []), pai]);
+    }
+    const profundidades = new Map<string, number>();
+    const calcularProfundidade = (tabela: string, caminho = new Set<string>()): number => {
+      if (profundidades.has(tabela)) return profundidades.get(tabela)!;
+      if (caminho.has(tabela)) return 0;
+      const proximo = new Set(caminho).add(tabela);
+      const profundidade = Math.max(0, ...(pais.get(tabela) || []).map((pai) => calcularProfundidade(pai, proximo))) + (pais.has(tabela) ? 1 : 0);
+      profundidades.set(tabela, profundidade);
+      return profundidade;
+    };
+    alvos.sort((a, b) => calcularProfundidade(b) - calcularProfundidade(a));
     let restantes = new Set(alvos);
     for (let tentativa = 0; tentativa < alvos.length + 2 && restantes.size; tentativa++) {
       let apagou = false;
