@@ -344,12 +344,13 @@ function ComunicacoesPage() {
   const handleGerarToken = async () => {
     try {
       const res = await gerarToken();
-      if (res.ok) {
-        toast.success('Novo Verify Token gerado!');
-        queryClient.invalidateQueries({ queryKey: ['wa-config'] });
+      if (!res?.ok) {
+        throw new Error(res?.error || 'Não foi possível gerar o token.');
       }
+      toast.success('Novo Verify Token gerado!');
+      queryClient.invalidateQueries({ queryKey: ['wa-config'] });
     } catch (e) {
-      toast.error('Erro ao gerar token.');
+      toast.error(e instanceof Error ? e.message : 'Erro ao gerar token.');
     }
   };
 

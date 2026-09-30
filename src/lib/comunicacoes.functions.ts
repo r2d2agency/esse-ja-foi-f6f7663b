@@ -80,13 +80,22 @@ export const buscarDadosAutomaticosFn = createServerFn({ method: "POST" })
 
 export const gerarNovoVerifyTokenFn = createServerFn({ method: "POST" })
   .handler(async () => {
-    const newToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-    const existing = await db.getWhatsappConfig();
-    await db.updateWhatsappConfig({
-      ...existing,
-      webhook_verify_token: newToken
-    });
-    return { ok: true, token: newToken };
+    try {
+      const newToken = `${crypto.randomUUID().replaceAll("-", "")}${crypto.randomUUID().replaceAll("-", "")}`;
+      const existing = await db.getWhatsappConfig();
+      if (!existing) {
+        return { ok: false, error: "Configuração do WhatsApp não encontrada." };
+      }
+
+      await db.updateWhatsappConfig({
+        ...existing,
+        webhook_verify_token: newToken,
+      });
+      return { ok: true, token: newToken };
+    } catch (error: any) {
+      console.error("[WhatsApp] Erro ao gerar Verify Token:", error);
+      return { ok: false, error: error?.message || "Erro ao salvar o Verify Token." };
+    }
   });
 
 export const getWebhookLogsFn = createServerFn({ method: "GET" })

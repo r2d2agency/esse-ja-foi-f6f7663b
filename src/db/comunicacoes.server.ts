@@ -352,12 +352,16 @@ export async function updateWhatsappConfig(config: any) {
   const d = requireDb();
   await d.execute(sql`
     UPDATE whatsapp_config SET
-      waba_id = ${config.waba_id},
-      phone_number_id = ${config.phone_number_id},
-      business_id = ${config.business_id},
-      phone_number = ${config.phone_number},
-      access_token = ${config.access_token},
-      status = 'DESCONECTADO',
+      waba_id = COALESCE(${config.waba_id ?? null}, waba_id),
+      phone_number_id = COALESCE(${config.phone_number_id ?? null}, phone_number_id),
+      business_id = COALESCE(${config.business_id ?? null}, business_id),
+      phone_number = COALESCE(${config.phone_number ?? null}, phone_number),
+      app_id = COALESCE(${config.app_id ?? null}, app_id),
+      app_secret = COALESCE(${config.app_secret ?? null}, app_secret),
+      access_token = COALESCE(${config.access_token ?? null}, access_token),
+      graph_api_version = COALESCE(${config.graph_api_version ?? null}, graph_api_version),
+      webhook_verify_token = COALESCE(${config.webhook_verify_token ?? null}, webhook_verify_token),
+      status = CASE WHEN ${config.webhook_verify_token ?? null} IS NOT NULL THEN status ELSE 'DESCONECTADO' END,
       atualizado_em = now()
     WHERE id = (SELECT id FROM whatsapp_config LIMIT 1)
   `);
