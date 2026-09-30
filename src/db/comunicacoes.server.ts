@@ -353,6 +353,12 @@ export async function getWhatsappConfig() {
 
 export async function updateWhatsappConfig(config: any) {
   const d = requireDb();
+  await ensureComunicacoesSchema();
+  await d.execute(sql`
+    INSERT INTO whatsapp_config (id)
+    SELECT gen_random_uuid()
+    WHERE NOT EXISTS (SELECT 1 FROM whatsapp_config);
+  `);
   await d.execute(sql`
     UPDATE whatsapp_config SET
       waba_id = COALESCE(${config.waba_id ?? null}, waba_id),
@@ -364,7 +370,7 @@ export async function updateWhatsappConfig(config: any) {
       access_token = COALESCE(${config.access_token ?? null}, access_token),
       graph_api_version = COALESCE(${config.graph_api_version ?? null}, graph_api_version),
       webhook_verify_token = COALESCE(${config.webhook_verify_token ?? null}, webhook_verify_token),
-      status = CASE WHEN ${config.webhook_verify_token ?? null} IS NOT NULL THEN status ELSE 'DESCONECTADO' END,
+      status = COALESCE(${config.status ?? null}, status),
       atualizado_em = now()
     WHERE id = (SELECT id FROM whatsapp_config LIMIT 1)
   `);
