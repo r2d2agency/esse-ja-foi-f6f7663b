@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { db } from '@/db/index';
+import { ensureComunicacoesSchema } from '@/db/comunicacoes.server';
 import { sql } from 'drizzle-orm';
 
 export const Route = createFileRoute('/api/public/webhooks/whatsapp')({
@@ -16,6 +17,7 @@ export const Route = createFileRoute('/api/public/webhooks/whatsapp')({
         if (mode === 'subscribe' && token) {
           // Buscar o token configurado no banco
           if (!db) throw new Error("Database offline");
+          await ensureComunicacoesSchema();
           const res = await db.execute(sql`SELECT webhook_verify_token FROM whatsapp_config LIMIT 1`);
           const configToken = (res as any).rows?.[0]?.webhook_verify_token;
 
@@ -35,6 +37,7 @@ export const Route = createFileRoute('/api/public/webhooks/whatsapp')({
         const signature = request.headers.get('x-hub-signature-256');
 
         if (!db) throw new Error("Database offline");
+        await ensureComunicacoesSchema();
         const configRes = await db.execute(sql`SELECT app_secret FROM whatsapp_config LIMIT 1`);
         const appSecret = (configRes as any).rows?.[0]?.app_secret;
 

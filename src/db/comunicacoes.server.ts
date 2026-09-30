@@ -344,6 +344,9 @@ export async function ensureComunicacoesSchema(silent = true) {
 // Functions to be implemented
 export async function getWhatsappConfig() {
   const d = requireDb();
+  // A inicialização do servidor pode ocorrer depois da primeira chamada server-side.
+  // Garanta a tabela antes da leitura para não falhar com "relation does not exist".
+  await ensureComunicacoesSchema();
   const res = await d.execute(sql`SELECT * FROM whatsapp_config LIMIT 1`);
   return rowsOf(res)?.[0] || null;
 }
