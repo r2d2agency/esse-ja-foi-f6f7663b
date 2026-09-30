@@ -19,7 +19,8 @@ export const Route = createFileRoute('/api/public/webhooks/whatsapp')({
           if (!db) throw new Error("Database offline");
           await ensureComunicacoesSchema();
           const res = await db.execute(sql`SELECT webhook_verify_token FROM whatsapp_config LIMIT 1`);
-          const configToken = (res as any).rows?.[0]?.webhook_verify_token;
+          // postgres-js retorna as linhas diretamente como array; alguns drivers usam .rows.
+          const configToken = (Array.isArray(res) ? res[0] : (res as any).rows?.[0])?.webhook_verify_token;
 
           if (token === configToken) {
             console.log("[WhatsApp Webhook] Verificado com sucesso!");
@@ -39,7 +40,7 @@ export const Route = createFileRoute('/api/public/webhooks/whatsapp')({
         if (!db) throw new Error("Database offline");
         await ensureComunicacoesSchema();
         const configRes = await db.execute(sql`SELECT app_secret FROM whatsapp_config LIMIT 1`);
-        const appSecret = (configRes as any).rows?.[0]?.app_secret;
+        const appSecret = (Array.isArray(configRes) ? configRes[0] : (configRes as any).rows?.[0])?.app_secret;
 
         if (appSecret && signature) {
           const expectedSignature = 'sha256=' + createHmac('sha256', appSecret)
