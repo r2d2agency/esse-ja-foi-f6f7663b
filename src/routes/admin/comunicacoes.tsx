@@ -128,6 +128,7 @@ function ComunicacoesPage() {
   const [isExecucoesOpen, setIsExecucoesOpen] = useState(false);
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [editingConfig, setEditingConfig] = useState<any>({});
+  const [webhookTokenGerado, setWebhookTokenGerado] = useState<string | null>(null);
   
   // Wizard Template State
   const [isWizardOpen, setIsWizardOpen] = useState(false);
@@ -347,7 +348,8 @@ function ComunicacoesPage() {
       if (!res?.ok) {
         throw new Error(res?.error || 'Não foi possível gerar o token.');
       }
-      toast.success('Novo Verify Token gerado!');
+      setWebhookTokenGerado(res.token);
+      toast.success('Novo Verify Token gerado! Copie o token exibido na tela.');
       queryClient.invalidateQueries({ queryKey: ['wa-config'] });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Erro ao gerar token.');
@@ -1612,8 +1614,8 @@ function ComunicacoesPage() {
                     <div className="space-y-2">
                       <Label>Verify Token</Label>
                       <div className="flex gap-2">
-                        <Input readOnly type="password" value={config?.webhook_verify_token || ''} className="font-mono text-xs bg-muted" />
-                        <Button variant="ghost" size="icon" onClick={() => copyToClipboard(config?.webhook_verify_token || '')}>
+                        <Input readOnly type={webhookTokenGerado ? "text" : "password"} value={webhookTokenGerado || config?.webhook_verify_token || ''} className="font-mono text-xs bg-muted" />
+                        <Button variant="ghost" size="icon" onClick={() => copyToClipboard(webhookTokenGerado || config?.webhook_verify_token || '')}>
                           <Copy className="w-4 h-4" />
                         </Button>
                         <Button variant="outline" size="sm" onClick={handleGerarToken}>Gerar Novo</Button>
