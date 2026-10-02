@@ -114,6 +114,7 @@ export const salvarConfiguracaoFn = createServerFn({ method: "POST" })
   .validator((d: unknown) => z.object({ chave: z.string(), valor: z.string() }).parse(d))
   .handler(async ({ data }) => {
     const m = await import("@/db/admin.server");
+    await m.ensureAdminTables();
     try {
       await m.salvarConfiguracao(data.chave, data.valor);
       return { ok: true as const };

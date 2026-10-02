@@ -1,5 +1,4 @@
 import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
-import { useEffect } from "react";
 import { Calendar, ClipboardList, Clock, User, WifiOff } from "lucide-react";
 import { LogoEsf } from "@/components/shared/LogoEsf";
 import { useOnline } from "@/hooks/use-online";
@@ -17,17 +16,6 @@ const itensNav = [
 
 function VistoriadorLayout() {
   const online = useOnline();
-
-  // Registra o service worker (PWA offline) apenas no cliente
-  useEffect(() => {
-    if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
-      // Escopo restrito ao app do vistoriador: sem isso, o SW assume escopo "/" por
-      // padrão (raiz de onde /sw.js é servido) e passa a controlar TODAS as rotas do
-      // site — admin, login, portal do vendedor — para qualquer dispositivo que tenha
-      // acessado /vistoriador uma única vez, causando tela branca após deploys.
-      navigator.serviceWorker.register("/sw.js", { scope: "/vistoriador" }).catch(() => null);
-    }
-  }, []);
 
   return (
     <div className="flex min-h-screen flex-col bg-background pb-28 lg:pb-0">

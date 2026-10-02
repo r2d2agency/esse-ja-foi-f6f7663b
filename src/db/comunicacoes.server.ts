@@ -372,7 +372,7 @@ export async function updateWhatsappConfig(config: any) {
       webhook_verify_token = COALESCE(${config.webhook_verify_token ?? null}, webhook_verify_token),
       status = COALESCE(${config.status ?? null}, status),
       atualizado_em = now()
-    WHERE id = (SELECT id FROM whatsapp_config LIMIT 1)
+    WHERE id = (SELECT id FROM whatsapp_config ORDER BY atualizado_em, id LIMIT 1)
   `);
   return { ok: true };
 }

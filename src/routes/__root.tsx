@@ -6,10 +6,12 @@ import {
   HeadContent,
   Outlet,
   Scripts,
+  useRouterState,
 } from "@tanstack/react-router";
 import { Toaster } from "sonner";
 
 import { ConsentimentoCookies } from "@/components/cookies/ConsentimentoCookies";
+import { InstalarApp } from "@/components/vistoriador/InstalarApp";
 import { VersaoWatcher } from "@/components/shared/VersaoWatcher";
 import { ErrorLogCapture } from "@/components/shared/ErrorLogCapture";
 import appCss from "@/styles.css?url";
@@ -98,8 +100,28 @@ function RootError({ error, reset }: { error: Error; reset: () => void }) {
   );
 }
 
+/**
+ * O app do vistoriador já exibe o convite compacto nas suas telas; nas demais
+ * (inclusive /vendedor, que não tinha nenhum), fica o popup flutuante.
+ */
+function InstalarPopup() {
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  if (pathname.startsWith("/vistoriador")) return null;
+  return <InstalarApp />;
+}
+
 function RootLayout() {
   const { queryClient } = Route.useRouteContext();
+
+  // Registra o service worker em todo o site, não só no app do vistoriador.
+  // O Chrome só oferece instalar quando um SW controla a start_url ("/"), então
+  // o registro precisa acontecer antes de o usuário navegar até /vendedor.
+  useEffect(() => {
+    if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => null);
+    }
+  }, []);
+
   return (
     <RootDocument>
       <QueryClientProvider client={queryClient}>
@@ -110,6 +132,7 @@ function RootLayout() {
         <ConsentimentoCookies />
         <VersaoWatcher />
         <ErrorLogCapture />
+        <InstalarPopup />
       </QueryClientProvider>
     </RootDocument>
   );
