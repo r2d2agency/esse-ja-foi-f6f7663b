@@ -330,15 +330,14 @@ function ComunicacoesPage() {
 
 
   const handleSaveConfig = async () => {
-    try {
-      const res = await updateConfig(editingConfig);
-      if (res.ok) {
-        toast.success('Configurações salvas!');
-        setIsConfigOpen(false);
-        queryClient.invalidateQueries({ queryKey: ['wa-config'] });
-      }
-    } catch (e) {
-      toast.error('Erro ao salvar configurações.');
+    const res: any = await updateConfig(editingConfig).catch((e: any) => ({ ok: false, error: e?.message || String(e) }));
+    if (res?.ok) {
+      toast.success('Configurações salvas!');
+      setIsConfigOpen(false);
+      setEditingConfig({});
+      queryClient.invalidateQueries({ queryKey: ['wa-config'] });
+    } else {
+      toast.error(`Erro ao salvar configurações: ${res?.error || 'erro desconhecido'}`);
     }
   };
 

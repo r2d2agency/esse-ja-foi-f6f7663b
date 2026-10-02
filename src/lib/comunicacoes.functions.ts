@@ -20,13 +20,31 @@ export const getWhatsappConfigFn = createServerFn({ method: "GET" })
 export const updateWhatsappConfigFn = createServerFn({ method: "POST" })
   .validator((data: any) => data)
   .handler(async ({ data }) => {
-    const existing = await db.getWhatsappConfig();
-    const updateData = { ...data };
-    
-    if (data.app_secret === "••••••••••••") updateData.app_secret = existing?.app_secret;
-    if (data.access_token === "••••••••••••") updateData.access_token = existing?.access_token;
-    
-    return db.updateWhatsappConfig(updateData);
+    try {
+      const existing = await db.getWhatsappConfig();
+
+      // O formulário abre com a linha inteira do banco, que traz campos de
+      // leitura (id, criado_em, ultimo_teste...) como Date e o placeholder
+      // "••••••••••••" no lugar dos segredos. Enviar tudo isso ao UPDATE
+      // quebra a query e, pior, grava a máscara por cima da senha real.
+      // Então: allowlist dos campos editáveis + preserva segredos não alterados.
+      const texto = (v: any) => (typeof v === "string" ? v.trim() : v);
+      const editable = ["waba_id", "phone_number_id", "business_id", "phone_number", "app_id", "graph_api_version", "status"];
+      const updateData: any = {};
+      for (const campo of editable) {
+        updateData[campo] = data?.[campo] === "••••••••••••" ? null : texto(data?.[campo]) || null;
+      }
+      for (const segredo of ["app_secret", "access_token", "webhook_verify_token"]) {
+        const enviado = texto(data?.[segredo]);
+        updateData[segredo] =
+          enviado && enviado !== "••••••••••••" ? enviado : (existing?.[segredo] ?? null);
+      }
+
+      return await db.updateWhatsappConfig(updateData);
+    } catch (error: any) {
+      console.error("[WhatsApp] Erro ao salvar configuração:", error);
+      return { ok: false, error: error?.message || "Erro ao salvar configuração." };
+    }
   });
 
 export const listarTemplatesFn = createServerFn({ method: "GET" })
