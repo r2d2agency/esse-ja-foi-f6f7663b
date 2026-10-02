@@ -21,6 +21,14 @@ export const updateWhatsappConfigFn = createServerFn({ method: "POST" })
   .validator((data: any) => data)
   .handler(async ({ data }) => {
     try {
+      // Sem `data`, todos os campos viram null e o COALESCE do UPDATE preserva
+      // o que já estava salvo: o salvamento passa silenciosamente. Melhor falhar.
+      if (!data || typeof data !== "object") {
+        throw new Error(
+          "Nenhum dado foi recebido pelo servidor. Recarregue a página e tente salvar de novo."
+        );
+      }
+
       const existing = await db.getWhatsappConfig();
 
       // O formulário abre com a linha inteira do banco, que traz campos de

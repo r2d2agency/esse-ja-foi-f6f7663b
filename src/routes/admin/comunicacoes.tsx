@@ -330,7 +330,11 @@ function ComunicacoesPage() {
 
 
   const handleSaveConfig = async () => {
-    const res: any = await updateConfig(editingConfig).catch((e: any) => ({ ok: false, error: e?.message || String(e) }));
+    // O useServerFn do TanStack Start só popula `data` quando o objeto { data }
+// é passado. Chamado com o argumento solto, `data` chega undefined no
+// servidor: o UPDATE roda, não erra, não grava — e a tela confirma "salvado".
+// Todas as outras server fns do arquivo já usavam o padrão { data }.
+const res: any = await updateConfig({ data: editingConfig }).catch((e: any) => ({ ok: false, error: e?.message || String(e) }));
     if (res?.ok) {
       toast.success('Configurações salvas!');
       setIsConfigOpen(false);
