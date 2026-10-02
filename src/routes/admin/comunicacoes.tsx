@@ -293,7 +293,7 @@ function ComunicacoesPage() {
   };
 
   const handleCriarTemplate = async () => {
-    toast.promise(criarTemplate(newTemplate), {
+    toast.promise(criarTemplate({ data: newTemplate }), {
       loading: 'Enviando para análise da Meta...',
       success: (res: any) => {
         if (res.id) {

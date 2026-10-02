@@ -131,7 +131,14 @@ export const getWebhookLogsFn = createServerFn({ method: "GET" })
   });
 
 export const criarTemplateMetaFn = createServerFn({ method: "POST" })
-  .validator((data: any) => data)
+  .validator((data: any) => {
+    if (!data || typeof data !== "object") {
+      throw new Error(
+        "Nenhum dado foi recebido pelo servidor. Recarregue a página e tente de novo."
+      );
+    }
+    return data;
+  })
   .handler(async ({ data }) => {
     try {
       return await metaService.criarTemplate(data);
