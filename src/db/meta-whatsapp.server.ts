@@ -8,7 +8,12 @@ export class MetaWhatsAppService {
 
   async init() {
     if (!db) return;
-    const res = await db.execute(sql`SELECT * FROM whatsapp_config LIMIT 1`);
+    // Mesmo critério do updateWhatsappConfig (menor id): se a leitura e a escrita
+    // escolherem linhas diferentes, salvar funciona mas a validação diz que o
+    // Phone Number ID não está configurado. Vide comunicacoes.server.ts.
+    const res = await db.execute(sql`
+      SELECT * FROM whatsapp_config ORDER BY id LIMIT 1
+    `);
     this.config = rowsOf(res)?.[0];
   }
 

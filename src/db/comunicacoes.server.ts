@@ -347,19 +347,64 @@ export async function getWhatsappConfig() {
   // A inicialização do servidor pode ocorrer depois da primeira chamada server-side.
   // Garanta a tabela antes da leitura para não falhar com "relation does not exist".
   await ensureComunicacoesSchema();
-  const res = await d.execute(sql`SELECT * FROM whatsapp_config LIMIT 1`);
+  await curarConfigDuplicada(d);
+  const res = await d.execute(sql`
+    SELECT * FROM whatsapp_config
+    ORDER BY atualizado_em, id LIMIT 1
+  `);
   return rowsOf(res)?.[0] || null;
+}
+
+/**
+ * A tabela é conceitualmente de linha única, mas os INSERT ... WHERE NOT EXISTS
+ * não são atômicos: duas requisições simultâneas (a tela dispara várias queries
+ * em paralelo) passam as duas pelo NOT EXISTS e criam duas linhas. Depois disso,
+ * salvar e ler caem em linhas diferentes e a configuração parece não persistir.
+ *
+ * Mantém a linha de menor id (a que o UPDATE já alvo) e absorve dela qualquer
+ * valor preenchido que exista nas duplicadas, para não perder a configuração
+ * que o usuário já havia salvo.
+ */
+async function curarConfigDuplicada(d: any) {
+  try {
+    await d.execute(sql`
+      DO $$
+      DECLARE
+        alvo uuid;
+        col text;
+      BEGIN
+        SELECT id INTO alvo FROM whatsapp_config ORDER BY id LIMIT 1;
+        IF alvo IS NULL THEN RETURN; END IF;
+
+        FOREACH col IN ARRAY ARRAY[
+          'waba_id', 'phone_number_id', 'business_id', 'phone_number', 'app_id',
+          'app_secret', 'access_token', 'graph_api_version', 'webhook_verify_token', 'status'
+        ] LOOP
+          EXECUTE format(
+            'UPDATE whatsapp_config SET %I = COALESCE(%I, (SELECT %I FROM whatsapp_config WHERE %I IS NOT NULL AND id <> $1 LIMIT 1)) WHERE id = $1',
+            col, col, col, col
+          ) USING alvo;
+        END LOOP;
+
+        DELETE FROM whatsapp_config WHERE id <> alvo;
+      END $$;
+    `);
+  } catch (e) {
+    if (process.env['NODE_ENV'] === 'development')
+      console.error("[comunicacoes.server] Falha ao deduplicar whatsapp_config:", e);
+  }
 }
 
 export async function updateWhatsappConfig(config: any) {
   const d = requireDb();
   await ensureComunicacoesSchema();
+  await curarConfigDuplicada(d);
   await d.execute(sql`
     INSERT INTO whatsapp_config (id)
     SELECT gen_random_uuid()
     WHERE NOT EXISTS (SELECT 1 FROM whatsapp_config);
   `);
-  await d.execute(sql`
+  const res = await d.execute(sql`
     UPDATE whatsapp_config SET
       waba_id = COALESCE(${config.waba_id ?? null}, waba_id),
       phone_number_id = COALESCE(${config.phone_number_id ?? null}, phone_number_id),
@@ -372,8 +417,17 @@ export async function updateWhatsappConfig(config: any) {
       webhook_verify_token = COALESCE(${config.webhook_verify_token ?? null}, webhook_verify_token),
       status = COALESCE(${config.status ?? null}, status),
       atualizado_em = now()
-    WHERE id = (SELECT id FROM whatsapp_config ORDER BY atualizado_em, id LIMIT 1)
+    WHERE id = (SELECT id FROM whatsapp_config ORDER BY id LIMIT 1)
+    RETURNING id
   `);
+
+  // Sem esta checagem, um UPDATE que não afeta nenhuma linha ainda retornava
+  // { ok: true } e a tela confirmava "salvado" sem ter gravado nada.
+  if ((rowsOf(res) as any[]).length === 0) {
+    throw new Error(
+      "Nenhuma linha de configuração foi atualizada. Recarregue a página e tente de novo."
+    );
+  }
   return { ok: true };
 }
 
