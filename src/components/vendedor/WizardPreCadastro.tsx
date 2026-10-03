@@ -19,6 +19,7 @@ import { buscarCep } from "@/lib/viacep";
 import { maskDocumento, maskTelefone, maskCep, maskData } from "@/lib/brasil";
 import {
   FOTOS_VEICULO,
+  obterFotosVeiculo,
   CONDICAO_INICIAL,
   serializarCondicao,
   type CondicaoVeiculo,
@@ -94,6 +95,15 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
   const [fotos, setFotos] = useState<Record<string, string | null>>(
     Object.fromEntries(FOTOS_VEICULO.map((f) => [f.id, null])),
   );
+  const setVeiculoTipo = (tipo: string) =>
+    setVeiculo((v) => {
+      if (v.tipoVeiculo === tipo) return v;
+      const idsValidos = new Set(obterFotosVeiculo(tipo).map((f) => f.id));
+      setFotos((atual) =>
+        Object.fromEntries(Object.entries(atual).filter(([id]) => idsValidos.has(id))),
+      );
+      return { ...v, tipoVeiculo: tipo };
+    });
   const [fotosExtras, setFotosExtras] = useState<string[]>([]);
   const [condicao, setCondicao] = useState<CondicaoVeiculo>(CONDICAO_INICIAL);
   const setCondicaoCampo = (patch: Partial<CondicaoVeiculo>) =>

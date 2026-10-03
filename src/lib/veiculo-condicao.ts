@@ -5,7 +5,12 @@
  * gravem `observacoes` num formato que qualquer um dos dois consegue reabrir.
  */
 
-export const FOTOS_VEICULO: { id: string; label: string; dica?: string }[] = [
+export type TipoVeiculo = "CARRO" | "MOTO";
+
+export type FotoVeiculo = { id: string; label: string; dica?: string };
+
+/** Catálogo de CARRO — IDs são legados, não renomear (fotos salvas referenciam). */
+export const FOTOS_VEICULO: FotoVeiculo[] = [
   { id: "frente45", label: "Frente 45°", dica: "Mostre a frente e uma lateral." },
   { id: "traseira45", label: "Traseira 45°", dica: "Mostre a traseira e uma lateral." },
   { id: "lateralEsq", label: "Lateral esquerda", dica: "Carro inteiro no enquadramento." },
@@ -17,6 +22,32 @@ export const FOTOS_VEICULO: { id: string; label: string; dica?: string }[] = [
   { id: "motor", label: "Motor", dica: "Capô aberto." },
   { id: "portaMalas", label: "Porta-malas" },
 ];
+
+/** Slots de foto da moto (IDs novos, específicos). */
+export const FOTOS_MOTO: FotoVeiculo[] = [
+  { id: "frente45", label: "Frente 45°", dica: "Mostre a frente e uma lateral." },
+  { id: "traseira45", label: "Traseira 45°", dica: "Mostre a traseira e uma lateral." },
+  { id: "lateralEsq", label: "Lateral esquerda", dica: "Moto inteira no enquadramento." },
+  { id: "lateralDir", label: "Lateral direita", dica: "Moto inteira no enquadramento." },
+  { id: "painel", label: "Painel", dica: "Com o painel ligado." },
+  { id: "km", label: "Quilometragem", dica: "Odômetro legível." },
+  { id: "motor", label: "Motor", dica: "Carenagem/tampa do motor visível." },
+  { id: "pneusRodas", label: "Pneus e rodas", dica: "Banda de rodagem visível." },
+  { id: "relacaoTransmissao", label: "Relação / transmissão", dica: "Corrente, coroa e pinhão." },
+  { id: "guidaoComandos", label: "Guidão e comandos", dica: "Manetes, espelhos e painel." },
+];
+
+/**
+ * Catálogo por tipo do veículo. Tipo ausente/inválido vira CARRO — preserva
+ * veículos cadastrados antes de existir diferenciação carro/moto.
+ */
+export function normalizarTipoVeiculo(tipo?: string | null): TipoVeiculo {
+  return tipo === "MOTO" ? "MOTO" : "CARRO";
+}
+
+export function obterFotosVeiculo(tipo?: string | null): FotoVeiculo[] {
+  return normalizarTipoVeiculo(tipo) === "MOTO" ? FOTOS_MOTO : FOTOS_VEICULO;
+}
 
 export type CondicaoVeiculo = {
   funcionamento: string;

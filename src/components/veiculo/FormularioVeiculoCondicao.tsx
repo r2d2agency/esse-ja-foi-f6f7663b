@@ -13,7 +13,7 @@ import { OpcaoBotoes } from "@/components/veiculo/OpcaoBotoes";
 import { OpcaoMultipla } from "@/components/veiculo/OpcaoMultipla";
 import { maskKm, maskMoeda, maskPlaca } from "@/lib/brasil";
 import { COMBUSTIVEIS, CAMBIOS, ACESSORIOS_VEICULO } from "@/lib/constants-veiculos";
-import { FOTOS_VEICULO, type CondicaoVeiculo } from "@/lib/veiculo-condicao";
+import { obterFotosVeiculo, normalizarTipoVeiculo, type CondicaoVeiculo } from "@/lib/veiculo-condicao";
 import { obterConfiguracoesPublicasFn } from "@/lib/config-publica.functions";
 import { consultarAgregadosPorPlacaFn } from "@/lib/consulta-veicular.functions";
 import { cn } from "@/lib/utils";
@@ -136,9 +136,14 @@ export function FormularioVeiculoCondicao({
           <Label className="text-xs font-bold text-slate-600">Tipo de veículo</Label>
           <div className="flex gap-2">
             {[['CARRO', 'Carro'], ['MOTO', 'Moto']].map(([valor, label]) => (
-              <Button key={valor} type="button" variant={veiculo.tipoVeiculo === valor ? "default" : "outline"}
-                className={cn("h-11 flex-1", veiculo.tipoVeiculo === valor && "bg-teal-600 hover:bg-teal-700")}
-                onClick={() => setVeiculo({ ...veiculo, tipoVeiculo: valor })}>{label}</Button>
+              <Button key={valor} type="button" variant={normalizarTipoVeiculo(veiculo.tipoVeiculo) === valor ? "default" : "outline"}
+                className={cn("h-11 flex-1", normalizarTipoVeiculo(veiculo.tipoVeiculo) === valor && "bg-teal-600 hover:bg-teal-700")}
+                onClick={() => {
+                  if (normalizarTipoVeiculo(veiculo.tipoVeiculo) === valor) return;
+                  const idsValidos = new Set(obterFotosVeiculo(valor).map((f) => f.id));
+                  setFotos((atual) => Object.fromEntries(Object.entries(atual).filter(([id]) => idsValidos.has(id))));
+                  setVeiculo({ ...veiculo, tipoVeiculo: valor });
+                }}>{label}</Button>
             ))}
           </div>
         </div>
@@ -171,16 +176,18 @@ export function FormularioVeiculoCondicao({
         <Campo label="Ano modelo" valor={veiculo.anoModelo} onChange={(v) => setVeiculo({ ...veiculo, anoModelo: v })} />
         <Campo label="Cor" valor={veiculo.cor} onChange={(v) => setVeiculo({ ...veiculo, cor: v })} />
         <Campo label="KM" valor={veiculo.km} onChange={(v) => setVeiculo({ ...veiculo, km: maskKm(v) })} />
-        <div className="space-y-1">
-          <Label className="text-xs font-bold text-slate-600">Câmbio</Label>
-          <ComboboxSearch
-            options={CAMBIOS}
-            value={veiculo.cambio}
-            onChange={(v) => setVeiculo({ ...veiculo, cambio: v })}
-            placeholder="Selecione"
-            className="h-11"
-          />
-        </div>
+        {normalizarTipoVeiculo(veiculo.tipoVeiculo) === "CARRO" && (
+          <div className="space-y-1">
+            <Label className="text-xs font-bold text-slate-600">Câmbio</Label>
+            <ComboboxSearch
+              options={CAMBIOS}
+              value={veiculo.cambio}
+              onChange={(v) => setVeiculo({ ...veiculo, cambio: v })}
+              placeholder="Selecione"
+              className="h-11"
+            />
+          </div>
+        )}
         <div className="space-y-1">
           <Label className="text-xs font-bold text-slate-600">Combustível</Label>
           <ComboboxSearch
@@ -239,13 +246,15 @@ export function FormularioVeiculoCondicao({
           />
         )}
 
-        <OpcaoBotoes
-          label="Existe algum problema conhecido no câmbio?"
-          opcoes={["Não", "Sim", "Não sei"]}
-          value={condicao.cambioProblema}
-          onChange={(v) => setCondicaoCampo({ cambioProblema: v })}
-          colunas={3}
-        />
+        {normalizarTipoVeiculo(veiculo.tipoVeiculo) === "CARRO" && (
+          <OpcaoBotoes
+            label="Existe algum problema conhecido no câmbio?"
+            opcoes={["Não", "Sim", "Não sei"]}
+            value={condicao.cambioProblema}
+            onChange={(v) => setCondicaoCampo({ cambioProblema: v })}
+            colunas={3}
+          />
+        )}
 
         <OpcaoBotoes
           label="Como está a lataria?"
@@ -263,13 +272,15 @@ export function FormularioVeiculoCondicao({
           />
         )}
 
-        <OpcaoBotoes
-          label="Como está o interior do veículo?"
-          opcoes={["Excelente", "Bom", "Sinais de uso", "Possui avarias"]}
-          value={condicao.interior}
-          onChange={(v) => setCondicaoCampo({ interior: v })}
-          colunas={2}
-        />
+        {normalizarTipoVeiculo(veiculo.tipoVeiculo) === "CARRO" && (
+          <OpcaoBotoes
+            label="Como está o interior do veículo?"
+            opcoes={["Excelente", "Bom", "Sinais de uso", "Possui avarias"]}
+            value={condicao.interior}
+            onChange={(v) => setCondicaoCampo({ interior: v })}
+            colunas={2}
+          />
+        )}
         <OpcaoBotoes
           label="Como estão os pneus?"
           opcoes={["Bons", "Meia vida", "Substituição", "Não sei"]}
@@ -300,7 +311,9 @@ export function FormularioVeiculoCondicao({
         <div className="space-y-5 border-t border-slate-100 pt-6">
           <OpcaoBotoes label="Chave reserva?" opcoes={["Sim", "Não"]} value={condicao.chaveReserva} onChange={(v) => setCondicaoCampo({ chaveReserva: v })} />
           <OpcaoBotoes label="Manual?" opcoes={["Sim", "Não"]} value={condicao.manual} onChange={(v) => setCondicaoCampo({ manual: v })} />
-          <OpcaoBotoes label="Estepe?" opcoes={["Sim", "Não"]} value={condicao.estepe} onChange={(v) => setCondicaoCampo({ estepe: v })} />
+          {normalizarTipoVeiculo(veiculo.tipoVeiculo) === "CARRO" && (
+            <OpcaoBotoes label="Estepe?" opcoes={["Sim", "Não"]} value={condicao.estepe} onChange={(v) => setCondicaoCampo({ estepe: v })} />
+          )}
           <OpcaoMultipla
             label="Acessórios do veículo"
             opcoes={opcionais}
@@ -315,7 +328,7 @@ export function FormularioVeiculoCondicao({
         <p className="text-sm font-bold text-slate-900">Documentos e fotos do veículo</p>
         <FileUpload label="CRLV-e do veículo" value={crlv} onChange={setCrlv} />
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {FOTOS_VEICULO.map((f) => {
+          {obterFotosVeiculo(veiculo.tipoVeiculo).map((f) => {
             const url = fotos[f.id] || null;
             return (
               <FotoSlot
@@ -323,7 +336,7 @@ export function FormularioVeiculoCondicao({
                 label={f.label}
                 dica={f.dica}
                 value={url}
-                exemploUrl={exemplosFotos[f.id]}
+                exemploUrl={exemplosFotos[`${normalizarTipoVeiculo(veiculo.tipoVeiculo)}.${f.id}`] ?? exemplosFotos[f.id]}
                 onChange={(novaUrl) => {
                   setFotos((atual) => ({ ...atual, [f.id]: novaUrl }));
                   if (!novaUrl && url) {

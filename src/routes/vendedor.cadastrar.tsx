@@ -31,6 +31,7 @@ import { getSessionToken } from '@/lib/session';
 import { maskPlaca, formatCurrency } from '@/lib/brasil';
 import { montarEtapas, percentual } from '@/components/vendedor/ProgressoCadastro';
 import { TODAS_MARCAS, MARCAS_POPULARES, MODELOS_POR_MARCA, CORES, COMBUSTIVEIS, CAMBIOS, PORTAS, UFS, RELACOES_PROPRIETARIO, BANCOS_COMUNS, ACESSORIOS_VEICULO } from '@/lib/constants-veiculos';
+import { obterFotosVeiculo, normalizarTipoVeiculo } from '@/lib/veiculo-condicao';
 
 
 
@@ -44,18 +45,7 @@ export const Route = createFileRoute('/vendedor/cadastrar')({
 const ETAPAS = ['Placa', 'Dados', 'Documentação', 'Condição', 'Fotos', 'Valor', 'Revisão'];
 const DRAFT_KEY = 'ejf_veiculo_rascunho';
 
-const FOTOS = [
-  { id: 'frente45', label: 'Frente 45°', dica: 'Mostre a frente e uma lateral.' },
-  { id: 'traseira45', label: 'Traseira 45°', dica: 'Mostre a traseira e uma lateral.' },
-  { id: 'lateralEsq', label: 'Lateral esquerda', dica: 'Carro inteiro no enquadramento.' },
-  { id: 'lateralDir', label: 'Lateral direita', dica: 'Carro inteiro no enquadramento.' },
-  { id: 'painel', label: 'Painel', dica: 'Com o painel ligado.' },
-  { id: 'km', label: 'Quilometragem', dica: 'Odômetro legível.' },
-  { id: 'bancosDianteiros', label: 'Bancos dianteiros' },
-  { id: 'bancosTraseiros', label: 'Bancos traseiros' },
-  { id: 'motor', label: 'Motor', dica: 'Capô aberto.' },
-  { id: 'portaMalas', label: 'Porta-malas' },
-];
+const FOTOS = obterFotosVeiculo('CARRO');
 
 type Estado = {
   tipoVeiculo: string;
@@ -111,7 +101,7 @@ function serializarObservacoes(form: Estado) {
   });
 }
 
-function normalizarFotosSalvas(fotos: unknown) {
+function normalizarFotosSalvas(fotos: unknown, tipo?: string) {
   let lista: string[] = [];
 
   if (typeof fotos === 'string') {
@@ -126,7 +116,7 @@ function normalizarFotosSalvas(fotos: unknown) {
   }
 
   return lista.reduce<Record<string, string>>((acc, foto, index) => {
-    const config = FOTOS[index];
+    const config = obterFotosVeiculo(tipo)[index];
     if (config) acc[config.id] = foto;
     return acc;
   }, {});
@@ -301,11 +291,13 @@ function CadastrarVeiculo() {
     if (veiculo) {
       try {
         const obs = desserializarObservacoes(veiculo.observacoes);
-        const fotosMap = normalizarFotosSalvas(veiculo.fotos);
+        const tipoVeiculo = normalizarTipoVeiculo(veiculo.tipo_veiculo || obs.tipoVeiculo);
+        const fotosMap = normalizarFotosSalvas(veiculo.fotos, tipoVeiculo);
 
         setForm({
           ...INICIAL,
           ...obs,
+          tipoVeiculo,
           placa: maskPlaca(veiculo.placa || obs.placa || ''),
           marca: veiculo.marca || obs.marca || '',
           modelo: veiculo.modelo || obs.modelo || '',
@@ -507,7 +499,8 @@ function CadastrarVeiculo() {
     }
   };
 
-  const fotosEnviadas = FOTOS.filter((f) => form.fotos[f.id]).length;
+  const FOTOS_TIPO = obterFotosVeiculo(form.tipoVeiculo);
+  const fotosEnviadas = FOTOS_TIPO.filter((f) => form.fotos[f.id]).length;
 
   if (enviado) {
     return (
@@ -563,7 +556,15 @@ function CadastrarVeiculo() {
               {[['CARRO', 'Carro'], ['MOTO', 'Moto']].map(([valor, label]) => (
                 <Button key={valor} type="button" variant={form.tipoVeiculo === valor ? 'default' : 'outline'}
                   className={form.tipoVeiculo === valor ? 'bg-teal-700 hover:bg-teal-800' : ''}
-                  onClick={() => set({ tipoVeiculo: valor })}>{label}</Button>
+                  onClick={() => {
+                    if (form.tipoVeiculo === valor) return;
+                    const novoTipo = valor as string;
+                    const idsValidos = new Set(obterFotosVeiculo(novoTipo).map((f) => f.id));
+                    set({
+                      tipoVeiculo: novoTipo,
+                      fotos: Object.fromEntries(Object.entries(form.fotos).filter(([id]) => idsValidos.has(id))),
+                    });
+                  }}>{label}</Button>
               ))}
             </div>
             <div className="space-y-4">
@@ -659,11 +660,15 @@ function CadastrarVeiculo() {
                 <Label className="text-sm font-bold text-slate-900">Combustível</Label>
                 <ComboboxSearch options={COMBUSTIVEIS} value={form.combustivel} onChange={(v) => set({ combustivel: v })} placeholder="Selecione" />
               </div>
+              {form.tipoVeiculo === 'CARRO' && (
               <div className="space-y-2">
                 <Label className="text-sm font-bold text-slate-900">Câmbio</Label>
                 <ComboboxSearch options={CAMBIOS} value={form.cambio} onChange={(v) => set({ cambio: v })} placeholder="Selecione" />
               </div>
+              )}
+              {form.tipoVeiculo === 'CARRO' && (
               <OpcaoBotoes label="Portas" opcoes={PORTAS} value={form.portas} onChange={(v) => set({ portas: v })} />
+              )}
               <div className="flex items-center gap-3 md:col-span-2">
                 <Checkbox
                   id="blindado"
@@ -788,7 +793,9 @@ function CadastrarVeiculo() {
               <Textarea placeholder="Qual problema?" value={form.motorObs} onChange={(e) => set({ motorObs: e.target.value })} className="rounded-xl" />
             )}
 
+            {form.tipoVeiculo === 'CARRO' && (
             <OpcaoBotoes label="Existe algum problema conhecido no câmbio?" opcoes={['Não', 'Sim', 'Não sei']} value={form.cambioProblema} onChange={(v) => set({ cambioProblema: v })} colunas={3} />
+            )}
 
 
             <OpcaoBotoes label="Como está a lataria?" opcoes={['Excelente', 'Boa', 'Pequenos detalhes', 'Possui avarias']} value={form.lataria} onChange={(v) => set({ lataria: v })} colunas={2} />
@@ -796,7 +803,9 @@ function CadastrarVeiculo() {
               <Textarea placeholder="Conte brevemente" value={form.latariaObs} onChange={(e) => set({ latariaObs: e.target.value })} className="rounded-xl" />
             )}
 
+            {form.tipoVeiculo === 'CARRO' && (
             <OpcaoBotoes label="Como está o interior do veículo?" opcoes={['Excelente', 'Bom', 'Sinais de uso', 'Possui avarias']} value={form.interior} onChange={(v) => set({ interior: v })} colunas={2} />
+            )}
             <OpcaoBotoes label="Como estão os pneus?" opcoes={['Bons', 'Meia vida', 'Substituição', 'Não sei']} value={form.pneus} onChange={(v) => set({ pneus: v })} colunas={2} />
 
 
@@ -815,7 +824,9 @@ function CadastrarVeiculo() {
             <div className="space-y-5 border-t border-slate-100 pt-6">
               <OpcaoBotoes label="Chave reserva?" opcoes={['Sim', 'Não']} value={form.chaveReserva} onChange={(v) => set({ chaveReserva: v })} />
               <OpcaoBotoes label="Manual?" opcoes={['Sim', 'Não']} value={form.manual} onChange={(v) => set({ manual: v })} />
+              {form.tipoVeiculo === 'CARRO' && (
               <OpcaoBotoes label="Estepe?" opcoes={['Sim', 'Não']} value={form.estepe} onChange={(v) => set({ estepe: v })} />
+              )}
               <OpcaoMultipla
                 label="Acessórios do veículo"
                 opcoes={opcionaisVeiculo}
@@ -842,13 +853,13 @@ function CadastrarVeiculo() {
               </p>
             </div>
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {FOTOS.map((f) => (
+              {FOTOS_TIPO.map((f) => (
                 <FotoSlot
                   key={f.id}
                   label={f.label}
                   dica={f.dica}
                   value={form.fotos[f.id] || null}
-                  exemploUrl={exemplosFotos[f.id]}
+                  exemploUrl={exemplosFotos[`${normalizarTipoVeiculo(form.tipoVeiculo)}.${f.id}`] ?? exemplosFotos[f.id]}
                   onChange={(url) => setForm((prev) => ({ ...prev, fotos: { ...prev.fotos, [f.id]: url } }))}
                 />
               ))}
@@ -926,7 +937,7 @@ function CadastrarVeiculo() {
               <Bloco titulo="Fotos" onEditar={() => setStep(5)}>
                 <p className="text-sm text-slate-600">{fotosEnviadas} fotos enviadas</p>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {FOTOS.filter((f) => form.fotos[f.id]).slice(0, 6).map((f) => (
+                  {FOTOS_TIPO.filter((f) => form.fotos[f.id]).slice(0, 6).map((f) => (
                     <img key={f.id} src={form.fotos[f.id] as string} alt={f.label} className="h-12 w-16 rounded-lg object-cover" />
                   ))}
                 </div>

@@ -1,12 +1,14 @@
 import { sql } from "drizzle-orm";
 
+import { obterFotosVeiculo } from "@/lib/veiculo-condicao";
+
 /**
  * Define o que é obrigatório para os dados cadastrais e fotos de um veículo.
  */
 export function calcularProgressoVeiculo(v: any) {
   const pendencias: string[] = [];
 
-  // 1. Campos obrigatórios de dados cadastrais
+  // 1. Campos obrigatórios de dados cadastrais (câmbio só se aplica a carro)
   const camposObrigatorios = [
     { key: "renavam", label: "Renavam" },
     { key: "ano_fabricacao", label: "Ano de Fabricação" },
@@ -14,7 +16,7 @@ export function calcularProgressoVeiculo(v: any) {
     { key: "km", label: "Quilometragem" },
     { key: "cor", label: "Cor" },
     { key: "combustivel", label: "Combustível" },
-    { key: "cambio", label: "Câmbio" },
+    ...(v.tipo_veiculo === "MOTO" ? [] : [{ key: "cambio", label: "Câmbio" }]),
   ];
 
   camposObrigatorios.forEach((campo) => {
@@ -23,9 +25,15 @@ export function calcularProgressoVeiculo(v: any) {
     }
   });
 
-  // 2. Fotos obrigatórias (exemplo: mínimo 4 fotos)
-  const fotos = typeof v.fotos === "string" ? JSON.parse(v.fotos) : v.fotos || [];
-  const minFotos = 4;
+  // 2. Fotos obrigatórias (mínimo pela metade do catálogo do tipo do veículo)
+  let fotos: any[] = [];
+  try {
+    fotos = typeof v.fotos === "string" ? JSON.parse(v.fotos) : v.fotos || [];
+    if (!Array.isArray(fotos)) fotos = [];
+  } catch {
+    fotos = [];
+  }
+  const minFotos = Math.max(4, Math.ceil(obterFotosVeiculo(v.tipo_veiculo).length / 2));
   const fotosFaltantes = Math.max(0, minFotos - fotos.length);
 
   return {

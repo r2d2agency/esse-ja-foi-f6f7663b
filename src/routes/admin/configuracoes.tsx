@@ -41,7 +41,7 @@ import {
   testarDesvalorizacaoFipeFn,
 } from "@/lib/consulta-veicular.functions";
 import { getTermoVigenteFn, salvarTermoFn } from "@/lib/termos.functions";
-import { FOTOS_VEICULO } from "@/lib/veiculo-condicao";
+import { obterFotosVeiculo } from "@/lib/veiculo-condicao";
 import { useConfirmacaoAcaoCritica } from "@/components/admin/ConfirmacaoAcaoCritica";
 import {
   listarConfiguracoesFn,
@@ -1036,6 +1036,7 @@ function ExemplosFotosSection({
   setConfig: (chave: string, valor: string) => void;
   salvar: (chave: string, valor: string) => Promise<void>;
 }) {
+  const [tipoSelecionado, setTipoSelecionado] = useState<"CARRO" | "MOTO">("CARRO");
   const [enviandoId, setEnviandoId] = useState<string | null>(null);
 
   let exemplos: Record<string, string> = {};
@@ -1060,7 +1061,7 @@ function ExemplosFotosSection({
       const res = await fetch("/api/public/upload", { method: "POST", body: fd });
       const json = await res.json().catch(() => null);
       if (!res.ok || !json?.url) throw new Error(json?.error || "Falha no upload da imagem.");
-      await persistir({ ...exemplos, [fotoId]: json.url });
+      await persistir({ ...exemplos, [`${tipoSelecionado}.${fotoId}`]: json.url });
       toast.success("Foto-modelo salva.");
     } catch (e: any) {
       toast.error(e?.message || "Erro ao enviar a foto-modelo.");
@@ -1070,9 +1071,12 @@ function ExemplosFotosSection({
   }
 
   async function removerExemplo(fotoId: string) {
-    const { [fotoId]: _removido, ...resto } = exemplos;
+    const chave = `${tipoSelecionado}.${fotoId}`;
+    const { [chave]: _removido, ...resto } = exemplos;
     await persistir(resto);
   }
+
+  const fotosTipo = obterFotosVeiculo(tipoSelecionado);
 
   return (
     <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -1083,12 +1087,26 @@ function ExemplosFotosSection({
       <p className="text-sm text-slate-500">
         Envie um exemplo de cada ângulo. Ele aparece como fundo (esmaecido, com "Modelo") na
         caixinha correspondente, em qualquer tela de cadastro de veículo, para quem só lê o nome do
-        ângulo não errar a foto.
+        ângulo não errar a foto. Configure separadamente para carro e moto.
       </p>
 
+      <div className="flex gap-2">
+        {[["CARRO", "Carro"], ["MOTO", "Moto"]].map(([valor, label]) => (
+          <Button
+            key={valor}
+            type="button"
+            variant={tipoSelecionado === valor ? "default" : "outline"}
+            className={tipoSelecionado === valor ? "bg-teal-600 hover:bg-teal-700" : ""}
+            onClick={() => setTipoSelecionado(valor as "CARRO" | "MOTO")}
+          >
+            {label}
+          </Button>
+        ))}
+      </div>
+
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-5">
-        {FOTOS_VEICULO.map((foto) => {
-          const url = exemplos[foto.id];
+        {fotosTipo.map((foto) => {
+          const url = exemplos[`${tipoSelecionado}.${foto.id}`];
           return (
             <div key={foto.id} className="space-y-1.5">
               <label className="relative flex aspect-[4/3] w-full cursor-pointer flex-col items-center justify-center gap-1.5 overflow-hidden rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 hover:border-teal-300">
