@@ -1,21 +1,21 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { sql } from "drizzle-orm";
 import * as db from "../db/comunicacoes.server";
 import { metaService } from "../db/meta-whatsapp.server";
 
-export const getWhatsappConfigFn = createServerFn({ method: "GET" })
-  .handler(async () => {
-    const config = await db.getWhatsappConfig();
-    if (config) {
-      return {
-        ...config,
-        app_secret: config.app_secret ? "••••••••••••" : null,
-        access_token: config.access_token ? "••••••••••••" : null,
-        webhook_verify_token: config.webhook_verify_token ? "••••••••••••" : null,
-      };
-    }
-    return config;
-  });
+export const getWhatsappConfigFn = createServerFn({ method: "GET" }).handler(async () => {
+  const config = await db.getWhatsappConfig();
+  if (config) {
+    return {
+      ...config,
+      app_secret: config.app_secret ? "••••••••••••" : null,
+      access_token: config.access_token ? "••••••••••••" : null,
+      webhook_verify_token: config.webhook_verify_token ? "••••••••••••" : null,
+    };
+  }
+  return config;
+});
 
 export const updateWhatsappConfigFn = createServerFn({ method: "POST" })
   .validator((data: any) => data)
@@ -25,7 +25,7 @@ export const updateWhatsappConfigFn = createServerFn({ method: "POST" })
       // o que já estava salvo: o salvamento passa silenciosamente. Melhor falhar.
       if (!data || typeof data !== "object") {
         throw new Error(
-          "Nenhum dado foi recebido pelo servidor. Recarregue a página e tente salvar de novo."
+          "Nenhum dado foi recebido pelo servidor. Recarregue a página e tente salvar de novo.",
         );
       }
 
@@ -40,7 +40,7 @@ export const updateWhatsappConfigFn = createServerFn({ method: "POST" })
           throw new Error(
             `O campo ${
               campo === "waba_id" ? "WABA ID" : "Phone Number ID"
-            } deve conter apenas números. Você colou um trecho da tela da Meta — copie somente o número.`
+            } deve conter apenas números. Você colou um trecho da tela da Meta — copie somente o número.`,
           );
         }
       }
@@ -52,7 +52,15 @@ export const updateWhatsappConfigFn = createServerFn({ method: "POST" })
       // "••••••••••••" no lugar dos segredos. Enviar tudo isso ao UPDATE
       // quebra a query e, pior, grava a máscara por cima da senha real.
       // Então: allowlist dos campos editáveis + preserva segredos não alterados.
-      const editable = ["waba_id", "phone_number_id", "business_id", "phone_number", "app_id", "graph_api_version", "status"];
+      const editable = [
+        "waba_id",
+        "phone_number_id",
+        "business_id",
+        "phone_number",
+        "app_id",
+        "graph_api_version",
+        "status",
+      ];
       const updateData: any = {};
       for (const campo of editable) {
         updateData[campo] = data?.[campo] === "••••••••••••" ? null : texto(data?.[campo]) || null;
@@ -70,86 +78,233 @@ export const updateWhatsappConfigFn = createServerFn({ method: "POST" })
     }
   });
 
-export const listarTemplatesFn = createServerFn({ method: "GET" })
-  .handler(async () => {
-    return db.listarTemplates();
+export const listarTemplatesFn = createServerFn({ method: "GET" }).handler(async () => {
+  return db.listarTemplates();
+});
+
+export const listarSegmentosFn = createServerFn({ method: "GET" }).handler(async () => {
+  return db.listarSegmentos();
+});
+
+export const listarContatosWhatsappFn = createServerFn({ method: "GET" })
+  .validator((data: any) =>
+    z
+      .object({
+        busca: z.string().optional(),
+        apenasElegiveis: z.boolean().optional(),
+        origem: z.enum(["COMPRADORES", "IMPORTADOS", "AMBOS"]).optional(),
+      })
+      .parse(data ?? {}),
+  )
+  .handler(async ({ data }) => {
+    const { listarContatos } = await import("@/db/publico.server");
+    return listarContatos({
+      busca: data.busca ?? null,
+      apenasElegiveis: data.apenasElegiveis ?? false,
+      origem: data.origem ?? null,
+    });
   });
 
-export const listarSegmentosFn = createServerFn({ method: "GET" })
-  .handler(async () => {
-    return db.listarSegmentos();
+export const listarSegmentosComTotalFn = createServerFn({ method: "GET" }).handler(async () => {
+  const { listarSegmentosComTotal } = await import("@/db/publico.server");
+  const { ensureComunicacoesSchema } = await import("@/db/comunicacoes.server");
+  await ensureComunicacoesSchema();
+  return listarSegmentosComTotal();
+});
+
+export const contarPublicoFn = createServerFn({ method: "GET" })
+  .validator((data: any) =>
+    z
+      .object({
+        origem: z.enum(["COMPRADORES", "IMPORTADOS", "AMBOS"]).optional(),
+        uf: z.string().optional(),
+        cidade: z.string().optional(),
+      })
+      .parse(data ?? {}),
+  )
+  .handler(async ({ data }) => {
+    const { contarPublico } = await import("@/db/publico.server");
+    return {
+      total: await contarPublico({
+        origem: data.origem ?? "AMBOS",
+        uf: data.uf ?? null,
+        cidade: data.cidade ?? null,
+      }),
+    };
   });
 
-export const listarCampanhasFn = createServerFn({ method: "GET" })
-  .handler(async () => {
-    return db.listarCampanhas();
-  });
-
-export const getIndicadoresComunicacoesFn = createServerFn({ method: "GET" })
-  .handler(async () => {
-    return db.getIndicadoresComunicacoes();
-  });
-
-export const testarConexaoFn = createServerFn({ method: "POST" })
-  .handler(async () => {
+export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
+  .validator((data: any) =>
+    z
+      .object({
+        nome: z.string().min(1),
+        template_id: z.string().uuid(),
+        veiculo_id: z.string().uuid().optional().nullable(),
+        segmento_id: z.string().uuid().optional().nullable(),
+        origem_publico: z.enum(["COMPRADORES", "IMPORTADOS", "AMBOS"]).default("AMBOS"),
+        janela_inicio: z.string().optional().nullable(),
+        janela_fim: z.string().optional().nullable(),
+        intervalo_minutos: z.number().int().min(1).max(1440).default(5),
+        agendado_para: z.string().optional().nullable(),
+        filtros: z.any().optional(),
+        mapeamento_variaveis: z.record(z.string()).optional(),
+        enviar_agora: z.boolean().optional(),
+      })
+      .parse(data),
+  )
+  .handler(async ({ data }) => {
     try {
-      return await metaService.testarConexao();
+      const { db: dbc } = await import("@/db/index");
+      const { ensureComunicacoesSchema } = await import("@/db/comunicacoes.server");
+      const { popularFilaCampanha } = await import("@/db/disparo-motor.server");
+      if (!dbc) throw new Error("Banco indisponível.");
+      await ensureComunicacoesSchema();
+
+      const { rows } = await dbc.execute(sql`
+        INSERT INTO whatsapp_campanhas (
+          nome, veiculo_id, template_id, segmento_id, origem_publico,
+          janela_inicio, janela_fim, intervalo_minutos, status, agendado_para, mapeamento_variaveis
+        ) VALUES (
+          ${data.nome},
+          ${data.veiculo_id ?? null},
+          ${data.template_id}::uuid,
+          ${data.segmento_id ?? null},
+          ${data.origem_publico},
+          ${data.janela_inicio || null},
+          ${data.janela_fim || null},
+          ${data.intervalo_minutos},
+          ${data.enviar_agora ? "AGUARDANDO" : "RASCUNHO"},
+          ${data.agendado_para || null},
+          ${JSON.stringify(data.mapeamento_variaveis ?? {})}::jsonb
+        ) RETURNING id
+      `);
+      const campanhaId = (rows as any[])[0].id;
+
+      const fila = await popularFilaCampanha(campanhaId, {
+        origem: data.origem_publico,
+        uf: data.filtros?.uf ?? null,
+        cidade: data.filtros?.cidade ?? null,
+        tipo: data.filtros?.tipo ?? null,
+        statusCompliance: data.filtros?.statusCompliance ?? null,
+        mapeamento: data.mapeamento_variaveis ?? {},
+      } as any);
+
+      return { ok: true, id: campanhaId, ...fila };
     } catch (error: any) {
-      return { ok: false, error: error.message };
+      return { ok: false, error: error?.message || "Erro ao criar campanha." };
     }
   });
 
-export const sincronizarTemplatesFn = createServerFn({ method: "POST" })
-  .handler(async () => {
+export const listarCampanhasDetalhadoFn = createServerFn({ method: "GET" }).handler(async () => {
+  const { db: dbc } = await import("@/db/index");
+  const { ensureComunicacoesSchema } = await import("@/db/comunicacoes.server");
+  if (!dbc) return [];
+  await ensureComunicacoesSchema();
+  const { rows } = await dbc.execute(sql`
+      SELECT c.*, v.marca, v.modelo, v.placa, t.nome_interno as template_nome, t.status as template_status
+      FROM whatsapp_campanhas c
+      LEFT JOIN veiculos v ON v.id = c.veiculo_id
+      LEFT JOIN whatsapp_templates t ON t.id = c.template_id
+      ORDER BY c.criado_em DESC
+    `);
+  return rows;
+});
+
+export const alterarStatusCampanhaFn = createServerFn({ method: "POST" })
+  .validator((data: any) =>
+    z
+      .object({
+        id: z.string().uuid(),
+        status: z.enum(["RASCUNHO", "AGUARDANDO", "AGENDADA", "PAUSADA", "CANCELADA"]),
+      })
+      .parse(data),
+  )
+  .handler(async ({ data }) => {
     try {
-      const count = await metaService.sincronizarTemplates();
-      return { ok: true, count };
+      const { db: dbc } = await import("@/db/index");
+      if (!dbc) throw new Error("Banco indisponível.");
+      await dbc.execute(sql`
+        UPDATE whatsapp_campanhas SET status = ${data.status}, atualizado_em = now()
+        WHERE id = ${data.id}::uuid
+      `);
+      return { ok: true };
     } catch (error: any) {
-      return { ok: false, error: error.message };
+      return { ok: false, error: error?.message };
     }
   });
 
-export const buscarDadosAutomaticosFn = createServerFn({ method: "POST" })
-  .handler(async () => {
-    try {
-      const data = await metaService.buscarDadosAutomaticos();
-      return { ok: true, data };
-    } catch (error: any) {
-      return { ok: false, error: error.message };
+export const processarDisparoAgoraFn = createServerFn({ method: "POST" }).handler(async () => {
+  try {
+    const { processarDisparo } = await import("@/db/disparo-motor.server");
+    return { ok: true, resumo: await processarDisparo() };
+  } catch (error: any) {
+    return { ok: false, error: error?.message };
+  }
+});
+
+export const listarCampanhasFn = createServerFn({ method: "GET" }).handler(async () => {
+  return db.listarCampanhas();
+});
+
+export const getIndicadoresComunicacoesFn = createServerFn({ method: "GET" }).handler(async () => {
+  return db.getIndicadoresComunicacoes();
+});
+
+export const testarConexaoFn = createServerFn({ method: "POST" }).handler(async () => {
+  try {
+    return await metaService.testarConexao();
+  } catch (error: any) {
+    return { ok: false, error: error.message };
+  }
+});
+
+export const sincronizarTemplatesFn = createServerFn({ method: "POST" }).handler(async () => {
+  try {
+    const count = await metaService.sincronizarTemplates();
+    return { ok: true, count };
+  } catch (error: any) {
+    return { ok: false, error: error.message };
+  }
+});
+
+export const buscarDadosAutomaticosFn = createServerFn({ method: "POST" }).handler(async () => {
+  try {
+    const data = await metaService.buscarDadosAutomaticos();
+    return { ok: true, data };
+  } catch (error: any) {
+    return { ok: false, error: error.message };
+  }
+});
+
+export const gerarNovoVerifyTokenFn = createServerFn({ method: "POST" }).handler(async () => {
+  try {
+    const newToken = `${crypto.randomUUID().replaceAll("-", "")}${crypto.randomUUID().replaceAll("-", "")}`;
+    const existing = await db.getWhatsappConfig();
+    if (!existing) {
+      return { ok: false, error: "Configuração do WhatsApp não encontrada." };
     }
-  });
 
-export const gerarNovoVerifyTokenFn = createServerFn({ method: "POST" })
-  .handler(async () => {
-    try {
-      const newToken = `${crypto.randomUUID().replaceAll("-", "")}${crypto.randomUUID().replaceAll("-", "")}`;
-      const existing = await db.getWhatsappConfig();
-      if (!existing) {
-        return { ok: false, error: "Configuração do WhatsApp não encontrada." };
-      }
+    await db.updateWhatsappConfig({
+      ...existing,
+      webhook_verify_token: newToken,
+    });
+    return { ok: true, token: newToken };
+  } catch (error: any) {
+    console.error("[WhatsApp] Erro ao gerar Verify Token:", error);
+    return { ok: false, error: error?.message || "Erro ao salvar o Verify Token." };
+  }
+});
 
-      await db.updateWhatsappConfig({
-        ...existing,
-        webhook_verify_token: newToken,
-      });
-      return { ok: true, token: newToken };
-    } catch (error: any) {
-      console.error("[WhatsApp] Erro ao gerar Verify Token:", error);
-      return { ok: false, error: error?.message || "Erro ao salvar o Verify Token." };
-    }
-  });
-
-export const getWebhookLogsFn = createServerFn({ method: "GET" })
-  .handler(async () => {
-    const logs = await db.getWebhookLogs();
-    return logs as any[];
-  });
+export const getWebhookLogsFn = createServerFn({ method: "GET" }).handler(async () => {
+  const logs = await db.getWebhookLogs();
+  return logs as any[];
+});
 
 export const criarTemplateMetaFn = createServerFn({ method: "POST" })
   .validator((data: any) => {
     if (!data || typeof data !== "object") {
       throw new Error(
-        "Nenhum dado foi recebido pelo servidor. Recarregue a página e tente de novo."
+        "Nenhum dado foi recebido pelo servidor. Recarregue a página e tente de novo.",
       );
     }
 
@@ -159,7 +314,7 @@ export const criarTemplateMetaFn = createServerFn({ method: "POST" })
     if (!nome) throw new Error("Informe o nome do template.");
     if (!/^[a-z0-9_]+$/.test(nome)) {
       throw new Error(
-        "O nome deve conter apenas letras minúsculas, números e underscore (ex: boas_vindas_veiculo)."
+        "O nome deve conter apenas letras minúsculas, números e underscore (ex: boas_vindas_veiculo).",
       );
     }
 
@@ -180,7 +335,7 @@ export const criarTemplateMetaFn = createServerFn({ method: "POST" })
     const esperados = unicos.map((_, i) => i + 1);
     if (unicos.some((n, i) => n !== esperados[i])) {
       throw new Error(
-        `As variáveis do corpo precisam ser numeradas sem pular. Encontrado: ${varios.join(", ")} — use {{1}}, {{2}}... em sequência.`
+        `As variáveis do corpo precisam ser numeradas sem pular. Encontrado: ${varios.join(", ")} — use {{1}}, {{2}}... em sequência.`,
       );
     }
 
@@ -189,9 +344,7 @@ export const criarTemplateMetaFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     try {
       // Nome duplicado é rejeitado pela Meta; checar antes evita o erro cru.
-      const jaExiste = (await db.listarTemplates()).find(
-        (t: any) => t.meta_name === data.name
-      );
+      const jaExiste = (await db.listarTemplates()).find((t: any) => t.meta_name === data.name);
       if (jaExiste) {
         return {
           ok: false,
@@ -236,7 +389,7 @@ export const criarCampanhaFn = createServerFn({ method: "POST" })
   .validator((data: any) => data)
   .handler(async ({ data, context }) => {
     // Pegar usuário da auth se disponível, ou mockar admin
-    const userId = (context as any).userId || '00000000-0000-0000-0000-000000000000';
+    const userId = (context as any).userId || "00000000-0000-0000-0000-000000000000";
     return db.criarCampanha(data, userId);
   });
 
@@ -253,11 +406,15 @@ export const processarEnvioCampanhaFn = createServerFn({ method: "POST" })
   });
 
 export const enviarTesteFn = createServerFn({ method: "POST" })
-  .validator((data: any) => z.object({
-    telefone: z.string(),
-    template_id: z.string().uuid(),
-    variaveis: z.any()
-  }).parse(data))
+  .validator((data: any) =>
+    z
+      .object({
+        telefone: z.string(),
+        template_id: z.string().uuid(),
+        variaveis: z.any(),
+      })
+      .parse(data),
+  )
   .handler(async ({ data }) => {
     try {
       const template = (await db.listarTemplates()).find((t: any) => t.id === data.template_id);
@@ -265,11 +422,13 @@ export const enviarTesteFn = createServerFn({ method: "POST" })
 
       if (template.status !== "APPROVED") {
         const rotulo =
-          template.status === "PENDING" ? "ainda está em análise" :
-          template.status === "REJECTED" ? "foi rejeitado" :
-          template.status || "não está aprovado";
+          template.status === "PENDING"
+            ? "ainda está em análise"
+            : template.status === "REJECTED"
+              ? "foi rejeitado"
+              : template.status || "não está aprovado";
         throw new Error(
-          `O template "${template.nome_interno}" ${rotulo}. A Meta só aceita envio de template aprovado.`
+          `O template "${template.nome_interno}" ${rotulo}. A Meta só aceita envio de template aprovado.`,
         );
       }
 
@@ -279,20 +438,22 @@ export const enviarTesteFn = createServerFn({ method: "POST" })
       // impedia o botão de teste existir: nunca ia funcionar.
       const valores = Array.isArray(data.variaveis) ? data.variaveis : [];
       const componentes = valores.length
-        ? [{
-            type: "BODY",
-            parameters: valores.map((v: any) => ({
-              type: "text",
-              text: String(v ?? ""),
-            })),
-          }]
+        ? [
+            {
+              type: "BODY",
+              parameters: valores.map((v: any) => ({
+                type: "text",
+                text: String(v ?? ""),
+              })),
+            },
+          ]
         : [];
 
       return await metaService.enviarMensagem(
         data.telefone,
         template.meta_name,
         template.idioma || "pt_BR",
-        componentes
+        componentes,
       );
     } catch (error: any) {
       return { ok: false, error: error.message };
