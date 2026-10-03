@@ -1,13 +1,86 @@
 import { sql } from "drizzle-orm";
 import { db } from "./index";
 
-const DEFAULT_GRAPH_VERSION = 'v20.0';
+const DEFAULT_GRAPH_VERSION = "v20.0";
 
 // A Meta recusa o template com "invalid parameter" quando os componentes chegam
 // fora desta ordem. A ordem é HEADER → BODY → FOOTER → BUTTONS.
 const ORDEM_COMPONENTES: Record<string, number> = {
-  HEADER: 0, BODY: 1, FOOTER: 2, BUTTONS: 3,
+  HEADER: 0,
+  BODY: 1,
+  FOOTER: 2,
+  BUTTONS: 3,
 };
+
+/**
+ * Erro da API da Meta preservando o `code`, que é o que separa "tente de novo
+ * depois" de "esse contato nunca vai receber". Antes o código era descartado e o
+ * motor de disparo só via a mensagem em inglês.
+ */
+export class MetaApiError extends Error {
+  readonly code: number | null;
+  readonly httpStatus: number | null;
+  readonly erroOriginal: any;
+
+  constructor(message: string, body?: any, httpStatus?: number) {
+    super(message);
+    this.name = "MetaApiError";
+    this.code = body?.error?.code ?? null;
+    this.httpStatus = httpStatus ?? null;
+    this.erroOriginal = body;
+  }
+
+  /**
+   * Rate limit (131056), limite de mensagens por conta e erros de servidor são
+   * transitórios e valem retry. Número inexistente (131047) ou template
+   * inválido (132000) são permanentes: repetir só gasta cota.
+   */
+  get transitorio(): boolean {
+    if (this.httpStatus && this.httpStatus >= 500) return true;
+    if (this.code === 131056 || this.code === 4 || this.code === 2) return true;
+    if (this.httpStatus === 429) return true;
+    if (this.httpStatus && this.httpStatus >= 400 && this.httpStatus < 500) {
+      // Codes de validação/parâmetro não melhoram com repetição.
+      if (this.code === 131047 || this.code === 132000 || this.code === 131026) return false;
+      return false;
+    }
+    return false;
+  }
+
+  /** Erro permanente que indica número que não existe mais no WhatsApp. */
+  get numeroInexistente(): boolean {
+    return this.code === 131047 || this.code === 131052;
+  }
+}
+
+/**
+ * Monta os componentes de uma mensagem de template a partir do corpo gravado e
+ * dos valores. A Meta exige um parameter para cada {{n}} do corpo, na mesma
+ * ordem — sem isso a resposta é "template variable missing".
+ */
+export function montarComponents(conteudo: any, valores: Record<string, string> = {}): any[] {
+  const comps = Array.isArray(conteudo?.components) ? conteudo.components : [];
+  const corpo = comps.find((c: any) => c?.type === "BODY")?.text || "";
+  const numeros = [...String(corpo).matchAll(/\{\{(\d+)\}\}/g)].map((m) => Number(m[1]));
+  const maximo = numeros.length ? Math.max(...numeros) : 0;
+  if (!maximo) return [];
+
+  const parameters = Array.from({ length: maximo }, (_, i) => ({
+    type: "text",
+    text: String(valores[String(i + 1)] ?? valores[`{{${i + 1}}}`] ?? ""),
+  }));
+  // Preenchimento obrigatório: a Meta recusa {{n}} vazio, e é melhor falhar
+  // aqui com nome do campo do que gastar cota numa tentativa que volta.
+  const faltando = parameters
+    .map((p, i) => (p.text.trim() === "" ? `{{${i + 1}}}` : null))
+    .filter(Boolean) as string[];
+  if (faltando.length) {
+    throw new Error(
+      `Preencha ${faltando.join(", ")} no mapeamento da campanha. A Meta recusa mensagem de template com variável vazia.`,
+    );
+  }
+  return [{ type: "BODY", parameters }];
+}
 
 export class MetaWhatsAppService {
   private config: any = null;
@@ -23,7 +96,7 @@ export class MetaWhatsAppService {
       .map((c) =>
         c?.type === "HEADER" && c?.format === "TEXT" && !c.parameters
           ? { ...c, parameters: [] }
-          : c
+          : c,
       );
   }
 
@@ -50,12 +123,10 @@ export class MetaWhatsAppService {
 
     // O paging.next da Meta já vem como URL absoluta, com versão e token. Prefixar
     // a versão de novo produziria uma URL inválida.
-    const url = /^https?:\/\//i.test(endpoint)
-      ? endpoint
-      : this.getGraphUrl(endpoint);
+    const url = /^https?:\/\//i.test(endpoint) ? endpoint : this.getGraphUrl(endpoint);
     const headers = {
-      'Authorization': `Bearer ${this.config.access_token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${this.config.access_token}`,
+      "Content-Type": "application/json",
       ...options.headers,
     };
 
@@ -64,7 +135,11 @@ export class MetaWhatsAppService {
 
     if (!response.ok) {
       console.error("[Meta API Error]", data);
-      throw new Error(data.error?.message || "Erro na comunicação com a API da Meta.");
+      throw new MetaApiError(
+        data.error?.message || "Erro na comunicação com a API da Meta.",
+        data,
+        response.status,
+      );
     }
 
     return data;
@@ -78,8 +153,9 @@ export class MetaWhatsAppService {
 
     try {
       const data = await this.fetchMeta(this.config.phone_number_id);
-      
-      if (db) await db.execute(sql`
+
+      if (db)
+        await db.execute(sql`
         UPDATE whatsapp_config SET 
           status = 'CONECTADO', 
           ultimo_teste = now(),
@@ -89,7 +165,8 @@ export class MetaWhatsAppService {
 
       return { ok: true, data };
     } catch (error: any) {
-      if (db) await db.execute(sql`
+      if (db)
+        await db.execute(sql`
         UPDATE whatsapp_config SET 
           status = 'ERRO', 
           ultimo_teste = now(),
@@ -123,7 +200,8 @@ export class MetaWhatsAppService {
     }
 
     for (const t of templates) {
-      if (db) await db.execute(sql`
+      if (db)
+        await db.execute(sql`
         INSERT INTO whatsapp_templates (
           meta_id, 
           nome_interno, 
@@ -161,13 +239,13 @@ export class MetaWhatsAppService {
     const metaPayload = {
       name: template.name,
       category: template.category,
-      language: template.language || 'pt_BR',
-      components: this.normalizarComponentes(template.components)
+      language: template.language || "pt_BR",
+      components: this.normalizarComponentes(template.components),
     };
 
     const data = await this.fetchMeta(`${this.config.waba_id}/message_templates`, {
-      method: 'POST',
-      body: JSON.stringify(metaPayload)
+      method: "POST",
+      body: JSON.stringify(metaPayload),
     });
 
     if (db && data.id) {
@@ -187,7 +265,7 @@ export class MetaWhatsAppService {
           ${template.nome_interno || template.name}, 
           ${template.name}, 
           ${template.category}, 
-          ${template.language || 'pt_BR'}, 
+          ${template.language || "pt_BR"}, 
           'PENDING', 
           ${JSON.stringify(template.components)}::jsonb,
           now()
@@ -210,13 +288,12 @@ export class MetaWhatsAppService {
     try {
       await this.fetchMeta(
         `${this.config.waba_id}/message_templates/${encodeURIComponent(metaName)}`,
-        { method: "DELETE" }
+        { method: "DELETE" },
       );
       return { ok: true, jaEstavaNaMeta: false };
     } catch (e: any) {
       const msg = String(e?.message || "");
-      const naoExisteNaMeta =
-        /does not exist|not found|Unsupported (delete|get)/i.test(msg);
+      const naoExisteNaMeta = /does not exist|not found|Unsupported (delete|get)/i.test(msg);
       if (!naoExisteNaMeta) throw e;
       return { ok: true, jaEstavaNaMeta: true };
     }
@@ -230,7 +307,7 @@ export class MetaWhatsAppService {
     // 1. Iniciar upload
     // 2. Enviar chunks (ou arquivo inteiro se pequeno)
     // 3. Obter handle
-    
+
     // Para simplificar agora, retornamos um erro indicando que o upload requer Buffer/Stream real
     throw new Error("Upload de mídia via API Meta requer processamento de binários.");
   }
@@ -246,15 +323,15 @@ export class MetaWhatsAppService {
       template: {
         name: templateName,
         language: {
-          code: language
+          code: language,
         },
-        components
-      }
+        components,
+      },
     };
 
     return this.fetchMeta(`${this.config.phone_number_id}/messages`, {
-      method: 'POST',
-      body: JSON.stringify(payload)
+      method: "POST",
+      body: JSON.stringify(payload),
     });
   }
 }

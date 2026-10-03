@@ -54,7 +54,8 @@ async function injetarTagsRastreamento(response: Response): Promise<Response> {
   if (!contentType.includes("text/html")) return response;
 
   try {
-    const { obterConfiguracoesPublicas, construirInjecoesRastreamento } = await import("./db/admin.server");
+    const { obterConfiguracoesPublicas, construirInjecoesRastreamento } =
+      await import("./db/admin.server");
     const cfg = await obterConfiguracoesPublicas();
     const { head, body } = construirInjecoesRastreamento(cfg);
     if (!head && !body) return response;
@@ -65,7 +66,11 @@ async function injetarTagsRastreamento(response: Response): Promise<Response> {
 
     const headers = new Headers(response.headers);
     headers.delete("content-length");
-    return new Response(html, { status: response.status, statusText: response.statusText, headers });
+    return new Response(html, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
   } catch (error) {
     console.error("[tags-rastreamento] falha ao injetar tags no HTML:", error);
     return response;
@@ -85,23 +90,62 @@ declare global {
 }
 
 if (!globalThis.__lembretesLeilaoInterval) {
-  globalThis.__lembretesLeilaoInterval = setInterval(async () => {
+  globalThis.__lembretesLeilaoInterval = setInterval(
+    async () => {
+      try {
+        const { processarLembretesLeilao } = await import("./db/leilao.server");
+        await processarLembretesLeilao();
+      } catch (error) {
+        console.error("[lembretes-leilao] falha no job em segundo plano:", error);
+      }
+    },
+    5 * 60 * 1000,
+  );
+}
+
+/**
+ * Motor de disparo de campanhas do WhatsApp.
+ *
+ * Dispara a fila em dripping: respeita a janela de trabalho e o intervalo
+ * configurados em cada campanha, para não estourar o limite de taxa da Meta.
+ * Roda a cada minuto no mesmo processo do servidor — não depende de nenhuma
+ * tela estar aberta nem de cron externo. O import dinâmico mantém o módulo de
+ * DB fora da avaliação do build/SSR.
+ */
+declare global {
+  // eslint-disable-next-line no-var
+  var __disparoInterval: ReturnType<typeof setInterval> | undefined;
+}
+
+if (!globalThis.__disparoInterval) {
+  globalThis.__disparoInterval = setInterval(async () => {
     try {
-      const { processarLembretesLeilao } = await import("./db/leilao.server");
-      await processarLembretesLeilao();
+      const { processarDisparo } = await import("./db/disparo-motor.server");
+      await processarDisparo();
     } catch (error) {
-      console.error("[lembretes-leilao] falha no job em segundo plano:", error);
+      console.error("[disparo] falha no job em segundo plano:", error);
     }
-  }, 5 * 60 * 1000);
+  }, 60 * 1000);
+
+  // A primeira passada espera 30s: no boot o banco e o schema podem ainda estar
+  // subindo, e um tick imediato só produziria ruído no log.
+  setTimeout(async () => {
+    try {
+      const { processarDisparo } = await import("./db/disparo-motor.server");
+      await processarDisparo();
+    } catch (error) {
+      console.error("[disparo] falha na primeira passada:", error);
+    }
+  }, 30 * 1000);
 }
 
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     const url = new URL(request.url);
-    if (url.pathname === '/healthz') {
-      return new Response('ok', { 
+    if (url.pathname === "/healthz") {
+      return new Response("ok", {
         status: 200,
-        headers: { 'Cache-Control': 'no-store' }
+        headers: { "Cache-Control": "no-store" },
       });
     }
 
@@ -112,13 +156,11 @@ export default {
       const normalizado = await normalizeCatastrophicSsrResponse(response);
       return await injetarTagsRastreamento(normalizado);
     } catch (error) {
-      console.error('Fatal SSR Error:', error);
+      console.error("Fatal SSR Error:", error);
       return new Response(renderErrorPage(), {
         status: 500,
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     }
   },
-
-
 };
