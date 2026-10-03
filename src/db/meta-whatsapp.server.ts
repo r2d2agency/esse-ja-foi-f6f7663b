@@ -3,8 +3,29 @@ import { db } from "./index";
 
 const DEFAULT_GRAPH_VERSION = 'v20.0';
 
+// A Meta recusa o template com "invalid parameter" quando os componentes chegam
+// fora desta ordem. A ordem é HEADER → BODY → FOOTER → BUTTONS.
+const ORDEM_COMPONENTES: Record<string, number> = {
+  HEADER: 0, BODY: 1, FOOTER: 2, BUTTONS: 3,
+};
+
 export class MetaWhatsAppService {
   private config: any = null;
+
+  /**
+   * Ordena os componentes na sequência que a Meta exige e completa o HEADER de
+   * texto com o objeto `parameters`, que é obrigatório — sem ele a API responde
+   * "invalid parameter" mesmo com a ordem correta.
+   */
+  private normalizarComponentes(components: any[] = []) {
+    return [...components]
+      .sort((a, b) => (ORDEM_COMPONENTES[a?.type] ?? 99) - (ORDEM_COMPONENTES[b?.type] ?? 99))
+      .map((c) =>
+        c?.type === "HEADER" && c?.format === "TEXT" && !c.parameters
+          ? { ...c, parameters: [] }
+          : c
+      );
+  }
 
   async init() {
     if (!db) return;
@@ -27,7 +48,11 @@ export class MetaWhatsAppService {
       throw new Error("Token de acesso do WhatsApp não configurado.");
     }
 
-    const url = this.getGraphUrl(endpoint);
+    // O paging.next da Meta já vem como URL absoluta, com versão e token. Prefixar
+    // a versão de novo produziria uma URL inválida.
+    const url = /^https?:\/\//i.test(endpoint)
+      ? endpoint
+      : this.getGraphUrl(endpoint);
     const headers = {
       'Authorization': `Bearer ${this.config.access_token}`,
       'Content-Type': 'application/json',
@@ -86,8 +111,16 @@ export class MetaWhatsAppService {
     await this.init();
     if (!this.config?.waba_id) throw new Error("WABA ID não configurado.");
 
-    const data = await this.fetchMeta(`${this.config.waba_id}/message_templates`);
-    const templates = data.data || [];
+    const templates: any[] = [];
+    // A Meta devolve ~25 por página e o resto vem em paging.next. Ler só a
+    // primeira página deixava parte dos templates invisível na tela para sempre.
+    // O teto evita laço infinito se a API devolver cursor malformado.
+    let url: string | undefined = `${this.config.waba_id}/message_templates`;
+    for (let pagina = 0; pagina < 20 && url; pagina++) {
+      const data: any = await this.fetchMeta(url);
+      templates.push(...(data.data || []));
+      url = data.paging?.next ? String(data.paging.next) : undefined;
+    }
 
     for (const t of templates) {
       if (db) await db.execute(sql`
@@ -129,7 +162,7 @@ export class MetaWhatsAppService {
       name: template.name,
       category: template.category,
       language: template.language || 'pt_BR',
-      components: template.components
+      components: this.normalizarComponentes(template.components)
     };
 
     const data = await this.fetchMeta(`${this.config.waba_id}/message_templates`, {
@@ -163,6 +196,30 @@ export class MetaWhatsAppService {
     }
 
     return data;
+  }
+
+  /**
+   * A Meta apaga template pelo nome, não pelo id numérico.
+   * Devolve "inexistente na Meta" em vez de lançar: quem chama trata esse caso
+   * removendo só o registro local, porque o objetivo do usuário já foi atingido.
+   */
+  async excluirTemplate(metaName: string) {
+    await this.init();
+    if (!this.config?.waba_id) throw new Error("WABA ID não configurado.");
+
+    try {
+      await this.fetchMeta(
+        `${this.config.waba_id}/message_templates/${encodeURIComponent(metaName)}`,
+        { method: "DELETE" }
+      );
+      return { ok: true, jaEstavaNaMeta: false };
+    } catch (e: any) {
+      const msg = String(e?.message || "");
+      const naoExisteNaMeta =
+        /does not exist|not found|Unsupported (delete|get)/i.test(msg);
+      if (!naoExisteNaMeta) throw e;
+      return { ok: true, jaEstavaNaMeta: true };
+    }
   }
 
   async uploadMedia(fileData: string, fileName: string, fileType: string) {

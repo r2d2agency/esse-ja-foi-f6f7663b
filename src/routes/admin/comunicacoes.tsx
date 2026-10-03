@@ -75,6 +75,7 @@ import {
   buscarDadosAutomaticosFn,
   listarTemplatesFn,
   criarTemplateMetaFn,
+  excluirTemplateMetaFn,
   estimarPublicoFn,
   criarCampanhaFn,
   enviarTesteFn,
@@ -82,6 +83,7 @@ import {
 } from '@/lib/comunicacoes.functions';
 import { listarAutomacoesFn, salvarAutomacaoFn, getExecucoesAutomacaoFn } from '@/lib/automacoes.functions';
 import { getAnunciosAdmin } from '@/lib/anuncios.functions';
+import { getVeiculosAdminFn } from '@/lib/admin-veiculos.functions';
 import { toast } from 'sonner';
 import { 
   Clock, 
@@ -101,6 +103,74 @@ export const Route = createFileRoute('/admin/comunicacoes')({
   component: ComunicacoesPage,
 });
 
+// A Meta devolve o status cru. Traduzir evita ler "PENDING" e não saber se o
+// template foi aprovado, recusado ou ainda está em análise.
+const ROTULO_STATUS: Record<string, string> = {
+  APPROVED: 'Aprovado',
+  PENDING: 'Em análise',
+  REJECTED: 'Rejeitado',
+  PAUSED: 'Pausado',
+  DELETED: 'Apagado na Meta',
+};
+
+function rotuloStatus(status: string) {
+  return ROTULO_STATUS[status] || status || '—';
+}
+
+function varianteStatus(status: string): any {
+  if (status === 'APPROVED') return 'success';
+  if (status === 'PENDING') return 'warning';
+  if (status === 'REJECTED') return 'destructive';
+  return 'secondary';
+}
+/** Quantas variáveis o corpo do template usa, na ordem {{1}}, {{2}}... */
+export function contarVariaveisTemplate(template: any): number {
+  const comps = template?.conteudo?.components;
+  if (!Array.isArray(comps)) return 0;
+  const corpo = comps.find((c: any) => c?.type === 'BODY')?.text || '';
+  const numeros = [...String(corpo).matchAll(/\{\{(\d+)\}\}/g)].map((m) => Number(m[1]));
+  return numeros.length ? Math.max(...numeros) : 0;
+}
+const EXEMPLOS_VARIAVEIS = ['Carlos', 'HB20 2022', 'https://essejafoi.com.br/veiculo/EJF-000001'];
+
+/** Campos de exemplo para {{1}}, {{2}}... — o teste envia só o que se preencher. */
+function VariáveisTeste({
+  template,
+  valores,
+  onChange,
+}: {
+  template: any;
+  valores: string[];
+  onChange: (v: string[]) => void;
+}) {
+  const total = contarVariaveisTemplate(template);
+  if (!total) return null;
+  return (
+    <div className="space-y-2">
+      <Label>Valores das variáveis</Label>
+      {Array.from({ length: total }, (_, i) => (
+        <div key={i} className="space-y-1">
+          <Label className="text-[11px] text-muted-foreground">
+            {"{{"}{i + 1}{"}}"}
+          </Label>
+          <Input
+            value={valores[i] ?? ''}
+            placeholder={EXEMPLOS_VARIAVEIS[i] ?? `Valor ${i + 1}`}
+            onChange={e => {
+              const novo = [...valores];
+              novo[i] = e.target.value;
+              onChange(novo);
+            }}
+          />
+        </div>
+      ))}
+      <p className="text-[11px] text-muted-foreground">
+        O WhatsApp exige um valor para cada variável do corpo, na mesma ordem.
+      </p>
+    </div>
+  );
+}
+
 function ComunicacoesPage() {
   const queryClient = useQueryClient();
   const getIndicadores = useServerFn(getIndicadoresComunicacoesFn);
@@ -108,6 +178,7 @@ function ComunicacoesPage() {
   const getConfig = useServerFn(getWhatsappConfigFn);
   const testarConexao = useServerFn(testarConexaoFn);
   const sincronizarTemplates = useServerFn(sincronizarTemplatesFn);
+  const excluirTemplate = useServerFn(excluirTemplateMetaFn);
   const updateConfig = useServerFn(updateWhatsappConfigFn);
   const gerarToken = useServerFn(gerarNovoVerifyTokenFn);
   const getLogs = useServerFn(getWebhookLogsFn);
@@ -118,6 +189,7 @@ function ComunicacoesPage() {
   const criarCampanha = useServerFn(criarCampanhaFn);
   const enviarTeste = useServerFn(enviarTesteFn);
   const getAnuncios = useServerFn(getAnunciosAdmin);
+  const getVeiculosAdmin = useServerFn(getVeiculosAdminFn);
   const processarEnvio = useServerFn(processarEnvioCampanhaFn);
   const getAutomacoes = useServerFn(listarAutomacoesFn);
   const salvarAutomacao = useServerFn(salvarAutomacaoFn);
@@ -133,6 +205,12 @@ function ComunicacoesPage() {
   // Wizard Template State
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [wizardStep, setWizardStep] = useState(1);
+  // Telefone do teste era fixo no código (5517999999999): a mensagem ia para um
+  // número de exemplo e a resposta nunca chegava ao contato real.
+  const [telefoneTeste, setTelefoneTeste] = useState("");
+  const [templateParaExcluir, setTemplateParaExcluir] = useState<any>(null);
+  const [templateParaTeste, setTemplateParaTeste] = useState<any>(null);
+  const [valoresTeste, setValoresTeste] = useState<string[]>([]);
   const [newTemplate, setNewTemplate] = useState<any>({
     name: '',
     category: 'MARKETING',
@@ -201,9 +279,14 @@ function ComunicacoesPage() {
     queryFn: () => getTemplates()
   });
 
-  const { data: anuncios } = useQuery({
-    queryKey: ['anuncios-ativos'],
-    queryFn: () => getAnuncios({ data: 'PUBLICADO' })
+  // A seleção de veículo usava getAnuncios filtrado por status PUBLICISHED:
+  // só veículos já publicados apareciam, e a maioria dos cadastrados está em
+  // outro estágio. Agora lista qualquer veículo e deixa o filtro de busca agir.
+  const [buscaVeiculo, setBuscaVeiculo] = useState("");
+  const { data: veiculosCampanha } = useQuery({
+    queryKey: ['veiculos-campanha', buscaVeiculo],
+    queryFn: () => getVeiculosAdmin({ data: { busca: buscaVeiculo.trim() || undefined } }),
+    enabled: isCampanhaWizardOpen,
   });
 
   const { data: automacoes, refetch: refetchAutomacoes } = useQuery({
@@ -264,17 +347,50 @@ function ComunicacoesPage() {
   };
 
   const handleEnviarTeste = async () => {
-    toast.promise(enviarTeste({ 
+    const digitos = telefoneTeste.replace(/\D/g, "");
+    if (digitos.length < 10 || digitos.length > 13) {
+      toast.error("Informe o telefone com DDD e código do país. Ex: 5511999999999");
+      return;
+    }
+    // Serve aos dois lugares: o teste avulso na aba de Templates (usa o
+    // template escolhido na tabela) e o da campanha (usa o da etapa 4).
+    const templateId = templateParaTeste?.id || novaCampanha.template_id;
+    if (!templateId) {
+      toast.error("Escolha um template antes de enviar o teste.");
+      return;
+    }
+    toast.promise(enviarTeste({
       data: {
-        telefone: '5517999999999', 
-        template_id: novaCampanha.template_id,
-        variaveis: novaCampanha.mapeamento_variaveis
+        telefone: digitos,
+        template_id: templateId,
+        variaveis: valoresTeste
       }
     }), {
       loading: 'Enviando teste...',
-      success: 'Teste enviado!',
+      success: (res: any) => {
+        if (res && res.ok === false) throw new Error(res.error || 'Erro ao enviar teste');
+        setTemplateParaTeste(null);
+        return 'Teste enviado! Responda pelo WhatsApp comum para ver a resposta na Central de Conversas.';
+      },
       error: (err) => `Erro: ${err.message}`
     });
+  };
+
+  const handleExcluirTemplate = async () => {
+    if (!templateParaExcluir) return;
+    const res: any = await excluirTemplate({ data: { meta_name: templateParaExcluir.meta_name } })
+      .catch((e: any) => ({ ok: false, error: e?.message || String(e) }));
+    if (res?.ok) {
+      toast.success(
+        res.removidoNaMeta
+          ? 'Template excluído na Meta e no sistema.'
+          : 'Removido do sistema. Ele já não existia na Meta.'
+      );
+      setTemplateParaExcluir(null);
+      queryClient.invalidateQueries({ queryKey: ['wa-templates'] });
+    } else {
+      toast.error(`Erro ao excluir: ${res?.error || 'erro desconhecido'}`);
+    }
   };
 
 
@@ -507,34 +623,48 @@ const res: any = await updateConfig({ data: editingConfig }).catch((e: any) => (
                         <Label>Escolha o Veículo</Label>
                         <div className="relative">
                           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                          <Input placeholder="Buscar por marca, modelo ou código EJF..." className="pl-10" />
+                          <Input
+                            placeholder="Buscar por placa, marca, modelo ou vendedor..."
+                            className="pl-10"
+                            value={buscaVeiculo}
+                            onChange={e => setBuscaVeiculo(e.target.value)}
+                          />
                         </div>
                         <div className="grid grid-cols-1 gap-2 max-h-64 overflow-y-auto pr-2">
-                          {anuncios?.map((anuncio: any) => (
-                            <div 
-                              key={anuncio.id}
+                          {veiculosCampanha?.data?.length === 0 && (
+                            <p className="py-6 text-center text-sm text-muted-foreground">
+                              {buscaVeiculo.trim()
+                                ? `Nenhum veículo encontrado para "${buscaVeiculo.trim()}".`
+                                : 'Nenhum veículo cadastrado ainda.'}
+                            </p>
+                          )}
+                          {veiculosCampanha?.data?.map((veiculo: any) => (
+                            <div
+                              key={veiculo.id}
                               onClick={() => {
                                 setNovaCampanha({
-                                  ...novaCampanha, 
-                                  veiculo_id: anuncio.veiculo_id,
-                                  nome: `${anuncio.marca} ${anuncio.modelo} - ${anuncio.codigo_publico}`
+                                  ...novaCampanha,
+                                  veiculo_id: veiculo.id,
+                                  nome: `${veiculo.marca} ${veiculo.modelo} - ${veiculo.placa}`
                                 });
                                 setCampanhaStep(3);
                               }}
                               className={cn(
                                 "flex items-center gap-4 p-3 border rounded-lg cursor-pointer hover:border-teal-500 transition-all",
-                                novaCampanha.veiculo_id === anuncio.veiculo_id ? "border-teal-600 bg-teal-50" : "border-slate-100"
+                                novaCampanha.veiculo_id === veiculo.id ? "border-teal-600 bg-teal-50" : "border-slate-100"
                               )}
                             >
                               <div className="w-16 h-12 bg-slate-100 rounded overflow-hidden shrink-0">
-                                {anuncio.foto_capa ? <img src={anuncio.foto_capa} className="w-full h-full object-cover" /> : <Car className="w-full h-full p-3 text-slate-300" />}
+                                <Car className="w-full h-full p-3 text-slate-300" />
                               </div>
                               <div className="flex-1 min-w-0">
-                                <p className="font-semibold truncate">{anuncio.marca} {anuncio.modelo}</p>
+                                <p className="font-semibold truncate">{veiculo.marca} {veiculo.modelo}</p>
                                 <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                                  <span>{anuncio.codigo_publico}</span>
-                                  <span>•</span>
-                                  <Badge variant="outline" className="text-[8px] px-1 h-3">{anuncio.status}</Badge>
+                                  <span>{veiculo.placa}</span>
+                                  {veiculo.vendedor_nome && (<><span>•</span><span className="truncate">{veiculo.vendedor_nome}</span></>)}
+                                  {veiculo.status_analise && (
+                                    <Badge variant="outline" className="text-[8px] px-1 h-3">{veiculo.status_analise}</Badge>
+                                  )}
                                 </div>
                               </div>
                               <ChevronRight className="w-4 h-4 text-slate-300" />
@@ -679,6 +809,21 @@ const res: any = await updateConfig({ data: editingConfig }).catch((e: any) => (
                           <Button variant="outline" size="sm" onClick={handleEnviarTeste}>
                             <Send className="w-4 h-4 mr-2" /> Enviar Teste
                           </Button>
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label htmlFor="telefone-teste">Telefone para o teste</Label>
+                          <Input
+                            id="telefone-teste"
+                            inputMode="numeric"
+                            placeholder="5511999999999"
+                            value={telefoneTeste}
+                            onChange={e => setTelefoneTeste(e.target.value.replace(/\D/g, '').slice(0, 13))}
+                          />
+                          <p className="text-[11px] text-muted-foreground">
+                            Com código do país e DDD, só números. A resposta do contato aparece na
+                            Central de Conversas.
+                          </p>
                         </div>
                         
                         <div className="max-w-[320px] mx-auto bg-[#e5ddd5] dark:bg-slate-800 p-4 rounded-xl relative shadow-inner">
@@ -1258,12 +1403,17 @@ const res: any = await updateConfig({ data: editingConfig }).catch((e: any) => (
                       {wizardStep === 3 && (
                         <div className="space-y-4">
                           <Label>Cabeçalho (Opcional)</Label>
-                          <Input 
-                            placeholder="Título em negrito no topo da mensagem" 
+                          <Input
+                            placeholder="Título em negrito no topo da mensagem"
+                            maxLength={60}
+                            // Sem `value`, o texto digitado some a cada re-render.
+                            // A ordem HEADER→BODY é garantida no envio, pelo
+                            // normalizarComponentes do meta-whatsapp.server.ts.
+                            value={newTemplate.components.find((c: any) => c.type === 'HEADER')?.text || ''}
                             onChange={e => {
                               const comps = newTemplate.components.filter((c: any) => c.type !== 'HEADER');
                               if (e.target.value) {
-                                comps.push({ type: 'HEADER', format: 'TEXT', text: e.target.value });
+                                comps.unshift({ type: 'HEADER', format: 'TEXT', text: e.target.value });
                               }
                               setNewTemplate({...newTemplate, components: comps});
                             }}
@@ -1319,8 +1469,12 @@ const res: any = await updateConfig({ data: editingConfig }).catch((e: any) => (
                       {wizardStep === 5 && (
                         <div className="space-y-4">
                           <Label>Rodapé (Opcional)</Label>
-                          <Input 
-                            placeholder="Texto curto em cinza no final" 
+                          <Input
+                            placeholder="Texto curto em cinza no final"
+                            maxLength={60}
+                            // Mesmo problema do cabeçalho: sem `value` o texto
+                            // digitado some a cada re-render.
+                            value={newTemplate.components.find((c: any) => c.type === 'FOOTER')?.text || ''}
                             onChange={e => {
                               const comps = newTemplate.components.filter((c: any) => c.type !== 'FOOTER');
                               if (e.target.value) {
@@ -1402,25 +1556,110 @@ const res: any = await updateConfig({ data: editingConfig }).catch((e: any) => (
                       <th className="px-4 py-3">Categoria</th>
                       <th className="px-4 py-3">Status</th>
                       <th className="px-4 py-3">Última Sinc.</th>
+                      <th className="px-4 py-3 text-right">Ações</th>
                     </tr>
                   </thead>
                   <tbody>
+                    {templates?.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground text-sm">
+                          Nenhum template ainda. Use "Sincronizar" para trazer os que já existem na Meta,
+                          ou "Novo Template" para enviar um novo para análise.
+                        </td>
+                      </tr>
+                    )}
                     {templates?.map((t: any) => (
                       <tr key={t.id} className="border-b">
                         <td className="px-4 py-3">{t.nome_interno}</td>
                         <td className="px-4 py-3">{t.categoria}</td>
                         <td className="px-4 py-3">
-                          <Badge variant={t.status === 'APPROVED' ? 'success' : 'secondary'}>{t.status}</Badge>
+                          <Badge variant={varianteStatus(t.status)}>{rotuloStatus(t.status)}</Badge>
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">{new Date(t.ultima_sincronizacao).toLocaleDateString()}</td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              aria-label={`Testar template ${t.nome_interno}`}
+                              title="Enviar este template para o seu próprio celular"
+                              onClick={() => {
+                                setTemplateParaTeste(t);
+                                // Values de outro template não servem: a ordem das
+                                // variáveis pode ser diferente.
+                                setValoresTeste([]);
+                              }}
+                            >
+                              <Send className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-destructive hover:text-destructive"
+                              aria-label={`Excluir template ${t.nome_interno}`}
+                              onClick={() => setTemplateParaExcluir(t)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             </Card>
+
+            <Dialog open={!!templateParaTeste} onOpenChange={(v) => !v && setTemplateParaTeste(null)}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Testar template</DialogTitle>
+                  <DialogDescription>
+                    Envia <strong>{templateParaTeste?.nome_interno}</strong> para o número informado.
+                    O WhatsApp só aceita template aprovado — se ainda estiver em análise, a Meta recusará.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-2">
+                  <Label htmlFor="telefone-teste-template">Telefone (com DDD e código do país)</Label>
+                  <Input
+                    id="telefone-teste-template"
+                    inputMode="numeric"
+                    placeholder="5511999999999"
+                    value={telefoneTeste}
+                    onChange={e => setTelefoneTeste(e.target.value.replace(/\D/g, '').slice(0, 13))}
+                  />
+                  <p className="text-[11px] text-muted-foreground">Só números. Ex: 55 + 11 + 9 + número.</p>
+                </div>
+                <VariáveisTeste
+                  template={templateParaTeste}
+                  valores={valoresTeste}
+                  onChange={setValoresTeste}
+                />
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setTemplateParaTeste(null)}>Cancelar</Button>
+                  <Button onClick={handleEnviarTeste}>Enviar</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+            <Dialog open={!!templateParaExcluir} onOpenChange={(v) => !v && setTemplateParaExcluir(null)}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Excluir template</DialogTitle>
+                  <DialogDescription>
+                    O template <strong>{templateParaExcluir?.nome_interno}</strong> será apagado
+                    <strong> na Meta e neste sistema</strong>. A exclusão na Meta é definitiva:
+                    para ter o template de volta será preciso criar e passar pela análise de novo.
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setTemplateParaExcluir(null)}>Cancelar</Button>
+                  <Button variant="destructive" onClick={handleExcluirTemplate}>Excluir</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </TabsContent>
-          
+
           <TabsContent value="logs" className="mt-6 space-y-4">
             <div className="flex justify-between items-center">
               <h2 className="text-lg font-semibold">Logs do WhatsApp</h2>
@@ -1552,7 +1791,7 @@ const res: any = await updateConfig({ data: editingConfig }).catch((e: any) => (
                               <Input 
                                 value={editingConfig.waba_id || ''} 
                                 onChange={e => setEditingConfig({...editingConfig, waba_id: e.target.value})}
-                                placeholder="WhatsApp Business Account ID"
+                                placeholder="Somente números. Ex: 1338904312641924"
                               />
                             </div>
                             <div className="space-y-2">
@@ -1560,7 +1799,7 @@ const res: any = await updateConfig({ data: editingConfig }).catch((e: any) => (
                               <Input 
                                 value={editingConfig.phone_number_id || ''} 
                                 onChange={e => setEditingConfig({...editingConfig, phone_number_id: e.target.value})}
-                                placeholder="ID do número de telefone"
+                                placeholder="Somente números. Ex: 1028433120244316"
                               />
                             </div>
                             <div className="col-span-2 space-y-2">

@@ -29,6 +29,22 @@ export const updateWhatsappConfigFn = createServerFn({ method: "POST" })
         );
       }
 
+      const texto = (v: any) => (typeof v === "string" ? v.trim() : v);
+
+      // A Meta responde "Object with ID '1338... - phone number id 1028...' does not
+      // exist" quando o campo recebe o trecho inteiro da tela colado. Sem esta
+      // checagem, o erro só aparece depois, com mensagem críptica e em inglês.
+      for (const campo of ["waba_id", "phone_number_id"]) {
+        const valor = data?.[campo] === "••••••••••••" ? "" : texto(data?.[campo]);
+        if (valor && !/^\d+$/.test(String(valor))) {
+          throw new Error(
+            `O campo ${
+              campo === "waba_id" ? "WABA ID" : "Phone Number ID"
+            } deve conter apenas números. Você colou um trecho da tela da Meta — copie somente o número.`
+          );
+        }
+      }
+
       const existing = await db.getWhatsappConfig();
 
       // O formulário abre com a linha inteira do banco, que traz campos de
@@ -36,7 +52,6 @@ export const updateWhatsappConfigFn = createServerFn({ method: "POST" })
       // "••••••••••••" no lugar dos segredos. Enviar tudo isso ao UPDATE
       // quebra a query e, pior, grava a máscara por cima da senha real.
       // Então: allowlist dos campos editáveis + preserva segredos não alterados.
-      const texto = (v: any) => (typeof v === "string" ? v.trim() : v);
       const editable = ["waba_id", "phone_number_id", "business_id", "phone_number", "app_id", "graph_api_version", "status"];
       const updateData: any = {};
       for (const campo of editable) {
@@ -137,11 +152,75 @@ export const criarTemplateMetaFn = createServerFn({ method: "POST" })
         "Nenhum dado foi recebido pelo servidor. Recarregue a página e tente de novo."
       );
     }
-    return data;
+
+    // Erros da Meta para payload inválido chegam crus e não dizem o que
+    // corrigir. Validar aqui transforma "invalid parameter" em algo acionável.
+    const nome = String(data.name || "").trim();
+    if (!nome) throw new Error("Informe o nome do template.");
+    if (!/^[a-z0-9_]+$/.test(nome)) {
+      throw new Error(
+        "O nome deve conter apenas letras minúsculas, números e underscore (ex: boas_vindas_veiculo)."
+      );
+    }
+
+    const categorias = ["MARKETING", "UTILITY", "AUTHENTICATION"];
+    if (!categorias.includes(data.category)) {
+      throw new Error("Categoria inválida. Escolha Marketing, Utilitário ou Autenticação.");
+    }
+
+    const componentes: any[] = Array.isArray(data.components) ? data.components : [];
+    const corpo = componentes.find((c: any) => c?.type === "BODY");
+    if (!corpo || !String(corpo.text || "").trim()) {
+      throw new Error("O corpo do template não pode ficar vazio.");
+    }
+
+    // A Meta exige placeholders sequenciais: {{3}} sem {{1}} e {{2}} é rejeitado.
+    const varios = [...String(corpo.text).matchAll(/\{\{(\d+)\}\}/g)].map((m) => Number(m[1]));
+    const unicos = [...new Set(varios)].sort((a, b) => a - b);
+    const esperados = unicos.map((_, i) => i + 1);
+    if (unicos.some((n, i) => n !== esperados[i])) {
+      throw new Error(
+        `As variáveis do corpo precisam ser numeradas sem pular. Encontrado: ${varios.join(", ")} — use {{1}}, {{2}}... em sequência.`
+      );
+    }
+
+    return { ...data, name: nome };
   })
   .handler(async ({ data }) => {
     try {
+      // Nome duplicado é rejeitado pela Meta; checar antes evita o erro cru.
+      const jaExiste = (await db.listarTemplates()).find(
+        (t: any) => t.meta_name === data.name
+      );
+      if (jaExiste) {
+        return {
+          ok: false,
+          error: `Já existe um template chamado "${data.name}". Escolha outro nome.`,
+        };
+      }
       return await metaService.criarTemplate(data);
+    } catch (error: any) {
+      return { ok: false, error: error.message };
+    }
+  });
+
+export const excluirTemplateMetaFn = createServerFn({ method: "POST" })
+  .validator((data: any) => {
+    const nome = String(data?.meta_name || "").trim();
+    if (!nome) throw new Error("Informe o nome do template a excluir.");
+    return { meta_name: nome };
+  })
+  .handler(async ({ data }) => {
+    try {
+      // Meta primeiro: se ela falhar, aborta e o registro local é preservado,
+      // para o usuário não perder o template sem tê-lo apagado de verdade.
+      const naMeta = await metaService.excluirTemplate(data.meta_name);
+      const local = await db.excluirTemplateLocal(data.meta_name);
+
+      if (!local.removido && !naMeta.jaEstavaNaMeta) {
+        return { ok: false, error: "Nenhum template encontrado com esse nome." };
+      }
+      return { ok: true, removidoNaMeta: !naMeta.jaEstavaNaMeta };
     } catch (error: any) {
       return { ok: false, error: error.message };
     }
@@ -183,12 +262,37 @@ export const enviarTesteFn = createServerFn({ method: "POST" })
     try {
       const template = (await db.listarTemplates()).find((t: any) => t.id === data.template_id);
       if (!template) throw new Error("Template não encontrado");
-      
+
+      if (template.status !== "APPROVED") {
+        const rotulo =
+          template.status === "PENDING" ? "ainda está em análise" :
+          template.status === "REJECTED" ? "foi rejeitado" :
+          template.status || "não está aprovado";
+        throw new Error(
+          `O template "${template.nome_interno}" ${rotulo}. A Meta só aceita envio de template aprovado.`
+        );
+      }
+
+      // A Meta exige um componente BODY com os mesmos valores, na ordem dos
+      // placeholders {{1}}, {{2}}... do corpo. Sem isto, qualquer template com
+      // variável é recusado com "template variable missing" — que era o que
+      // impedia o botão de teste existir: nunca ia funcionar.
+      const valores = Array.isArray(data.variaveis) ? data.variaveis : [];
+      const componentes = valores.length
+        ? [{
+            type: "BODY",
+            parameters: valores.map((v: any) => ({
+              type: "text",
+              text: String(v ?? ""),
+            })),
+          }]
+        : [];
+
       return await metaService.enviarMensagem(
         data.telefone,
         template.meta_name,
-        template.idioma,
-        [] // TODO: Mapear variáveis
+        template.idioma || "pt_BR",
+        componentes
       );
     } catch (error: any) {
       return { ok: false, error: error.message };

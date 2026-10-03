@@ -431,6 +431,15 @@ export async function updateWhatsappConfig(config: any) {
   return { ok: true };
 }
 
+export async function excluirTemplateLocal(metaName: string) {
+  const d = requireDb();
+  const res = await d.execute(sql`
+    DELETE FROM whatsapp_templates WHERE meta_name = ${metaName}
+    RETURNING id
+  `);
+  return { ok: true, removido: (rowsOf(res) as any[]).length > 0 };
+}
+
 export async function listarTemplates() {
   const d = requireDb();
   const res = await d.execute(sql`SELECT * FROM whatsapp_templates ORDER BY meta_name`);
