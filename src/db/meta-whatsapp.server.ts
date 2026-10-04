@@ -208,23 +208,29 @@ export class MetaWhatsAppService {
           meta_name, 
           categoria, 
           idioma, 
-          status, 
+          status,
           conteudo,
+          motivo_recusa,
           ultima_sincronizacao
         )
         VALUES (
-          ${t.id}, 
-          ${t.name}, 
-          ${t.name}, 
-          ${t.category}, 
-          ${t.language}, 
-          ${t.status}, 
+          ${t.id},
+          ${t.name},
+          ${t.name},
+          ${t.category},
+          ${t.language},
+          ${t.status},
           ${JSON.stringify(t.components)}::jsonb,
+          ${t.status === "REJECTED" ? (t.reason ?? null) : null},
           now()
         )
         ON CONFLICT (meta_name) DO UPDATE SET
           status = EXCLUDED.status,
           conteudo = EXCLUDED.conteudo,
+          -- O motivo da recusa só vale enquanto o status é REJECTED. Sem
+          -- limpar, um template que foi rejeitado e depois reenviado continuaria
+          -- exibindo a razão antiga na tela.
+          motivo_recusa = ${t.status === "REJECTED" ? (t.reason ?? null) : null},
           ultima_sincronizacao = now();
       `);
     }

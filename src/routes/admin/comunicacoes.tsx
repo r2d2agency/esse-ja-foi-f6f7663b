@@ -1962,6 +1962,11 @@ function ComunicacoesPage() {
                       <td className="px-4 py-3">{t.categoria}</td>
                       <td className="px-4 py-3">
                         <Badge variant={varianteStatus(t.status)}>{rotuloStatus(t.status)}</Badge>
+                        {t.status === "REJECTED" && t.motivo_recusa && (
+                          <p className="text-[10px] text-muted-foreground mt-1 max-w-[220px]">
+                            {t.motivo_recusa}
+                          </p>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">
                         {new Date(t.ultima_sincronizacao).toLocaleDateString()}

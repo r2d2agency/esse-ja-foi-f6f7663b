@@ -135,6 +135,9 @@ export async function ensureComunicacoesSchema(silent = true) {
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'whatsapp_templates' AND column_name = 'status') THEN
           ALTER TABLE whatsapp_templates ADD COLUMN status text DEFAULT 'PENDENTE';
         END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'whatsapp_templates' AND column_name = 'motivo_recusa') THEN
+          ALTER TABLE whatsapp_templates ADD COLUMN motivo_recusa text;
+        END IF;
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'whatsapp_templates' AND column_name = 'tipo_midia') THEN
           ALTER TABLE whatsapp_templates ADD COLUMN tipo_midia text;
         END IF;

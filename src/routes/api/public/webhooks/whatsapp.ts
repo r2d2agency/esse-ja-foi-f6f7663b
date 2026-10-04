@@ -141,17 +141,18 @@ export const Route = createFileRoute("/api/public/webhooks/whatsapp")({
           }
 
           if (eventType === "message_template_status_update") {
-            // Atualização de status de template.
-            // O motor de disparo compara com 'APPROVED'; gravar 'APROVADO'
-            // deixava a campanha presa em TEMPLATE_INDESPONIVEL para sempre,
-            // porque nenhum dos dois valores casava.
-            const novoTemplate = value?.event_type;
+            // O status vem em `value.event`, não em `value.event_type`: ler o
+            // campo errado fazia a guarda abaixo falhar e o UPDATE nunca rodar,
+            // então o template ficava travado em PENDING até a sincronização.
+            const statusTemplate = String(value?.event ?? "").toUpperCase();
             const templateName = value?.message_template_name;
-            if (templateName && novoTemplate) {
-              const statusTemplate = String(novoTemplate).toUpperCase();
+            const motivo = value?.reason ?? null;
+            if (templateName && statusTemplate) {
               await db.execute(sql`
                 UPDATE whatsapp_templates
-                SET status = ${statusTemplate}, ultima_sincronizacao = now()
+                SET status = ${statusTemplate},
+                    motivo_recusa = ${statusTemplate === "REJECTED" ? String(motivo) : null},
+                    ultima_sincronizacao = now()
                 WHERE meta_name = ${templateName}
               `);
 
