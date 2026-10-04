@@ -271,7 +271,7 @@ async function processarCampanha(campanha: any, workerId: string) {
 
   const intervalo = Math.max(1, Number(campanha.intervalo_minutos ?? 5));
   if (campanha.ultimo_envio_em) {
-    constdesdeUltimo = (agora.getTime() - new Date(campanha.ultimo_envio_em).getTime()) / 60000;
+    const desdeUltimo = (agora.getTime() - new Date(campanha.ultimo_envio_em).getTime()) / 60000;
     if (desdeUltimo < intervalo) return;
   }
 

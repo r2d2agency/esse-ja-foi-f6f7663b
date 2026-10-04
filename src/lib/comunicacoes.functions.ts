@@ -147,7 +147,7 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
         intervalo_minutos: z.number().int().min(1).max(1440).default(5),
         agendado_para: z.string().optional().nullable(),
         filtros: z.any().optional(),
-        mapeamento_variaveis: z.record(z.string()).optional(),
+        mapeamento_variaveis: z.record(z.string(), z.string()).optional(),
         enviar_agora: z.boolean().optional(),
       })
       .parse(data),
@@ -160,7 +160,8 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
       if (!dbc) throw new Error("Banco indisponível.");
       await ensureComunicacoesSchema();
 
-      const { rows } = await dbc.execute(sql`
+      // O driver postgres-js devolve as linhas direto no array, não em { rows }.
+      const criado = await dbc.execute(sql`
         INSERT INTO whatsapp_campanhas (
           nome, veiculo_id, template_id, segmento_id, origem_publico,
           janela_inicio, janela_fim, intervalo_minutos, status, agendado_para, mapeamento_variaveis
@@ -178,7 +179,7 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
           ${JSON.stringify(data.mapeamento_variaveis ?? {})}::jsonb
         ) RETURNING id
       `);
-      const campanhaId = (rows as any[])[0].id;
+      const campanhaId = (criado as any[])[0].id;
 
       const fila = await popularFilaCampanha(campanhaId, {
         origem: data.origem_publico,
@@ -200,14 +201,14 @@ export const listarCampanhasDetalhadoFn = createServerFn({ method: "GET" }).hand
   const { ensureComunicacoesSchema } = await import("@/db/comunicacoes.server");
   if (!dbc) return [];
   await ensureComunicacoesSchema();
-  const { rows } = await dbc.execute(sql`
+  const lista = await dbc.execute(sql`
       SELECT c.*, v.marca, v.modelo, v.placa, t.nome_interno as template_nome, t.status as template_status
       FROM whatsapp_campanhas c
       LEFT JOIN veiculos v ON v.id = c.veiculo_id
       LEFT JOIN whatsapp_templates t ON t.id = c.template_id
       ORDER BY c.criado_em DESC
     `);
-  return rows;
+  return lista as any[];
 });
 
 export const alterarStatusCampanhaFn = createServerFn({ method: "POST" })

@@ -106,6 +106,7 @@ import {
   Mail,
   Target,
   LayoutTemplate,
+  FileDown,
 } from "lucide-react";
 
 export const Route = createFileRoute("/admin/comunicacoes")({
@@ -511,7 +512,7 @@ function ComunicacoesPage() {
   // O worker roda sozinho a cada minuto; este botão serve para não esperar o
   // próximo ciclo depois de criar ou agendar.
   const handleProcessarAgora = async () => {
-    const res: any = await processarDisparoAgora({ data: {} }).catch((e: any) => ({
+    const res: any = await processarDisparoAgora().catch((e: any) => ({
       ok: false,
       error: e?.message || String(e),
     }));
