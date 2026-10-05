@@ -146,6 +146,7 @@ async function enviarComRetry(msg: any, campanha: any): Promise<ResultadoEnvio> 
         campanha.meta_name,
         campanha.idioma || "pt_BR",
         componentes,
+        "DISPARO_CAMPANHA",
       );
       await d.execute(sql`
         UPDATE whatsapp_mensagens SET

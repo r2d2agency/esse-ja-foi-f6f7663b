@@ -116,7 +116,11 @@ export class MetaWhatsAppService {
     return `https://graph.facebook.com/${version}/${endpoint}`;
   }
 
-  private async fetchMeta(endpoint: string, options: RequestInit = {}) {
+  private async fetchMeta(
+    endpoint: string,
+    options: RequestInit = {},
+    operacao: string = "CHAMADA_META",
+  ) {
     if (!this.config?.access_token) {
       throw new Error("Token de acesso do WhatsApp não configurado.");
     }
@@ -130,8 +134,38 @@ export class MetaWhatsAppService {
       ...options.headers,
     };
 
-    const response = await fetch(url, { ...options, headers });
+    const inicio = Date.now();
+    let response: Response;
+    try {
+      response = await fetch(url, { ...options, headers });
+    } catch (e: any) {
+      // Falha de rede não chega como resposta: sem este registro a tela de logs
+      // ficaria muda justamente no caso em que o usuário mais precisa ver algo.
+      await this.registrar({
+        endpoint: url,
+        operacao,
+        status: "ERRO",
+        resumo: e?.message || "Falha de rede ao chamar a Meta.",
+        payload: null,
+        duracaoMs: Date.now() - inicio,
+      });
+      throw e;
+    }
+
     const data = await response.json();
+    const duracaoMs = Date.now() - inicio;
+
+    await this.registrar({
+      endpoint: url,
+      operacao,
+      status: response.ok ? "SUCESSO" : "ERRO",
+      resumo: response.ok
+        ? "OK"
+        : data?.error?.message || "Erro na comunicação com a API da Meta.",
+      payload: data,
+      httpStatus: response.status,
+      duracaoMs,
+    });
 
     if (!response.ok) {
       console.error("[Meta API Error]", data);
@@ -145,6 +179,33 @@ export class MetaWhatsAppService {
     return data;
   }
 
+  /**
+   * Grava uma linha de log da chamada à Meta. Nunca lança: um erro de log não
+   * pode impedir a operação que originou a chamada.
+   */
+  private async registrar(params: {
+    endpoint: string;
+    operacao: string;
+    status: "SUCESSO" | "ERRO";
+    resumo?: string | null;
+    payload?: unknown;
+    httpStatus?: number | null;
+    duracaoMs?: number | null;
+  }) {
+    const { registrarLogMeta } = await import("./logs-whatsapp.server");
+    await registrarLogMeta({
+      direcao: "SAIDA",
+      operacao: params.operacao,
+      wabaId: this.config?.waba_id ?? null,
+      httpStatus: params.httpStatus,
+      status: params.status,
+      resumo: params.resumo,
+      payload: params.payload,
+      endpoint: params.endpoint,
+      duracaoMs: params.duracaoMs,
+    });
+  }
+
   async testarConexao() {
     await this.init();
     if (!this.config?.phone_number_id) {
@@ -152,7 +213,7 @@ export class MetaWhatsAppService {
     }
 
     try {
-      const data = await this.fetchMeta(this.config.phone_number_id);
+      const data = await this.fetchMeta(this.config.phone_number_id, {}, "TESTAR_CONEXAO");
 
       if (db)
         await db.execute(sql`
@@ -180,7 +241,7 @@ export class MetaWhatsAppService {
   async buscarDadosAutomaticos() {
     await this.init();
     if (!this.config?.phone_number_id) throw new Error("Phone Number ID ausente.");
-    const phoneData = await this.fetchMeta(this.config.phone_number_id);
+    const phoneData = await this.fetchMeta(this.config.phone_number_id, {}, "BUSCAR_DADOS");
     return phoneData;
   }
 
@@ -194,7 +255,7 @@ export class MetaWhatsAppService {
     // O teto evita laço infinito se a API devolver cursor malformado.
     let url: string | undefined = `${this.config.waba_id}/message_templates`;
     for (let pagina = 0; pagina < 20 && url; pagina++) {
-      const data: any = await this.fetchMeta(url);
+      const data: any = await this.fetchMeta(url, {}, "SINCRONIZAR_TEMPLATES");
       templates.push(...(data.data || []));
       url = data.paging?.next ? String(data.paging.next) : undefined;
     }
@@ -249,10 +310,11 @@ export class MetaWhatsAppService {
       components: this.normalizarComponentes(template.components),
     };
 
-    const data = await this.fetchMeta(`${this.config.waba_id}/message_templates`, {
-      method: "POST",
-      body: JSON.stringify(metaPayload),
-    });
+    const data = await this.fetchMeta(
+      `${this.config.waba_id}/message_templates`,
+      { method: "POST", body: JSON.stringify(metaPayload) },
+      "CRIAR_TEMPLATE",
+    );
 
     if (db && data.id) {
       await db.execute(sql`
@@ -295,6 +357,7 @@ export class MetaWhatsAppService {
       await this.fetchMeta(
         `${this.config.waba_id}/message_templates/${encodeURIComponent(metaName)}`,
         { method: "DELETE" },
+        "EXCLUIR_TEMPLATE",
       );
       return { ok: true, jaEstavaNaMeta: false };
     } catch (e: any) {
@@ -318,7 +381,13 @@ export class MetaWhatsAppService {
     throw new Error("Upload de mídia via API Meta requer processamento de binários.");
   }
 
-  async enviarMensagem(to: string, templateName: string, language: string, components: any[]) {
+  async enviarMensagem(
+    to: string,
+    templateName: string,
+    language: string,
+    components: any[],
+    operacao = "ENVIAR_MENSAGEM",
+  ) {
     await this.init();
     if (!this.config?.phone_number_id) throw new Error("Phone Number ID não configurado.");
 
@@ -335,10 +404,11 @@ export class MetaWhatsAppService {
       },
     };
 
-    return this.fetchMeta(`${this.config.phone_number_id}/messages`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
+    return this.fetchMeta(
+      `${this.config.phone_number_id}/messages`,
+      { method: "POST", body: JSON.stringify(payload) },
+      operacao || "ENVIAR_MENSAGEM",
+    );
   }
 }
 

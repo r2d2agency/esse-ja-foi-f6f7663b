@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { db } from "@/db/index";
 import { ensureComunicacoesSchema } from "@/db/comunicacoes.server";
 import { sql } from "drizzle-orm";
+import { registrarLogMeta } from "@/db/logs-whatsapp.server";
 
 export const Route = createFileRoute("/api/public/webhooks/whatsapp")({
   server: {
@@ -29,6 +30,22 @@ export const Route = createFileRoute("/api/public/webhooks/whatsapp")({
             console.log("[WhatsApp Webhook] Verificado com sucesso!");
             return new Response(challenge, { status: 200 });
           }
+
+          // A Meta só chega até aqui quando a URL está certa mas o token de
+          // verificação não bate. Sem esta linha o motivo fica invisível: a
+          // Meta exibe "verificação falhou" e a tela de logs permanece vazia.
+          await registrarLogMeta({
+            direcao: "ENTRADA",
+            operacao: "WEBHOOK",
+            status: "ERRO",
+            resumo:
+              "Verificação do webhook recusada: o token enviado pela Meta difere do configurado aqui.",
+            payload: {
+              modo: mode,
+              tokenRecebido: String(token).slice(0, 6) + "…",
+              tokenConfigurado: configToken ? String(configToken).slice(0, 6) + "…" : null,
+            },
+          });
         }
 
         console.error("[WhatsApp Webhook] Falha na verificação do token.");
@@ -73,8 +90,17 @@ export const Route = createFileRoute("/api/public/webhooks/whatsapp")({
 
           // 3. Registrar Log
           await db.execute(sql`
-            INSERT INTO whatsapp_webhook_logs (waba_id, event_type, payload, status)
-            VALUES (${wabaId}, ${eventType}, ${JSON.stringify(payload)}::jsonb, 'PROCESSADO')
+            INSERT INTO whatsapp_webhook_logs
+              (waba_id, event_type, direcao, endpoint, payload, status, erro_detalhe)
+            VALUES (
+              ${wabaId},
+              ${eventType},
+              'ENTRADA',
+              ${change?.field ? String(change.field) : null},
+              ${JSON.stringify(payload)}::jsonb,
+              'PROCESSADO',
+              null
+            )
           `);
 
           // 4. Lógica de Negócio (Idempotente)
@@ -174,8 +200,15 @@ export const Route = createFileRoute("/api/public/webhooks/whatsapp")({
 
           if (db) {
             await db.execute(sql`
-              INSERT INTO whatsapp_webhook_logs (event_type, payload, status, erro_detalhe)
-              VALUES ('ERRO_PROCESSAMENTO', ${JSON.stringify(payload)}::jsonb, 'ERRO', ${error.message})
+              INSERT INTO whatsapp_webhook_logs
+                (event_type, direcao, payload, status, erro_detalhe)
+              VALUES (
+                'ERRO_PROCESSAMENTO',
+                'ENTRADA',
+                ${JSON.stringify(payload)}::jsonb,
+                'ERRO',
+                ${error.message}
+              )
             `);
           }
 

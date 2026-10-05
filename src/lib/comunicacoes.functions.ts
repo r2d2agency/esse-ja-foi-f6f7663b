@@ -455,6 +455,7 @@ export const enviarTesteFn = createServerFn({ method: "POST" })
         template.meta_name,
         template.idioma || "pt_BR",
         componentes,
+        "ENVIAR_TESTE",
       );
     } catch (error: any) {
       return { ok: false, error: error.message };

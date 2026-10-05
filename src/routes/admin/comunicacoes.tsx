@@ -2085,10 +2085,12 @@ function ComunicacoesPage() {
                 <thead className="bg-muted/50 text-muted-foreground font-medium border-b">
                   <tr>
                     <th className="px-4 py-3">Data/Hora</th>
-                    <th className="px-4 py-3">Evento</th>
+                    <th className="px-4 py-3">Origem</th>
+                    <th className="px-4 py-3">Operação</th>
                     <th className="px-4 py-3">WABA</th>
                     <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3 text-right">Ações</th>
+                    <th className="px-4 py-3">Detalhe</th>
+                    <th className="px-4 py-3 text-right">Payload</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -2096,25 +2098,71 @@ function ComunicacoesPage() {
                     <tr key={log.id} className="hover:bg-muted/30">
                       <td className="px-4 py-3 whitespace-nowrap">
                         {new Date(log.criado_em).toLocaleString("pt-BR")}
+                        {log.duracao_ms != null && (
+                          <span className="block text-xs text-muted-foreground">
+                            {log.duracao_ms} ms
+                          </span>
+                        )}
                       </td>
-                      <td className="px-4 py-3 font-medium">{log.event_type}</td>
-                      <td className="px-4 py-3 font-mono text-xs">{log.waba_id}</td>
                       <td className="px-4 py-3">
-                        <Badge variant={log.status === "PROCESSADO" ? "success" : "destructive"}>
+                        <Badge variant={log.direcao === "ENTRADA" ? "secondary" : "outline"}>
+                          {log.direcao === "ENTRADA" ? "Recebido" : "Enviado"}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3 font-medium">
+                        {log.event_type}
+                        {log.http_status != null && (
+                          <span className="block font-mono text-xs text-muted-foreground">
+                            HTTP {log.http_status}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs">{log.waba_id || "—"}</td>
+                      <td className="px-4 py-3">
+                        <Badge
+                          variant={
+                            log.status === "ERRO"
+                              ? "destructive"
+                              : log.status === "SUCESSO"
+                                ? "success"
+                                : "secondary"
+                          }
+                        >
                           {log.status}
                         </Badge>
                       </td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground max-w-xs truncate">
+                        {log.erro_detalhe || "—"}
+                      </td>
                       <td className="px-4 py-3 text-right">
-                        <Button variant="ghost" size="sm">
-                          <Search className="w-4 h-4" />
-                        </Button>
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button variant="ghost" size="sm">
+                              <Search className="w-4 h-4" />
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="max-w-3xl">
+                            <DialogHeader>
+                              <DialogTitle>Payload da chamada</DialogTitle>
+                              <DialogDescription>
+                                {log.event_type} ·{" "}
+                                {new Date(log.criado_em).toLocaleString("pt-BR")}
+                              </DialogDescription>
+                            </DialogHeader>
+                            <pre className="max-h-[60vh] overflow-auto rounded-md bg-muted p-4 text-xs whitespace-pre-wrap break-all">
+                              {JSON.stringify(log.payload, null, 2)}
+                            </pre>
+                          </DialogContent>
+                        </Dialog>
                       </td>
                     </tr>
                   ))}
                   {!logs?.length && (
                     <tr>
-                      <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
-                        Nenhum evento recebido recentemente.
+                      <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">
+                        Nenhum evento registrado ainda. Use "Testar conexão" ou "Sincronizar
+                        templates" na aba Configurações — toda chamada feita à Meta passa a ser
+                        registrada aqui.
                       </td>
                     </tr>
                   )}
