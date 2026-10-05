@@ -90,6 +90,17 @@ export async function ensureComunicacoesSchema(silent = true) {
       );
     `);
 
+    // Colunas que separam as duas pontas da chamada à Meta. Sem elas a linha de
+    // log só dizia o que chegou, nunca o que foi pedido — e `status` ficava
+    // limitado a PROCESSADO/ERRO, sem distinguir sucesso de falha.
+    await d.execute(sql`
+      ALTER TABLE whatsapp_webhook_logs
+        ADD COLUMN IF NOT EXISTS direcao text,
+        ADD COLUMN IF NOT EXISTS endpoint text,
+        ADD COLUMN IF NOT EXISTS http_status int,
+        ADD COLUMN IF NOT EXISTS duracao_ms int;
+    `);
+
     // Inserir config padrão se não existir
     await d.execute(sql`
       INSERT INTO whatsapp_config (id)
@@ -309,7 +320,7 @@ export async function ensureComunicacoesSchema(silent = true) {
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'whatsapp_mensagens' AND column_name = 'contato_marketing_id') THEN
           ALTER TABLE whatsapp_mensagens ADD COLUMN contato_marketing_id uuid;
         END IF;
-      $$;
+      END $$;
     `);
 
     // Conversão única do que já existia. `enviado_em` preenchido é o sinal mais
