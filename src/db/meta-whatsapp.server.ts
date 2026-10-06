@@ -151,6 +151,19 @@ export class MetaWhatsAppService {
     const data = await response.json();
     const duracaoMs = Date.now() - inicio;
 
+    // O payload enviado é registrado junto com a resposta. Sem isso, erros como
+    // "Invalid parameter" não dizem qual campo a Meta recusou — o corpo da
+    // requisição é a única forma de comparar o que foi enviado com o que a
+    // API espera.
+    let payloadEnviado: unknown = null;
+    if (options.body) {
+      try {
+        payloadEnviado = JSON.parse(String(options.body));
+      } catch {
+        payloadEnviado = String(options.body);
+      }
+    }
+
     await this.registrar({
       endpoint: url,
       operacao,
@@ -158,7 +171,7 @@ export class MetaWhatsAppService {
       resumo: response.ok
         ? "OK"
         : data?.error?.message || "Erro na comunicação com a API da Meta.",
-      payload: data,
+      payload: { enviado: payloadEnviado, resposta: data },
       httpStatus: response.status,
       duracaoMs,
     });
