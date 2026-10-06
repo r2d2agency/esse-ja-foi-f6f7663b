@@ -86,18 +86,14 @@ export class MetaWhatsAppService {
   private config: any = null;
 
   /**
-   * Ordena os componentes na sequência que a Meta exige e completa o HEADER de
-   * texto com o objeto `parameters`, que é obrigatório — sem ele a API responde
-   * "invalid parameter" mesmo com a ordem correta.
+   * Ordena os componentes na sequência que a Meta exige. `parameters` pertence
+   * ao envio de mensagens, não ao cadastro do template; a API rejeita esse
+   * campo no payload de criação com "Unexpected key parameters".
    */
   private normalizarComponentes(components: any[] = []) {
-    return [...components]
-      .sort((a, b) => (ORDEM_COMPONENTES[a?.type] ?? 99) - (ORDEM_COMPONENTES[b?.type] ?? 99))
-      .map((c) =>
-        c?.type === "HEADER" && c?.format === "TEXT" && !c.parameters
-          ? { ...c, parameters: [] }
-          : c,
-      );
+    return [...components].sort(
+      (a, b) => (ORDEM_COMPONENTES[a?.type] ?? 99) - (ORDEM_COMPONENTES[b?.type] ?? 99),
+    );
   }
 
   async init() {
