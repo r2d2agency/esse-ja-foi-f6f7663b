@@ -345,7 +345,10 @@ export class MetaWhatsAppService {
   }
 
   /**
-   * A Meta apaga template pelo nome, não pelo id numérico.
+   * A Meta apaga template pelo nome em query string, não como segmento de path:
+   * `DELETE /{waba}/message_templates?name=promocao`. Montando o nome no path a
+   * API responde "Unknown path components: /promocao" e nada é apagado.
+   *
    * Devolve "inexistente na Meta" em vez de lançar: quem chama trata esse caso
    * removendo só o registro local, porque o objetivo do usuário já foi atingido.
    */
@@ -353,16 +356,18 @@ export class MetaWhatsAppService {
     await this.init();
     if (!this.config?.waba_id) throw new Error("WABA ID não configurado.");
 
+    const nome = encodeURIComponent(metaName);
     try {
       await this.fetchMeta(
-        `${this.config.waba_id}/message_templates/${encodeURIComponent(metaName)}`,
+        `${this.config.waba_id}/message_templates?name=${nome}`,
         { method: "DELETE" },
         "EXCLUIR_TEMPLATE",
       );
       return { ok: true, jaEstavaNaMeta: false };
     } catch (e: any) {
       const msg = String(e?.message || "");
-      const naoExisteNaMeta = /does not exist|not found|Unsupported (delete|get)/i.test(msg);
+      const naoExisteNaMeta =
+        /does not exist|not found|unsupported delete|Unknown path components/i.test(msg);
       if (!naoExisteNaMeta) throw e;
       return { ok: true, jaEstavaNaMeta: true };
     }
