@@ -141,6 +141,16 @@ export function contarVariaveisTemplate(template: any): number {
   const numeros = [...String(corpo).matchAll(/\{\{(\d+)\}\}/g)].map((m) => Number(m[1]));
   return numeros.length ? Math.max(...numeros) : 0;
 }
+
+/** O botão Enviar só habilita com telefone válido e todas as variáveis preenchidas. */
+export function podeEnviarTeste(template: any, valores: string[], digitos: string): boolean {
+  if (digitos.length < 10 || digitos.length > 13) return false;
+  const total = contarVariaveisTemplate(template);
+  for (let i = 0; i < total; i++) {
+    if (!String(valores[i] ?? "").trim()) return false;
+  }
+  return true;
+}
 const EXEMPLOS_VARIAVEIS = ["Carlos", "HB20 2022", "https://essejafoi.com.br/veiculo/EJF-000001"];
 
 const ROTULO_COMPLIANCE: Record<string, string> = {
@@ -2053,11 +2063,17 @@ function ComunicacoesPage() {
               <DialogHeader>
                 <DialogTitle>Testar template</DialogTitle>
                 <DialogDescription>
-                  Envia <strong>{templateParaTeste?.nome_interno}</strong> para o número informado.
+                  Preencha as variáveis e o número para enviar{" "}
+                  <strong>{templateParaTeste?.nome_interno}</strong>.
                   O WhatsApp só aceita template aprovado — se ainda estiver em análise, a Meta
                   recusará.
                 </DialogDescription>
               </DialogHeader>
+              <VariáveisTeste
+                template={templateParaTeste}
+                valores={valoresTeste}
+                onChange={setValoresTeste}
+              />
               <div className="space-y-2">
                 <Label htmlFor="telefone-teste-template">Telefone (com DDD e código do país)</Label>
                 <Input
@@ -2071,16 +2087,22 @@ function ComunicacoesPage() {
                   Só números. Ex: 55 + 11 + 9 + número.
                 </p>
               </div>
-              <VariáveisTeste
-                template={templateParaTeste}
-                valores={valoresTeste}
-                onChange={setValoresTeste}
-              />
               <DialogFooter>
                 <Button variant="outline" onClick={() => setTemplateParaTeste(null)}>
                   Cancelar
                 </Button>
-                <Button onClick={handleEnviarTeste}>Enviar</Button>
+                <Button
+                  onClick={handleEnviarTeste}
+                  disabled={
+                    !podeEnviarTeste(
+                      templateParaTeste,
+                      valoresTeste,
+                      telefoneTeste.replace(/\D/g, ""),
+                    )
+                  }
+                >
+                  Enviar
+                </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
