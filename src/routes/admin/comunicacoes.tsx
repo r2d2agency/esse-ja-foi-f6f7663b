@@ -212,27 +212,53 @@ function VariáveisTeste({
 }) {
   const total = contarVariaveisTemplate(template);
   if (!total) return null;
+
+  // Verifica quais variáveis estão vazias
+  const faltando = Array.from({ length: total }, (_, i) => i).filter(
+    (i) => !String(valores[i] ?? "").trim()
+  );
+
   return (
     <div className="space-y-2">
       <Label>Valores das variáveis</Label>
-      {Array.from({ length: total }, (_, i) => (
-        <div key={i} className="space-y-1">
-          <Label className="text-[11px] text-muted-foreground">
-            {"{{"}
-            {i + 1}
-            {"}}"}
-          </Label>
-          <Input
-            value={valores[i] ?? ""}
-            placeholder={EXEMPLOS_VARIAVEIS[i] ?? `Valor ${i + 1}`}
-            onChange={(e) => {
-              const novo = [...valores];
-              novo[i] = e.target.value;
-              onChange(novo);
-            }}
-          />
+      {faltando.length > 0 && (
+        <div className="rounded-md bg-destructive/10 border border-destructive/20 p-3 text-sm">
+          <p className="text-destructive font-medium mb-1">
+            Preencha as variáveis abaixo antes de enviar:
+          </p>
+          <ul className="list-disc list-inside text-destructive/80 space-y-0.5">
+            {faltando.map((i) => (
+              <li key={i}>
+                <code className="bg-destructive/10 px-1 rounded text-[11px]">
+                  {"{{"}{i + 1}{"}}"}
+                </code>
+              </li>
+            ))}
+          </ul>
         </div>
-      ))}
+      )}
+      {Array.from({ length: total }, (_, i) => {
+        const vazio = !String(valores[i] ?? "").trim();
+        return (
+          <div key={i} className="space-y-1">
+            <Label className="text-[11px] text-muted-foreground">
+              {"{{"}
+              {i + 1}
+              {"}}"}
+            </Label>
+            <Input
+              value={valores[i] ?? ""}
+              placeholder={EXEMPLOS_VARIAVEIS[i] ?? `Valor ${i + 1}`}
+              className={vazio ? "border-destructive focus-visible:ring-destructive/20" : ""}
+              onChange={(e) => {
+                const novo = [...valores];
+                novo[i] = e.target.value;
+                onChange(novo);
+              }}
+            />
+          </div>
+        );
+      })}
       <p className="text-[11px] text-muted-foreground">
         O WhatsApp exige um valor para cada variável do corpo, na mesma ordem.
       </p>
@@ -477,6 +503,21 @@ function ComunicacoesPage() {
       toast.error("Escolha um template antes de enviar o teste.");
       return;
     }
+
+    // Valida se todas as variáveis estão preenchidas
+    const template = templateParaTeste;
+    const total = contarVariaveisTemplate(template);
+    if (total > 0) {
+      const faltando = Array.from({ length: total }, (_, i) => i).filter(
+        (i) => !String(valoresTeste[i] ?? "").trim()
+      );
+      if (faltando.length > 0) {
+        const vars = faltando.map((i) => `{{${i + 1}}}`).join(", ");
+        toast.error(`Preencha as variáveis ${vars} antes de enviar o teste.`);
+        return;
+      }
+    }
+
     toast.promise(
       enviarTeste({
         data: {
