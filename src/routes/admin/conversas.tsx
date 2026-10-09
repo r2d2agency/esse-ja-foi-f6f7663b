@@ -422,7 +422,14 @@ function CentralConversasPage() {
                       )}
                     >
                       <p className="text-sm leading-relaxed">
-                        {m.payload?.text?.body || 'Arquivo recebido'}
+                        {m.tipo === 'TEMPLATE' || m.payload?.tipo === 'TEMPLATE' ? (
+                          <>
+                            <FileText className="w-3 h-3 inline mr-1" />
+                            Template enviado: {m.payload?.template_name}
+                          </>
+                        ) : (
+                          m.payload?.text?.body || 'Arquivo recebido'
+                        )}
                       </p>
                       <div
                         className={cn(
