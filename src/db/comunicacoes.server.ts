@@ -300,7 +300,8 @@ export async function ensureComunicacoesSchema(silent = true) {
       DO $$
       BEGIN
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'whatsapp_mensagens' AND column_name = 'estado_fila') THEN
-          ALTER TABLE whatsapp_mensagens ADD COLUMN estado_fila text DEFAULT 'PENDENTE';
+          -- DENTRO do DO $$ as aspas simples precisam ser dobradas (''X'').
+          ALTER TABLE whatsapp_mensagens ADD COLUMN estado_fila text DEFAULT ''PENDENTE'';
         END IF;
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'whatsapp_mensagens' AND column_name = 'reservada_em') THEN
           ALTER TABLE whatsapp_mensagens ADD COLUMN reservada_em timestamptz;
@@ -428,7 +429,11 @@ export async function ensureComunicacoesSchema(silent = true) {
         // O tipo é interpolado dentro de uma string SQL, então as aspas simples
         // do DEFAULT precisam ser dobradas — senão a string fecha antes do
         // valor e o Postgres devolve "syntax error at or near".
-        const tipoLimpo = String(type).replace(/'/g, "''");
+        // Dobramos com o marcador ''D'' para escapar uma única aspa: com
+        // replaceAll("''") em "jsonb DEFAULT ''[]''" o resultado ficava
+        // "jsonb DEFAULT ''''[]''''" (4 aspas), e o Postgres via fim de string
+        // seguido de identificador inválido.
+        const tipoLimpo = String(type).replace(/'/g, "''D''");
         await d.execute(sql.raw(`
           DO $$
           BEGIN

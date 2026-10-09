@@ -43,11 +43,12 @@ export async function ensureConversasSchema(silent = true) {
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'whatsapp_conversas' AND column_name = 'ultima_resposta_cliente_em') THEN
           ALTER TABLE whatsapp_conversas ADD COLUMN ultima_resposta_cliente_em timestamptz;
         END IF;
+        -- DENTRO do DO $$ as aspas simples precisam ser dobradas (''X'').
         -- `processarMensagemRecebida` grava profiles.whatsapp_status = 'ATIVO' ao
         -- dar entrada em um número desconhecido. Sem esta coluna o INSERT estoura
         -- (a tabela é criada em auth.server.ts sem ela) e nenhuma conversa nasce.
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'whatsapp_status') THEN
-          ALTER TABLE profiles ADD COLUMN whatsapp_status text DEFAULT 'ATIVO';
+          ALTER TABLE profiles ADD COLUMN whatsapp_status text DEFAULT ''ATIVO'';
         END IF;
       END $$;
     `);
@@ -61,7 +62,7 @@ export async function ensureConversasSchema(silent = true) {
           ALTER TABLE whatsapp_mensagens ADD COLUMN conversa_id uuid REFERENCES whatsapp_conversas(id) ON DELETE CASCADE;
         END IF;
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'whatsapp_mensagens' AND column_name = 'tipo') THEN
-          ALTER TABLE whatsapp_mensagens ADD COLUMN tipo text DEFAULT 'MENSAGEM';
+          ALTER TABLE whatsapp_mensagens ADD COLUMN tipo text DEFAULT ''MENSAGEM'';
         END IF;
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'whatsapp_mensagens' AND column_name = 'autor_id') THEN
           ALTER TABLE whatsapp_mensagens ADD COLUMN autor_id uuid REFERENCES profiles(id);
@@ -79,7 +80,8 @@ export async function ensureConversasSchema(silent = true) {
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS whatsapp_respostas_prontas (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        escopo text NOT NULL DEFAULT 'GLOBAL', -- GLOBAL | ATENDENTE
+        -- DENTRO do DO $$ as aspas simples precisam ser dobradas (''X'').
+        escopo text NOT NULL DEFAULT ''GLOBAL'', -- GLOBAL | ATENDENTE
         atendente_id uuid REFERENCES profiles(id),
         atalho text NOT NULL,
         titulo text,

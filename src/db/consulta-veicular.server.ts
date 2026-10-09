@@ -89,7 +89,7 @@ export async function ensureConsultaVeicularSchema() {
   `);
   await d.execute(sql`ALTER TABLE consulta_provedores ADD COLUMN IF NOT EXISTS senha text;`);
   await d.execute(
-    sql`ALTER TABLE consulta_provedores ADD COLUMN IF NOT EXISTS auth_modo text DEFAULT 'AUTO';`,
+    sql`ALTER TABLE consulta_provedores ADD COLUMN IF NOT EXISTS auth_modo text DEFAULT ''AUTO'';`,
   );
   await d.execute(
     sql`ALTER TABLE consulta_provedores ADD COLUMN IF NOT EXISTS webhook_token text;`,
