@@ -425,11 +425,15 @@ export async function ensureComunicacoesSchema(silent = true) {
 
     for (const [name, type] of profileCols) {
       try {
+        // O tipo é interpolado dentro de uma string SQL, então as aspas simples
+        // do DEFAULT precisam ser dobradas — senão a string fecha antes do
+        // valor e o Postgres devolve "syntax error at or near".
+        const tipoLimpo = String(type).replace(/'/g, "''");
         await d.execute(sql.raw(`
           DO $$
           BEGIN
             IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = '${name}') THEN
-              EXECUTE 'ALTER TABLE profiles ADD COLUMN ${name} ${type}';
+              EXECUTE 'ALTER TABLE profiles ADD COLUMN ${name} ${tipoLimpo}';
             END IF;
           END $$;
         `));

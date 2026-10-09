@@ -134,9 +134,16 @@ function varianteStatus(status: string): any {
   return "secondary";
 }
 /** Quantas variáveis o corpo do template usa, na ordem {{1}}, {{2}}... */
+/** O conteúdo pode chegar como array de componentes (formato da Meta) ou como objeto com `components`. */
+function componentesDoTemplate(template: any): any[] {
+  const conteudo = template?.conteudo;
+  if (Array.isArray(conteudo)) return conteudo;
+  if (Array.isArray(conteudo?.components)) return conteudo.components;
+  return [];
+}
+
 export function contarVariaveisTemplate(template: any): number {
-  const comps = template?.conteudo?.components;
-  if (!Array.isArray(comps)) return 0;
+  const comps = componentesDoTemplate(template);
   const corpo = comps.find((c: any) => c?.type === "BODY")?.text || "";
   const numeros = [...String(corpo).matchAll(/\{\{(\d+)\}\}/g)].map((m) => Number(m[1]));
   return numeros.length ? Math.max(...numeros) : 0;

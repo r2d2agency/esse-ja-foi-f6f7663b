@@ -54,12 +54,22 @@ export class MetaApiError extends Error {
 }
 
 /**
+ * O conteúdo pode chegar como array de componentes (formato que a Meta
+ * devolve e que é gravado no banco) ou como objeto com `components`.
+ */
+function componentesDoConteudo(conteudo: any): any[] {
+  if (Array.isArray(conteudo)) return conteudo;
+  if (Array.isArray(conteudo?.components)) return conteudo.components;
+  return [];
+}
+
+/**
  * Monta os componentes de uma mensagem de template a partir do corpo gravado e
  * dos valores. A Meta exige um parameter para cada {{n}} do corpo, na mesma
  * ordem — sem isso a resposta é "template variable missing".
  */
 export function montarComponents(conteudo: any, valores: Record<string, string> = {}): any[] {
-  const comps = Array.isArray(conteudo?.components) ? conteudo.components : [];
+  const comps = componentesDoConteudo(conteudo);
   const corpo = comps.find((c: any) => c?.type === "BODY")?.text || "";
   const numeros = [...String(corpo).matchAll(/\{\{(\d+)\}\}/g)].map((m) => Number(m[1]));
   const maximo = numeros.length ? Math.max(...numeros) : 0;
