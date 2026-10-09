@@ -488,6 +488,51 @@ export async function listarContatosDisponiveis(busca?: string | null) {
 }
 
 /**
+ * Cadastra um contato novo na hora, para o atendente poder puxar conversa de
+ * alguém que ainda não está no banco. `profiles.email` é NOT NULL UNIQUE, então
+ * o telefone vira e-mail sintético quando o atendente não informa um.
+ */
+export async function cadastrarContato(dados: {
+  nome: string;
+  telefone: string;
+  email?: string | null;
+}) {
+  if (!db) throw new Error("Banco de dados indisponível");
+
+  const nome = dados.nome?.trim();
+  const telefone = apenasDigitos(dados.telefone);
+  if (!nome) throw new Error("Informe o nome do contato.");
+  if (telefone.length < 10) {
+    throw new Error("Telefone inválido. Informe o DDD e o número.");
+  }
+
+  const noveDigitos = telefone.slice(-9);
+  const email = dados.email?.trim() || `whatsapp_${noveDigitos}@contato.local`;
+
+  // Se já existir um perfil com esse telefone, devolve ele em vez de duplicar.
+  const existente = await db.execute(sql`
+    SELECT id FROM profiles
+    WHERE length(regexp_replace(COALESCE(telefone, ''), '\D', '', 'g')) >= 9
+      AND right(regexp_replace(telefone, '\D', '', 'g'), 9) = ${noveDigitos}
+    LIMIT 1
+  `);
+  const perfilExistente = rowsOf(existente)[0];
+  if (perfilExistente) {
+    return { id: perfilExistente.id as string, ja_existia: true as const };
+  }
+
+  const res = await db.execute(sql`
+    INSERT INTO profiles (nome, telefone, email, role, whatsapp_status)
+    VALUES (${nome}, ${dados.telefone}, ${email}, 'comprador', 'ATIVO')
+    ON CONFLICT (email) DO UPDATE SET
+      nome = COALESCE(NULLIF(btrim(EXCLUDED.nome), ''), profiles.nome),
+      telefone = COALESCE(NULLIF(btrim(EXCLUDED.telefone), ''), profiles.telefone)
+    RETURNING id
+  `);
+  return { id: rowsOf(res)[0].id as string, ja_existia: false as const };
+}
+
+/**
  * Inicia uma conversa com um contato a partir do zero.
  *
  * A janela de 24h só se abre quando o CLIENTE manda mensagem — então uma conversa

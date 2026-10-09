@@ -64,6 +64,7 @@ import {
   excluirRespostaProntaFn,
   listarContatosDisponiveisFn,
   iniciarConversaFn,
+  cadastrarContatoFn,
 } from '@/lib/conversas.functions';
 import { listarTemplatesFn } from '@/lib/comunicacoes.functions';
 import { getSessionToken } from '@/lib/session';
@@ -86,6 +87,7 @@ function CentralConversasPage() {
   const getTemplates = useServerFn(listarTemplatesFn);
   const getContatos = useServerFn(listarContatosDisponiveisFn);
   const iniciarConversa = useServerFn(iniciarConversaFn);
+  const cadastrarContato = useServerFn(cadastrarContatoFn);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busca, setBusca] = useState('');
@@ -103,6 +105,10 @@ function CentralConversasPage() {
   const [contatoBusca, setContatoBusca] = useState('');
   const [contatoSelecionado, setContatoSelecionado] = useState<any>(null);
   const [templateAbertura, setTemplateAbertura] = useState('');
+  // Cadastro de contato novo, para quando a pessoa não está na lista.
+  const [novoContato, setNovoContato] = useState(false);
+  const [novoNome, setNovoNome] = useState('');
+  const [novoTelefone, setNovoTelefone] = useState('');
 
   const token = getSessionToken();
 
@@ -198,6 +204,22 @@ function CentralConversasPage() {
       toast.success('Resposta rápida excluída');
     },
     onError: (err) => toast.error(`Erro ao excluir: ${err.message}`),
+  });
+
+  const mutationCadastrarContato = useMutation({
+    mutationFn: () =>
+      cadastrarContato({ data: { nome: novoNome, telefone: novoTelefone } }),
+    onSuccess: (res: any) => {
+      const perfil = { id: res?.id, nome: novoNome.trim(), telefone: novoTelefone };
+      setNovoContato(false);
+      setNovoNome('');
+      setNovoTelefone('');
+      setContatoSelecionado(perfil);
+      setContatoBusca(perfil.nome);
+      queryClient.invalidateQueries({ queryKey: ['contatos-disponiveis'] });
+      toast.success('Contato cadastrado');
+    },
+    onError: (err) => toast.error(`Erro ao cadastrar contato: ${err.message}`),
   });
 
   const mutationIniciarConversa = useMutation({
@@ -796,42 +818,74 @@ function CentralConversasPage() {
 
           <div className="space-y-3">
             <div>
-              <label className="text-xs font-medium text-muted-foreground">Contato</label>
-              <Input
-                placeholder="Buscar por nome ou telefone..."
-                value={contatoBusca}
-                onChange={(e) => setContatoBusca(e.target.value)}
-                className="mt-1"
-              />
-            </div>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-medium text-muted-foreground">Contato</label>
+                <button
+                  type="button"
+                  onClick={() => setNovoContato((v) => !v)}
+                  className="text-xs text-teal-700 hover:underline inline-flex items-center gap-1"
+                >
+                  <Plus className="w-3 h-3" />
+                  {novoContato ? 'Escolher existente' : 'Cadastrar novo contato'}
+                </button>
+              </div>
 
-            <div className="border rounded-lg max-h-52 overflow-y-auto divide-y">
-              {carregandoContatos ? (
-                <p className="text-xs text-muted-foreground p-3">Carregando contatos...</p>
-              ) : !contatos?.length ? (
-                <p className="text-xs text-muted-foreground p-3">
-                  Nenhum contato com telefone encontrado.
-                </p>
+              {novoContato ? (
+                <div className="space-y-2 border rounded-lg p-3">
+                  <Input
+                    placeholder="Nome do contato"
+                    value={novoNome}
+                    onChange={(e) => setNovoNome(e.target.value)}
+                    autoFocus
+                  />
+                  <Input
+                    placeholder="Telefone com DDD"
+                    value={novoTelefone}
+                    onChange={(e) => setNovoTelefone(e.target.value)}
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    Cadastra o contato e já o seleciona para iniciar a conversa.
+                  </p>
+                </div>
               ) : (
-                contatos.map((c: any) => (
-                  <button
-                    key={c.id}
-                    onClick={() => setContatoSelecionado(c)}
-                    className={`w-full text-left p-3 transition-colors ${
-                      contatoSelecionado?.id === c.id
-                        ? 'bg-teal-50 border-l-2 border-l-teal-600'
-                        : 'hover:bg-slate-50'
-                    }`}
-                  >
-                    <p className="text-xs font-bold">{c.nome}</p>
-                    <p className="text-[10px] text-muted-foreground">{c.telefone}</p>
-                    {c.conversa_aberta_id && (
-                      <p className="text-[10px] text-teal-700">Já possui conversa aberta</p>
-                    )}
-                  </button>
-                ))
+                <Input
+                  placeholder="Buscar por nome ou telefone..."
+                  value={contatoBusca}
+                  onChange={(e) => setContatoBusca(e.target.value)}
+                  className="mt-1"
+                />
               )}
             </div>
+
+            {!novoContato && (
+              <div className="border rounded-lg max-h-52 overflow-y-auto divide-y">
+                {carregandoContatos ? (
+                  <p className="text-xs text-muted-foreground p-3">Carregando contatos...</p>
+                ) : !contatos?.length ? (
+                  <p className="text-xs text-muted-foreground p-3">
+                    Nenhum contato com telefone encontrado. Cadastre um contato novo.
+                  </p>
+                ) : (
+                  contatos.map((c: any) => (
+                    <button
+                      key={c.id}
+                      onClick={() => setContatoSelecionado(c)}
+                      className={`w-full text-left p-3 transition-colors ${
+                        contatoSelecionado?.id === c.id
+                          ? 'bg-teal-50 border-l-2 border-l-teal-600'
+                          : 'hover:bg-slate-50'
+                      }`}
+                    >
+                      <p className="text-xs font-bold">{c.nome}</p>
+                      <p className="text-[10px] text-muted-foreground">{c.telefone}</p>
+                      {c.conversa_aberta_id && (
+                        <p className="text-[10px] text-teal-700">Já possui conversa aberta</p>
+                      )}
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
 
             <div>
               <label className="text-xs font-medium text-muted-foreground">Template de abertura</label>
@@ -867,16 +921,24 @@ function CentralConversasPage() {
               Cancelar
             </Button>
             <Button
-              disabled={!contatoSelecionado || !templateAbertura}
-              onClick={() =>
-                mutationIniciarConversa.mutate({
-                  telefone: contatoSelecionado.telefone,
-                  nome: contatoSelecionado.nome,
-                  template_name: templateAbertura,
-                })
+              disabled={
+                (novoContato
+                  ? !novoNome.trim() || novoTelefone.replace(/\D/g, '').length < 10
+                  : !contatoSelecionado) || !templateAbertura
               }
+              onClick={() => {
+                if (novoContato) {
+                  mutationCadastrarContato.mutate();
+                } else {
+                  mutationIniciarConversa.mutate({
+                    telefone: contatoSelecionado.telefone,
+                    nome: contatoSelecionado.nome,
+                    template_name: templateAbertura,
+                  });
+                }
+              }}
             >
-              Iniciar conversa
+              {novoContato ? 'Cadastrar e iniciar' : 'Iniciar conversa'}
             </Button>
           </DialogFooter>
         </DialogContent>

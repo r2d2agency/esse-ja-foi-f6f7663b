@@ -140,6 +140,19 @@ export const listarContatosDisponiveisFn = createServerFn({ method: "GET" })
     return db.listarContatosDisponiveis(data.busca ?? null);
   });
 
+/** Cadastra um contato novo na hora, para o diálogo "Nova conversa". */
+export const cadastrarContatoFn = createServerFn({ method: "POST" })
+  .validator((data: unknown) =>
+    z
+      .object({
+        nome: z.string().min(1),
+        telefone: z.string().min(10),
+        email: z.string().nullable().optional(),
+      })
+      .parse(data),
+  )
+  .handler(async ({ data }) => db.cadastrarContato(data));
+
 /**
  * Inicia uma conversa nova. Exige template: a janela de 24h só se abre quando o
  * cliente escreve, então não existe caminho de texto livre para primeiro contato.
