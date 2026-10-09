@@ -28,6 +28,7 @@ import {
   MapPin,
   History,
   Terminal,
+  MessageSquare,
 } from "lucide-react";
 import { ReactNode, useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
@@ -176,6 +177,13 @@ const MENU_SECTIONS: MenuSection[] = [
         to: "/admin/comunicacoes",
         activePrefixes: ["/admin/comunicacoes"],
         description: "Disparo para grupos e listas",
+      },
+      {
+        label: "Conversas",
+        icon: MessageSquare,
+        to: "/admin/conversas",
+        activePrefixes: ["/admin/conversas"],
+        description: "Atendimento WhatsApp com janela de 24h",
       },
       {
         label: "Lances",

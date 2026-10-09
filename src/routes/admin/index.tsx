@@ -109,6 +109,7 @@ function AdminDashboard() {
               description: "Campanhas, lances, negociações, pagamentos e entrega do veículo.",
               links: [
                 { label: "Campanhas", to: "/admin/comunicacoes" },
+                { label: "Conversas", to: "/admin/conversas" },
                 { label: "Lances", to: "/admin/leiloes" },
                 { label: "Negociações", to: "/admin/negociacoes" },
               ],
