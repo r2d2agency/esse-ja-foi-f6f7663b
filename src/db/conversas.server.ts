@@ -96,9 +96,23 @@ export async function ensureConversasSchema(silent = true) {
 export async function listarConversas(filtros: any) {
   if (!db) return [];
 
+  // A UI envia os rótulos em português ('Todas', 'Não lidas', 'Resolvidas'),
+  // enquanto o banco guarda 'TODAS'/'NAO_LIDAS'/'RESOLVIDA'. Sem este mapeamento
+  // o 'Todas' inicial virava `AND c.status = 'Todas'` e a lista voltava vazia.
+  const statusBanco: Record<string, string> = {
+    Todas: 'TODAS',
+    'Não lidas': 'NAO_LIDAS',
+    NOVA: 'NOVA',
+    EM_ATENDIMENTO: 'EM_ATENDIMENTO',
+    AGUARDANDO_CLIENTE: 'AGUARDANDO_CLIENTE',
+    RESOLVIDAS: 'RESOLVIDA',
+  };
+
+  const statusNorm = statusBanco[filtros.status as string] ?? filtros.status;
+
   const filtrosNorm = {
     ...filtros,
-    status: filtros.status === 'Não lidas' ? 'NAO_LIDAS' : filtros.status,
+    status: statusNorm,
   };
 
   let query = sql`
