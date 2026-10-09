@@ -63,18 +63,16 @@ function componentesDoConteudo(conteudo: any): any[] {
   return [];
 }
 
-/**
- * Monta os componentes de uma mensagem de template a partir do corpo gravado e
- * dos valores. A Meta exige um parameter para cada {{n}} do corpo, na mesma
- * ordem — sem isso a resposta é "template variable missing".
- */
-export function montarComponents(conteudo: any, valores: Record<string, string> = {}): any[] {
-  const comps = componentesDoConteudo(conteudo);
-  const corpo = comps.find((c: any) => c?.type === "BODY")?.text || "";
-  const numeros = [...String(corpo).matchAll(/\{\{(\d+)\}\}/g)].map((m) => Number(m[1]));
-  const maximo = numeros.length ? Math.max(...numeros) : 0;
-  if (!maximo) return [];
+/** Número de placeholders {{n}} no texto, lendo do maior deles (a Meta exige sequência). */
+function maiorPlaceholder(texto: string): number {
+  const numeros = [...String(texto).matchAll(/\{\{(\d+)\}\}/g)].map((m) => Number(m[1]));
+  return numeros.length ? Math.max(...numeros) : 0;
+}
 
+/** Monta `parameters` para um componente que tenha {{n}} no texto (BODY ou url de botão). */
+function parametersPara(texto: string, valores: Record<string, string>, rotulo: string): any[] {
+  const maximo = maiorPlaceholder(texto);
+  if (!maximo) return [];
   const parameters = Array.from({ length: maximo }, (_, i) => ({
     type: "text",
     text: String(valores[String(i + 1)] ?? valores[`{{${i + 1}}}`] ?? ""),
@@ -86,10 +84,53 @@ export function montarComponents(conteudo: any, valores: Record<string, string> 
     .filter(Boolean) as string[];
   if (faltando.length) {
     throw new Error(
-      `Preencha ${faltando.join(", ")} no mapeamento da campanha. A Meta recusa mensagem de template com variável vazia.`,
+      `Preencha ${faltando.join(", ")} do ${rotulo}. A Meta recusa mensagem de template com variável vazia.`,
     );
   }
-  return [{ type: "BODY", parameters }];
+  return parameters;
+}
+
+/**
+ * Monta os componentes de uma mensagem de template a partir do conteúdo gravado
+ * e dos valores. A Meta exige um parameter para cada {{n}} do corpo — sem isso
+ * a resposta é "template variable missing". Botões de URL também carregam
+ * parâmetro de path (erro 131008 "Button at index N of type Url requires a
+ * parameter" quando falta), então são montados aqui também.
+ */
+export function montarComponents(conteudo: any, valores: Record<string, string> = {}): any[] {
+  const comps = componentesDoConteudo(conteudo);
+  if (!comps.length) return [];
+
+  const saida: any[] = [];
+
+  for (const comp of comps) {
+    const tipo = String(comp?.type || "").toUpperCase();
+
+    if (tipo === "BODY") {
+      const texto = comp.text || "";
+      const parameters = parametersPara(texto, valores, "corpo do template");
+      if (parameters.length) saida.push({ type: "BODY", parameters });
+      continue;
+    }
+
+    if (tipo === "BUTTONS") {
+      const botoes = Array.isArray(comp.buttons) ? comp.buttons : [];
+      let indice = 0;
+      const montados = botoes.map((b: any) => {
+        const tipoBotao = String(b?.type || "").toUpperCase();
+        const url = String(b.url || "");
+        if (tipoBotao !== "URL" || !url) return b;
+        // Botão de URL com {{n}} no link: a Meta exige um parameter text por
+        // placeholder na ordem dos botões (erro 131008 quando falta).
+        const parameters = parametersPara(url, valores, `botão de link ${indice + 1}`);
+        indice += 1;
+        return { type: "URL", sub_type: "URL", index: b.index ?? indice - 1, parameters };
+      });
+      saida.push({ type: "BUTTONS", buttons: montados });
+    }
+  }
+
+  return saida;
 }
 
 export class MetaWhatsAppService {
