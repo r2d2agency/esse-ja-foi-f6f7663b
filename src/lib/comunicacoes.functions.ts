@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { sql } from "drizzle-orm";
 import * as db from "../db/comunicacoes.server";
-import { metaService } from "../db/meta-whatsapp.server";
+import { metaService, montarComponents } from "../db/meta-whatsapp.server";
 
 export const getWhatsappConfigFn = createServerFn({ method: "GET" }).handler(async () => {
   const config = await db.getWhatsappConfig();
@@ -433,22 +433,31 @@ export const enviarTesteFn = createServerFn({ method: "POST" })
         );
       }
 
-      // A Meta exige um componente BODY com os mesmos valores, na ordem dos
-      // placeholders {{1}}, {{2}}... do corpo. Sem isto, qualquer template com
-      // variável é recusado com "template variable missing" — que era o que
-      // impedia o botão de teste existir: nunca ia funcionar.
+      // A Meta exige um componente BODY com um parameter para cada {{n}} do
+      // corpo, na ordem. Montar o array na mão a partir de data.variaveis fazia
+      // o payload sair com "components": [] quando o array chegava vazio, e a
+      // Meta respondia 132000 "number of parameters does not match". Derivar do
+      // próprio conteúdo também pega o caso de a tela mandar menos valores do
+      // que o template pede.
       const valores = Array.isArray(data.variaveis) ? data.variaveis : [];
-      const componentes = valores.length
-        ? [
-            {
-              type: "BODY",
-              parameters: valores.map((v: any) => ({
-                type: "text",
-                text: String(v ?? ""),
-              })),
-            },
-          ]
-        : [];
+      const mapa: Record<string, string> = {};
+      valores.forEach((v: any, i: number) => {
+        mapa[String(i + 1)] = String(v ?? "");
+      });
+
+      let componentes: any[];
+      try {
+        componentes = montarComponents(template.conteudo, mapa);
+      } catch (e: any) {
+        // A mensagem de montarComponents fala em "mapeamento da campanha";
+        // aqui o contexto é o teste avulso, então troca só o sujeito.
+        throw new Error(
+          String(e?.message || "").replace(
+            "no mapeamento da campanha",
+            "no formulário de teste",
+          ) || "Preencha todas as variáveis do template.",
+        );
+      }
 
       return await metaService.enviarMensagem(
         data.telefone,
