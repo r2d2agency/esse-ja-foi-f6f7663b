@@ -223,6 +223,8 @@ export const atualizarPerfilVendedorFn = createServerFn({ method: "POST" })
     uf: z.string().optional().nullable(),
     cnhUrl: z.string().optional().nullable(),
     cnhVersoUrl: z.string().optional().nullable(),
+    rgUrl: z.string().optional().nullable(),
+    rgVersoUrl: z.string().optional().nullable(),
     crlvUrl: z.string().optional().nullable(),
     selfieUrl: z.string().optional().nullable(),
     comprovanteEnderecoUrl: z.string().optional().nullable(),
@@ -262,6 +264,8 @@ export const atualizarPerfilVendedorFn = createServerFn({ method: "POST" })
         uf: data.uf ?? p.uf,
         documento_cnh_url: data.cnhUrl ?? p.documento_cnh_url,
         documento_cnh_verso_url: data.cnhVersoUrl ?? p.documento_cnh_verso_url,
+        documento_rg_url: data.rgUrl ?? p.documento_rg_url,
+        documento_rg_verso_url: data.rgVersoUrl ?? p.documento_rg_verso_url,
         documento_crlv_url: data.crlvUrl ?? p.documento_crlv_url,
         documento_selfie_url: data.selfieUrl ?? p.documento_selfie_url,
         documento_comprovante_endereco_url: data.comprovanteEnderecoUrl ?? p.documento_comprovante_endereco_url
@@ -275,9 +279,20 @@ export const atualizarPerfilVendedorFn = createServerFn({ method: "POST" })
         if (e.dados_pessoais !== "CONCLUIDO") faltando.push("Dados Pessoais");
         if (e.endereco !== "CONCLUIDO") faltando.push("Endereço/Comprovante");
         if (e.documentos !== "CONCLUIDO") {
-          const docs = [];
-          if (!(perfilSimulado.documento_cnh_url || perfilSimulado.cnh_url)) docs.push("CNH Frente");
-          if (!(perfilSimulado.documento_cnh_verso_url || perfilSimulado.cnh_verso_url)) docs.push("CNH Verso");
+          const docs: string[] = [];
+          // RG e CNH são equivalentes para identidade: só cobra o que falta de
+          // fato, senão quem se cadastrou com RG vê "CNH Frente" como pendente
+          // sem ter como resolver além de trocar de documento.
+          const temIdentidadeFrente = !!(
+            perfilSimulado.documento_cnh_url || perfilSimulado.cnh_url
+            || perfilSimulado.documento_rg_url || perfilSimulado.rg_url
+          );
+          const temIdentidadeVerso = !!(
+            perfilSimulado.documento_cnh_verso_url || perfilSimulado.cnh_verso_url
+            || perfilSimulado.documento_rg_verso_url || perfilSimulado.rg_verso_url
+          );
+          if (!temIdentidadeFrente) docs.push("Documento de identidade (frente)");
+          if (!temIdentidadeVerso) docs.push("Documento de identidade (verso)");
           if (!(perfilSimulado.documento_crlv_url || perfilSimulado.crlv_url)) docs.push("CRLV-e");
           faltando.push(`Documentos (${docs.join(", ")})`);
         }
@@ -319,6 +334,23 @@ export const atualizarPerfilVendedorFn = createServerFn({ method: "POST" })
       if (data.cnhVersoUrl) {
         setClauses.push(sql`documento_cnh_verso_status = 'AGUARDANDO_ANALISE'`);
         documentosReenviados.push('cnh_verso');
+      }
+    }
+    // RG entra no mesmo caminho da CNH: quem não tem CNH se cadastra com o RG e o
+    // documento passa pela mesma análise. Sem esses branches o upload do RG
+    // apareceria na tela mas nunca seria gravado.
+    if (data.rgUrl !== undefined) {
+      setClauses.push(sql`documento_rg_url = ${data.rgUrl}`);
+      if (data.rgUrl) {
+        setClauses.push(sql`documento_rg_status = 'AGUARDANDO_ANALISE'`);
+        documentosReenviados.push('rg_frente');
+      }
+    }
+    if (data.rgVersoUrl !== undefined) {
+      setClauses.push(sql`documento_rg_verso_url = ${data.rgVersoUrl}`);
+      if (data.rgVersoUrl) {
+        setClauses.push(sql`documento_rg_verso_status = 'AGUARDANDO_ANALISE'`);
+        documentosReenviados.push('rg_verso');
       }
     }
     if (data.crlvUrl !== undefined) {
@@ -376,6 +408,8 @@ export const atualizarPerfilVendedorFn = createServerFn({ method: "POST" })
         await analisarDocumentosVendedor(data.perfilId, {
           cnh_frente: data.cnhUrl,
           cnh_verso: data.cnhVersoUrl,
+          rg_frente: data.rgUrl,
+          rg_verso: data.rgVersoUrl,
           crlv: data.crlvUrl,
           selfie: data.selfieUrl,
           comprovante_endereco: data.comprovanteEnderecoUrl,

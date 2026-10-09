@@ -32,6 +32,8 @@ export const criarVendedorInternoFn = createServerFn({ method: "POST" })
         uf: opcional,
         doc_cnh_frente: z.string().nullable().optional(),
         doc_cnh_verso: z.string().nullable().optional(),
+        doc_rg_frente: z.string().nullable().optional(),
+        doc_rg_verso: z.string().nullable().optional(),
         doc_comprovante: z.string().nullable().optional(),
         doc_selfie: z.string().nullable().optional(),
         enviarAcesso: z.boolean().optional(),

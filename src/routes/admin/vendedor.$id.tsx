@@ -412,6 +412,8 @@ function DetalheVendedorPage() {
             {[
               { label: "CNH - Frente", tipo: "cnh_frente", url: perfil.documento_cnh_url, status: perfil.documento_cnh_status },
               { label: "CNH - Verso", tipo: "cnh_verso", url: perfil.documento_cnh_verso_url, status: perfil.documento_cnh_verso_status },
+              { label: "RG - Frente", tipo: "rg_frente", url: perfil.documento_rg_url, status: perfil.documento_rg_status },
+              { label: "RG - Verso", tipo: "rg_verso", url: perfil.documento_rg_verso_url, status: perfil.documento_rg_verso_status },
               { label: "CRLV", tipo: "crlv", url: perfil.documento_crlv_url, status: perfil.documento_crlv_status },
               { label: "Comprovante de residência", tipo: "comprovante_endereco", url: perfil.documento_comprovante_endereco_url, status: perfil.documento_comprovante_endereco_status },
               { label: "Selfie c/ Doc", tipo: "selfie", url: perfil.documento_selfie_url, status: perfil.documento_selfie_status }

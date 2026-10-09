@@ -112,10 +112,17 @@ function VendedorOnboardingPage() {
   const [files, setFiles] = useState({
     cnhFrente: null as string | null,
     cnhVerso: null as string | null,
+    rgFrente: null as string | null,
+    rgVerso: null as string | null,
     crlv: null as string | null,
     selfie: null as string | null,
     comprovanteEndereco: null as string | null,
   });
+
+  // A CNH não é o único documento de identidade aceito: quem não tem CNH pode
+  // se cadastrar com RG. Sem essa opção o vendedor fica travado na etapa de
+  // documentos sem conseguir concluir o cadastro.
+  const [semCnh, setSemCnh] = useState(false);
 
   useEffect(() => {
     async function loadData() {
@@ -147,10 +154,17 @@ function VendedorOnboardingPage() {
           setFiles({
             cnhFrente: p.documento_cnh_url || null,
             cnhVerso: p.documento_cnh_verso_url || null,
+            rgFrente: p.documento_rg_url || null,
+            rgVerso: p.documento_rg_verso_url || null,
             crlv: p.documento_crlv_url || null,
             selfie: p.documento_selfie_url || null,
             comprovanteEndereco: p.documento_comprovante_endereco_url || null,
           });
+          // Se já existe RG cadastrado e não há CNH, abre a etapa já no modo RG.
+          setSemCnh(
+            !!(p.documento_rg_url || p.documento_rg_verso_url) &&
+              !(p.documento_cnh_url || p.documento_cnh_verso_url),
+          );
 
           const det = await getOnboardingStatus({ data: { perfilId: user.id } });
           if (det.ok) {
@@ -188,8 +202,12 @@ function VendedorOnboardingPage() {
   }, [progressoInfo, perfil.status_compliance]);
 
   const DOCS_OBRIGATORIOS: { label: string; ok: boolean }[] = [
-    { label: "CNH (frente)", ok: !!files.cnhFrente },
-    { label: "CNH (verso)", ok: !!files.cnhVerso },
+    semCnh
+      ? { label: "RG (frente)", ok: !!files.rgFrente }
+      : { label: "CNH (frente)", ok: !!files.cnhFrente },
+    semCnh
+      ? { label: "RG (verso)", ok: !!files.rgVerso }
+      : { label: "CNH (verso)", ok: !!files.cnhVerso },
     { label: "CRLV-e", ok: !!files.crlv },
     { label: "Selfie de validação", ok: !!files.selfie },
   ];
@@ -221,8 +239,10 @@ function VendedorOnboardingPage() {
           complemento: addressData.complemento,
           cidade: addressData.cidade,
           uf: addressData.uf,
-          cnhUrl: files.cnhFrente || undefined,
-          cnhVersoUrl: files.cnhVerso || undefined,
+          cnhUrl: semCnh ? undefined : files.cnhFrente || undefined,
+          cnhVersoUrl: semCnh ? undefined : files.cnhVerso || undefined,
+          rgUrl: semCnh ? files.rgFrente || undefined : undefined,
+          rgVersoUrl: semCnh ? files.rgVerso || undefined : undefined,
           crlvUrl: files.crlv || undefined,
           selfieUrl: files.selfie || undefined,
           comprovanteEnderecoUrl: files.comprovanteEndereco || undefined,
@@ -406,36 +426,89 @@ function VendedorOnboardingPage() {
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="space-y-1">
         <h3 className="text-2xl font-black text-slate-900">Validação de Documento</h3>
-        <p className="text-slate-500 text-sm">Tire fotos nítidas da sua CNH original.</p>
+        <p className="text-slate-500 text-sm">
+          {semCnh
+            ? "Tire fotos nítidas do seu RG (frente e verso)."
+            : "Tire fotos nítidas da sua CNH original."}
+        </p>
       </div>
+
+      <label
+        className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition-colors ${
+          semCnh
+            ? "border-teal-500 bg-teal-50"
+            : "border-slate-200 bg-white hover:border-teal-300"
+        }`}
+      >
+        <input
+          type="checkbox"
+          checked={semCnh}
+          onChange={(e) => {
+            const marcado = e.target.checked;
+            setSemCnh(marcado);
+            // Trocar de documento não apaga o que já foi enviado do outro tipo:
+            // o vendedor pode voltar para a CNH sem reenviar tudo.
+          }}
+          className="mt-1 h-4 w-4 shrink-0 accent-teal-600"
+        />
+        <span className="text-sm">
+          <span className="block font-bold text-slate-900">Não tenho CNH</span>
+          <span className="mt-0.5 block text-slate-600">
+            Vou me cadastrar com a minha carteira de identidade (RG).
+          </span>
+        </span>
+      </label>
+
       <div className="grid gap-6 md:grid-cols-2">
          <div className="space-y-3">
-           <FileUpload
-             label="CNH — Frente *"
-             value={files.cnhFrente}
-             status={mapStatusToUploadStatus(perfil.documento_cnh_status)}
-             onChange={url => setFiles({...files, cnhFrente: url})}
-           />
-           {pendenciasPorDocumento.cnh_frente?.map((pendencia: any) => (
-             <div key={pendencia.id} className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm">
-               <p className="font-semibold text-rose-700">CNH frente reprovada: {pendencia.motivo}</p>
-               {pendencia.mensagem && <p className="mt-1 text-rose-600">{pendencia.mensagem}</p>}
-             </div>
-           ))}
+           {semCnh ? (
+             <FileUpload
+               label="RG — Frente *"
+               description="Lado com a foto."
+               value={files.rgFrente}
+               onChange={url => setFiles({...files, rgFrente: url})}
+             />
+           ) : (
+             <>
+               <FileUpload
+                 label="CNH — Frente *"
+                 value={files.cnhFrente}
+                 status={mapStatusToUploadStatus(perfil.documento_cnh_status)}
+                 onChange={url => setFiles({...files, cnhFrente: url})}
+               />
+               {pendenciasPorDocumento.cnh_frente?.map((pendencia: any) => (
+                 <div key={pendencia.id} className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm">
+                   <p className="font-semibold text-rose-700">CNH frente reprovada: {pendencia.motivo}</p>
+                   {pendencia.mensagem && <p className="mt-1 text-rose-600">{pendencia.mensagem}</p>}
+                 </div>
+               ))}
+             </>
+           )}
          </div>
          <div className="space-y-3">
-           <FileUpload
-             label="CNH — Verso *"
-             value={files.cnhVerso}
-             status={mapStatusToUploadStatus(perfil.documento_cnh_verso_status)}
-             onChange={url => setFiles({...files, cnhVerso: url})}
-           />
-           {pendenciasPorDocumento.cnh_verso?.map((pendencia: any) => (
-             <div key={pendencia.id} className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm">
-               <p className="font-semibold text-rose-700">CNH verso reprovada: {pendencia.motivo}</p>
-               {pendencia.mensagem && <p className="mt-1 text-rose-600">{pendencia.mensagem}</p>}
-             </div>
-           ))}
+           {semCnh ? (
+             <FileUpload
+               label="RG — Verso *"
+               description="Lado com os dados pessoais."
+               value={files.rgVerso}
+               onChange={url => setFiles({...files, rgVerso: url})}
+             />
+           ) : (
+             <>
+               <FileUpload
+                 label="CNH — Verso *"
+                 value={files.cnhVerso}
+                 status={mapStatusToUploadStatus(perfil.documento_cnh_verso_status)}
+                 onChange={url => setFiles({...files, cnhVerso: url})}
+               />
+               {pendenciasPorDocumento.cnh_verso?.map((pendencia: any) => (
+                 <div key={pendencia.id} className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm">
+                   <p className="font-semibold text-rose-700">CNH verso reprovada: {pendencia.motivo}</p>
+                   {pendencia.mensagem && <p className="mt-1 text-rose-600">{pendencia.mensagem}</p>}
+                 </div>
+               ))}
+             </>
+           )}
          </div>
       </div>
       <div className="pt-4 border-t border-slate-100">
@@ -460,7 +533,9 @@ function VendedorOnboardingPage() {
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="space-y-1 text-center">
         <h3 className="text-2xl font-black text-slate-900">Precisamos confirmar que é você</h3>
-        <p className="text-slate-500 text-sm">Tire uma selfie segurando sua CNH ao lado do rosto.</p>
+        <p className="text-slate-500 text-sm">
+          Tire uma selfie segurando {semCnh ? "seu RG" : "sua CNH"} ao lado do rosto.
+        </p>
       </div>
       <div className="flex justify-center py-4">
         <div className="w-48 h-48 rounded-full border-4 border-teal-50 bg-slate-100 flex items-center justify-center overflow-hidden">
@@ -476,7 +551,7 @@ function VendedorOnboardingPage() {
             <Check className="w-4 h-4 text-teal-600" /> Dicas para uma boa foto:
          </h4>
          <ul className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs text-slate-600">
-            <li>• Rosto e CNH visíveis</li>
+            <li>• Rosto e {semCnh ? "RG" : "CNH"} visíveis</li>
             <li>• Boa iluminação</li>
             <li>• Sem óculos escuros</li>
             <li>• Sem filtros</li>

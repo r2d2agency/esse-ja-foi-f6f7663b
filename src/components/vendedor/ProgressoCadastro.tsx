@@ -18,7 +18,7 @@ export function montarEtapas(profile: any): EtapaCadastro[] {
       { id: "conta", label: "Conta criada", concluida: steps.conta === "CONCLUIDO" },
       { id: "dados", label: "Dados pessoais", concluida: steps.dados_pessoais === "CONCLUIDO" },
       { id: "endereco", label: "Endereço e Comprovante", concluida: steps.endereco === "CONCLUIDO" },
-      { id: "documentos", label: "Documentos (CNH, CRLV)", concluida: steps.documentos === "CONCLUIDO" },
+      { id: "documentos", label: "Documentos (identidade, CRLV)", concluida: steps.documentos === "CONCLUIDO" },
       { id: "validacao", label: "Selfie de validação", concluida: steps.validacao === "CONCLUIDO" },
     ];
   }
@@ -33,10 +33,12 @@ export function montarEtapas(profile: any): EtapaCadastro[] {
     },
     {
       id: "documentos",
-      label: "Documentos (CNH, CRLV)",
+      // RG e CNH valem como identidade: aceitar só a CNH deixaria quem se
+      // cadastrou com RG com a etapa vermelha para sempre.
+      label: "Documentos (identidade, CRLV)",
       concluida: Boolean(
-        (p.documento_cnh_url || p.cnh_url) &&
-          (p.documento_cnh_verso_url || p.cnh_verso_url) &&
+        (p.documento_cnh_url || p.cnh_url || p.documento_rg_url || p.rg_url) &&
+          (p.documento_cnh_verso_url || p.cnh_verso_url || p.documento_rg_verso_url || p.rg_verso_url) &&
           (p.documento_crlv_url || p.crlv_url)
       ),
     },

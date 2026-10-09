@@ -17,6 +17,10 @@ export async function ensureVendedoresSchema() {
     ADD COLUMN IF NOT EXISTS tipo_pessoa text DEFAULT 'PF',
     ADD COLUMN IF NOT EXISTS documento_cnh_status text DEFAULT 'PENDENTE',
     ADD COLUMN IF NOT EXISTS documento_cnh_verso_status text DEFAULT 'PENDENTE',
+    ADD COLUMN IF NOT EXISTS documento_rg_url text,
+    ADD COLUMN IF NOT EXISTS documento_rg_verso_url text,
+    ADD COLUMN IF NOT EXISTS documento_rg_status text DEFAULT 'PENDENTE',
+    ADD COLUMN IF NOT EXISTS documento_rg_verso_status text DEFAULT 'PENDENTE',
     ADD COLUMN IF NOT EXISTS documento_crlv_status text DEFAULT 'PENDENTE',
     ADD COLUMN IF NOT EXISTS documento_comprovante_endereco_status text DEFAULT 'PENDENTE',
     ADD COLUMN IF NOT EXISTS documento_selfie_status text DEFAULT 'PENDENTE',
@@ -88,9 +92,15 @@ export function calcularProgressoVendedor(p: any) {
     etapas.endereco = "CONCLUIDO";
   }
 
-  // 3. Documentos: CNH Frente, Verso, CRLV
-  if ((p.documento_cnh_url || p.doc_cnh_frente || p.cnh_url) && 
-      (p.documento_cnh_verso_url || p.doc_cnh_verso || p.cnh_verso_url) && 
+  // 3. Documentos: identidade (CNH ou RG), frente e verso, + CRLV
+  // A CNH não é obrigatória: o RG é documento de identidade válido e há
+  // vendedores que não possuem CNH. Aceitar qualquer um dos dois libera o
+  // cadastro sem abrir mão da confirmação de identidade.
+  const identidadeFrente = p.documento_cnh_url || p.doc_cnh_frente || p.cnh_url
+    || p.documento_rg_url || p.rg_url;
+  const identidadeVerso = p.documento_cnh_verso_url || p.doc_cnh_verso || p.cnh_verso_url
+    || p.documento_rg_verso_url || p.rg_verso_url;
+  if (identidadeFrente && identidadeVerso &&
       (p.documento_crlv_url || p.doc_crlv || p.crlv_url)) {
     etapas.documentos = "CONCLUIDO";
   }
@@ -230,6 +240,9 @@ const DOCUMENT_STATUS_COLUMNS: Record<string, string[]> = {
   cnh: ['documento_cnh_status', 'documento_cnh_verso_status'],
   cnh_frente: ['documento_cnh_status'],
   cnh_verso: ['documento_cnh_verso_status'],
+  rg: ['documento_rg_status', 'documento_rg_verso_status'],
+  rg_frente: ['documento_rg_status'],
+  rg_verso: ['documento_rg_verso_status'],
   crlv: ['documento_crlv_status'],
   comprovante_endereco: ['documento_comprovante_endereco_status'],
   selfie: ['documento_selfie_status'],

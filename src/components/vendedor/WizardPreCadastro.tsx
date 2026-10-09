@@ -68,9 +68,16 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
   const [docs, setDocs] = useState<Record<string, string | null>>({
     doc_cnh_frente: null,
     doc_cnh_verso: null,
+    doc_rg_frente: null,
+    doc_rg_verso: null,
     doc_comprovante: null,
     doc_selfie: null,
   });
+
+  // O RG vale como documento de identidade para quem não tem CNH. Sem essa
+  // opção o admin precisa escolher entre obrigar um documento que a pessoa não
+  // possui ou travar o pré-cadastro.
+  const [semCnh, setSemCnh] = useState(false);
 
   const [veiculo, setVeiculo] = useState<Record<string, string>>({
     tipoVeiculo: "CARRO",
@@ -140,8 +147,10 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
     if (!dados.email.includes("@")) { toast.error("Informe um e-mail válido."); return; }
     if (dados.tipo_pessoa === "PF" && !dados.cpf.trim())
       { toast.error("Informe o CPF do vendedor."); return; }
-    if (!docs.doc_cnh_frente || !docs.doc_cnh_verso)
+    if (!semCnh && (!docs.doc_cnh_frente || !docs.doc_cnh_verso))
       { toast.error("Envie a CNH (frente e verso)."); return; }
+    if (semCnh && (!docs.doc_rg_frente || !docs.doc_rg_verso))
+      { toast.error("Envie o RG (frente e verso)."); return; }
 
     setSalvando(true);
     try {
@@ -333,17 +342,56 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
               O operador anexa os documentos do vendedor. Ao concluir, o cadastro já nasce validado
               e dispensa a análise de compliance no app.
             </p>
+            <label
+              className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition-colors ${
+                semCnh
+                  ? "border-teal-500 bg-teal-50"
+                  : "border-slate-200 bg-white hover:border-teal-300"
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={semCnh}
+                onChange={(e) => setSemCnh(e.target.checked)}
+                className="mt-1 h-4 w-4 shrink-0 accent-teal-600"
+              />
+              <span className="text-sm">
+                <span className="block font-bold text-slate-900">Vendedor não tem CNH</span>
+                <span className="mt-0.5 block text-slate-600">
+                  Vou anexar a carteira de identidade (RG) no lugar.
+                </span>
+              </span>
+            </label>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <FileUpload
-                label="CNH — frente"
-                value={docs.doc_cnh_frente}
-                onChange={(u) => setDocs((d) => ({ ...d, doc_cnh_frente: u }))}
-              />
-              <FileUpload
-                label="CNH — verso"
-                value={docs.doc_cnh_verso}
-                onChange={(u) => setDocs((d) => ({ ...d, doc_cnh_verso: u }))}
-              />
+              {semCnh ? (
+                <>
+                  <FileUpload
+                    label="RG — frente"
+                    description="Lado com a foto."
+                    value={docs.doc_rg_frente}
+                    onChange={(u) => setDocs((d) => ({ ...d, doc_rg_frente: u }))}
+                  />
+                  <FileUpload
+                    label="RG — verso"
+                    description="Lado com os dados pessoais."
+                    value={docs.doc_rg_verso}
+                    onChange={(u) => setDocs((d) => ({ ...d, doc_rg_verso: u }))}
+                  />
+                </>
+              ) : (
+                <>
+                  <FileUpload
+                    label="CNH — frente"
+                    value={docs.doc_cnh_frente}
+                    onChange={(u) => setDocs((d) => ({ ...d, doc_cnh_frente: u }))}
+                  />
+                  <FileUpload
+                    label="CNH — verso"
+                    value={docs.doc_cnh_verso}
+                    onChange={(u) => setDocs((d) => ({ ...d, doc_cnh_verso: u }))}
+                  />
+                </>
+              )}
               <FileUpload
                 label="Comprovante de residência (opcional)"
                 value={docs.doc_comprovante}

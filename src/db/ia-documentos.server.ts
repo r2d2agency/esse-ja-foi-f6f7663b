@@ -10,6 +10,8 @@ function requireDb() {
 export const TIPOS_DOCUMENTO_VENDEDOR = {
   cnh_frente: "CNH (Carteira Nacional de Habilitação) — frente",
   cnh_verso: "CNH (Carteira Nacional de Habilitação) — verso",
+  rg_frente: "RG (carteira de identidade) — frente",
+  rg_verso: "RG (carteira de identidade) — verso",
   crlv: "CRLV-e (Certificado de Registro e Licenciamento de Veículo)",
   comprovante_endereco: "Comprovante de endereço (conta de luz, água, telefone, gás ou similar)",
   selfie: "Selfie da pessoa segurando o documento de identificação",
@@ -20,6 +22,8 @@ export type TipoDocumentoVendedor = keyof typeof TIPOS_DOCUMENTO_VENDEDOR;
 export const PROMPT_IA_DOCUMENTOS_PADRAO = `Você é um verificador automático de documentos da plataforma Esse Já Foi (compra e venda de veículos usados).
 
 Sua única tarefa é analisar a imagem enviada e confirmar se ela realmente corresponde ao tipo de documento esperado, informado pelo usuário.
+
+Aceitamos tanto a CNH quanto o RG (carteira de identidade) como documento de identidade do vendedor. Quando o tipo esperado for "RG", confirme que a imagem é uma carteira de identidade — e não exija características exclusivas da CNH (como "categoria" ou "habilitação"), que o RG não tem.
 
 Responda SEMPRE em JSON estrito, exatamente neste formato:
 {

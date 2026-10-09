@@ -39,6 +39,8 @@ export type PreCadastroInput = {
   uf?: string | undefined;
   doc_cnh_frente?: string | undefined;
   doc_cnh_verso?: string | undefined;
+  doc_rg_frente?: string | undefined;
+  doc_rg_verso?: string | undefined;
   doc_comprovante?: string | undefined;
   doc_selfie?: string | undefined;
 };
@@ -63,6 +65,8 @@ async function garantirSchemas() {
     ADD COLUMN IF NOT EXISTS rg text,
     ADD COLUMN IF NOT EXISTS documento_cnh_url text,
     ADD COLUMN IF NOT EXISTS documento_cnh_verso_url text,
+    ADD COLUMN IF NOT EXISTS documento_rg_url text,
+    ADD COLUMN IF NOT EXISTS documento_rg_verso_url text,
     ADD COLUMN IF NOT EXISTS documento_comprovante_endereco_url text,
     ADD COLUMN IF NOT EXISTS documento_selfie_url text;
   `);
@@ -98,8 +102,10 @@ export async function criarVendedorInterno(
       INSERT INTO profiles (
         nome, email, cpf, cnpj, tipo_pessoa, whatsapp, telefone, data_nascimento, rg,
         cep, endereco, numero, complemento, bairro, cidade, uf,
-        documento_cnh_url, documento_cnh_verso_url, documento_comprovante_endereco_url, documento_selfie_url,
-        documento_cnh_status, documento_cnh_verso_status, documento_comprovante_endereco_status, documento_selfie_status,
+        documento_cnh_url, documento_cnh_verso_url, documento_rg_url, documento_rg_verso_url,
+        documento_comprovante_endereco_url, documento_selfie_url,
+        documento_cnh_status, documento_cnh_verso_status, documento_rg_status, documento_rg_verso_status,
+        documento_comprovante_endereco_status, documento_selfie_status,
         role, ativo, senha_hash, senha_temporaria, origem_cadastro,
         cadastro_completo, status_compliance, verificado, compliance_data_analise
       ) VALUES (
@@ -109,8 +115,10 @@ export async function criarVendedorInterno(
         ${dados.cep || null}, ${dados.endereco || null}, ${dados.numero || null},
         ${dados.complemento || null}, ${dados.bairro || null}, ${dados.cidade || null}, ${dados.uf || null},
         ${dados.doc_cnh_frente || null}, ${dados.doc_cnh_verso || null},
+        ${dados.doc_rg_frente || null}, ${dados.doc_rg_verso || null},
         ${dados.doc_comprovante || null}, ${dados.doc_selfie || null},
         ${dados.doc_cnh_frente ? "APROVADO" : "PENDENTE"}, ${dados.doc_cnh_verso ? "APROVADO" : "PENDENTE"},
+        ${dados.doc_rg_frente ? "APROVADO" : "PENDENTE"}, ${dados.doc_rg_verso ? "APROVADO" : "PENDENTE"},
         ${dados.doc_comprovante ? "APROVADO" : "PENDENTE"}, ${dados.doc_selfie ? "APROVADO" : "PENDENTE"},
         'vendedor'::text::app_role, true, ${hash}, true, ${opcoes?.origemCadastro || "INTERNO"},
         true, ${opcoes?.statusCompliance || "DISPENSADO"}, true, now()
@@ -239,6 +247,7 @@ export async function resumoParaTermo(perfilId: string) {
       SELECT nome, email, cpf, cnpj, tipo_pessoa, whatsapp, telefone, data_nascimento,
              cep, endereco, numero, complemento, bairro, cidade, uf,
              documento_cnh_url, documento_cnh_verso_url,
+             documento_rg_url, documento_rg_verso_url,
              documento_comprovante_endereco_url, documento_selfie_url
       FROM profiles WHERE id = ${perfilId}::uuid LIMIT 1
     `),
