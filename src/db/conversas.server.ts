@@ -44,9 +44,9 @@ export async function ensureConversasSchema(silent = true) {
           ALTER TABLE whatsapp_conversas ADD COLUMN ultima_resposta_cliente_em timestamptz;
         END IF;
         -- DENTRO do DO $$ as aspas simples precisam ser dobradas (''X'').
-        -- `processarMensagemRecebida` grava profiles.whatsapp_status = 'ATIVO' ao
-        -- dar entrada em um número desconhecido. Sem esta coluna o INSERT estoura
-        -- (a tabela é criada em auth.server.ts sem ela) e nenhuma conversa nasce.
+        -- processarMensagemRecebida grava profiles.whatsapp_status ATIVO ao dar
+        -- entrada em um numero desconhecido. Sem esta coluna o INSERT estoura
+        -- (a tabela e criada em auth.server.ts sem ela) e nenhuma conversa nasce.
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'whatsapp_status') THEN
           ALTER TABLE profiles ADD COLUMN whatsapp_status text DEFAULT ''ATIVO'';
         END IF;
