@@ -69,7 +69,7 @@ function maiorPlaceholder(texto: string): number {
   return numeros.length ? Math.max(...numeros) : 0;
 }
 
-/** Monta `parameters` para um componente que tenha {{n}} no texto (BODY ou url de botão). */
+/** Monta `parameters` para um texto com {{n}} (corpo ou url de botão). */
 function parametersPara(texto: string, valores: Record<string, string>, rotulo: string): any[] {
   const maximo = maiorPlaceholder(texto);
   if (!maximo) return [];
@@ -91,11 +91,25 @@ function parametersPara(texto: string, valores: Record<string, string>, rotulo: 
 }
 
 /**
+ * Componente de um botão de URL com {{n}} no link, no formato que a API aceita
+ * no envio: `type: "button"` (singular, minúsculo) com o botão achatado — não
+ * um `BUTTONS` com array, que o schema da Meta rejeita com "Unexpected key".
+ */
+function componenteBotao(botao: any, posicao: number, valores: Record<string, string>): any | null {
+  const url = String(botao?.url || "");
+  const parameters = parametersPara(url, valores, `botão de link ${posicao + 1}`);
+  if (!parameters.length) return null;
+  const indice = Number.isInteger(botao?.index) ? botao.index : posicao;
+  return { type: "button", sub_type: "url", index: indice, parameters };
+}
+
+/**
  * Monta os componentes de uma mensagem de template a partir do conteúdo gravado
  * e dos valores. A Meta exige um parameter para cada {{n}} do corpo — sem isso
- * a resposta é "template variable missing". Botões de URL também carregam
- * parâmetro de path (erro 131008 "Button at index N of type Url requires a
- * parameter" quando falta), então são montados aqui também.
+ * a resposta é "template variable missing". Botões de URL com placeholder no
+ * link também pedem parâmetro (erro 131008), e vêm como componente próprio.
+ * Vale tanto para o conteúdo como array (formato que a Meta devolve) quanto
+ * como objeto com `components`.
  */
 export function montarComponents(conteudo: any, valores: Record<string, string> = {}): any[] {
   const comps = componentesDoConteudo(conteudo);
@@ -107,26 +121,17 @@ export function montarComponents(conteudo: any, valores: Record<string, string> 
     const tipo = String(comp?.type || "").toUpperCase();
 
     if (tipo === "BODY") {
-      const texto = comp.text || "";
-      const parameters = parametersPara(texto, valores, "corpo do template");
-      if (parameters.length) saida.push({ type: "BODY", parameters });
+      const parameters = parametersPara(comp.text || "", valores, "corpo do template");
+      if (parameters.length) saida.push({ type: "body", parameters });
       continue;
     }
 
     if (tipo === "BUTTONS") {
       const botoes = Array.isArray(comp.buttons) ? comp.buttons : [];
-      let indice = 0;
-      const montados = botoes.map((b: any) => {
-        const tipoBotao = String(b?.type || "").toUpperCase();
-        const url = String(b.url || "");
-        if (tipoBotao !== "URL" || !url) return b;
-        // Botão de URL com {{n}} no link: a Meta exige um parameter text por
-        // placeholder na ordem dos botões (erro 131008 quando falta).
-        const parameters = parametersPara(url, valores, `botão de link ${indice + 1}`);
-        indice += 1;
-        return { type: "URL", sub_type: "URL", index: b.index ?? indice - 1, parameters };
+      botoes.forEach((botao: any, i: number) => {
+        const montado = componenteBotao(botao, i, valores);
+        if (montado) saida.push(montado);
       });
-      saida.push({ type: "BUTTONS", buttons: montados });
     }
   }
 

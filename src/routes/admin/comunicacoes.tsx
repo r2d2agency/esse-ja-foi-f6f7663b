@@ -142,10 +142,29 @@ function componentesDoTemplate(template: any): any[] {
   return [];
 }
 
+/**
+ * Conta os placeholders {{n}} do corpo **e** das urls de botão: a numeração
+ * corre nos dois, então um template com 6 variáveis no corpo e uma no link
+ * precisa de 7 campos — contar só o corpo deixaria o do botão sem input.
+ */
 export function contarVariaveisTemplate(template: any): number {
   const comps = componentesDoTemplate(template);
-  const corpo = comps.find((c: any) => c?.type === "BODY")?.text || "";
-  const numeros = [...String(corpo).matchAll(/\{\{(\d+)\}\}/g)].map((m) => Number(m[1]));
+  let maximo = 0;
+  for (const comp of comps) {
+    if (comp?.type === "BODY") {
+      maximo = Math.max(maximo, contarPlaceholders(comp.text || ""));
+    }
+    if (comp?.type === "BUTTONS" && Array.isArray(comp.buttons)) {
+      for (const b of comp.buttons) {
+        if (b?.type === "URL") maximo = Math.max(maximo, contarPlaceholders(b.url || ""));
+      }
+    }
+  }
+  return maximo;
+}
+
+function contarPlaceholders(texto: string): number {
+  const numeros = [...String(texto).matchAll(/\{\{(\d+)\}\}/g)].map((m) => Number(m[1]));
   return numeros.length ? Math.max(...numeros) : 0;
 }
 
