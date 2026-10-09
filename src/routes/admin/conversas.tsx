@@ -74,6 +74,72 @@ export const Route = createFileRoute('/admin/conversas')({
   component: CentralConversasPage,
 });
 
+/**
+ * Campos de variável do template de abertura, no mesmo estilo do "Enviar teste"
+ * de Comunicações. O Meta exige um parâmetro por {{n}} do corpo (e de botão URL),
+ * na ordem — por isso o atendente preenche aqui em vez de mandar componente vazio.
+ */
+function VariaveisTemplate({
+  template,
+  valores,
+  onChange,
+}: {
+  template: any;
+  valores: string[];
+  onChange: (v: string[]) => void;
+}) {
+  const comps = Array.isArray(template?.conteudo)
+    ? template.conteudo
+    : Array.isArray(template?.conteudo?.components)
+      ? template.conteudo.components
+      : [];
+
+  const campos: { numero: number; label: string }[] = [];
+  comps.forEach((comp: any) => {
+    if (comp?.type === "BODY") {
+      const nums = [...String(comp.text || "").matchAll(/\{\{(\d+)\}\}/g)].map((m) => Number(m[1]));
+      nums.forEach((n) => campos.push({ numero: n, label: comp.text }));
+    }
+    if (comp?.type === "BUTTONS" && Array.isArray(comp.buttons)) {
+      comp.buttons.forEach((b: any) => {
+        if (b?.type === "URL") {
+          const nums = [...String(b.url || "").matchAll(/\{\{(\d+)\}\}/g)].map((m) => Number(m[1]));
+          nums.forEach((n) => campos.push({ numero: n, label: b.url }));
+        }
+      });
+    }
+  });
+
+  if (!campos.length) return null;
+
+  const unicos = [...new Map(campos.map((c) => [c.numero, c])).values()].sort(
+    (a, b) => a.numero - b.numero,
+  );
+
+  return (
+    <div className="space-y-2 border rounded-lg p-3">
+      <p className="text-xs font-medium text-muted-foreground">
+        Variáveis do template
+      </p>
+      {unicos.map((c) => (
+        <div key={c.numero}>
+          <label className="text-[10px] text-muted-foreground">{{'{'+`${c.numero}`+'}'}}</label>
+          <Input
+            placeholder={c.label}
+            value={valores[c.numero - 1] ?? ""}
+            onChange={(e) => {
+              const next = [...valores];
+              next[c.numero - 1] = e.target.value;
+              onChange(next);
+            }}
+            className="mt-0.5 h-8 text-xs"
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function CentralConversasPage() {
   const queryClient = useQueryClient();
   const listarConversas = useServerFn(listarConversasFn);
@@ -104,11 +170,13 @@ function CentralConversasPage() {
   const [novaConversa, setNovaConversa] = useState(false);
   const [contatoBusca, setContatoBusca] = useState('');
   const [contatoSelecionado, setContatoSelecionado] = useState<any>(null);
-  const [templateAbertura, setTemplateAbertura] = useState('');
   // Cadastro de contato novo, para quando a pessoa não está na lista.
   const [novoContato, setNovoContato] = useState(false);
   const [novoNome, setNovoNome] = useState('');
   const [novoTelefone, setNovoTelefone] = useState('');
+  // Template de abertura: o objeto inteiro, para montar os componentes.
+  const [templateSelecionado, setTemplateSelecionado] = useState<any>(null);
+  const [variaveisTemplate, setVariaveisTemplate] = useState<string[]>([]);
 
   const token = getSessionToken();
 
@@ -898,9 +966,12 @@ function CentralConversasPage() {
                   templates.map((t: any) => (
                     <button
                       key={t.id}
-                      onClick={() => setTemplateAbertura(t.meta_name || t.nome_interno)}
+                      onClick={() => {
+                        setTemplateSelecionado(t);
+                        setVariaveisTemplate([]);
+                      }}
                       className={`w-full text-left p-3 transition-colors ${
-                        templateAbertura === (t.meta_name || t.nome_interno)
+                        templateSelecionado?.id === t.id
                           ? 'bg-teal-50 border-l-2 border-l-teal-600'
                           : 'hover:bg-slate-50'
                       }`}
@@ -914,6 +985,14 @@ function CentralConversasPage() {
                 )}
               </div>
             </div>
+
+            {templateSelecionado && (
+              <VariaveisTemplate
+                template={templateSelecionado}
+                valores={variaveisTemplate}
+                onChange={setVariaveisTemplate}
+              />
+            )}
           </div>
 
           <DialogFooter>
@@ -924,7 +1003,9 @@ function CentralConversasPage() {
               disabled={
                 (novoContato
                   ? !novoNome.trim() || novoTelefone.replace(/\D/g, '').length < 10
-                  : !contatoSelecionado) || !templateAbertura
+                  : !contatoSelecionado) ||
+                !templateSelecionado ||
+                !variaveisTemplate.every((v) => v.trim())
               }
               onClick={() => {
                 if (novoContato) {
@@ -933,7 +1014,8 @@ function CentralConversasPage() {
                   mutationIniciarConversa.mutate({
                     telefone: contatoSelecionado.telefone,
                     nome: contatoSelecionado.nome,
-                    template_name: templateAbertura,
+                    template_id: templateSelecionado.id,
+                    variaveis: variaveisTemplate,
                   });
                 }
               }}

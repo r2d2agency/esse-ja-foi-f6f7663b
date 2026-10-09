@@ -164,20 +164,52 @@ export const iniciarConversaFn = createServerFn({ method: "POST" })
         token: z.string().nullable().optional(),
         telefone: z.string().min(10),
         nome: z.string().nullable().optional(),
-        template_name: z.string().min(1),
+        template_id: z.string().uuid().optional(),
+        template_name: z.string().optional(),
         idioma: z.string().optional(),
         componentes: z.array(z.any()).optional(),
+        variaveis: z.array(z.string()).optional(),
+      })
+      .refine((d) => d.template_id || d.template_name, {
+        message: "Informe o template_id ou template_name",
       })
       .parse(data),
   )
   .handler(async ({ data }) => {
     const atendenteId = await userIdFrom(data.token ?? null);
     if (!atendenteId) throw new Error("Não autorizado");
+    const template = await (async () => {
+      if (data.template_id) {
+        const lista = await db.listarTemplates();
+        const t = lista.find((x: any) => x.id === data.template_id);
+        if (!t) throw new Error("Template não encontrado");
+        return t;
+      }
+      const lista = await db.listarTemplates();
+      const t = lista.find((x: any) => x.meta_name === data.template_name);
+      if (!t) throw new Error("Template não encontrado");
+      return t;
+    })();
+
+    const valores = (data.variaveis || []).map((v) => String(v ?? ""));
+    const mapa: Record<string, string> = {};
+    valores.forEach((v, i) => {
+      mapa[String(i + 1)] = v;
+    });
+
+    const { montarComponents } = await import("@/db/meta-whatsapp.server");
+    let componentes: any[];
+    try {
+      componentes = montarComponents(template.conteudo, mapa);
+    } catch (e: any) {
+      throw new Error(e?.message || "Preencha todas as variáveis do template.");
+    }
+
     return db.iniciarConversa(atendenteId, {
       telefone: data.telefone,
       nome: data.nome ?? null,
-      template_name: data.template_name,
-      idioma: data.idioma,
-      componentes: data.componentes,
+      template_name: template.meta_name,
+      idioma: template.idioma || "pt_BR",
+      componentes,
     });
   });
