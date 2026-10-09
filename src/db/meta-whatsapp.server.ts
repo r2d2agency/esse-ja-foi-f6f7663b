@@ -480,6 +480,28 @@ export class MetaWhatsAppService {
       operacao || "ENVIAR_MENSAGEM",
     );
   }
+
+  /**
+   * Envia texto livre. Só é aceito pela Meta dentro da janela de 24h
+   * de atendimento — quem controla a janela é o chamador (conversas.server).
+   */
+  async enviarTexto(to: string, texto: string, operacao = "ENVIAR_TEXTO") {
+    await this.init();
+    if (!this.config?.phone_number_id) throw new Error("Phone Number ID não configurado.");
+
+    const payload = {
+      messaging_product: "whatsapp",
+      to,
+      type: "text",
+      text: { preview_url: false, body: texto },
+    };
+
+    return this.fetchMeta(
+      `${this.config.phone_number_id}/messages`,
+      { method: "POST", body: JSON.stringify(payload) },
+      operacao,
+    );
+  }
 }
 
 export const metaService = new MetaWhatsAppService();
