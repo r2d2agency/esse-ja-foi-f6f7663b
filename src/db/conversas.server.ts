@@ -43,6 +43,12 @@ export async function ensureConversasSchema(silent = true) {
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'whatsapp_conversas' AND column_name = 'ultima_resposta_cliente_em') THEN
           ALTER TABLE whatsapp_conversas ADD COLUMN ultima_resposta_cliente_em timestamptz;
         END IF;
+        -- `processarMensagemRecebida` grava profiles.whatsapp_status = 'ATIVO' ao
+        -- dar entrada em um número desconhecido. Sem esta coluna o INSERT estoura
+        -- (a tabela é criada em auth.server.ts sem ela) e nenhuma conversa nasce.
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'whatsapp_status') THEN
+          ALTER TABLE profiles ADD COLUMN whatsapp_status text DEFAULT 'ATIVO';
+        END IF;
       END $$;
     `);
 
@@ -449,3 +455,147 @@ export async function excluirRespostaPronta(id: string, atendenteId: string) {
   `);
   return { ok: true as const };
 }
+
+/**
+ * Contatos que o atendente pode escolher para iniciar uma conversa.
+ * Traz perfis com telefone e já indica se já existe conversa aberta com eles —
+ * assim a UI evita duplicar atendimento e o atendente clica em quem já fala com ele.
+ */
+export async function listarContatosDisponiveis(busca?: string | null) {
+  if (!db) return [];
+  const termo = busca?.trim() ? `%${busca.trim().toLowerCase()}%` : null;
+
+  const res = await db.execute(sql`
+    SELECT p.id, p.nome, p.telefone, p.role,
+           (SELECT c.id FROM whatsapp_conversas c
+            WHERE c.contato_id = p.id
+              AND c.status != 'RESOLVIDA' AND c.status != 'ARQUIVADA'
+            ORDER BY c.ultimo_evento_em DESC LIMIT 1) as conversa_aberta_id
+    FROM profiles p
+    WHERE p.telefone IS NOT NULL
+      AND length(regexp_replace(p.telefone, '\D', '', 'g')) >= 10
+      AND (
+        ${termo} IS NULL
+        OR lower(COALESCE(p.nome, '')) LIKE ${termo}
+        OR regexp_replace(COALESCE(p.telefone, ''), '\D', '', 'g') LIKE replace(${termo}, '%', '')
+      )
+    ORDER BY p.nome ASC
+    LIMIT 50
+  `);
+  return rowsOf(res) || [];
+}
+
+/**
+ * Inicia uma conversa com um contato a partir do zero.
+ *
+ * A janela de 24h só se abre quando o CLIENTE manda mensagem — então uma conversa
+ * nova nasce com a janela fechada e a primeira fala precisa ser um template.
+ * Por isso `template_name` é obrigatório aqui: não existe caminho de texto livre
+ * para um contato que nunca escreveu.
+ */
+export async function iniciarConversa(
+  atendenteId: string,
+  dados: {
+    telefone: string;
+    nome?: string | null;
+    template_name: string;
+    idioma?: string;
+    componentes?: any[];
+  },
+) {
+  if (!db) throw new Error("Banco de dados indisponível");
+
+  const digitos = apenasDigitos(dados.telefone);
+  if (digitos.length < 10) {
+    throw new Error("Telefone inválido. Informe o DDD e o número.");
+  }
+  // A Meta exige o formato internacional sem máscara.
+  const telefoneMeta = digitos.startsWith("55") ? digitos : `55${digitos}`;
+  const noveDigitos = digitos.slice(-9);
+
+  const { metaService } = await import("./meta-whatsapp.server");
+
+  // 1. Localiza (ou cria) o perfil — mesma normalização dos 9 dígitos usada no
+  // webhook, para que a conversa nasca ligada ao cadastro que já existe.
+  let resPerfil = await db.execute(sql`
+    SELECT id FROM profiles
+    WHERE length(regexp_replace(COALESCE(telefone, ''), '\D', '', 'g')) >= 9
+      AND right(regexp_replace(telefone, '\D', '', 'g'), 9) = ${noveDigitos}
+    LIMIT 1
+  `);
+  let perfilId = rowsOf(resPerfil)[0]?.id;
+
+  if (!perfilId) {
+    const emailSintetico = `whatsapp_${noveDigitos}@contato.local`;
+    const res = await db.execute(sql`
+      INSERT INTO profiles (nome, telefone, role, whatsapp_status, email)
+      VALUES (
+        ${dados.nome?.trim() || "Contato não identificado"},
+        ${dados.telefone},
+        'comprador',
+        'ATIVO',
+        ${emailSintetico}
+      )
+      ON CONFLICT (email) DO UPDATE SET telefone = EXCLUDED.telefone
+      RETURNING id
+    `);
+    perfilId = rowsOf(res)[0].id;
+  }
+
+  // 2. Reaproveita conversa aberta, se existir — evita dois atendimentos paralelos
+  // para a mesma pessoa só porque o atendente clicou duas vezes.
+  let resConv = await db.execute(sql`
+    SELECT id FROM whatsapp_conversas
+    WHERE contato_id = ${perfilId}::uuid AND status != 'RESOLVIDA' AND status != 'ARQUIVADA'
+    ORDER BY ultimo_evento_em DESC LIMIT 1
+  `);
+  let conversaId = rowsOf(resConv)[0]?.id;
+
+  if (!conversaId) {
+    const res = await db.execute(sql`
+      INSERT INTO whatsapp_conversas (contato_id, status, responsavel_id, ultimo_evento_em)
+      VALUES (${perfilId}::uuid, 'AGUARDANDO_CLIENTE', ${atendenteId}::uuid, now())
+      RETURNING id
+    `);
+    conversaId = rowsOf(res)[0].id;
+  }
+
+  // 3. Envia o template — a única forma de falar com quem nunca escreveu.
+  const componentes = dados.componentes || [];
+  const resMeta = await metaService.enviarMensagem(
+    telefoneMeta,
+    dados.template_name,
+    dados.idioma || "pt_BR",
+    componentes,
+  );
+
+  await db.execute(sql`
+    INSERT INTO whatsapp_mensagens (conversa_id, autor_id, tipo, payload, meta_message_id, status, metadata, enviado_por_atendente)
+    VALUES (
+      ${conversaId}::uuid,
+      ${atendenteId}::uuid,
+      'MENSAGEM',
+      ${JSON.stringify({
+        tipo: "TEMPLATE",
+        template_name: dados.template_name,
+        idioma: dados.idioma || "pt_BR",
+        componentes,
+      })}::jsonb,
+      ${resMeta.messages?.[0]?.id},
+      'ENVIADA',
+      '{"origem": "ATENDENTE"}'::jsonb,
+      true
+    )
+  `);
+
+  await db.execute(sql`
+    UPDATE whatsapp_conversas SET
+      ultimo_evento_em = now(),
+      ultima_mensagem_preview = ${`Template: ${dados.template_name}`},
+      status = 'AGUARDANDO_CLIENTE'
+    WHERE id = ${conversaId}::uuid
+  `);
+
+  return { conversaId: conversaId as string };
+}
+

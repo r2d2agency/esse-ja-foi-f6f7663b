@@ -62,6 +62,8 @@ import {
   listarRespostasProntasFn,
   salvarRespostaProntaFn,
   excluirRespostaProntaFn,
+  listarContatosDisponiveisFn,
+  iniciarConversaFn,
 } from '@/lib/conversas.functions';
 import { listarTemplatesFn } from '@/lib/comunicacoes.functions';
 import { getSessionToken } from '@/lib/session';
@@ -82,6 +84,8 @@ function CentralConversasPage() {
   const salvarResposta = useServerFn(salvarRespostaProntaFn);
   const excluirResposta = useServerFn(excluirRespostaProntaFn);
   const getTemplates = useServerFn(listarTemplatesFn);
+  const getContatos = useServerFn(listarContatosDisponiveisFn);
+  const iniciarConversa = useServerFn(iniciarConversaFn);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busca, setBusca] = useState('');
@@ -94,6 +98,11 @@ function CentralConversasPage() {
   const [novaResposta, setNovaResposta] = useState(false);
   const [menuRespostaAberto, setMenuRespostaAberto] = useState(false);
   const [filtroResposta, setFiltroResposta] = useState('');
+  // Diálogo "Nova conversa": escolher contato e o template de abertura.
+  const [novaConversa, setNovaConversa] = useState(false);
+  const [contatoBusca, setContatoBusca] = useState('');
+  const [contatoSelecionado, setContatoSelecionado] = useState<any>(null);
+  const [templateAbertura, setTemplateAbertura] = useState('');
 
   const token = getSessionToken();
 
@@ -123,6 +132,13 @@ function CentralConversasPage() {
   const { data: respostasProntas } = useQuery({
     queryKey: ['respostas-prontas'],
     queryFn: () => getRespostasProntas({ data: { token } }),
+  });
+
+  // Só busca contatos com o diálogo aberto — evita varrer `profiles` a cada render.
+  const { data: contatos, isLoading: carregandoContatos } = useQuery({
+    queryKey: ['contatos-disponiveis', contatoBusca.trim()],
+    queryFn: () => getContatos({ data: { busca: contatoBusca.trim() || null } }),
+    enabled: novaConversa,
   });
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -184,6 +200,22 @@ function CentralConversasPage() {
     onError: (err) => toast.error(`Erro ao excluir: ${err.message}`),
   });
 
+  const mutationIniciarConversa = useMutation({
+    mutationFn: (dados: { telefone: string; nome?: string | null; template_name: string }) =>
+      iniciarConversa({ data: { token, ...dados } }),
+    onSuccess: (res: any) => {
+      setNovaConversa(false);
+      setContatoSelecionado(null);
+      setContatoBusca('');
+      setTemplateAbertura('');
+      queryClient.invalidateQueries({ queryKey: ['conversas'] });
+      queryClient.invalidateQueries({ queryKey: ['conversa', res?.conversaId] });
+      if (res?.conversaId) setSelectedId(res.conversaId);
+      toast.success('Conversa iniciada');
+    },
+    onError: (err) => toast.error(`Erro ao iniciar conversa: ${err.message}`),
+  });
+
   const handleEnviar = () => {
     if (!mensagem.trim()) return;
     if (tabTipo === 'NOTA') {
@@ -242,6 +274,17 @@ function CentralConversasPage() {
       {/* Coluna 1: Lista */}
       <div className="w-80 flex-shrink-0 border-r flex flex-col">
         <div className="p-4 border-b space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="font-bold text-sm">Conversas</h2>
+            <Button
+              size="sm"
+              className="h-7 text-xs bg-teal-600 hover:bg-teal-700 gap-1"
+              onClick={() => setNovaConversa(true)}
+            >
+              <Plus className="w-3 h-3" />
+              Nova conversa
+            </Button>
+          </div>
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -734,6 +777,106 @@ function CentralConversasPage() {
               }}
             >
               Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: Nova Conversa */}
+      <Dialog open={novaConversa} onOpenChange={setNovaConversa}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Nova conversa</DialogTitle>
+            <DialogDescription>
+              Escolha o contato e o template de abertura. Como a janela de 24h só
+              se abre quando o contato responde, o primeiro contato precisa ser
+              por template aprovado.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Contato</label>
+              <Input
+                placeholder="Buscar por nome ou telefone..."
+                value={contatoBusca}
+                onChange={(e) => setContatoBusca(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+
+            <div className="border rounded-lg max-h-52 overflow-y-auto divide-y">
+              {carregandoContatos ? (
+                <p className="text-xs text-muted-foreground p-3">Carregando contatos...</p>
+              ) : !contatos?.length ? (
+                <p className="text-xs text-muted-foreground p-3">
+                  Nenhum contato com telefone encontrado.
+                </p>
+              ) : (
+                contatos.map((c: any) => (
+                  <button
+                    key={c.id}
+                    onClick={() => setContatoSelecionado(c)}
+                    className={`w-full text-left p-3 transition-colors ${
+                      contatoSelecionado?.id === c.id
+                        ? 'bg-teal-50 border-l-2 border-l-teal-600'
+                        : 'hover:bg-slate-50'
+                    }`}
+                  >
+                    <p className="text-xs font-bold">{c.nome}</p>
+                    <p className="text-[10px] text-muted-foreground">{c.telefone}</p>
+                    {c.conversa_aberta_id && (
+                      <p className="text-[10px] text-teal-700">Já possui conversa aberta</p>
+                    )}
+                  </button>
+                ))
+              )}
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Template de abertura</label>
+              <div className="border rounded-lg max-h-44 overflow-y-auto divide-y mt-1">
+                {!templates?.length ? (
+                  <p className="text-xs text-muted-foreground p-3">
+                    Nenhum template disponível. Cadastre um template aprovado antes.
+                  </p>
+                ) : (
+                  templates.map((t: any) => (
+                    <button
+                      key={t.id}
+                      onClick={() => setTemplateAbertura(t.meta_name || t.nome_interno)}
+                      className={`w-full text-left p-3 transition-colors ${
+                        templateAbertura === (t.meta_name || t.nome_interno)
+                          ? 'bg-teal-50 border-l-2 border-l-teal-600'
+                          : 'hover:bg-slate-50'
+                      }`}
+                    >
+                      <p className="text-xs font-bold">{t.meta_name}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {t.status} — {t.language}
+                      </p>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNovaConversa(false)}>
+              Cancelar
+            </Button>
+            <Button
+              disabled={!contatoSelecionado || !templateAbertura}
+              onClick={() =>
+                mutationIniciarConversa.mutate({
+                  telefone: contatoSelecionado.telefone,
+                  nome: contatoSelecionado.nome,
+                  template_name: templateAbertura,
+                })
+              }
+            >
+              Iniciar conversa
             </Button>
           </DialogFooter>
         </DialogContent>
