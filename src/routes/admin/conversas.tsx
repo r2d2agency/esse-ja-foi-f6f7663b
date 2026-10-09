@@ -123,7 +123,7 @@ function VariaveisTemplate({
       </p>
       {unicos.map((c) => (
         <div key={c.numero}>
-          <label className="text-[10px] text-muted-foreground">{{'{'+`${c.numero}`+'}'}}</label>
+          <label className="text-[10px] text-muted-foreground">{`{{${c.numero}}}`}</label>
           <Input
             placeholder={c.label}
             value={valores[c.numero - 1] ?? ""}
