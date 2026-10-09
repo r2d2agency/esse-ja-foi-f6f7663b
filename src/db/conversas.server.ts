@@ -308,9 +308,17 @@ export async function processarMensagemRecebida(telefone: string, payload: any) 
   let perfilId = rowsOf(resPerfil)[0]?.id;
 
   if (!perfilId) {
+    // `profiles.email` é NOT NULL UNIQUE, então um contato novo precisa de um
+    // endereço sintético. Sem isto o INSERT estoura e nenhuma conversa nasce —
+    // e o webhook já gravou 'PROCESSADO' antes, então a falha fica invisível.
+    const emailSintetico = `whatsapp_${noveDigitos}@contato.local`;
     const res = await db.execute(sql`
-      INSERT INTO profiles (nome, telefone, role, whatsapp_status)
-      VALUES ('Contato não identificado', ${telefone}, 'comprador', 'ATIVO')
+      INSERT INTO profiles (nome, telefone, role, whatsapp_status, email)
+      VALUES (
+        'Contato não identificado', ${telefone}, 'comprador', 'ATIVO',
+        ${emailSintetico}
+      )
+      ON CONFLICT (email) DO UPDATE SET telefone = EXCLUDED.telefone
       RETURNING id
     `);
     perfilId = rowsOf(res)[0].id;

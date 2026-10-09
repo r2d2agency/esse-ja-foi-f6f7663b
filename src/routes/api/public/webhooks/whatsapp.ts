@@ -108,7 +108,27 @@ export const Route = createFileRoute("/api/public/webhooks/whatsapp")({
             // Mensagens recebidas
             const { processarMensagemRecebida } = await import("@/db/conversas.server");
             for (const msg of value.messages) {
-              await processarMensagemRecebida(msg.from, msg);
+              // Cada mensagem em seu próprio try/catch: um contato problemático
+              // (telefone com formato inesperado, insert que estoura) não pode
+              // derrubar as demais e nem deixar o lote marcado como PROCESSADO.
+              try {
+                await processarMensagemRecebida(msg.from, msg);
+              } catch (err: any) {
+                console.error("[WhatsApp Webhook] Falha ao processar mensagem:", err);
+                await db.execute(sql`
+                  INSERT INTO whatsapp_webhook_logs
+                    (waba_id, event_type, direcao, endpoint, payload, status, erro_detalhe)
+                  VALUES (
+                    ${wabaId},
+                    ${eventType},
+                    'ENTRADA',
+                    ${change?.field ? String(change.field) : null},
+                    ${JSON.stringify(msg)}::jsonb,
+                    'ERRO',
+                    ${String(err?.message || err).slice(0, 500)}
+                  )
+                `);
+              }
             }
           }
 
