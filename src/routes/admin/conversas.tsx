@@ -75,12 +75,42 @@ export const Route = createFileRoute('/admin/conversas')({
 });
 
 /**
+ * Rótulo curto do campo: as últimas palavras que vêm **antes** da n-ésima
+ * variável. O corpo do template aparece repetido em cada input se mostrarmos o
+ * texto inteiro — e o atendente quer ler "Ano", "Modelo", "Preço", não a frase
+ * completa seis vezes.
+ *
+ * Placeholders já resolvidos ({{2}}) e emoji saem do rótulo, porque eles não
+ * descrevem o campo. Quando não há nada antes ({{1}}, no início da frase),
+ * devolve "" e o componente cai no fallback "Valor N" — adivinhar "Nome" aqui
+ * seria chute, já que a variável pode ser qualquer coisa.
+ */
+function contextoDaVariavel(texto: string, numero: number): string {
+  const marcador = new RegExp(`\\{\\{${numero}\\}\\}`);
+  const idx = texto.search(marcador);
+  if (idx <= 0) return "";
+
+  const antes = texto
+    .slice(0, idx)
+    .replace(/\{\{\d+\}\}/g, "") // tira variáveis já resolvidas
+    .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, "") // tira emoji
+    .replace(/[*_~]/g, "") // tira marcadores de negrito/itálico da Meta
+    .trim();
+  if (!antes) return "";
+
+  const palavras = antes
+    .split(/\s+/)
+    .slice(-3)
+    .join(" ")
+    .replace(/[,:;.]+$/, "")
+    .trim();
+  return palavras;
+}
+
+/**
  * Campos de variável do template de abertura, no mesmo estilo do "Enviar teste"
  * de Comunicações. A Meta exige um parâmetro por {{n}} do corpo (e de botão URL),
  * na ordem — por isso o atendente preenche aqui em vez de mandar componente vazio.
- *
- * O label mostra o texto do corpo com o número destacado, para o atendente saber
- * o que vai em cada campo sem decorar a ordem.
  */
 function VariaveisTemplate({
   template,
@@ -97,17 +127,20 @@ function VariaveisTemplate({
       ? template.conteudo.components
       : [];
 
-  const campos: { numero: number; texto: string }[] = [];
+  const campos: { numero: number; contexto: string }[] = [];
   comps.forEach((comp: any) => {
     if (comp?.type === "BODY") {
-      const nums = [...String(comp.text || "").matchAll(/\{\{(\d+)\}\}/g)].map((m) => Number(m[1]));
-      nums.forEach((n) => campos.push({ numero: n, texto: comp.text }));
+      for (const m of String(comp.text || "").matchAll(/\{\{(\d+)\}\}/g)) {
+        const numero = Number(m[1]);
+        campos.push({ numero, contexto: contextoDaVariavel(comp.text, numero) });
+      }
     }
     if (comp?.type === "BUTTONS" && Array.isArray(comp.buttons)) {
       comp.buttons.forEach((b: any) => {
-        if (b?.type === "URL") {
-          const nums = [...String(b.url || "").matchAll(/\{\{(\d+)\}\}/g)].map((m) => Number(m[1]));
-          nums.forEach((n) => campos.push({ numero: n, texto: b.url }));
+        if (b?.type !== "URL") return;
+        for (const m of String(b.url || "").matchAll(/\{\{(\d+)\}\}/g)) {
+          const numero = Number(m[1]);
+          campos.push({ numero, contexto: contextoDaVariavel(b.url, numero) });
         }
       });
     }
@@ -122,20 +155,24 @@ function VariaveisTemplate({
   return (
     <div className="space-y-2 border rounded-lg p-3">
       <p className="text-xs font-medium text-muted-foreground">
-        Variáveis do template {template?.nome_interno || template?.meta_name}
+        Variáveis de {template?.nome_interno || template?.meta_name}
       </p>
       {unicos.map((c) => (
         <div key={c.numero} className="space-y-1">
-          <label className="text-[11px] text-muted-foreground">
-            <code className="bg-slate-100 px-1 rounded text-[11px]">
-              {"{{"}
-              {c.numero}
-              {"}}"}
+          <label className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+            <code className="bg-slate-100 px-1 rounded text-[11px] shrink-0">
+              {`{{${c.numero}}}`}
             </code>
-            <span className="ml-1">{c.texto}</span>
+            {c.contexto ? (
+              <span className="truncate" title={c.contexto}>
+                {c.contexto}
+              </span>
+            ) : (
+              <span className="truncate">Valor {c.numero}</span>
+            )}
           </label>
           <Input
-            placeholder={`Valor ${c.numero}`}
+            placeholder={`Preencher ${c.numero}`}
             value={valores[c.numero - 1] ?? ""}
             onChange={(e) => {
               const next = [...valores];
@@ -147,7 +184,7 @@ function VariaveisTemplate({
         </div>
       ))}
       <p className="text-[11px] text-muted-foreground">
-        A Meta exige um valor para cada variável do corpo, na mesma ordem.
+        A Meta exige um valor para cada variável, na ordem.
       </p>
     </div>
   );
@@ -942,7 +979,9 @@ function CentralConversasPage() {
 
       {/* Dialog: Nova Conversa */}
       <Dialog open={novaConversa} onOpenChange={setNovaConversa}>
-        <DialogContent className="max-w-md">
+        {/* O template tem até N variáveis: sem rolagem própria o diálogo estoura
+            a viewport e o rodapé sai da tela. */}
+        <DialogContent className="max-w-md max-h-[90vh] flex flex-col overflow-hidden gap-0">
           <DialogHeader>
             <DialogTitle>Nova conversa</DialogTitle>
             <DialogDescription>
@@ -952,7 +991,7 @@ function CentralConversasPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3">
+          <div className="space-y-3 overflow-y-auto flex-1 -mx-6 px-6 py-4">
             <div>
               <div className="flex items-center justify-between">
                 <label className="text-xs font-medium text-muted-foreground">Contato</label>
@@ -1063,7 +1102,7 @@ function CentralConversasPage() {
             )}
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="shrink-0 pt-4 border-t">
             <Button variant="outline" onClick={() => setNovaConversa(false)}>
               Cancelar
             </Button>
