@@ -465,7 +465,11 @@ export async function excluirRespostaPronta(id: string, atendenteId: string) {
  */
 export async function listarContatosDisponiveis(busca?: string | null) {
   if (!db) return [];
-  const termo = busca?.trim() ? `%${busca.trim().toLowerCase()}%` : null;
+  // Busca do atendente costuma vir com máscara e nome — compara pelos dois lados
+  // já normalizados, senão "Ana (11)" nunca casa com nada.
+  const bruto = busca?.trim();
+  const termo = bruto ? `%${bruto.toLowerCase()}%` : null;
+  const digitos = bruto ? apenasDigitos(bruto) : null;
 
   const res = await db.execute(sql`
     SELECT p.id, p.nome, p.telefone, p.role,
@@ -479,7 +483,7 @@ export async function listarContatosDisponiveis(busca?: string | null) {
       AND (
         ${termo} IS NULL
         OR lower(COALESCE(p.nome, '')) LIKE ${termo}
-        OR regexp_replace(COALESCE(p.telefone, ''), '\D', '', 'g') LIKE replace(${termo}, '%', '')
+        OR regexp_replace(p.telefone, '\D', '', 'g') LIKE ${`%${digitos || ''}%`}
       )
     ORDER BY p.nome ASC
     LIMIT 50

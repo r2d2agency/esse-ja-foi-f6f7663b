@@ -76,8 +76,11 @@ export const Route = createFileRoute('/admin/conversas')({
 
 /**
  * Campos de variável do template de abertura, no mesmo estilo do "Enviar teste"
- * de Comunicações. O Meta exige um parâmetro por {{n}} do corpo (e de botão URL),
+ * de Comunicações. A Meta exige um parâmetro por {{n}} do corpo (e de botão URL),
  * na ordem — por isso o atendente preenche aqui em vez de mandar componente vazio.
+ *
+ * O label mostra o texto do corpo com o número destacado, para o atendente saber
+ * o que vai em cada campo sem decorar a ordem.
  */
 function VariaveisTemplate({
   template,
@@ -94,17 +97,17 @@ function VariaveisTemplate({
       ? template.conteudo.components
       : [];
 
-  const campos: { numero: number; label: string }[] = [];
+  const campos: { numero: number; texto: string }[] = [];
   comps.forEach((comp: any) => {
     if (comp?.type === "BODY") {
       const nums = [...String(comp.text || "").matchAll(/\{\{(\d+)\}\}/g)].map((m) => Number(m[1]));
-      nums.forEach((n) => campos.push({ numero: n, label: comp.text }));
+      nums.forEach((n) => campos.push({ numero: n, texto: comp.text }));
     }
     if (comp?.type === "BUTTONS" && Array.isArray(comp.buttons)) {
       comp.buttons.forEach((b: any) => {
         if (b?.type === "URL") {
           const nums = [...String(b.url || "").matchAll(/\{\{(\d+)\}\}/g)].map((m) => Number(m[1]));
-          nums.forEach((n) => campos.push({ numero: n, label: b.url }));
+          nums.forEach((n) => campos.push({ numero: n, texto: b.url }));
         }
       });
     }
@@ -119,23 +122,33 @@ function VariaveisTemplate({
   return (
     <div className="space-y-2 border rounded-lg p-3">
       <p className="text-xs font-medium text-muted-foreground">
-        Variáveis do template
+        Variáveis do template {template?.nome_interno || template?.meta_name}
       </p>
       {unicos.map((c) => (
-        <div key={c.numero}>
-          <label className="text-[10px] text-muted-foreground">{`{{${c.numero}}}`}</label>
+        <div key={c.numero} className="space-y-1">
+          <label className="text-[11px] text-muted-foreground">
+            <code className="bg-slate-100 px-1 rounded text-[11px]">
+              {"{{"}
+              {c.numero}
+              {"}}"}
+            </code>
+            <span className="ml-1">{c.texto}</span>
+          </label>
           <Input
-            placeholder={c.label}
+            placeholder={`Valor ${c.numero}`}
             value={valores[c.numero - 1] ?? ""}
             onChange={(e) => {
               const next = [...valores];
               next[c.numero - 1] = e.target.value;
               onChange(next);
             }}
-            className="mt-0.5 h-8 text-xs"
+            className="h-8 text-xs"
           />
         </div>
       ))}
+      <p className="text-[11px] text-muted-foreground">
+        A Meta exige um valor para cada variável do corpo, na mesma ordem.
+      </p>
     </div>
   );
 }
@@ -282,22 +295,77 @@ function CentralConversasPage() {
       setNovoContato(false);
       setNovoNome('');
       setNovoTelefone('');
-      setContatoSelecionado(perfil);
-      setContatoBusca(perfil.nome);
+      setContatoBusca('');
       queryClient.invalidateQueries({ queryKey: ['contatos-disponiveis'] });
-      toast.success('Contato cadastrado');
+
+      // "Cadastrar e iniciar" tem que abrir a conversa, não só criar o cadastro.
+      mutationIniciarConversa.mutate({
+        telefone: perfil.telefone,
+        nome: perfil.nome,
+        template_id: templateSelecionado.id,
+        variaveis: variaveisTemplate,
+      });
     },
     onError: (err) => toast.error(`Erro ao cadastrar contato: ${err.message}`),
   });
 
+  /** Limpa o diálogo inteiro: contato, busca, cadastro e template escolhido. */
+  const fecharDialogoNovaConversa = () => {
+    setNovaConversa(false);
+    setContatoSelecionado(null);
+    setContatoBusca('');
+    setNovoContato(false);
+    setNovoNome('');
+    setNovoTelefone('');
+    setTemplateSelecionado(null);
+    setVariaveisTemplate([]);
+  };
+
+  /**
+   * Números de variável que o template exige ({{1}}, {{2}}...), para saber se o
+   * atendente preencheu todos antes de liberar o envio. Conta pelo maior número
+   * usado, porque a Meta só aceita parâmetros em sequência a partir do 1.
+   */
+  const variaveisTemplateExigidas = useMemo(() => {
+    const comps = Array.isArray(templateSelecionado?.conteudo)
+      ? templateSelecionado.conteudo
+      : Array.isArray(templateSelecionado?.conteudo?.components)
+        ? templateSelecionado.conteudo.components
+        : [];
+    let maior = 0;
+    comps.forEach((comp: any) => {
+      if (comp?.type === "BODY") {
+        for (const m of String(comp.text || "").matchAll(/\{\{(\d+)\}\}/g)) {
+          maior = Math.max(maior, Number(m[1]));
+        }
+      }
+      if (comp?.type === "BUTTONS" && Array.isArray(comp.buttons)) {
+        for (const b of comp.buttons) {
+          if (b?.type !== "URL") continue;
+          for (const m of String(b.url || "").matchAll(/\{\{(\d+)\}\}/g)) {
+            maior = Math.max(maior, Number(m[1]));
+          }
+        }
+      }
+    });
+    return maior;
+  }, [templateSelecionado]);
+
+  const templateIncompleto =
+    variaveisTemplateExigidas > 0 &&
+    Array.from({ length: variaveisTemplateExigidas }, (_, i) =>
+      String(variaveisTemplate[i] ?? "").trim(),
+    ).some((v) => !v);
+
   const mutationIniciarConversa = useMutation({
-    mutationFn: (dados: { telefone: string; nome?: string | null; template_name: string }) =>
-      iniciarConversa({ data: { token, ...dados } }),
+    mutationFn: (dados: {
+      telefone: string;
+      nome?: string | null;
+      template_id: string;
+      variaveis: string[];
+    }) => iniciarConversa({ data: { token, ...dados } }),
     onSuccess: (res: any) => {
-      setNovaConversa(false);
-      setContatoSelecionado(null);
-      setContatoBusca('');
-      setTemplateAbertura('');
+      fecharDialogoNovaConversa();
       queryClient.invalidateQueries({ queryKey: ['conversas'] });
       queryClient.invalidateQueries({ queryKey: ['conversa', res?.conversaId] });
       if (res?.conversaId) setSelectedId(res.conversaId);
@@ -978,7 +1046,7 @@ function CentralConversasPage() {
                     >
                       <p className="text-xs font-bold">{t.meta_name}</p>
                       <p className="text-[10px] text-muted-foreground">
-                        {t.status} — {t.language}
+                        {t.status} — {t.idioma}
                       </p>
                     </button>
                   ))
@@ -1005,7 +1073,7 @@ function CentralConversasPage() {
                   ? !novoNome.trim() || novoTelefone.replace(/\D/g, '').length < 10
                   : !contatoSelecionado) ||
                 !templateSelecionado ||
-                !variaveisTemplate.every((v) => v.trim())
+                templateIncompleto
               }
               onClick={() => {
                 if (novoContato) {
