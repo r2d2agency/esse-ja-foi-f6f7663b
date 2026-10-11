@@ -40,7 +40,17 @@ export const listarUsuariosInternosFn = createServerFn({ method: "GET" })
   }).optional().parse(d))
   .handler(async ({ data }) => {
     const m = await import("@/db/admin.server");
-    await m.ensureAdminTables();
+    // `listarUsuariosInternos` só lê `profiles`. As tabelas garantidas por
+    // `ensureAdminTables` (logs, documentos, depreciacao, compliance) não são
+    // pré-requisito da listagem, então a falha delas NÃO pode derrubar a tela.
+    // Antes essa chamada ficava fora do try: se ela estourasse, o handler
+    // lançava, o cliente caía no catch e a tabela mostrava "Nenhum usuário
+    // interno encontrado" — uma lista vazia indistinguível de um erro real.
+    try {
+      await m.ensureAdminTables();
+    } catch (e: any) {
+      console.warn("[admin] falha ao garantir tabelas admin (seguindo para a listagem):", e?.message || e);
+    }
     try {
       return { ok: true as const, data: await m.listarUsuariosInternos(data?.role) };
     } catch (e: any) {
@@ -78,6 +88,14 @@ export const gerenciarUsuarioFn = createServerFn({ method: "POST" })
         }
       } else {
         if (!data.email || !data.password || !data.role) throw new Error("Dados incompletos para novo usuário.");
+        // `criarUsuario` insere em `profiles` com `role::app_role`. Esses objetos
+        // são criados por `ensureAuthSchema`, que normalmente só roda no boot
+        // (migrateDb) ou no login. Se a base está nova — ou o servidor subiu
+        // sem rodar as migrações — o INSERT morria com
+        // 'relation "profiles" does not exist' / 'type "app_role" does not exist'
+        // e o toast dizia apenas "Erro ao criar usuário".
+        const auth = await import("@/db/auth.server");
+        await auth.ensureAuthSchema();
         await m.criarUsuario(data);
       }
       return { ok: true as const };
