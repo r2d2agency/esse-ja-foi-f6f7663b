@@ -328,6 +328,12 @@ function CentralConversasPage() {
     onError: (err) => toast.error(`Erro ao excluir: ${err.message}`),
   });
 
+  /**
+   * Cadastra o contato. Não exige template: o cadastro é só o perfil, e o
+   * template só importa na hora de enviar a primeira mensagem. Quem quer
+   * enviar já escolhe o template no mesmo diálogo; quem só quer cadastrar
+   * não precisa ser obrigado a escolher um.
+   */
   const mutationCadastrarContato = useMutation({
     mutationFn: () =>
       cadastrarContato({ data: { nome: novoNome, telefone: novoTelefone } }),
@@ -336,10 +342,18 @@ function CentralConversasPage() {
       setNovoContato(false);
       setNovoNome('');
       setNovoTelefone('');
-      setContatoBusca('');
+      setContatoSelecionado(perfil);
+      setContatoBusca(perfil.nome);
       queryClient.invalidateQueries({ queryKey: ['contatos-disponiveis'] });
 
-      // "Cadastrar e iniciar" tem que abrir a conversa, não só criar o cadastro.
+      // Sem template escolhido, o contato fica selecionado e o diálogo aberto:
+      // o atendente escolhe o template e envia quando quiser.
+      if (!templateSelecionado) {
+        toast.success('Contato cadastrado. Escolha o template para enviar.');
+        return;
+      }
+
+      // Com template, já envia a primeira mensagem.
       mutationIniciarConversa.mutate({
         telefone: perfil.telefone,
         nome: perfil.nome,
@@ -1023,7 +1037,8 @@ function CentralConversasPage() {
                     onChange={(e) => setNovoTelefone(e.target.value)}
                   />
                   <p className="text-[10px] text-muted-foreground">
-                    Cadastra o contato e já o seleciona para iniciar a conversa.
+                    Cadastra o contato. Ele fica selecionado aqui — escolha o
+                    template acima só quando quiser enviar a primeira mensagem.
                   </p>
                 </div>
               ) : (
@@ -1110,6 +1125,19 @@ function CentralConversasPage() {
             <Button variant="outline" onClick={() => setNovaConversa(false)}>
               Cancelar
             </Button>
+
+            {/* Cadastrar não precisa de template: o perfil é só o perfil.
+                O template só importa na hora de enviar a primeira mensagem. */}
+            {novoContato && (
+              <Button
+                variant="secondary"
+                disabled={!novoNome.trim() || novoTelefone.replace(/\D/g, '').length < 10}
+                onClick={() => mutationCadastrarContato.mutate()}
+              >
+                Cadastrar
+              </Button>
+            )}
+
             <Button
               disabled={
                 (novoContato
@@ -1131,7 +1159,7 @@ function CentralConversasPage() {
                 }
               }}
             >
-              {novoContato ? 'Cadastrar e iniciar' : 'Iniciar conversa'}
+              {novoContato ? 'Cadastrar e enviar' : 'Enviar'}
             </Button>
           </DialogFooter>
         </DialogContent>

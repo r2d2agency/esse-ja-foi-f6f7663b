@@ -1,5 +1,7 @@
 /* Esse Já Foi — Service Worker do PWA */
-const CACHE = "ejf-app-v4";
+// Suba esta versão a cada deploy que mude os assets. O `activate` apaga tudo
+// que tiver outro nome, então é assim que o cache velho sai de circulação.
+const CACHE = "ejf-app-v5";
 const SHELL = [
   "/manifest.webmanifest",
   "/favicon.png",
@@ -96,7 +98,20 @@ self.addEventListener("fetch", (event) => {
             }
             return res;
           })
-          .catch(() => fetch(event.request))
+          // Antes isto chamava o mesmo fetch que tinha acabado de falhar, sem
+          // fallback nenhum: a promise rejeitava e virava "Uncaught (in
+          // promise) Failed to fetch" no console. Na dúvida, responde 503 de
+          // verdade — o navegador mostra o erro, não uma rejeição solta.
+          .catch(async () => {
+            const cache = await caches.open(CACHE);
+            const alternativa =
+              (await cache.match(url.pathname)) || (await cache.match("/"));
+            if (alternativa) return alternativa;
+            return new Response("Servico indisponivel no momento.", {
+              status: 503,
+              headers: { "Content-Type": "text/plain; charset=utf-8" },
+            });
+          })
     )
   );
 });
