@@ -2,10 +2,44 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import * as db from "../db/conversas.server";
 
-async function userIdFrom(token?: string | null) {
-  if (!token) return null;
+/**
+ * Token -> atendente. Quando falha, registra uma linha antes de devolver null:
+ * sem isso o handler lança "Não autorizado" e a operação não deixa rastro em
+ * lugar nenhum — o atendente vê o toast e não há como diagnosticar depois.
+ * Distinguimos "token ausente" (store ainda não reidratada na primeira ação)
+ * de "token inválido/expirado" (secret diferente entre login e verificação),
+ * porque as soluções são diferentes.
+ */
+async function userIdFrom(token?: string | null, onde = "?") {
+  if (!token) {
+    console.warn(`[conversas] ${onde}: token ausente na requisicao`);
+    await logarTentativa(onde, false, null);
+    return null;
+  }
   const { verifyToken } = await import("@/db/auth.server");
-  return verifyToken(token);
+  const userId = await verifyToken(token);
+  if (!userId) {
+    console.warn(`[conversas] ${onde}: token presente mas invalido ou expirado`);
+  }
+  await logarTentativa(onde, !!userId, userId);
+  return userId;
+}
+
+/** Grava a tentativa em `logs`, a tabela de trilha que o app já tem. */
+async function logarTentativa(onde: string, ok: boolean, userId: string | null) {
+  try {
+    const { db: database } = await import("@/db/index");
+    if (!database) return;
+    const { sql } = await import("drizzle-orm");
+    // `detalhe` e `usuario` sao text nesta tabela: gravar como texto, nao jsonb.
+    await database.execute(sql`
+      INSERT INTO logs (entidade, acao, detalhe, usuario)
+      VALUES ('conversas', ${ok ? "AUTORIZADO" : "NAO_AUTORIZADO"}, ${JSON.stringify({ onde })}, ${userId})
+    `);
+  } catch (err) {
+    // Log que falha não pode derrubar a operação do atendente.
+    console.error("[conversas] falha ao registrar tentativa:", err);
+  }
 }
 
 export const listarConversasFn = createServerFn({ method: "GET" })
@@ -51,7 +85,7 @@ export const enviarMensagemAtendenteFn = createServerFn({ method: "POST" })
       .parse(data),
   )
   .handler(async ({ data }) => {
-    const atendenteId = await userIdFrom(data.token ?? null);
+    const atendenteId = await userIdFrom(data.token ?? null, "ENVIAR_MENSAGEM");
     if (!atendenteId) throw new Error("Não autorizado");
     return db.enviarMensagemAtendente(data.conversaId, atendenteId, data.payload);
   });
@@ -65,7 +99,7 @@ export const definirApelidoFn = createServerFn({ method: "POST" })
     }).parse(data),
   )
   .handler(async ({ data }) => {
-    const atendenteId = await userIdFrom(data.token ?? null);
+    const atendenteId = await userIdFrom(data.token ?? null, "DEFINIR_APELIDO");
     if (!atendenteId) throw new Error("Não autorizado");
     return db.definirApelido(data.conversaId, data.apelido);
   });
@@ -75,7 +109,7 @@ export const resolverConversaFn = createServerFn({ method: "POST" })
     z.object({ token: z.string().nullable().optional(), conversaId: z.string().uuid() }).parse(data),
   )
   .handler(async ({ data }) => {
-    const atendenteId = await userIdFrom(data.token ?? null);
+    const atendenteId = await userIdFrom(data.token ?? null, "RESOLVER_CONVERSA");
     if (!atendenteId) throw new Error("Não autorizado");
     return db.marcarConversaResolvida(data.conversaId);
   });
@@ -91,7 +125,7 @@ export const atribuirResponsavelFn = createServerFn({ method: "POST" })
       .parse(data),
   )
   .handler(async ({ data }) => {
-    const atendenteId = await userIdFrom(data.token ?? null);
+    const atendenteId = await userIdFrom(data.token ?? null, "ATRIBUIR_RESPONSAVEL");
     if (!atendenteId) throw new Error("Não autorizado");
     return db.atribuirResponsavel(data.conversaId, data.responsavelId);
   });
@@ -101,7 +135,9 @@ export const listarRespostasProntasFn = createServerFn({ method: "GET" })
     z.object({ token: z.string().nullable().optional() }).parse(data ?? {}),
   )
   .handler(async ({ data }) => {
-    const atendenteId = await userIdFrom(data.token ?? null);
+    // GET: não rejeita. Respostas prontas e globais e do atendente aparecem
+    // juntas, e esconder as globais de quem caiu no token vazio seria pior.
+    const atendenteId = await userIdFrom(data.token ?? null, "LISTAR_RESPOSTAS");
     return db.listarRespostasProntas(atendenteId ?? null);
   });
 
@@ -118,8 +154,9 @@ export const salvarRespostaProntaFn = createServerFn({ method: "POST" })
       .parse(data),
   )
   .handler(async ({ data }) => {
-    const atendenteId = await userIdFrom(data.token ?? null);
-    return db.salvarRespostaPronta(atendenteId as string, data);
+    const atendenteId = await userIdFrom(data.token ?? null, "SALVAR_RESPOSTA");
+    if (!atendenteId) throw new Error("Não autorizado");
+    return db.salvarRespostaPronta(atendenteId, data);
   });
 
 export const excluirRespostaProntaFn = createServerFn({ method: "POST" })
@@ -127,8 +164,9 @@ export const excluirRespostaProntaFn = createServerFn({ method: "POST" })
     z.object({ token: z.string().nullable().optional(), id: z.string().uuid() }).parse(data),
   )
   .handler(async ({ data }) => {
-    const atendenteId = await userIdFrom(data.token ?? null);
-    return db.excluirRespostaPronta(data.id, atendenteId as string);
+    const atendenteId = await userIdFrom(data.token ?? null, "EXCLUIR_RESPOSTA");
+    if (!atendenteId) throw new Error("Não autorizado");
+    return db.excluirRespostaPronta(data.id, atendenteId);
   });
 
 /** Contatos com telefone, para o diálogo "Nova conversa". */
@@ -176,7 +214,7 @@ export const iniciarConversaFn = createServerFn({ method: "POST" })
       .parse(data),
   )
   .handler(async ({ data }) => {
-    const atendenteId = await userIdFrom(data.token ?? null);
+    const atendenteId = await userIdFrom(data.token ?? null, "INICIAR_CONVERSA");
     if (!atendenteId) throw new Error("Não autorizado");
     const template = await (async () => {
       if (data.template_id) {

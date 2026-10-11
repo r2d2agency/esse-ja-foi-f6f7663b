@@ -228,7 +228,11 @@ function CentralConversasPage() {
   const [templateSelecionado, setTemplateSelecionado] = useState<any>(null);
   const [variaveisTemplate, setVariaveisTemplate] = useState<string[]>([]);
 
-  const token = getSessionToken();
+  // Lido na hora da chamada, não no render. No primeiro render a store do zustand
+  // ainda está vazia (o onRehydrateStorage não rodou), e o useMutation captura
+  // esse valor null para sempre — o servidor então recebe token vazio e devolve
+  // "Não autorizado", sem gerar log algum porque nunca chega ao INSERT.
+  const getToken = () => getSessionToken();
 
   const filtrosQuery = useMemo(
     () => ({ status: filtros.status, ...(busca.trim() ? { busca: busca.trim() } : {}) }),
@@ -255,7 +259,7 @@ function CentralConversasPage() {
 
   const { data: respostasProntas } = useQuery({
     queryKey: ['respostas-prontas'],
-    queryFn: () => getRespostasProntas({ data: { token } }),
+    queryFn: () => getRespostasProntas({ data: { token: getToken() } }),
   });
 
   // Só busca contatos com o diálogo aberto — evita varrer `profiles` a cada render.
@@ -274,7 +278,7 @@ function CentralConversasPage() {
 
   const mutationEnviar = useMutation({
     mutationFn: (payload: any) =>
-      enviarMsg({ data: { token, conversaId: selectedId, payload } }),
+      enviarMsg({ data: { token: getToken(), conversaId: selectedId, payload } }),
     onSuccess: () => {
       setMensagem('');
       queryClient.invalidateQueries({ queryKey: ['conversa', selectedId] });
@@ -285,7 +289,7 @@ function CentralConversasPage() {
 
   const mutationApelido = useMutation({
     mutationFn: () =>
-      definirApelido({ data: { token, conversaId: selectedId!, apelido: apelidoTemp } }),
+      definirApelido({ data: { token: getToken(), conversaId: selectedId!, apelido: apelidoTemp } }),
     onSuccess: () => {
       setEditandoApelido(false);
       queryClient.invalidateQueries({ queryKey: ['conversa', selectedId] });
@@ -296,7 +300,7 @@ function CentralConversasPage() {
   });
 
   const mutationResolver = useMutation({
-    mutationFn: () => resolverConversa({ data: { token, conversaId: selectedId! } }),
+    mutationFn: () => resolverConversa({ data: { token: getToken(), conversaId: selectedId! } }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['conversa', selectedId] });
       queryClient.invalidateQueries({ queryKey: ['conversas'] });
@@ -306,7 +310,7 @@ function CentralConversasPage() {
   });
 
   const mutationSalvarResposta = useMutation({
-    mutationFn: (dados: any) => salvarResposta({ data: { token, ...dados } }),
+    mutationFn: (dados: any) => salvarResposta({ data: { token: getToken(), ...dados } }),
     onSuccess: () => {
       setNovaResposta(false);
       queryClient.invalidateQueries({ queryKey: ['respostas-prontas'] });
@@ -316,7 +320,7 @@ function CentralConversasPage() {
   });
 
   const mutationExcluirResposta = useMutation({
-    mutationFn: (id: string) => excluirResposta({ data: { token, id } }),
+    mutationFn: (id: string) => excluirResposta({ data: { token: getToken(), id } }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['respostas-prontas'] });
       toast.success('Resposta rápida excluída');
@@ -400,7 +404,7 @@ function CentralConversasPage() {
       nome?: string | null;
       template_id: string;
       variaveis: string[];
-    }) => iniciarConversa({ data: { token, ...dados } }),
+    }) => iniciarConversa({ data: { token: getToken(), ...dados } }),
     onSuccess: (res: any) => {
       fecharDialogoNovaConversa();
       queryClient.invalidateQueries({ queryKey: ['conversas'] });
