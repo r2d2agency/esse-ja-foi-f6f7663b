@@ -43,7 +43,7 @@ export async function ensureConversasSchema(silent = true) {
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'whatsapp_conversas' AND column_name = 'ultima_resposta_cliente_em') THEN
           ALTER TABLE whatsapp_conversas ADD COLUMN ultima_resposta_cliente_em timestamptz;
         END IF;
-        -- DENTRO do DO $$ as aspas simples precisam ser dobradas (''X'').
+        -- Dentro do bloco DO as aspas simples precisam ser dobradas (''X'').
         -- processarMensagemRecebida grava profiles.whatsapp_status ATIVO ao dar
         -- entrada em um numero desconhecido. Sem esta coluna o INSERT estoura
         -- (a tabela e criada em auth.server.ts sem ela) e nenhuma conversa nasce.
@@ -96,7 +96,7 @@ export async function ensureConversasSchema(silent = true) {
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS whatsapp_respostas_prontas (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        -- DENTRO do DO $$ as aspas simples precisam ser dobradas (''X'').
+        -- Dentro do bloco DO as aspas simples precisam ser dobradas (''X'').
         escopo text NOT NULL DEFAULT ''GLOBAL'', -- GLOBAL | ATENDENTE
         atendente_id uuid REFERENCES profiles(id),
         atalho text NOT NULL,

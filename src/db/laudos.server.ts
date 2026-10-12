@@ -410,7 +410,7 @@ export async function registrarDivergenciaPlaca(input: { agendamentoId: string; 
     DO $$
     BEGIN
       IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'notificacoes') THEN
-        -- DENTRO do DO $$ as aspas simples precisam ser dobradas (''X'').
+        -- Dentro do bloco DO as aspas simples precisam ser dobradas (''X'').
         CREATE TABLE notificacoes (
           id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
           destinatario_id uuid REFERENCES profiles(id),
@@ -529,7 +529,7 @@ export async function enviarLaudo(input: { laudoId: string; vistoriadorId?: stri
     DO $$
     BEGIN
       IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'notificacoes') THEN
-        -- DENTRO do DO $$ as aspas simples precisam ser dobradas (''X'').
+        -- Dentro do bloco DO as aspas simples precisam ser dobradas (''X'').
         CREATE TABLE notificacoes (
           id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
           destinatario_id uuid REFERENCES profiles(id),
@@ -609,7 +609,7 @@ export async function devolverLaudo(input: { laudoId: string; motivo: string; us
     DO $$
     BEGIN
       IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'notificacoes') THEN
-        -- DENTRO do DO $$ as aspas simples precisam ser dobradas (''X'').
+        -- Dentro do bloco DO as aspas simples precisam ser dobradas (''X'').
         CREATE TABLE notificacoes (
           id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
           destinatario_id uuid REFERENCES profiles(id),

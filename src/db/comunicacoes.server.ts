@@ -300,7 +300,7 @@ export async function ensureComunicacoesSchema(silent = true) {
       DO $$
       BEGIN
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'whatsapp_mensagens' AND column_name = 'estado_fila') THEN
-          -- DENTRO do DO $$ as aspas simples precisam ser dobradas (''X'').
+          -- Dentro do bloco DO as aspas simples precisam ser dobradas (''X'').
           ALTER TABLE whatsapp_mensagens ADD COLUMN estado_fila text DEFAULT ''PENDENTE'';
         END IF;
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'whatsapp_mensagens' AND column_name = 'reservada_em') THEN
