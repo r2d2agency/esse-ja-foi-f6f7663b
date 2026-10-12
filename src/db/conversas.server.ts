@@ -29,67 +29,38 @@ export async function ensureConversasSchema(silent = true) {
     `);
 
     await db.execute(sql`
-      DO $$
-      BEGIN
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'whatsapp_conversas' AND column_name = 'contato_id') THEN
-          ALTER TABLE whatsapp_conversas ADD COLUMN contato_id uuid NOT NULL REFERENCES profiles(id);
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'whatsapp_conversas' AND column_name = 'apelido') THEN
-          ALTER TABLE whatsapp_conversas ADD COLUMN apelido text;
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'whatsapp_conversas' AND column_name = 'janela_expira_em') THEN
-          ALTER TABLE whatsapp_conversas ADD COLUMN janela_expira_em timestamptz;
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'whatsapp_conversas' AND column_name = 'ultima_resposta_cliente_em') THEN
-          ALTER TABLE whatsapp_conversas ADD COLUMN ultima_resposta_cliente_em timestamptz;
-        END IF;
-        -- Dentro do bloco DO as aspas simples precisam ser dobradas (''X'').
-        -- processarMensagemRecebida grava profiles.whatsapp_status ATIVO ao dar
-        -- entrada em um numero desconhecido. Sem esta coluna o INSERT estoura
-        -- (a tabela e criada em auth.server.ts sem ela) e nenhuma conversa nasce.
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'whatsapp_status') THEN
-          ALTER TABLE profiles ADD COLUMN whatsapp_status text DEFAULT ''ATIVO'';
-        END IF;
-      END $$;
+      ALTER TABLE whatsapp_conversas
+        ADD COLUMN IF NOT EXISTS contato_id uuid REFERENCES profiles(id),
+        ADD COLUMN IF NOT EXISTS apelido text,
+        ADD COLUMN IF NOT EXISTS janela_expira_em timestamptz,
+        ADD COLUMN IF NOT EXISTS ultima_resposta_cliente_em timestamptz;
+    `);
+
+    // processarMensagemRecebida grava profiles.whatsapp_status ATIVO ao dar
+    // entrada em um numero desconhecido. Sem esta coluna o INSERT estoura
+    // (a tabela e criada em auth.server.ts sem ela) e nenhuma conversa nasce.
+    await db.execute(sql`
+      ALTER TABLE profiles
+        ADD COLUMN IF NOT EXISTS whatsapp_status text DEFAULT 'ATIVO';
     `);
 
     // 2. Tabela de Mensagens e Notas
     // Nota: Reutiliza whatsapp_mensagens mas adiciona campos para notas internas e auditoria
     await db.execute(sql`
-      DO $$
-      BEGIN
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'whatsapp_mensagens' AND column_name = 'conversa_id') THEN
-          ALTER TABLE whatsapp_mensagens ADD COLUMN conversa_id uuid REFERENCES whatsapp_conversas(id) ON DELETE CASCADE;
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'whatsapp_mensagens' AND column_name = 'tipo') THEN
-          ALTER TABLE whatsapp_mensagens ADD COLUMN tipo text DEFAULT ''MENSAGEM'';
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'whatsapp_mensagens' AND column_name = 'autor_id') THEN
-          ALTER TABLE whatsapp_mensagens ADD COLUMN autor_id uuid REFERENCES profiles(id);
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'whatsapp_mensagens' AND column_name = 'metadata') THEN
-          ALTER TABLE whatsapp_mensagens ADD COLUMN metadata jsonb DEFAULT '{}'::jsonb;
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'whatsapp_mensagens' AND column_name = 'enviado_por_atendente') THEN
-          ALTER TABLE whatsapp_mensagens ADD COLUMN enviado_por_atendente boolean DEFAULT false;
-        END IF;
+      ALTER TABLE whatsapp_mensagens
+        ADD COLUMN IF NOT EXISTS conversa_id uuid REFERENCES whatsapp_conversas(id) ON DELETE CASCADE,
+        ADD COLUMN IF NOT EXISTS tipo text DEFAULT 'MENSAGEM',
+        ADD COLUMN IF NOT EXISTS autor_id uuid REFERENCES profiles(id),
+        ADD COLUMN IF NOT EXISTS metadata jsonb DEFAULT '{}'::jsonb,
+        ADD COLUMN IF NOT EXISTS enviado_por_atendente boolean DEFAULT false,
         -- Midia: media_id e o id que a Meta devolve no upload e e o que a
         -- tela usa para reenviar; media_url e a copia local em
         -- arquivos_upload, que continua acessivel depois que a Meta expira o
         -- id dela (30 dias).
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'whatsapp_mensagens' AND column_name = 'tipo_midia') THEN
-          ALTER TABLE whatsapp_mensagens ADD COLUMN tipo_midia text;
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'whatsapp_mensagens' AND column_name = 'media_id') THEN
-          ALTER TABLE whatsapp_mensagens ADD COLUMN media_id text;
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'whatsapp_mensagens' AND column_name = 'media_url') THEN
-          ALTER TABLE whatsapp_mensagens ADD COLUMN media_url text;
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'whatsapp_mensagens' AND column_name = 'arquivo_id') THEN
-          ALTER TABLE whatsapp_mensagens ADD COLUMN arquivo_id uuid;
-        END IF;
-      END $$;
+        ADD COLUMN IF NOT EXISTS tipo_midia text,
+        ADD COLUMN IF NOT EXISTS media_id text,
+        ADD COLUMN IF NOT EXISTS media_url text,
+        ADD COLUMN IF NOT EXISTS arquivo_id uuid;
     `);
 
     // 3. Tabela de respostas rápidas
