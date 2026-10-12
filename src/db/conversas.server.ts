@@ -694,7 +694,25 @@ export async function listarContatosDisponiveis(busca?: string | null) {
     ORDER BY p.nome ASC
     LIMIT 50
   `);
-  return rowsOf(res) || [];
+  const lista = rowsOf(res) || [];
+
+  // Acabou de cadastrar? O contato sobe para o topo, senão ele aterra no fim
+  // da lista (ou fora dela, se já houver 50 perfis) e o atendente não acha.
+  if (busca) {
+    const digitosBusca = apenasDigitos(busca);
+    const termo = busca.trim().toLowerCase();
+    const recadastrado = lista.find(
+      (c: any) =>
+        (c.nome || '').toLowerCase() === termo ||
+        (digitosBusca.length >= 9 &&
+          (c.telefone || '').replace(/\D/g, '').endsWith(digitosBusca.slice(-9))),
+    );
+    if (recadastrado) {
+      return [recadastrado, ...lista.filter((c: any) => c.id !== recadastrado.id)];
+    }
+  }
+
+  return lista;
 }
 
 /**
@@ -719,6 +737,11 @@ export async function cadastrarContato(dados: {
   const noveDigitos = telefone.slice(-9);
   const email = dados.email?.trim() || `whatsapp_${noveDigitos}@contato.local`;
 
+  // O telefone precisa chegar ao banco sem máscara: `listarContatosDisponiveis`
+  // normaliza com regexp_replace e compara dígitos, então o valor digitado
+  // (`(11) 99999-9999`) nunca casaria com o contato recém-cadastrado na busca.
+  const telefoneLimpo = telefone;
+
   // Se já existir um perfil com esse telefone, devolve ele em vez de duplicar.
   const existente = await db.execute(sql`
     SELECT id FROM profiles
@@ -733,7 +756,7 @@ export async function cadastrarContato(dados: {
 
   const res = await db.execute(sql`
     INSERT INTO profiles (nome, telefone, email, role, whatsapp_status)
-    VALUES (${nome}, ${dados.telefone}, ${email}, 'comprador', 'ATIVO')
+    VALUES (${nome}, ${telefoneLimpo}, ${email}, 'comprador', 'ATIVO')
     ON CONFLICT (email) DO UPDATE SET
       nome = COALESCE(NULLIF(btrim(EXCLUDED.nome), ''), profiles.nome),
       telefone = COALESCE(NULLIF(btrim(EXCLUDED.telefone), ''), profiles.telefone)
@@ -788,7 +811,7 @@ export async function iniciarConversa(
       INSERT INTO profiles (nome, telefone, role, whatsapp_status, email)
       VALUES (
         ${dados.nome?.trim() || "Contato não identificado"},
-        ${dados.telefone},
+        ${telefoneMeta},
         'comprador',
         'ATIVO',
         ${emailSintetico}
