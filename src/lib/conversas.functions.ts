@@ -63,16 +63,76 @@ export const getConversaCompletaFn = createServerFn({ method: "GET" })
     return db.getConversaCompleta(id);
   });
 
-const payloadMensagem = z.union([
-  z.object({ tipo: z.literal("TEXTO"), conteudo: z.object({ text: z.object({ body: z.string() }) }) }),
-  z.object({
+/**
+ * Template pode chegar de duas formas: já com `componentes` montados (caminho
+ * antigo) ou com `variaveis` em lista. Montar no servidor em vez de na tela
+ * porque `montarComponents` vive no módulo do banco e a tela não importa
+ * servidor — e porque é aqui que se descobre quantos `{{n}}` o template pede.
+ */
+const payloadTemplate = z
+  .object({
     tipo: z.literal("TEMPLATE"),
-    template_name: z.string(),
+    template_id: z.string().uuid().optional(),
+    template_name: z.string().optional(),
     idioma: z.string().optional(),
     componentes: z.array(z.any()).optional(),
-  }),
+    variaveis: z.array(z.string()).optional(),
+  })
+  .refine((d) => d.template_id || d.template_name, {
+    message: "Informe o template_id ou template_name",
+  });
+
+const payloadMensagem = z.union([
+  z.object({ tipo: z.literal("TEXTO"), conteudo: z.object({ text: z.object({ body: z.string() }) }) }),
+  payloadTemplate,
   z.object({ tipo: z.literal("NOTA_INTERNA"), conteudo: z.any() }),
+  z.object({
+    tipo: z.enum(["IMAGEM", "DOCUMENTO", "AUDIO"]),
+    conteudo: z.object({
+      media_id: z.string().min(1),
+      media_url: z.string().nullable().optional(),
+      arquivo_id: z.string().uuid().nullable().optional(),
+      caption: z.string().nullable().optional(),
+      filename: z.string().nullable().optional(),
+    }),
+  }),
 ]);
+
+/** Resolve o template por id ou por nome e monta os componentes com as variáveis. */
+async function montarPayloadTemplate(payload: any) {
+  const { listarTemplates } = await import("@/db/comunicacoes.server");
+  const lista = await listarTemplates();
+  const template = payload.template_id
+    ? lista.find((t: any) => t.id === payload.template_id)
+    : lista.find((t: any) => t.meta_name === payload.template_name);
+  if (!template) throw new Error("Template não encontrado");
+  if (template.status && template.status !== "APPROVED") {
+    throw new Error(`O template "${template.nome_interno}" não está aprovado na Meta.`);
+  }
+
+  const valores = (payload.variaveis || []).map((v: any) => String(v ?? ""));
+  const mapa: Record<string, string> = {};
+  valores.forEach((v: string, i: number) => {
+    mapa[String(i + 1)] = v;
+  });
+
+  const { montarComponents } = await import("@/db/meta-whatsapp.server");
+  let componentes: any[];
+  try {
+    componentes = montarComponents(template.conteudo, mapa);
+  } catch (e: any) {
+    throw new Error(e?.message || "Preencha todas as variáveis do template.");
+  }
+
+  return {
+    ...payload,
+    template_id: undefined,
+    variaveis: undefined,
+    template_name: template.meta_name || payload.template_name,
+    idioma: template.idioma || payload.idioma || "pt_BR",
+    componentes,
+  };
+}
 
 export const enviarMensagemAtendenteFn = createServerFn({ method: "POST" })
   .validator((data: unknown) =>
@@ -87,7 +147,48 @@ export const enviarMensagemAtendenteFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const atendenteId = await userIdFrom(data.token ?? null, "ENVIAR_MENSAGEM");
     if (!atendenteId) throw new Error("Não autorizado");
-    return db.enviarMensagemAtendente(data.conversaId, atendenteId, data.payload);
+    const payload =
+      data.payload.tipo === "TEMPLATE" ? await montarPayloadTemplate(data.payload) : data.payload;
+    return db.enviarMensagemAtendente(data.conversaId, atendenteId, payload);
+  });
+
+/**
+ * Sobe o anexo para a Meta. Duas etapas em uma chamada só: o arquivo entra como
+ * base64 (mesmo formato que o endpoint público de upload já usa em outras
+ * telas), vai para `arquivos_upload` — onde a URL continua válida — e daí para
+ * a Graph API, que devolve o `media_id` usado no envio. Um `media_id` da Meta
+ * expira em 30 dias; a cópia local não.
+ */
+export const uploadMidiaWhatsAppFn = createServerFn({ method: "POST" })
+  .validator((data: unknown) =>
+    z
+      .object({
+        token: z.string().nullable().optional(),
+        arquivo: z.string().min(1),
+        nome: z.string().min(1),
+        tipo: z.string().min(1),
+      })
+      .parse(data),
+  )
+  .handler(async ({ data }) => {
+    const atendenteId = await userIdFrom(data.token ?? null, "UPLOAD_MIDIA");
+    if (!atendenteId) throw new Error("Não autorizado");
+
+    const { metaService } = await import("@/db/meta-whatsapp.server");
+    const { mediaId, tamanho } = await metaService.uploadMedia(
+      data.arquivo,
+      data.nome,
+      data.tipo,
+    );
+
+    const { salvarArquivo } = await import("@/db/arquivos.server");
+    const buffer = Buffer.from(
+      String(data.arquivo).replace(/^data:[^;]+;base64,/, ""),
+      "base64",
+    );
+    const arquivoId = await salvarArquivo(buffer, data.tipo);
+
+    return { media_id: mediaId, arquivo_id: arquivoId, tamanho };
   });
 
 export const definirApelidoFn = createServerFn({ method: "POST" })
@@ -216,22 +317,23 @@ export const iniciarConversaFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const atendenteId = await userIdFrom(data.token ?? null, "INICIAR_CONVERSA");
     if (!atendenteId) throw new Error("Não autorizado");
+    const { listarTemplates } = await import("@/db/comunicacoes.server");
     const template = await (async () => {
       if (data.template_id) {
-        const lista = await db.listarTemplates();
+        const lista = await listarTemplates();
         const t = lista.find((x: any) => x.id === data.template_id);
         if (!t) throw new Error("Template não encontrado");
         return t;
       }
-      const lista = await db.listarTemplates();
+      const lista = await listarTemplates();
       const t = lista.find((x: any) => x.meta_name === data.template_name);
       if (!t) throw new Error("Template não encontrado");
       return t;
     })();
 
-    const valores = (data.variaveis || []).map((v) => String(v ?? ""));
+    const valores = (data.variaveis || []).map((v: any) => String(v ?? ""));
     const mapa: Record<string, string> = {};
-    valores.forEach((v, i) => {
+    valores.forEach((v: string, i: number) => {
       mapa[String(i + 1)] = v;
     });
 

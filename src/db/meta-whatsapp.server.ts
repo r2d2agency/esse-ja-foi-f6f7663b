@@ -438,17 +438,132 @@ export class MetaWhatsAppService {
     }
   }
 
+  /**
+   * Faz upload de binário para a Meta e devolve o `media_id` que os endpoints
+   * de imagem/áudio/documento esperam. Precisa do `phone_number_id`; o
+   * `app_id` sozinho não autentica o POST de mídia.
+   *
+   * Chega aqui como base64 (o arquivo passa pelo endpoint público de upload e
+   * é relido em bytes), então o multipart é montado em memória com um
+   * FormData próprio, sem depender de `form-data` no servidor.
+   */
   async uploadMedia(fileData: string, fileName: string, fileType: string) {
+    const inicio = Date.now();
     await this.init();
-    if (!this.config?.app_id) throw new Error("Meta App ID não configurado.");
+    if (!this.config?.phone_number_id) throw new Error("Phone Number ID não configurado.");
 
-    // Implementação simplificada de upload de mídia Meta
-    // 1. Iniciar upload
-    // 2. Enviar chunks (ou arquivo inteiro se pequeno)
-    // 3. Obter handle
+    const base64 = String(fileData).replace(/^data:[^;]+;base64,/, "");
+    const buffer = Buffer.from(base64, "base64");
+    if (buffer.length === 0) throw new Error("Arquivo vazio.");
 
-    // Para simplificar agora, retornamos um erro indicando que o upload requer Buffer/Stream real
-    throw new Error("Upload de mídia via API Meta requer processamento de binários.");
+    // Multipart montado à mão: o boundary precisa existir no Content-Type e no
+    // corpo, e o FormData do browser não funciona no servidor.
+    const boundary = `meta${Date.now().toString(36)}`;
+    const partes: Buffer[] = [];
+    const empurrar = (chunk: Buffer | string) => partes.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, "utf8"));
+
+    empurrar(`--${boundary}\r\n`);
+    empurrar(
+      `Content-Disposition: form-data; name="file"; filename="${String(fileName || "arquivo").replace(/["\r\n]/g, "_")}"\r\n` +
+      `Content-Type: ${fileType || "application/octet-stream"}\r\n\r\n`,
+    );
+    empurrar(buffer);
+    empurrar(`\r\n--${boundary}\r\n`);
+    empurrar(`Content-Disposition: form-data; name="type"\r\n\r\n${fileType || "application/octet-stream"}\r\n`);
+    empurrar(`--${boundary}\r\n`);
+    empurrar(`Content-Disposition: form-data; name="messaging_product"\r\n\r\nwhatsapp\r\n`);
+    empurrar(`--${boundary}--\r\n`);
+
+    const corpo = Buffer.concat(partes);
+
+    const version = this.config?.graph_api_version || DEFAULT_GRAPH_VERSION;
+
+    if (!this.config?.access_token) throw new Error("Token de acesso do WhatsApp não configurado.");
+
+    const resposta = await fetch(
+      `https://graph.facebook.com/${version}/${this.config.phone_number_id}/media`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.config.access_token}`,
+          "Content-Type": `multipart/form-data; boundary=${boundary}`,
+        },
+        body: corpo,
+      },
+    );
+
+    const texto = await resposta.text();
+    let parsed: any;
+    try {
+      parsed = JSON.parse(texto);
+    } catch {
+      parsed = null;
+    }
+
+    if (!resposta.ok || !parsed?.id) {
+      const detalhe = parsed?.error?.message || texto.slice(0, 400) || `HTTP ${resposta.status}`;
+      await this.registrar({
+        endpoint: `${version}/${this.config.phone_number_id}/media`,
+        operacao: "UPLOAD_MIDIA",
+        status: "ERRO",
+        httpStatus: resposta.status,
+        resumo: `Falha no upload de mídia: ${detalhe}`,
+        payload: { nome: fileName, tipo: fileType, tamanho: buffer.length },
+      });
+      throw new Error(`Falha no upload de mídia para a Meta: ${detalhe}`);
+    }
+
+    await this.registrar({
+      endpoint: `${version}/${this.config.phone_number_id}/media`,
+      operacao: "UPLOAD_MIDIA",
+      status: "SUCESSO",
+      httpStatus: resposta.status,
+      resumo: `Upload de mídia concluído (${parsed.id})`,
+      payload: { nome: fileName, tipo: fileType, tamanho: buffer.length, mediaId: parsed.id },
+      duracaoMs: Date.now() - inicio,
+    });
+
+    return { mediaId: parsed.id, tamanho: buffer.length };
+  }
+
+  private enviarMidia(tipo: "image" | "audio" | "document", to: string, mediaId: string, extras: Record<string, string>, operacao: string) {
+    const payload = {
+      messaging_product: "whatsapp",
+      to,
+      type: tipo,
+      [tipo]: { id: mediaId, ...extras },
+    };
+    return this.fetchMeta(
+      `${this.config!.phone_number_id}/messages`,
+      { method: "POST", body: JSON.stringify(payload) },
+      operacao,
+    );
+  }
+
+  /** Enviar imagem. `caption` é opcional e limitado pela Meta a 1024 caracteres. */
+  async enviarImagem(to: string, mediaId: string, caption?: string | null, operacao = "ENVIAR_MIDIA") {
+    await this.init();
+    if (!this.config?.phone_number_id) throw new Error("Phone Number ID não configurado.");
+    const extras: Record<string, string> = {};
+    if (caption?.trim()) extras.caption = caption.trim().slice(0, 1024);
+    return this.enviarMidia("image", to, mediaId, extras, operacao);
+  }
+
+  /** Enviar documento. O `filename` aparece no cartão de arquivo no WhatsApp. */
+  async enviarDocumento(to: string, mediaId: string, filename?: string | null, caption?: string | null, operacao = "ENVIAR_MIDIA") {
+    await this.init();
+    if (!this.config?.phone_number_id) throw new Error("Phone Number ID não configurado.");
+    const extras: Record<string, string> = {};
+    if (filename?.trim()) extras.filename = filename.trim();
+    if (caption?.trim()) extras.caption = caption.trim().slice(0, 1024);
+    return this.enviarMidia("document", to, mediaId, extras, operacao);
+  }
+
+  /** Enviar áudio (voz ou música). A Meta detecta o tipo pelo binário. */
+  async enviarAudio(to: string, mediaId: string, operacao = "ENVIAR_MIDIA") {
+    await this.init();
+    if (!this.config?.phone_number_id) throw new Error("Phone Number ID não configurado.");
+    return this.enviarMidia("audio", to, mediaId, {}, operacao);
   }
 
   async enviarMensagem(

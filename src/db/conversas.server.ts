@@ -73,6 +73,22 @@ export async function ensureConversasSchema(silent = true) {
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'whatsapp_mensagens' AND column_name = 'enviado_por_atendente') THEN
           ALTER TABLE whatsapp_mensagens ADD COLUMN enviado_por_atendente boolean DEFAULT false;
         END IF;
+        -- Midia: media_id e o id que a Meta devolve no upload e e o que a
+        -- tela usa para reenviar; media_url e a copia local em
+        -- arquivos_upload, que continua acessivel depois que a Meta expira o
+        -- id dela (30 dias).
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'whatsapp_mensagens' AND column_name = 'tipo_midia') THEN
+          ALTER TABLE whatsapp_mensagens ADD COLUMN tipo_midia text;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'whatsapp_mensagens' AND column_name = 'media_id') THEN
+          ALTER TABLE whatsapp_mensagens ADD COLUMN media_id text;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'whatsapp_mensagens' AND column_name = 'media_url') THEN
+          ALTER TABLE whatsapp_mensagens ADD COLUMN media_url text;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'whatsapp_mensagens' AND column_name = 'arquivo_id') THEN
+          ALTER TABLE whatsapp_mensagens ADD COLUMN arquivo_id uuid;
+        END IF;
       END $$;
     `);
 
@@ -127,13 +143,17 @@ export async function listarConversas(filtros: any) {
     SELECT c.id, c.contato_id, c.status, c.prioridade, c.responsavel_id,
            c.ultimo_evento_em, c.nao_lidas, c.apelido, c.janela_expira_em,
            c.ultima_resposta_cliente_em, c.etiquetas, c.contexto_negociacao_id,
-           c.contexto_veiculo_id, c.criado_em,
+           c.contexto_veiculo_id, c.criado_em, c.ultima_mensagem_preview,
            p.nome as contato_nome, p.telefone as contato_telefone, p.role as contato_role,
            resp.nome as responsavel_nome,
-           (SELECT m.payload->'text'->>'body'
+           (SELECT m.payload
             FROM whatsapp_mensagens m
             WHERE m.conversa_id = c.id
-            ORDER BY m.criado_em DESC LIMIT 1) as ultima_mensagem_texto,
+            ORDER BY m.criado_em DESC LIMIT 1) as ultima_mensagem_payload,
+           (SELECT m.tipo_midia
+            FROM whatsapp_mensagens m
+            WHERE m.conversa_id = c.id
+            ORDER BY m.criado_em DESC LIMIT 1) as ultima_mensagem_tipo_midia,
            (SELECT m.tipo
             FROM whatsapp_mensagens m
             WHERE m.conversa_id = c.id
@@ -245,9 +265,14 @@ export async function enviarMensagemAtendente(conversaId: string, atendenteId: s
 
   const isTemplate = Boolean(payload.template_name);
   const isTexto = payload.tipo === 'TEXTO' || (!isTemplate && payload.conteudo?.text?.body);
+  // Imagem, documento e áudio trafegam como média livre e também dependem da
+  // janela de 24h. Sem esta lista, um anexo com janela fechada passava pela
+  // verificação de texto e a Meta rejeitava com 131047 — erro que não diz
+  // nada sobre a janela.
+  const isMidia = payload.tipo === 'IMAGEM' || payload.tipo === 'DOCUMENTO' || payload.tipo === 'AUDIO';
 
-  // Verifica janela de 24h para envio de texto livre
-  if (isTexto) {
+  // Verifica janela de 24h para envio de texto livre ou mídia
+  if (isTexto || isMidia) {
     const janelaAberta = conversa.janela_expira_em && new Date(conversa.janela_expira_em) > new Date();
     if (!janelaAberta) {
       throw new Error("A janela de 24h com este contato está fechada. Envie um template para reabrir o atendimento.");
@@ -257,6 +282,10 @@ export async function enviarMensagemAtendente(conversaId: string, atendenteId: s
   let resMeta: any;
   let payloadGravado: any;
   let previewTexto = '';
+  let tipoMidia: string | null = null;
+  let mediaId: string | null = null;
+  let mediaUrl: string | null = null;
+  let arquivoId: string | null = null;
 
   if (isTemplate) {
     // Envio por template (funciona fora da janela de 24h)
@@ -266,6 +295,7 @@ export async function enviarMensagemAtendente(conversaId: string, atendenteId: s
       payload.template_name,
       payload.idioma || 'pt_BR',
       componentes,
+      'ENVIAR_MENSAGEM_ATENDENTE',
     );
     payloadGravado = {
       tipo: 'TEMPLATE',
@@ -274,10 +304,45 @@ export async function enviarMensagemAtendente(conversaId: string, atendenteId: s
       componentes,
     };
     previewTexto = `Template: ${payload.template_name}`;
+  } else if (isMidia) {
+    // Mídia: o arquivo já subiu na Meta antes de chegar aqui (a tela chama
+    // `enviarMidiaAtendenteFn` só com o media_id), então este ramo só despacha.
+    const midia = payload.conteudo ?? {};
+    mediaId = midia.media_id ?? null;
+    mediaUrl = midia.media_url ?? null;
+    arquivoId = midia.arquivo_id ?? null;
+    if (!mediaId) throw new Error("Mídia sem identificador. Reenvie o anexo.");
+
+    if (payload.tipo === 'IMAGEM') {
+      tipoMidia = 'IMAGEM';
+      resMeta = await metaService.enviarImagem(
+        conversa.telefone,
+        mediaId,
+        midia.caption ?? null,
+        'ENVIAR_MENSAGEM_ATENDENTE',
+      );
+      previewTexto = midia.caption?.trim() ? `📷 ${midia.caption.trim()}` : '📷 Imagem';
+    } else if (payload.tipo === 'DOCUMENTO') {
+      tipoMidia = 'DOCUMENTO';
+      resMeta = await metaService.enviarDocumento(
+        conversa.telefone,
+        mediaId,
+        midia.filename ?? null,
+        midia.caption ?? null,
+        'ENVIAR_MENSAGEM_ATENDENTE',
+      );
+      previewTexto = `📄 ${midia.filename || 'Documento'}`;
+    } else {
+      tipoMidia = 'AUDIO';
+      resMeta = await metaService.enviarAudio(conversa.telefone, mediaId, 'ENVIAR_MENSAGEM_ATENDENTE');
+      previewTexto = '🎤 Áudio';
+    }
+
+    payloadGravado = { tipo: payload.tipo, ...midia };
   } else {
     // Envio de texto livre
     const texto = payload.conteudo.text.body;
-    resMeta = await metaService.enviarTexto(conversa.telefone, texto);
+    resMeta = await metaService.enviarTexto(conversa.telefone, texto, 'ENVIAR_MENSAGEM_ATENDENTE');
     payloadGravado = {
       tipo: 'TEXTO',
       text: { body: texto },
@@ -285,8 +350,11 @@ export async function enviarMensagemAtendente(conversaId: string, atendenteId: s
     previewTexto = texto;
   }
 
+  // `tipo_midia` fora do JSON: a tela filtra por ele sem precisar descer no
+  // payload, e o id/url do anexo ficam à mão para reenvio e para o histórico
+  // depois que a Meta expira o media_id dela.
   await db.execute(sql`
-    INSERT INTO whatsapp_mensagens (conversa_id, autor_id, tipo, payload, meta_message_id, status, metadata, enviado_por_atendente)
+    INSERT INTO whatsapp_mensagens (conversa_id, autor_id, tipo, payload, meta_message_id, status, metadata, enviado_por_atendente, tipo_midia, media_id, media_url, arquivo_id)
     VALUES (
       ${conversaId}::uuid,
       ${atendenteId}::uuid,
@@ -295,7 +363,11 @@ export async function enviarMensagemAtendente(conversaId: string, atendenteId: s
       ${resMeta.messages?.[0]?.id},
       'ENVIADA',
       '{"origem": "ATENDENTE"}'::jsonb,
-      true
+      true,
+      ${tipoMidia ? `'${tipoMidia}'` : null},
+      ${mediaId ? `'${mediaId}'` : null},
+      ${mediaUrl ? `'${mediaUrl}'` : null},
+      ${arquivoId ? `${arquivoId}::uuid` : null}
     ) RETURNING id
   `);
 
@@ -308,12 +380,175 @@ export async function enviarMensagemAtendente(conversaId: string, atendenteId: s
   `);
 }
 
+/**
+ * A Meta entrega cada tipo de mídia numa forma diferente: texto tem
+ * `text.body`, imagem/áudio/documento têm um objeto com `id` e a tela só
+ * soube ler `text.body` — áudio, documento e localização apareciam como
+ * "Arquivo recebido". Aqui o payload vira um formato único, e o que não
+ * reconhecemos segue gravado em `raw` para não perder nada.
+ */
+export function normalizarPayloadRecebido(msg: any): any {
+  if (!msg || typeof msg !== "object") return { tipo: "DESCONHECIDO", raw: msg };
+
+  switch (msg.type) {
+    case "text":
+      return { tipo: "TEXTO", text: { body: msg.text?.body ?? "" } };
+
+    case "image":
+      return {
+        tipo: "IMAGEM",
+        image: {
+          id: msg.image?.id ?? null,
+          caption: msg.image?.caption ?? null,
+          mime_type: msg.image?.mime_type ?? null,
+          sha256: msg.image?.sha256 ?? null,
+        },
+      };
+
+    case "video":
+      return {
+        tipo: "VIDEO",
+        video: {
+          id: msg.video?.id ?? null,
+          caption: msg.video?.caption ?? null,
+          mime_type: msg.video?.mime_type ?? null,
+          sha256: msg.video?.sha256 ?? null,
+        },
+      };
+
+    case "audio":
+      return {
+        tipo: "AUDIO",
+        audio: {
+          id: msg.audio?.id ?? null,
+          mime_type: msg.audio?.mime_type ?? null,
+          sha256: msg.audio?.sha256 ?? null,
+          voice: Boolean(msg.audio?.voice),
+        },
+      };
+
+    case "document":
+      return {
+        tipo: "DOCUMENTO",
+        document: {
+          id: msg.document?.id ?? null,
+          filename: msg.document?.filename ?? null,
+          caption: msg.document?.caption ?? null,
+          mime_type: msg.document?.mime_type ?? null,
+          sha256: msg.document?.sha256 ?? null,
+        },
+      };
+
+    case "sticker":
+      return {
+        tipo: "STICKER",
+        sticker: {
+          id: msg.sticker?.id ?? null,
+          mime_type: msg.sticker?.mime_type ?? null,
+          animated: Boolean(msg.sticker?.animated),
+        },
+      };
+
+    case "location":
+      return {
+        tipo: "LOCALIZACAO",
+        location: {
+          latitude: msg.location?.latitude ?? null,
+          longitude: msg.location?.longitude ?? null,
+          name: msg.location?.name ?? null,
+          address: msg.location?.address ?? null,
+        },
+      };
+
+    case "interactive":
+      return {
+        tipo: "BOTAO",
+        interactive: {
+          tipo: msg.interactive?.type ?? null,
+          corpo: msg.interactive?.body?.text ?? null,
+          rodape: msg.interactive?.footer?.text ?? null,
+          cabecalho: msg.interactive?.header?.text ?? null,
+          botoes: Array.isArray(msg.interactive?.buttons)
+            ? msg.interactive.buttons.map((b: any) => ({
+                tipo: b.type ?? null,
+                texto: b.reply?.title ?? null,
+                id: b.reply?.id ?? null,
+                url: b.url ?? null,
+              }))
+            : [],
+        },
+      };
+
+    case "reaction":
+      return {
+        tipo: "REACAO",
+        reaction: {
+          emoji: msg.reaction?.emoji ?? null,
+          message_id: msg.reaction?.message_id ?? null,
+        },
+      };
+
+    case "contacts":
+      return {
+        tipo: "CONTATO",
+        contacts: (msg.contacts ?? []).map((c: any) => ({
+          nome: c.name?.formatted_name ?? null,
+          telefones: Array.isArray(c.phones) ? c.phones.map((p: any) => p.phone) : [],
+        })),
+      };
+
+    case "system":
+      return { tipo: "SISTEMA", system: { body: msg.system?.body ?? null, tipo: msg.system?.type ?? null } };
+
+    default:
+      return { tipo: String(msg.type || "DESCONHECIDO").toUpperCase(), raw: msg };
+  }
+}
+
+/** O rótulo curto que a lista de conversas e a bolha mostram para uma mensagem. */
+export function previewDeMensagem(normalizado: any): string {
+  if (!normalizado) return "";
+  switch (normalizado.tipo) {
+    case "TEXTO":
+      return normalizado.text?.body ?? "";
+    case "IMAGEM":
+      return normalizado.image?.caption ? `📷 ${normalizado.image.caption}` : "📷 Imagem";
+    case "VIDEO":
+      return normalizado.video?.caption ? `🎬 ${normalizado.video.caption}` : "🎬 Vídeo";
+    case "AUDIO":
+      return "🎤 Áudio";
+    case "DOCUMENTO":
+      return `📄 ${normalizado.document?.filename || "Documento"}`;
+    case "STICKER":
+      return "Adesivo";
+    case "LOCALIZACAO":
+      return `📍 ${normalizado.location?.name || "Localização"}`;
+    case "BOTAO":
+      return normalizado.interactive?.corpo ?? "Interação";
+    case "REACAO":
+      return `Reagiu ${normalizado.reaction?.emoji ?? ""}`.trim();
+    case "CONTATO":
+      return "Contato compartilhado";
+    case "SISTEMA":
+      return normalizado.system?.body ?? "Sistema";
+    case "TEMPLATE":
+      return normalizado.template_name ? `Template: ${normalizado.template_name}` : "Arquivo recebido";
+    default:
+      return "Arquivo recebido";
+  }
+}
+
 function apenasDigitos(s: string | null | undefined): string {
   return (s || '').replace(/\D/g, '');
 }
 
 export async function processarMensagemRecebida(telefone: string, payload: any) {
   if (!db) return;
+
+  // O payload que a tela lê é o normalizado, não o objeto cru da Meta. O
+  // webhook já grava o original em `whatsapp_webhook_logs`.
+  const normalizado = normalizarPayloadRecebido(payload);
+  const preview = previewDeMensagem(normalizado);
 
   // Normaliza telefone: a Meta envia no formato internacional (5511999999999)
   // enquanto profiles.telefone pode estar com máscara ((11) 99999-9999).
@@ -365,14 +600,14 @@ export async function processarMensagemRecebida(telefone: string, payload: any) 
   // 3. Salvar mensagem
   await db.execute(sql`
     INSERT INTO whatsapp_mensagens (conversa_id, telefone, payload, status, tipo, enviado_por_atendente)
-    VALUES (${conversaId}::uuid, ${telefone}, ${JSON.stringify(payload)}::jsonb, 'RECEBIDA', 'MENSAGEM', false)
+    VALUES (${conversaId}::uuid, ${telefone}, ${JSON.stringify(normalizado)}::jsonb, 'RECEBIDA', 'MENSAGEM', false)
   `);
 
   // 4. Atualizar conversa + abrir janela de 24h
   await db.execute(sql`
     UPDATE whatsapp_conversas SET
       ultimo_evento_em = now(),
-      ultima_mensagem_preview = ${payload.text?.body || 'Mídia recebida'},
+      ultima_mensagem_preview = ${preview || 'Mensagem recebida'},
       nao_lidas = nao_lidas + 1,
       status = 'EM_ATENDIMENTO',
       janela_expira_em = now() + interval '24 hours',

@@ -36,6 +36,9 @@ import {
   X,
   Check,
   Loader2,
+  Image as ImageIcon,
+  Video,
+  MapPin,
 } from 'lucide-react';
 import {
   Popover,
@@ -65,6 +68,7 @@ import {
   listarContatosDisponiveisFn,
   iniciarConversaFn,
   cadastrarContatoFn,
+  uploadMidiaWhatsAppFn,
 } from '@/lib/conversas.functions';
 import { listarTemplatesFn } from '@/lib/comunicacoes.functions';
 import { getSessionToken } from '@/lib/session';
@@ -85,6 +89,111 @@ export const Route = createFileRoute('/admin/conversas')({
  * devolve "" e o componente cai no fallback "Valor N" — adivinhar "Nome" aqui
  * seria chute, já que a variável pode ser qualquer coisa.
  */
+function componentesDoTemplate(template: any): any[] {
+  const conteudo = template?.conteudo;
+  if (Array.isArray(conteudo)) return conteudo;
+  if (Array.isArray(conteudo?.components)) return conteudo.components;
+  return [];
+}
+
+function placeholderDeMensagem(payload: any): React.ReactNode {
+  if (!payload) return "Arquivo recebido";
+  const tipo = payload.tipo || (payload.image && "IMAGEM") || (payload.audio && "AUDIO");
+  switch (tipo) {
+    case "TEXTO":
+      return payload.text?.body || "Mensagem";
+    case "TEMPLATE":
+      return `Template: ${payload.template_name || ""}`;
+    case "IMAGEM": {
+      const url = payload.image?.url || payload.image?.link || "";
+      if (url) {
+        return (
+          <img
+            src={url}
+            alt={payload.image?.caption || "Imagem"}
+            className="max-h-40 rounded-md object-cover"
+          />
+        );
+      }
+      const caption = payload.image?.caption?.trim();
+      return (
+        <span className="flex items-center gap-1.5">
+          <ImageIcon className="w-4 h-4 shrink-0" />
+          {caption || "Imagem"}
+        </span>
+      );
+    }
+    case "VIDEO":
+      return (
+        <span className="flex items-center gap-1.5">
+          <Video className="w-4 h-4 shrink-0" />
+          {payload.video?.caption?.trim() || "Vídeo"}
+        </span>
+      );
+    case "AUDIO": {
+      const src = payload.audio?.url || payload.audio?.link || "";
+      if (src) return <audio controls src={src} className="h-9 max-w-full" />;
+      return (
+        <span className="flex items-center gap-1.5">
+          <Mic className="w-4 h-4 shrink-0" /> Áudio
+        </span>
+      );
+    }
+    case "DOCUMENTO": {
+      const doc = payload.document || {};
+      return (
+        <span className="flex items-center gap-1.5">
+          <FileText className="w-4 h-4 shrink-0" />
+          {doc.filename || "Documento"}
+        </span>
+      );
+    }
+    case "STICKER":
+      return "Adesivo";
+    case "LOCALIZACAO": {
+      const loc = payload.location || {};
+      return (
+        <span className="flex items-center gap-1.5">
+          <MapPin className="w-4 h-4 shrink-0" />
+          {loc.name || "Localização"}
+        </span>
+      );
+    }
+    case "REACAO":
+      return `Reagiu ${payload.reaction?.emoji || ""}`.trim();
+    case "CONTATO":
+      return "Contato compartilhado";
+    case "SISTEMA":
+      return payload.system?.body || "Sistema";
+    default:
+      return "Arquivo recebido";
+  }
+}
+
+/**
+ * Conta os placeholders {{n}} do corpo **e** das urls de botão: a numeração
+ * corre nos dois, então um template com 6 variáveis no corpo e uma no link
+ * precisa de 7 campos — contar só o corpo deixaria o do botão sem input.
+ */
+function contarVariaveisTemplate(template: any): number {
+  const comps = componentesDoTemplate(template);
+  let maximo = 0;
+  for (const comp of comps) {
+    if (comp?.type === "BODY") maximo = Math.max(maximo, contarPlaceholders(comp.text || ""));
+    if (comp?.type === "BUTTONS" && Array.isArray(comp.buttons)) {
+      for (const b of comp.buttons) {
+        if (b?.type === "URL") maximo = Math.max(maximo, contarPlaceholders(b.url || ""));
+      }
+    }
+  }
+  return maximo;
+}
+
+function contarPlaceholders(texto: string): number {
+  const numeros = [...String(texto).matchAll(/\{\{(\d+)\}\}/g)].map((m) => Number(m[1]));
+  return numeros.length ? Math.max(...numeros) : 0;
+}
+
 function contextoDaVariavel(texto: string, numero: number): string {
   const marcador = new RegExp(`\\{\\{${numero}\\}\\}`);
   const idx = texto.search(marcador);
@@ -204,6 +313,7 @@ function CentralConversasPage() {
   const getContatos = useServerFn(listarContatosDisponiveisFn);
   const iniciarConversa = useServerFn(iniciarConversaFn);
   const cadastrarContato = useServerFn(cadastrarContatoFn);
+  const uploadMidia = useServerFn(uploadMidiaWhatsAppFn);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busca, setBusca] = useState('');
@@ -227,6 +337,24 @@ function CentralConversasPage() {
   // Template de abertura: o objeto inteiro, para montar os componentes.
   const [templateSelecionado, setTemplateSelecionado] = useState<any>(null);
   const [variaveisTemplate, setVariaveisTemplate] = useState<string[]>([]);
+  // Template escolhido no meio de uma conversa existente: fica pendente até as
+  // variáveis serem preenchidas, porque a Meta exige todas.
+  const [templateParaEnviar, setTemplateParaEnviar] = useState<any>(null);
+  const [variaveisEnvio, setVariaveisEnvio] = useState<string[]>([]);
+  // Anexo pendente: o arquivo escolhido ainda não subiu. Fica guardado aqui
+  // para o atendente ver o que vai mandar e poder cancelar antes.
+  const [anexo, setAnexo] = useState<{
+    arquivo: string;
+    nome: string;
+    tipo: string;
+    tamanho: number;
+    preview: string;
+    legenda: string;
+    media_id?: string;
+    arquivo_id?: string | null;
+    tamanho_meta?: number | null;
+  } | null>(null);
+  const inputArquivoRef = useRef<HTMLInputElement>(null);
 
   // Lido na hora da chamada, não no render. No primeiro render a store do zustand
   // ainda está vazia (o onRehydrateStorage não rodou), e o useMutation captura
@@ -327,6 +455,87 @@ function CentralConversasPage() {
     },
     onError: (err) => toast.error(`Erro ao excluir: ${err.message}`),
   });
+
+  const mutationUpload = useMutation({
+    mutationFn: (dados: { arquivo: string; nome: string; tipo: string }) =>
+      uploadMidia({ data: { token: getToken(), ...dados } }),
+    onSuccess: (res: any) => {
+      if (!anexo) return;
+      setAnexo({ ...anexo, media_id: res?.media_id, arquivo_id: res?.arquivo_id, tamanho: res?.tamanho });
+    },
+    onError: (err) => toast.error(`Erro ao subir anexo: ${err.message}`),
+  });
+
+  const handleArquivo = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    const isImage = file.type.startsWith('image/');
+    const isAudio = file.type.startsWith('audio/');
+    const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+    if (!isImage && !isAudio && !isPdf) {
+      toast.error('Formato não suportado. Envie imagem, PDF ou áudio.');
+      return;
+    }
+    // A Meta limita envio de mídia a 16 MB; acima disso o Graph API devolve 413.
+    if (file.size > 16 * 1024 * 1024) {
+      toast.error('O arquivo excede 16 MB (limite da Meta).');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result);
+      setAnexo({
+        arquivo: dataUrl,
+        nome: file.name,
+        tipo: file.type,
+        tamanho: file.size,
+        preview: isImage ? dataUrl : '',
+        legenda: '',
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  /**
+   * Anexo: sobe para a Meta e envia. O `media_id` só existe depois do upload,
+   * então as duas etapas são sequenciais — se a primeira falhar, nada é enviado
+   * e o atendente vê o erro no toast, podendo tentar de novo com o arquivo ainda
+   * pendente na tela.
+   */
+  const enviarAnexo = async () => {
+    if (!anexo) return;
+    const pendente = anexo;
+    const tipo = pendente.tipo.startsWith('image/')
+      ? 'IMAGEM'
+      : pendente.tipo.startsWith('audio/')
+        ? 'AUDIO'
+        : 'DOCUMENTO';
+
+    try {
+      const res: any = await mutationUpload.mutateAsync({
+        arquivo: pendente.arquivo,
+        nome: pendente.nome,
+        tipo: pendente.tipo,
+      });
+      if (!res?.media_id) throw new Error('A Meta não devolveu o identificador da mídia.');
+      setAnexo(null);
+      mutationEnviar.mutate({
+        tipo,
+        conteudo: {
+          media_id: res.media_id,
+          media_url: null,
+          arquivo_id: res.arquivo_id ?? null,
+          caption: pendente.legenda.trim() || null,
+          filename: pendente.nome,
+        },
+      });
+    } catch {
+      // O toast de erro já veio da mutation. O anexo continua na tela.
+    }
+  };
 
   /**
    * Cadastra o contato. Não exige template: o cadastro é só o perfil, e o
@@ -444,16 +653,44 @@ function CentralConversasPage() {
     }
   };
 
+  /** Confirma o envio do template pendente, com as variáveis preenchidas. */
+  const confirmarTemplateComVariaveis = () => {
+    const template = templateParaEnviar;
+    if (!template) return;
+
+    setTemplateParaEnviar(null);
+    mutationEnviar.mutate({
+      tipo: 'TEMPLATE',
+      template_name: template.meta_name || template.nome_interno,
+      idioma: template.idioma || template.language || 'pt_BR',
+      variaveis: variaveisEnvio,
+    });
+  };
+
+  /**
+   * Picker de templates dentro da conversa. Antes mandava só o nome, e a Meta
+   * recusava com "invalid parameter" todo template que tivesse {{1}} — que é
+   * o caso da maioria. Agora abre o diálogo de variáveis quando o template
+   * tem alguma, monta os componentes e só então envia.
+   */
   const enviarTemplateSelecionado = (template: any) => {
     setPickerTemplate(false);
     setTabTipo('RESPONDER');
     setMensagem('');
-    const nome = template.meta_name || template.nome_interno;
-    mutationEnviar.mutate({
-      tipo: 'TEMPLATE',
-      template_name: nome,
-      idioma: template.language || 'pt_BR',
-    });
+
+    const quantas = contarVariaveisTemplate(template);
+    if (quantas === 0) {
+      mutationEnviar.mutate({
+        tipo: 'TEMPLATE',
+        template_name: template.meta_name || template.nome_interno,
+        idioma: template.idioma || template.language || 'pt_BR',
+        componentes: [],
+      });
+      return;
+    }
+
+    setTemplateParaEnviar(template);
+    setVariaveisEnvio(Array(quantas).fill(''));
   };
 
   const inserirResposta = (r: any) => {
@@ -485,7 +722,7 @@ function CentralConversasPage() {
   return (
     <div className="flex h-[calc(100vh-12rem)] overflow-hidden bg-white border rounded-xl shadow-sm">
       {/* Coluna 1: Lista */}
-      <div className="w-80 flex-shrink-0 border-r flex flex-col">
+      <div className="w-80 flex-shrink-0 border-r flex flex-col bg-white">
         <div className="p-4 border-b space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="font-bold text-sm">Conversas</h2>
@@ -527,8 +764,8 @@ function CentralConversasPage() {
               key={c.id}
               onClick={() => setSelectedId(c.id)}
               className={cn(
-                'p-4 border-b cursor-pointer hover:bg-slate-50 transition-colors',
-                selectedId === c.id ? 'bg-teal-50 border-l-4 border-l-teal-600' : ''
+                'px-4 py-3 border-b cursor-pointer transition-colors',
+                selectedId === c.id ? 'bg-[#f0f2f5]' : 'hover:bg-[#f5f6f6]'
               )}
             >
               <div className="flex justify-between items-start mb-1">
@@ -543,8 +780,7 @@ function CentralConversasPage() {
               </div>
               <p className="text-xs text-muted-foreground truncate mb-2">
                 {c.ultima_direcao_atendente ? 'Você: ' : ''}
-                {c.ultima_mensagem_texto ||
-                  (c.ultima_mensagem_tipo === 'TEMPLATE' ? 'Template enviado' : 'Nenhuma mensagem')}
+                {c.ultima_mensagem_preview || 'Nenhuma mensagem'}
               </p>
               <div className="flex justify-between items-center">
                 <div className="flex items-center gap-1.5">
@@ -575,10 +811,10 @@ function CentralConversasPage() {
       </div>
 
       {/* Coluna 2: Chat */}
-      <div className="flex-1 flex flex-col bg-slate-50">
+      <div className="flex-1 flex flex-col min-w-0">
         {selectedId ? (
           <>
-            <div className="h-16 border-b bg-white flex items-center justify-between px-6">
+            <div className="h-16 border-b bg-[#f0f2f5] flex items-center justify-between px-4 md:px-6">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center">
                   <User className="w-5 h-5 text-slate-500" />
@@ -644,13 +880,102 @@ function CentralConversasPage() {
                 >
                   Resolver
                 </Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8">
-                  <MoreVertical className="w-4 h-4" />
-                </Button>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8" title="Detalhes da conversa">
+                      <MoreVertical className="w-4 h-4" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="w-80 max-h-[70vh] overflow-y-auto">
+                    <div className="space-y-5">
+                      {/* Contato */}
+                      <div className="space-y-2">
+                        <h5 className="font-bold text-sm">{conversaAtiva?.contato_nome}</h5>
+                        <p className="text-xs text-muted-foreground">{conversaAtiva?.contato_telefone}</p>
+                        <Badge variant="outline" className="bg-white">{conversaAtiva?.contato_role}</Badge>
+                        {conversaAtiva?.contato_id && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full text-xs h-8"
+                            onClick={() => window.location.href = `/admin/vendedor/${conversaAtiva.contato_id}`}
+                          >
+                            Ver Perfil Completo
+                          </Button>
+                        )}
+                      </div>
+
+                      {/* Veículo relacionado */}
+                      {conversaAtiva?.veiculo_marca && (
+                        <div className="space-y-2 pt-4 border-t">
+                          <h4 className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
+                            Veículo Relacionado
+                          </h4>
+                          <div className="bg-slate-50 p-3 rounded-lg border space-y-3">
+                            <div className="flex gap-3">
+                              <div className="w-10 h-10 bg-slate-100 rounded-md flex items-center justify-center flex-shrink-0">
+                                <Car className="w-5 h-5 text-slate-400" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-bold truncate">
+                                  {conversaAtiva.veiculo_marca} {conversaAtiva.veiculo_modelo}
+                                </p>
+                                <p className="text-[10px] text-muted-foreground">Placa: {conversaAtiva.veiculo_placa}</p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Respostas rápidas */}
+                      <div className="space-y-2 pt-4 border-t">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
+                            Respostas Rápidas
+                          </h4>
+                          <button
+                            onClick={() => setNovaResposta(true)}
+                            className="text-teal-600 hover:text-teal-700"
+                            title="Nova resposta rápida"
+                          >
+                            <Plus className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <div className="space-y-2">
+                          {respostasProntas?.map((r: any) => (
+                            <div
+                              key={r.id}
+                              className="bg-slate-50 border rounded-lg p-2 text-xs flex items-start justify-between gap-2"
+                            >
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium truncate">/{r.atalho} — {r.titulo}</p>
+                                <p className="text-muted-foreground truncate">{r.conteudo}</p>
+                              </div>
+                              <button
+                                onClick={() => mutationExcluirResposta.mutate(r.id)}
+                                className="text-muted-foreground hover:text-red-600 flex-shrink-0"
+                                title="Excluir"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ))}
+                          {(!respostasProntas || respostasProntas.length === 0) && (
+                            <p className="text-xs text-muted-foreground">Nenhuma resposta rápida cadastrada.</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
               </div>
             </div>
 
-            <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-6">
+            <div
+              ref={scrollRef}
+              className="flex-1 overflow-y-auto p-4 md:p-6"
+              style={{ backgroundColor: '#efeae2' }}
+            >
               {conversaAtiva?.mensagens?.map((m: any) => {
                 const isNota = m.tipo === 'NOTA_INTERNA';
                 const isMine = m.enviado_por_atendente;
@@ -670,27 +995,29 @@ function CentralConversasPage() {
                 }
 
                 return (
-                  <div key={m.id} className={cn('flex', isMine ? 'justify-end' : 'justify-start')}>
+                  <div key={m.id} className={cn('flex mb-2', isMine ? 'justify-end' : 'justify-start')}>
                     <div
                       className={cn(
-                        'max-w-[70%] rounded-2xl p-4 shadow-sm relative group',
-                        isMine ? 'bg-teal-600 text-white rounded-tr-none' : 'bg-white text-slate-800 rounded-tl-none'
+                        'max-w-[70%] rounded-2xl p-2.5 px-3 shadow-sm relative group',
+                        isMine
+                          ? 'bg-[#d9fdd3] text-slate-800 rounded-tr-none'
+                          : 'bg-white text-slate-800 rounded-tl-none'
                       )}
                     >
-                      <p className="text-sm leading-relaxed">
-                        {m.tipo === 'TEMPLATE' || m.payload?.tipo === 'TEMPLATE' ? (
-                          <>
-                            <FileText className="w-3 h-3 inline mr-1" />
-                            Template enviado: {m.payload?.template_name}
-                          </>
-                        ) : (
-                          m.payload?.text?.body || 'Arquivo recebido'
+                      <p
+                        className={cn(
+                          'text-sm leading-relaxed break-words',
+                          // Imagem, áudio e vídeo ocupam a largura que precisarem;
+                          // texto continua restrito à largura da bolha.
+                          (m.tipo === 'IMAGEM' || m.payload?.tipo === 'IMAGEM') && 'text-base',
                         )}
+                      >
+                        {placeholderDeMensagem(m.payload)}
                       </p>
                       <div
                         className={cn(
-                          'flex items-center gap-1 mt-1 text-[9px]',
-                          isMine ? 'text-teal-100' : 'text-muted-foreground'
+                          'flex items-center gap-1 mt-0.5 text-[10px] justify-end',
+                          isMine ? 'text-emerald-700/70' : 'text-muted-foreground'
                         )}
                       >
                         <span>
@@ -698,7 +1025,13 @@ function CentralConversasPage() {
                             ? new Date(m.criado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
                             : ''}
                         </span>
-                        {isMine && (m.lido_em ? <CheckCheck className="w-2.5 h-2.5" /> : m.entregue_em ? <CheckCircle2 className="w-2.5 h-2.5" /> : <CheckCircle2 className="w-2.5 h-2.5 opacity-50" />)}
+                        {isMine && (
+                          m.lido_em
+                            ? <CheckCheck className="w-2.5 h-2.5" />
+                            : m.entregue_em
+                              ? <CheckCircle2 className="w-2.5 h-2.5" />
+                              : <CheckCircle2 className="w-2.5 h-2.5 opacity-50" />
+                        )}
                       </div>
                     </div>
                   </div>
@@ -706,17 +1039,17 @@ function CentralConversasPage() {
               })}
             </div>
 
-            <div className="p-4 bg-white border-t space-y-3">
+            <div className="p-2 md:p-4 bg-[#f0f2f5] border-t space-y-2">
               {tabTipo === 'RESPONDER' && !janelaAberta && (
-                <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-xs flex items-center justify-between">
+                <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-lg p-3 text-xs flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                    <span>Janela de 24h fechada. Envie um template para reabrir o atendimento.</span>
+                    <Clock className="w-4 h-4 flex-shrink-0" />
+                    <span>Janela de 24h fechada. A Meta recusa texto livre aqui — envie um template para reabrir o atendimento.</span>
                   </div>
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-7 text-xs border-red-300 text-red-700 hover:bg-red-100"
+                    className="h-7 text-xs border-amber-300 text-amber-800 hover:bg-amber-100"
                     onClick={() => setPickerTemplate(true)}
                   >
                     Abrir template
@@ -737,86 +1070,161 @@ function CentralConversasPage() {
                   Nota Interna
                 </button>
               </div>
-              <div className="flex items-end gap-3">
-                <div className="flex-1 relative">
-                  <Textarea
-                    placeholder={
-                      tabTipo === 'RESPONDER'
-                        ? janelaAberta
-                          ? 'Digite sua mensagem... (use / para respostas rápidas)'
-                          : 'Janela fechada — use um template'
-                        : 'Anotação interna (não enviada ao cliente)'
-                    }
-                    value={mensagem}
-                    onChange={(e) => {
-                      const valor = e.target.value;
-                      setMensagem(valor);
-                      // Abre o menu de respostas rápidas quando a palavra atual começa com "/"
-                      const match = valor.match(/(?:^|\s)\/(\S*)$/);
-                      setMenuRespostaAberto(!!match);
-                      setFiltroResposta(match ? match[1] : '');
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        if (menuRespostaAberto && respostasFiltradas.length > 0) {
-                          inserirResposta(respostasFiltradas[0]);
-                        } else {
-                          handleEnviar();
-                        }
-                      } else if (e.key === 'Escape' && menuRespostaAberto) {
-                        setMenuRespostaAberto(false);
-                      } else if (e.key === 'Tab' && menuRespostaAberto && respostasFiltradas.length > 0) {
-                        e.preventDefault();
-                        inserirResposta(respostasFiltradas[0]);
-                      }
-                    }}
-                    disabled={tabTipo === 'RESPONDER' && !janelaAberta}
-                    className={cn(
-                      'min-h-[80px] resize-none pr-10',
-                      tabTipo === 'NOTA' ? 'bg-amber-50 border-amber-200 focus-visible:ring-amber-500' : '',
-                      tabTipo === 'RESPONDER' && !janelaAberta ? 'opacity-50 cursor-not-allowed' : ''
-                    )}
-                  />
-                  {menuRespostaAberto && (
-                    <div className="absolute bottom-full left-0 right-0 mb-1 bg-white border rounded-lg shadow-lg overflow-hidden z-10">
-                      {respostasFiltradas.length > 0 ? (
-                        respostasFiltradas.slice(0, 6).map((r: any) => (
-                          <button
-                            key={r.id}
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              inserirResposta(r);
-                            }}
-                            className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center gap-2 text-xs"
-                          >
-                            <span className="font-mono font-bold text-teal-600">/{r.atalho}</span>
-                            <span className="text-muted-foreground truncate">{r.titulo || r.conteudo}</span>
-                          </button>
-                        ))
+
+              {anexo && (
+                <div className="flex items-start gap-3 bg-white border rounded-lg p-3">
+                  {anexo.preview ? (
+                    <img
+                      src={anexo.preview}
+                      alt={anexo.nome}
+                      className="w-20 h-20 rounded-md object-cover flex-shrink-0"
+                    />
+                  ) : (
+                    <div className="w-20 h-20 rounded-md bg-slate-100 flex items-center justify-center flex-shrink-0">
+                      {anexo.tipo.startsWith('audio/') ? (
+                        <Mic className="w-8 h-8 text-slate-400" />
                       ) : (
-                        <p className="px-3 py-2 text-xs text-muted-foreground">
-                          Nenhuma resposta rápida para "/{filtroResposta}"
-                        </p>
+                        <FileText className="w-8 h-8 text-slate-400" />
                       )}
                     </div>
                   )}
-                  <div className="absolute right-3 bottom-3 flex gap-2">
-                    <button className="text-muted-foreground hover:text-teal-600"><Paperclip className="w-4 h-4" /></button>
-                    <button className="text-muted-foreground hover:text-teal-600"><Smile className="w-4 h-4" /></button>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium truncate">{anexo.nome}</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {(anexo.tamanho / 1024).toFixed(0)} KB
+                      {anexo.tipo.startsWith('image/') && ' — imagem'}
+                      {anexo.tipo.startsWith('audio/') && ' — áudio'}
+                      {anexo.tipo === 'application/pdf' && ' — PDF'}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      Escreva a legenda acima e clique em enviar.
+                    </p>
                   </div>
+                  <button
+                    onClick={() => setAnexo(null)}
+                    className="text-muted-foreground hover:text-red-600 flex-shrink-0"
+                    title="Remover anexo"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
-                <Button
-                  onClick={handleEnviar}
-                  disabled={!mensagem.trim() || mutationEnviar.isPending || (tabTipo === 'RESPONDER' && !janelaAberta)}
-                  className={cn(
-                    'h-12 w-12 rounded-full',
-                    tabTipo === 'NOTA' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-teal-600 hover:bg-teal-700'
+              )}
+
+              {tabTipo === 'RESPONDER' && (
+                <div className="flex items-end gap-2">
+                  <input
+                    ref={inputArquivoRef}
+                    type="file"
+                    accept="image/*,audio/*,application/pdf"
+                    className="hidden"
+                    onChange={handleArquivo}
+                  />
+                  <div className="flex-1 relative">
+                    <Textarea
+                      placeholder={
+                        anexo
+                          ? 'Legenda (opcional) — envie junto com o anexo'
+                          : 'Digite sua mensagem... (use / para respostas rápidas)'
+                      }
+                      value={anexo ? anexo.legenda : mensagem}
+                      onChange={(e) => {
+                        if (anexo) {
+                          setAnexo({ ...anexo, legenda: e.target.value });
+                          return;
+                        }
+                        const valor = e.target.value;
+                        setMensagem(valor);
+                        // Abre o menu de respostas rápidas quando a palavra atual começa com "/"
+                        const match = valor.match(/(?:^|\s)\/(\S*)$/);
+                        setMenuRespostaAberto(!!match);
+                        setFiltroResposta(match ? match[1] : '');
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          if (anexo) return; // anexo se envia pelo botão, para não sumir sem upload
+                          if (menuRespostaAberto && respostasFiltradas.length > 0) {
+                            inserirResposta(respostasFiltradas[0]);
+                          } else {
+                            handleEnviar();
+                          }
+                        } else if (e.key === 'Escape' && anexo) {
+                          setAnexo(null);
+                        } else if (e.key === 'Escape' && menuRespostaAberto) {
+                          setMenuRespostaAberto(false);
+                        } else if (e.key === 'Tab' && menuRespostaAberto && respostasFiltradas.length > 0) {
+                          e.preventDefault();
+                          inserirResposta(respostasFiltradas[0]);
+                        }
+                      }}
+                      className={cn(
+                        'min-h-[52px] max-h-32 resize-none pr-20 py-3 rounded-lg bg-white border-slate-200',
+                        !janelaAberta ? 'opacity-60' : '',
+                      )}
+                    />
+                    <div className="absolute right-3 bottom-2.5 flex gap-3">
+                      <button
+                        type="button"
+                        onClick={() => inputArquivoRef.current?.click()}
+                        title="Anexar imagem, PDF ou áudio"
+                        className="text-slate-500 hover:text-teal-600"
+                      >
+                        <Paperclip className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        title="Emoji (em breve)"
+                        className="text-slate-500 hover:text-teal-600"
+                      >
+                        <Smile className="w-4 h-4" />
+                      </button>
+                    </div>
+                    {menuRespostaAberto && (
+                      <div className="absolute bottom-full left-0 right-0 mb-1 bg-white border rounded-lg shadow-lg overflow-hidden z-10">
+                        {respostasFiltradas.length > 0 ? (
+                          respostasFiltradas.slice(0, 6).map((r: any) => (
+                            <button
+                              key={r.id}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                inserirResposta(r);
+                              }}
+                              className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center gap-2 text-xs"
+                            >
+                              <span className="font-mono font-bold text-teal-600">/{r.atalho}</span>
+                              <span className="text-muted-foreground truncate">{r.titulo || r.conteudo}</span>
+                            </button>
+                          ))
+                        ) : (
+                          <p className="px-3 py-2 text-xs text-muted-foreground">
+                            Nenhuma resposta rápida para "/{filtroResposta}"
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {anexo ? (
+                    <Button
+                      onClick={enviarAnexo}
+                      disabled={mutationUpload.isPending || mutationEnviar.isPending}
+                      className="h-12 w-12 rounded-full flex-shrink-0 bg-teal-600 hover:bg-teal-700"
+                      title="Enviar anexo"
+                    >
+                      {mutationUpload.isPending || mutationEnviar.isPending
+                        ? <Loader2 className="w-5 h-5 animate-spin" />
+                        : <Send className="w-5 h-5" />}
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={handleEnviar}
+                      disabled={!mensagem.trim() || mutationEnviar.isPending}
+                      className="h-12 w-12 rounded-full flex-shrink-0 bg-teal-600 hover:bg-teal-700"
+                    >
+                      <Send className="w-5 h-5" />
+                    </Button>
                   )}
-                >
-                  <Send className="w-5 h-5" />
-                </Button>
-              </div>
+                </div>
+              )}
             </div>
           </>
         ) : (
@@ -826,95 +1234,6 @@ function CentralConversasPage() {
           </div>
         )}
       </div>
-
-      {/* Coluna 3: Contexto */}
-      {selectedId && conversaAtiva && (
-        <div className="w-80 flex-shrink-0 border-l overflow-y-auto p-6 space-y-8 bg-slate-50/50">
-          <div className="space-y-4">
-            <h4 className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">CONTATO</h4>
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 font-bold">
-                {conversaAtiva.contato_nome?.charAt(0)}
-              </div>
-              <div>
-                <h5 className="font-bold text-sm">{conversaAtiva.contato_nome}</h5>
-                <p className="text-xs text-muted-foreground">{conversaAtiva.contato_telefone}</p>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Badge variant="outline" className="bg-white">{conversaAtiva.contato_role}</Badge>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full text-xs h-8"
-              onClick={() => window.location.href = `/admin/vendedor/${conversaAtiva.contato_id}`}
-            >
-              Ver Perfil Completo
-            </Button>
-          </div>
-
-          {conversaAtiva.veiculo_marca && (
-            <div className="space-y-4 pt-6 border-t">
-              <h4 className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Veículo Relacionado</h4>
-              <div className="bg-white p-3 rounded-lg border shadow-sm space-y-3">
-                <div className="flex gap-3">
-                  <div className="w-12 h-12 bg-slate-100 rounded-md flex items-center justify-center">
-                    <Car className="w-6 h-6 text-slate-400" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-xs font-bold">{conversaAtiva.veiculo_marca} {conversaAtiva.veiculo_modelo}</p>
-                    <p className="text-[10px] text-muted-foreground">Placa: {conversaAtiva.veiculo_placa}</p>
-                  </div>
-                </div>
-                <Badge className="w-full justify-center bg-teal-600">Lance Ativo</Badge>
-                <Button variant="ghost" size="sm" className="w-full text-xs h-7">Ver Veículo</Button>
-              </div>
-            </div>
-          )}
-
-          <div className="space-y-4 pt-6 border-t">
-            <div className="flex items-center justify-between">
-              <h4 className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Respostas Rápidas</h4>
-              <button
-                onClick={() => setNovaResposta(true)}
-                className="text-teal-600 hover:text-teal-700"
-              >
-                <Plus className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="space-y-2">
-              {respostasProntas?.map((r: any) => (
-                <div
-                  key={r.id}
-                  className="bg-white border rounded-lg p-2 text-xs flex items-start justify-between gap-2"
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">/{r.atalho} — {r.titulo}</p>
-                    <p className="text-muted-foreground truncate">{r.conteudo}</p>
-                  </div>
-                  <button
-                    onClick={() => mutationExcluirResposta.mutate(r.id)}
-                    className="text-muted-foreground hover:text-red-600 flex-shrink-0"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
-                </div>
-              ))}
-              {(!respostasProntas || respostasProntas.length === 0) && (
-                <p className="text-xs text-muted-foreground">Nenhuma resposta rápida cadastrada.</p>
-              )}
-            </div>
-          </div>
-
-          <div className="pt-6 border-t">
-            <Button variant="ghost" className="w-full text-xs text-muted-foreground h-8 justify-between">
-              Vincular Novo Contexto
-              <Plus className="w-3 h-3" />
-            </Button>
-          </div>
-        </div>
-      )}
 
       {/* Dialog: Picker de Templates */}
       <Dialog open={pickerTemplate} onOpenChange={setPickerTemplate}>
@@ -945,6 +1264,48 @@ function CentralConversasPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setPickerTemplate(false)}>
               Cancelar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: Variáveis do template escolhido na conversa */}
+      <Dialog
+        open={!!templateParaEnviar}
+        onOpenChange={(aberto) => {
+          if (!aberto) setTemplateParaEnviar(null);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Preencher template</DialogTitle>
+            <DialogDescription>
+              {templateParaEnviar?.meta_name || templateParaEnviar?.nome_interno} exige
+              variáveis. A Meta recusa o envio se faltar qualquer uma.
+            </DialogDescription>
+          </DialogHeader>
+          {templateParaEnviar && (
+            <VariaveisTemplate
+              template={templateParaEnviar}
+              valores={variaveisEnvio}
+              onChange={setVariaveisEnvio}
+            />
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTemplateParaEnviar(null)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={confirmarTemplateComVariaveis}
+              disabled={mutationEnviar.isPending}
+              className="bg-teal-600 hover:bg-teal-700"
+            >
+              {mutationEnviar.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Send className="w-4 h-4" />
+              )}
+              Enviar
             </Button>
           </DialogFooter>
         </DialogContent>

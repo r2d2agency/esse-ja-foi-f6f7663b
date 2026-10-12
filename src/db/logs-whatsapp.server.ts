@@ -24,6 +24,7 @@ export type OperacaoMeta =
   | "DISPARO_CAMPANHA"
   | "BUSCAR_DADOS"
   | "WEBHOOK"
+  | "UPLOAD_MIDIA"
   | string;
 
 const ROTULO_OPERACAO: Record<string, string> = {
@@ -35,6 +36,8 @@ const ROTULO_OPERACAO: Record<string, string> = {
   DISPARO_CAMPANHA: "Disparo de campanha",
   BUSCAR_DADOS: "Consulta de dados do número",
   WEBHOOK: "Evento recebido da Meta",
+  ENVIAR_MENSAGEM_ATENDENTE: "Envio do atendente",
+  UPLOAD_MIDIA: "Upload de mídia",
 };
 
 /**
