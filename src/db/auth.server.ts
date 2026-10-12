@@ -73,7 +73,7 @@ export async function ensureAuthSchema(silent = true) {
     await db.execute(sql`
       DO $$ 
       BEGIN
-        -- DENTRO do DO $$ toda aspa simples precisa ser dobrada (''X'').
+        -- Dentro do bloco DO toda aspa simples precisa ser dobrada (''X'').
         IF NOT EXISTS (SELECT 1 FROM pg_type t WHERE t.typname = ''app_role'') THEN
           CREATE TYPE app_role AS ENUM (''admin'', ''operacao'', ''vistoriador'', ''comprador'', ''vendedor'');
         ELSE
@@ -148,7 +148,7 @@ export async function ensureAuthSchema(silent = true) {
       DO $$
       BEGIN
         -- Garante todas as colunas individualmente caso a tabela já exista.
-        -- DENTRO do DO $$ toda aspa simples precisa ser dobrada (''): o corpo
+        -- Dentro do bloco DO toda aspa simples precisa ser dobrada (''): o corpo
         -- do bloco é uma string literal do Postgres, então 'PF'/'[]'/'PENDENTE'
         -- chegavam como 0 aspas e o servidor devolvia "syntax error".
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'cpf') THEN
