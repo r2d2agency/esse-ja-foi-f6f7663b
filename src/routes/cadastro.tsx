@@ -42,7 +42,7 @@ function CriarConta() {
   const [termos, setTermos] = useState(false);
   const [codigo, setCodigo] = useState("");
   const [contador, setContador] = useState(30);
-  const [sessao, setSessao] = useState<{ user: any; accessToken: string } | null>(null);
+  const [sessao, setSessao] = useState<{ user: any } | null>(null);
   const [form, setForm] = useState({
     nome: "",
     cpf: "",
@@ -108,7 +108,8 @@ function CriarConta() {
         return;
       }
 
-      setSessao({ user: result.user, accessToken: result.accessToken });
+      // O servidor já gravou o cookie de sessão; nada de token no navegador.
+      setSessao({ user: result.user });
       if (placa) sessionStorage.setItem("ejf_placa", placa);
       setContador(30);
       setEtapa("codigo");
@@ -125,22 +126,20 @@ function CriarConta() {
       return;
     }
     if (!sessao) return;
-    
+
     setLoading(true);
     try {
       const { validarOTPCadastroFn } = await import("@/lib/vendedor.functions");
       const res = await validarOTPCadastroFn({ data: { email: form.email, code: codigo } });
-      
+
       if (!res.ok) {
         toast.error("Código inválido ou expirado.");
         return;
       }
 
-      const { user, accessToken } = sessao;
+      const { user } = sessao;
       login({
         user: { id: user.id, nome: user.nome, email: user.email, role: user.role as any },
-        accessToken,
-        refreshToken: accessToken,
       });
       setEtapa("sucesso");
       setTimeout(() => navigate({ to: "/vendedor/boas-vindas" }), 1200);

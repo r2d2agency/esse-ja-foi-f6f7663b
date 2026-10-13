@@ -83,7 +83,7 @@ function CadastroComprador() {
   useEffect(() => {
     if (!isAuthenticated) return;
     (async () => {
-      const res: any = await getPerfilCompradorFn({ data: { token: getSessionToken() } });
+      const res: any = await getPerfilCompradorFn({ data: {} });
       if (res?.ok) {
         setForm((f: any) => ({ ...f, ...limparNulos(res.perfil), tipo: "PJ" }));
         setProgresso(res.progresso);
@@ -113,6 +113,7 @@ function CadastroComprador() {
         toast.error(res?.message || "Erro ao criar conta.");
         return;
       }
+      // O servidor já gravou o cookie de sessão; nada de token no navegador.
       login({
         user: {
           id: res.user.id,
@@ -121,10 +122,7 @@ function CadastroComprador() {
           role: res.user.role,
           tipo_pessoa: form.tipo,
         },
-        accessToken: res.accessToken,
-        refreshToken: res.accessToken,
       });
-      localStorage.setItem("accessToken", res.accessToken);
       toast.success("Conta criada! Vamos completar seu cadastro.");
       setEtapa(2);
     } catch {
@@ -138,7 +136,7 @@ function CadastroComprador() {
     setLoading(true);
     try {
       const res: any = await salvarEtapaCompradorFn({
-        data: { token: getSessionToken(), etapa: proxima, dados },
+        data: { etapa: proxima, dados },
       });
       if (!res?.ok) {
         toast.error(res?.message || "Não foi possível salvar.");
@@ -154,7 +152,7 @@ function CadastroComprador() {
   async function concluir() {
     setLoading(true);
     try {
-      const res: any = await enviarCadastroCompradorFn({ data: { token: getSessionToken() } });
+      const res: any = await enviarCadastroCompradorFn({ data: {} });
       if (!res?.ok) {
         if (res?.progresso) setProgresso(res.progresso);
         toast.error(res?.message || "Cadastro incompleto.");
@@ -169,7 +167,7 @@ function CadastroComprador() {
 
   async function subirDoc(tipo: string, campo: string, url: string) {
     setForm((f: any) => ({ ...f, [campo]: url }));
-    await enviarDocumentoCompradorFn({ data: { token: getSessionToken(), tipo, url } });
+    await enviarDocumentoCompradorFn({ data: { tipo, url } });
   }
 
   return (
@@ -507,18 +505,4 @@ function limparNulos(obj: any) {
     if (v !== null && v !== undefined) out[k] = v;
   });
   return out;
-}
-
-function getSessionToken() {
-  if (typeof window === "undefined") return "";
-  try {
-    const raw = localStorage.getItem("auth-storage");
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed?.state?.accessToken) return parsed.state.accessToken as string;
-    }
-  } catch {
-    /* ignora */
-  }
-  return localStorage.getItem("accessToken") || "";
 }

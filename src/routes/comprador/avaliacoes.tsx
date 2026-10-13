@@ -5,7 +5,6 @@ import { toast } from "sonner";
 import { FileUp, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FileUpload } from "@/components/onboarding/FileUpload";
-import { getSessionToken } from "@/lib/session";
 import {
   listarAvaliacoesCompradorFn,
   anexarCautelarCompradorFn,
@@ -17,12 +16,12 @@ function AvaliacoesComprador() {
   const [arquivos, setArquivos] = useState<Record<string, { url: string; nome: string }>>({});
   const { data, isLoading } = useQuery({
     queryKey: ["comprador-avaliacoes"],
-    queryFn: () => listarAvaliacoesCompradorFn({ data: { token: getSessionToken() } }),
+    queryFn: () => listarAvaliacoesCompradorFn({ data: {} }),
   });
   const enviar = useMutation({
     mutationFn: (x: { id: string; url: string; nome: string }) =>
       anexarCautelarCompradorFn({
-        data: { token: getSessionToken(), id: x.id, arquivoUrl: x.url, arquivoNome: x.nome },
+        data: { id: x.id, arquivoUrl: x.url, arquivoNome: x.nome },
       }),
     onSuccess: (r: any) => {
       if (r?.ok) {

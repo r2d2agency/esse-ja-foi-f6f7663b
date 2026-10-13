@@ -1,6 +1,6 @@
 import { useEffect, type ReactNode } from "react";
 import type { QueryClient } from "@tanstack/react-query";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import {
   createRootRouteWithContext,
   HeadContent,
@@ -14,6 +14,7 @@ import { ConsentimentoCookies } from "@/components/cookies/ConsentimentoCookies"
 import { InstalarApp } from "@/components/vistoriador/InstalarApp";
 import { VersaoWatcher } from "@/components/shared/VersaoWatcher";
 import { ErrorLogCapture } from "@/components/shared/ErrorLogCapture";
+import { useAuthStore } from "@/hooks/use-auth";
 import appCss from "@/styles.css?url";
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
@@ -48,6 +49,38 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   component: RootLayout,
   errorComponent: RootError,
 });
+
+/**
+ * Monta a sessão uma única vez por carregamento de página. O `getSessaoAtualFn`
+ * lê o cookie httpOnly no servidor, então o store nunca fica com usuário velho:
+ * cookie ausente/expirado → `autenticado: false` e os guards mandam para /login.
+ */
+function SessaoProvider({ children }: { children: ReactNode }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["sessao-atual"],
+    queryFn: async () => {
+      const { getSessaoAtualFn } = await import("@/lib/auth.functions");
+      return getSessaoAtualFn({ data: {} });
+    },
+    staleTime: 60_000,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (isLoading) return;
+    const auth = useAuthStore.getState();
+    if (data?.autenticado && data.user) {
+      if (auth.user?.id !== data.user.id) {
+        useAuthStore.setState({ user: data.user, isAuthenticated: true, isLoading: false });
+      }
+    } else {
+      useAuthStore.setState({ user: null, isAuthenticated: false, isLoading: false });
+    }
+    useAuthStore.setState({ initialized: true });
+  }, [data, isLoading]);
+
+  return <>{children}</>;
+}
 
 function RootDocument({ children }: { children: ReactNode }) {
   return (
@@ -125,9 +158,11 @@ function RootLayout() {
   return (
     <RootDocument>
       <QueryClientProvider client={queryClient}>
-        <div className="min-h-screen bg-background text-foreground">
-          <Outlet />
-        </div>
+        <SessaoProvider>
+          <div className="min-h-screen bg-background text-foreground">
+            <Outlet />
+          </div>
+        </SessaoProvider>
         <Toaster richColors position="top-right" />
         <ConsentimentoCookies />
         <VersaoWatcher />

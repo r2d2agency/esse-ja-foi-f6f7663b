@@ -146,9 +146,10 @@ export async function cadastrarComprador(data: any) {
     `);
 
     const user = rowsOf(res)[0];
-    const accessToken = await issueToken(user.id);
+    const { definirSessao } = await import("@/lib/sessao.server");
+    definirSessao(await issueToken(user.id));
 
-    return { ok: true as const, user, accessToken };
+    return { ok: true as const, user };
   } catch (err: any) {
     if (err.message?.includes("unique") || err.code === "23505") {
       return { ok: false as const, message: "Este e-mail já está cadastrado." };

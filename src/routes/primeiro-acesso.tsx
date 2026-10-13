@@ -10,7 +10,6 @@ import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { LogoEsf } from "@/components/shared/LogoEsf";
-import { getSessionToken } from "@/lib/session";
 import {
   getStatusPrimeiroAcessoFn,
   trocarSenhaPrimeiroAcessoFn,
@@ -50,11 +49,11 @@ function PrimeiroAcessoPage() {
 
   const { data: statusRes, refetch } = useQuery({
     queryKey: ["primeiro-acesso"],
-    queryFn: () => getStatusPrimeiroAcessoFn({ data: { token: getSessionToken() } }),
+    queryFn: () => getStatusPrimeiroAcessoFn({ data: {} }),
   });
   const { data: resumoRes } = useQuery({
     queryKey: ["resumo-termo"],
-    queryFn: () => getResumoTermoFn({ data: { token: getSessionToken() } }),
+    queryFn: () => getResumoTermoFn({ data: {} }),
   });
   const { data: termoRes } = useQuery({
     queryKey: ["termo-vigente"],
@@ -88,7 +87,7 @@ function PrimeiroAcessoPage() {
     setSalvando(true);
     try {
       const res: any = await trocarSenhaPrimeiroAcessoFn({
-        data: { token: getSessionToken(), novaSenha: senha },
+        data: { novaSenha: senha },
       });
       if (!res?.ok) {
         toast.error(res?.message || "Não foi possível salvar a senha.");
@@ -116,7 +115,7 @@ function PrimeiroAcessoPage() {
     setSalvando(true);
     try {
       const res: any = await aceitarTermoFn({
-        data: { token: getSessionToken(), assinatura: assinatura.trim() },
+        data: { assinatura: assinatura.trim() },
       });
       if (!res?.ok) {
         toast.error(res?.message || "Não foi possível registrar o aceite.");

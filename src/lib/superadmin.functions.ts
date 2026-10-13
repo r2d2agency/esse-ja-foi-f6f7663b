@@ -16,7 +16,6 @@ export const solicitarCodigoSuperadminFn = createServerFn({ method: "POST" })
   .validator((d: unknown) =>
     z
       .object({
-        token: z.string(),
         acao: z.enum(ACOES),
         alvoDescricao: z.string().optional(),
       })
@@ -24,8 +23,8 @@ export const solicitarCodigoSuperadminFn = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     try {
-      const { requireSuperAdmin } = await import("@/db/auth.server");
-      const solicitante = await requireSuperAdmin(data.token);
+      const { superadminDaSessao } = await import("@/lib/sessao.server");
+      const solicitante = await superadminDaSessao();
 
       const { enviarCodigoAcaoCriticaSuperadmins } = await import("@/db/mail.server");
       const descricao = `${LABEL_ACOES[data.acao]}${data.alvoDescricao ? ` — ${data.alvoDescricao}` : ""} (solicitado por ${solicitante.nome})`;
@@ -41,7 +40,6 @@ export const confirmarAcaoSuperadminFn = createServerFn({ method: "POST" })
   .validator((d: unknown) =>
     z
       .object({
-        token: z.string(),
         acao: z.enum(ACOES),
         alvoId: z.string().uuid(),
         codigo: z.string().min(4),
@@ -51,8 +49,8 @@ export const confirmarAcaoSuperadminFn = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     try {
-      const { requireSuperAdmin } = await import("@/db/auth.server");
-      const solicitante = await requireSuperAdmin(data.token);
+      const { superadminDaSessao } = await import("@/lib/sessao.server");
+      const solicitante = await superadminDaSessao();
 
       const { validarOTP } = await import("@/db/mail.server");
       const valido = await validarOTP(solicitante.email, data.codigo, "ACAO_CRITICA");

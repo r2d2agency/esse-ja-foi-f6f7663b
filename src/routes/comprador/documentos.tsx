@@ -9,7 +9,6 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { FileUpload } from "@/components/onboarding/FileUpload";
 import { cn } from "@/lib/utils";
-import { getSessionToken } from "@/lib/session";
 import {
   getPerfilCompradorFn,
   enviarDocumentoCompradorFn,
@@ -50,7 +49,7 @@ function CompradorDocumentosPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ["comprador-perfil"],
-    queryFn: () => getPerfilCompradorFn({ data: { token: getSessionToken() } }),
+    queryFn: () => getPerfilCompradorFn({ data: {} }),
   });
   const { data: termoRes } = useQuery({
     queryKey: ["termo-vigente", "COMPRADOR"],
@@ -76,7 +75,7 @@ function CompradorDocumentosPage() {
 
   const upload = useMutation({
     mutationFn: (v: { tipo: string; url: string }) =>
-      enviarDocumentoCompradorFn({ data: { token: getSessionToken(), ...v } }),
+      enviarDocumentoCompradorFn({ data: v }),
     onSuccess: () => {
       toast.success("Documento enviado.");
       qc.invalidateQueries({ queryKey: ["comprador-perfil"] });
@@ -87,7 +86,7 @@ function CompradorDocumentosPage() {
   const aceitar = useMutation({
     mutationFn: () =>
       aceitarTermoFn({
-        data: { token: getSessionToken(), assinatura: assinatura.trim(), tipo: "COMPRADOR" },
+        data: { assinatura: assinatura.trim(), tipo: "COMPRADOR" },
       }),
     onSuccess: (res: any) => {
       if (!res?.ok) {
@@ -112,7 +111,7 @@ function CompradorDocumentosPage() {
   }
 
   const enviar = useMutation({
-    mutationFn: () => enviarCadastroCompradorFn({ data: { token: getSessionToken() } }),
+    mutationFn: () => enviarCadastroCompradorFn({ data: {} }),
     onSuccess: (res: any) => {
       if (res?.ok) toast.success("Cadastro enviado para análise!");
       else toast.error(res?.message || "Cadastro incompleto.");

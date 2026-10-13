@@ -1,10 +1,9 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-async function userIdFrom(token?: string | null) {
-  if (!token) return null;
-  const { verifyToken } = await import("@/db/auth.server");
-  return verifyToken(token);
+async function userIdFrom() {
+  const { usuarioDaSessao } = await import("@/lib/sessao.server");
+  return usuarioDaSessao();
 }
 
 const condicaoSchema = z.object({
@@ -34,7 +33,6 @@ export const gerarLinkVistoriaFn = createServerFn({ method: "POST" })
   .validator((d: unknown) =>
     z
       .object({
-        token: z.string().nullable().optional(),
         nome: z.string().min(3),
         whatsapp: z.string().min(8),
       })
@@ -42,7 +40,7 @@ export const gerarLinkVistoriaFn = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     try {
-      const criadoPor = await userIdFrom(data.token ?? null);
+      const criadoPor = await userIdFrom();
       const { gerarLinkVistoria } = await import("@/db/vistoria-link.server");
       return await gerarLinkVistoria({ nome: data.nome, whatsapp: data.whatsapp, criadoPor });
     } catch (e: any) {

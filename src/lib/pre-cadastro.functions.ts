@@ -1,10 +1,9 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-async function userIdFrom(token?: string | null) {
-  if (!token) return null;
-  const { verifyToken } = await import("@/db/auth.server");
-  return verifyToken(token);
+async function userIdFrom() {
+  const { usuarioDaSessao } = await import("@/lib/sessao.server");
+  return usuarioDaSessao();
 }
 
 const opcional = z.string().trim().optional();
@@ -13,7 +12,6 @@ export const criarVendedorInternoFn = createServerFn({ method: "POST" })
   .validator((d: unknown) =>
     z
       .object({
-        token: z.string().nullable().optional(),
         nome: z.string().min(3),
         email: z.string().email(),
         cpf: opcional,
@@ -43,10 +41,10 @@ export const criarVendedorInternoFn = createServerFn({ method: "POST" })
 
   .handler(async ({ data }) => {
     try {
-      const criadoPor = await userIdFrom(data.token ?? null);
+      const userId = await userIdFrom();
       const { criarVendedorInterno } = await import("@/db/pre-cadastro.server");
-      const { token: _t, enviarAcesso, ...dados } = data;
-      const res = await criarVendedorInterno(dados as any, criadoPor, {
+      const { enviarAcesso, ...dados } = data;
+      const res = await criarVendedorInterno(dados as any, userId, {
         enviarAcesso: enviarAcesso !== false,
       });
       return { ok: true as const, ...res };
@@ -67,10 +65,10 @@ export const reenviarSenhaTemporariaFn = createServerFn({ method: "POST" })
   });
 
 export const getStatusPrimeiroAcessoFn = createServerFn({ method: "POST" })
-  .validator((d: unknown) => z.object({ token: z.string().nullable().optional() }).parse(d))
+  .validator((d: unknown) => z.object({}).parse(d))
   .handler(async ({ data }) => {
     try {
-      const userId = await userIdFrom(data.token ?? null);
+      const userId = await userIdFrom();
       if (!userId) return { ok: false as const, message: "Sessão expirada." };
       const { getStatusPrimeiroAcesso } = await import("@/db/pre-cadastro.server");
       return { ok: true as const, data: await getStatusPrimeiroAcesso(userId) };
@@ -82,12 +80,12 @@ export const getStatusPrimeiroAcessoFn = createServerFn({ method: "POST" })
 export const trocarSenhaPrimeiroAcessoFn = createServerFn({ method: "POST" })
   .validator((d: unknown) =>
     z
-      .object({ token: z.string().nullable().optional(), novaSenha: z.string().min(8) })
+      .object({ novaSenha: z.string().min(8) })
       .parse(d),
   )
   .handler(async ({ data }) => {
     try {
-      const userId = await userIdFrom(data.token ?? null);
+      const userId = await userIdFrom();
       if (!userId) return { ok: false as const, message: "Sessão expirada." };
       const { definirNovaSenha } = await import("@/db/pre-cadastro.server");
       await definirNovaSenha(userId, data.novaSenha);
@@ -98,10 +96,10 @@ export const trocarSenhaPrimeiroAcessoFn = createServerFn({ method: "POST" })
   });
 
 export const getResumoTermoFn = createServerFn({ method: "POST" })
-  .validator((d: unknown) => z.object({ token: z.string().nullable().optional() }).parse(d))
+  .validator((d: unknown) => z.object({}).parse(d))
   .handler(async ({ data }) => {
     try {
-      const userId = await userIdFrom(data.token ?? null);
+      const userId = await userIdFrom();
       if (!userId) return { ok: false as const, message: "Sessão expirada." };
       const { resumoParaTermo } = await import("@/db/pre-cadastro.server");
       return { ok: true as const, data: await resumoParaTermo(userId) };

@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { maskTelefone } from "@/lib/brasil";
-import { getSessionToken } from "@/lib/session";
 import { gerarLinkVistoriaFn } from "@/lib/vistoria-link.functions";
 
 function mensagemVistoria(nome: string, link: string) {
@@ -44,7 +43,7 @@ export function GerarLinkVistoriaDialog() {
     setSalvando(true);
     try {
       const res: any = await gerarLinkVistoriaFn({
-        data: { token: getSessionToken(), nome, whatsapp },
+        data: { nome, whatsapp },
       });
       if (!res?.ok) { toast.error(res?.message || "Não foi possível gerar o link."); return; }
       setResultado({ link: res.link });

@@ -16,7 +16,6 @@ import {
   Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getSessionToken } from "@/lib/session";
 import {
   getPerfilCompradorFn,
   listarFavoritosFn,
@@ -67,28 +66,27 @@ function CompradorDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const token = () => getSessionToken();
 
   const { data: perfilData, isLoading } = useQuery({
     queryKey: ["comprador-perfil"],
-    queryFn: () => getPerfilCompradorFn({ data: { token: token() } }),
+    queryFn: () => getPerfilCompradorFn({ data: {} }),
   });
   const { data: favoritos } = useQuery({
     queryKey: ["comprador-favoritos"],
-    queryFn: () => listarFavoritosFn({ data: { token: token() } }),
+    queryFn: () => listarFavoritosFn({ data: {} }),
   });
   const { data: lembretes } = useQuery({
     queryKey: ["comprador-lembretes"],
-    queryFn: () => listarLembretesFn({ data: { token: token() } }),
+    queryFn: () => listarLembretesFn({ data: {} }),
   });
   const { data: notificacoes } = useQuery({
     queryKey: ["comprador-notificacoes"],
-    queryFn: () => listarNotificacoesFn({ data: { token: token() } }),
+    queryFn: () => listarNotificacoesFn({ data: {} }),
     refetchInterval: 30000,
   });
 
   const marcarLidas = useMutation({
-    mutationFn: () => marcarNotificacoesLidasFn({ data: { token: token() } }),
+    mutationFn: () => marcarNotificacoesLidasFn({ data: {} }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["comprador-notificacoes"] }),
   });
 
@@ -107,7 +105,7 @@ function CompradorDashboard() {
   const [soLeilao, setSoLeilao] = useState(false);
   const { data: vitrine } = useQuery({
     queryKey: ["vitrine-veiculos"],
-    queryFn: () => getVitrine({ data: { token: token() } }),
+    queryFn: () => getVitrine({ data: {} }),
   });
   const vitrineFiltrada = useMemo(() => {
     const termo = busca.trim().toLowerCase();

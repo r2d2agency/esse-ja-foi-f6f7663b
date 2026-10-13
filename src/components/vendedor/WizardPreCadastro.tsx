@@ -12,7 +12,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { FileUpload } from "@/components/onboarding/FileUpload";
 import { FormularioVeiculoCondicao, Campo } from "@/components/veiculo/FormularioVeiculoCondicao";
-import { getSessionToken } from "@/lib/session";
 import { criarVendedorInternoFn, reenviarSenhaTemporariaFn } from "@/lib/pre-cadastro.functions";
 import { cadastrarMeuVeiculoFn } from "@/lib/vendedor.functions";
 import { buscarCep } from "@/lib/viacep";
@@ -155,7 +154,7 @@ export function WizardPreCadastro({ onConcluir }: { onConcluir?: () => void }) {
     setSalvando(true);
     try {
       const res: any = await criarVendedorInternoFn({
-        data: { token: getSessionToken(), ...dados, ...docs, enviarAcesso: false } as any,
+        data: { ...dados, ...docs, enviarAcesso: false } as any,
       });
       if (!res?.ok) { toast.error(res?.message || "Não foi possível criar o vendedor."); return; }
       setPerfilId(res.perfilId);

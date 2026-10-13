@@ -16,7 +16,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { getSessionToken } from "@/lib/session";
 import {
   listarLaudosExternosFn,
   salvarLaudoExternoFn,
@@ -109,7 +108,7 @@ export function LaudosVeiculo({
     setEnviando(true);
     try {
       const res: any = await salvarLaudoExternoFn({
-        data: { token: getSessionToken(), veiculo_id: veiculoId, ...form },
+        data: { veiculo_id: veiculoId, ...form },
       });
       if (!res?.ok) {
         toast.error(res?.message || "Erro ao salvar o laudo.");
@@ -146,7 +145,7 @@ export function LaudosVeiculo({
     setConsultando(true);
     try {
       const res: any = await consultarLaudoVeiculoFn({
-        data: { token: getSessionToken(), veiculoId },
+        data: { veiculoId },
       });
       if (!res?.ok) {
         toast.error(res?.message || "Não foi possível consultar.");

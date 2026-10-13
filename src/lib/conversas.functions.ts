@@ -3,23 +3,16 @@ import { z } from "zod";
 import * as db from "../db/conversas.server";
 
 /**
- * Token -> atendente. Quando falha, registra uma linha antes de devolver null:
- * sem isso o handler lança "Não autorizado" e a operação não deixa rastro em
- * lugar nenhum — o atendente vê o toast e não há como diagnosticar depois.
- * Distinguimos "token ausente" (store ainda não reidratada na primeira ação)
- * de "token inválido/expirado" (secret diferente entre login e verificação),
- * porque as soluções são diferentes.
+ * Cookie de sessão -> atendente. Quando falha, registra uma linha antes de
+ * devolver null: sem isso o handler lança "Não autorizado" e a operação não
+ * deixa rastro em lugar nenhum — o atendente vê o toast e não há como
+ * diagnosticar depois.
  */
-async function userIdFrom(token?: string | null, onde = "?") {
-  if (!token) {
-    console.warn(`[conversas] ${onde}: token ausente na requisicao`);
-    await logarTentativa(onde, false, null);
-    return null;
-  }
-  const { verifyToken } = await import("@/db/auth.server");
-  const userId = await verifyToken(token);
+async function userIdFrom(onde = "?") {
+  const { usuarioDaSessao } = await import("@/lib/sessao.server");
+  const userId = await usuarioDaSessao();
   if (!userId) {
-    console.warn(`[conversas] ${onde}: token presente mas invalido ou expirado`);
+    console.warn(`[conversas] ${onde}: cookie de sessao ausente, invalida ou expirada`);
   }
   await logarTentativa(onde, !!userId, userId);
   return userId;
@@ -138,7 +131,6 @@ export const enviarMensagemAtendenteFn = createServerFn({ method: "POST" })
   .validator((data: unknown) =>
     z
       .object({
-        token: z.string().nullable().optional(),
         conversaId: z.string().uuid(),
         payload: payloadMensagem,
       })
@@ -151,8 +143,8 @@ export const enviarMensagemAtendenteFn = createServerFn({ method: "POST" })
     // impossível distinguir "a mensagem saiu" de "morreu no caminho". Agora o
     // desfecho volta em `{ok, ...}` e é registrado.
     try {
-      const atendenteId = await userIdFrom(data.token ?? null, "ENVIAR_MENSAGEM");
-      if (!atendenteId) throw new Error("Não autorizado");
+      const atendenteId = await userIdFrom("ENVIAR_MENSAGEM");
+      if (!atendenteId) throw new Error("Sessão expirada. Faça login novamente.");
       const payload =
         data.payload.tipo === "TEMPLATE"
           ? await montarPayloadTemplate(data.payload)
@@ -194,7 +186,6 @@ export const uploadMidiaWhatsAppFn = createServerFn({ method: "POST" })
   .validator((data: unknown) =>
     z
       .object({
-        token: z.string().nullable().optional(),
         arquivo: z.string().min(1),
         nome: z.string().min(1),
         tipo: z.string().min(1),
@@ -205,8 +196,8 @@ export const uploadMidiaWhatsAppFn = createServerFn({ method: "POST" })
     // Mesmo tratamento do envio: o anexo devolve `{ok:false, error}` em vez de
     // derrubar a requisição, para o erro aparecer na tela.
     try {
-      const atendenteId = await userIdFrom(data.token ?? null, "UPLOAD_MIDIA");
-      if (!atendenteId) throw new Error("Não autorizado");
+      const atendenteId = await userIdFrom("UPLOAD_MIDIA");
+      if (!atendenteId) throw new Error("Sessão expirada. Faça login novamente.");
 
       const { metaService } = await import("@/db/meta-whatsapp.server");
       const { mediaId, tamanho } = await metaService.uploadMedia(
@@ -248,15 +239,16 @@ export const uploadMidiaWhatsAppFn = createServerFn({ method: "POST" })
 
 export const definirApelidoFn = createServerFn({ method: "POST" })
   .validator((data: unknown) =>
-    z.object({
-      token: z.string().nullable().optional(),
-      conversaId: z.string().uuid(),
-      apelido: z.string().nullable(),
-    }).parse(data),
+    z
+      .object({
+        conversaId: z.string().uuid(),
+        apelido: z.string().nullable(),
+      })
+      .parse(data),
   )
   .handler(async ({ data }) => {
-    const atendenteId = await userIdFrom(data.token ?? null, "DEFINIR_APELIDO");
-    if (!atendenteId) throw new Error("Não autorizado");
+    const atendenteId = await userIdFrom("DEFINIR_APELIDO");
+    if (!atendenteId) throw new Error("Sessão expirada. Faça login novamente.");
     return db.definirApelido(data.conversaId, data.apelido);
   });
 
@@ -296,13 +288,11 @@ function comTratamento<T>(handler: () => Promise<T>): Promise<
 }
 
 export const resolverConversaFn = createServerFn({ method: "POST" })
-  .validator((data: unknown) =>
-    z.object({ token: z.string().nullable().optional(), conversaId: z.string().uuid() }).parse(data),
-  )
+  .validator((data: unknown) => z.object({ conversaId: z.string().uuid() }).parse(data))
   .handler(async ({ data }) =>
     comTratamento(async () => {
-      const atendenteId = await userIdFrom(data.token ?? null, "RESOLVER_CONVERSA");
-      if (!atendenteId) throw new Error("Não autorizado");
+      const atendenteId = await userIdFrom("RESOLVER_CONVERSA");
+      if (!atendenteId) throw new Error("Sessão expirada. Faça login novamente.");
       return db.marcarConversaResolvida(data.conversaId);
     }),
   );
@@ -311,7 +301,6 @@ export const atribuirResponsavelFn = createServerFn({ method: "POST" })
   .validator((data: unknown) =>
     z
       .object({
-        token: z.string().nullable().optional(),
         conversaId: z.string().uuid(),
         responsavelId: z.string().uuid().nullable(),
       })
@@ -319,20 +308,18 @@ export const atribuirResponsavelFn = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) =>
     comTratamento(async () => {
-      const atendenteId = await userIdFrom(data.token ?? null, "ATRIBUIR_RESPONSAVEL");
-      if (!atendenteId) throw new Error("Não autorizado");
+      const atendenteId = await userIdFrom("ATRIBUIR_RESPONSAVEL");
+      if (!atendenteId) throw new Error("Sessão expirada. Faça login novamente.");
       return db.atribuirResponsavel(data.conversaId, data.responsavelId);
     }),
   );
 
 export const listarRespostasProntasFn = createServerFn({ method: "GET" })
-  .validator((data: unknown) =>
-    z.object({ token: z.string().nullable().optional() }).parse(data ?? {}),
-  )
-  .handler(async ({ data }) => {
-    // GET: não rejeita. Respostas prontas e globais e do atendente aparecem
-    // juntas, e esconder as globais de quem caiu no token vazio seria pior.
-    const atendenteId = await userIdFrom(data.token ?? null, "LISTAR_RESPOSTAS");
+  .validator((data: unknown) => z.object({}).parse(data ?? {}))
+  .handler(async () => {
+    // GET: não rejeita. Respostas prontas globais e do atendente aparecem
+    // juntas, e esconder as globais de quem está sem cookie seria pior.
+    const atendenteId = await userIdFrom("LISTAR_RESPOSTAS");
     return db.listarRespostasProntas(atendenteId ?? null);
   });
 
@@ -340,7 +327,6 @@ export const salvarRespostaProntaFn = createServerFn({ method: "POST" })
   .validator((data: unknown) =>
     z
       .object({
-        token: z.string().nullable().optional(),
         atalho: z.string().min(1),
         titulo: z.string().optional(),
         conteudo: z.string().min(1),
@@ -350,20 +336,20 @@ export const salvarRespostaProntaFn = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) =>
     comTratamento(async () => {
-      const atendenteId = await userIdFrom(data.token ?? null, "SALVAR_RESPOSTA");
-      if (!atendenteId) throw new Error("Não autorizado");
+      const atendenteId = await userIdFrom("SALVAR_RESPOSTA");
+      if (!atendenteId) throw new Error("Sessão expirada. Faça login novamente.");
       return db.salvarRespostaPronta(atendenteId, data);
     }),
   );
 
 export const excluirRespostaProntaFn = createServerFn({ method: "POST" })
   .validator((data: unknown) =>
-    z.object({ token: z.string().nullable().optional(), id: z.string().uuid() }).parse(data),
+    z.object({ id: z.string().uuid() }).parse(data),
   )
   .handler(async ({ data }) =>
     comTratamento(async () => {
-      const atendenteId = await userIdFrom(data.token ?? null, "EXCLUIR_RESPOSTA");
-      if (!atendenteId) throw new Error("Não autorizado");
+      const atendenteId = await userIdFrom("EXCLUIR_RESPOSTA");
+      if (!atendenteId) throw new Error("Sessão expirada. Faça login novamente.");
       return db.excluirRespostaPronta(data.id, atendenteId);
     }),
   );
@@ -398,7 +384,6 @@ export const iniciarConversaFn = createServerFn({ method: "POST" })
   .validator((data: unknown) =>
     z
       .object({
-        token: z.string().nullable().optional(),
         telefone: z.string().min(10),
         nome: z.string().nullable().optional(),
         template_id: z.string().uuid().optional(),
@@ -414,8 +399,8 @@ export const iniciarConversaFn = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) =>
     comTratamento(async () => {
-      const atendenteId = await userIdFrom(data.token ?? null, "INICIAR_CONVERSA");
-      if (!atendenteId) throw new Error("Não autorizado");
+      const atendenteId = await userIdFrom("INICIAR_CONVERSA");
+      if (!atendenteId) throw new Error("Sessão expirada. Faça login novamente.");
       const { listarTemplates } = await import("@/db/comunicacoes.server");
       const template = await (async () => {
         if (data.template_id) {

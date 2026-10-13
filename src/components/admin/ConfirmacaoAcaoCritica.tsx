@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { ShieldAlert, Loader2 } from "lucide-react";
-import { useAuthStore } from "@/hooks/use-auth";
 import { solicitarCodigoSuperadminFn, confirmarAcaoSuperadminFn } from "@/lib/superadmin.functions";
 import {
   Dialog,
@@ -23,7 +22,6 @@ type AcaoCritica = "PROMOVER_SUPERADMIN" | "EXCLUIR_VEICULO_FORCADO" | "EXCLUIR_
  * {dialog} uma vez no componente, e chame iniciar({...}) a partir de um botão.
  */
 export function useConfirmacaoAcaoCritica() {
-  const accessToken = useAuthStore((s) => s.accessToken);
   const [aberto, setAberto] = useState(false);
   const [acao, setAcao] = useState<AcaoCritica | null>(null);
   const [alvoId, setAlvoId] = useState<string | null>(null);
@@ -33,10 +31,6 @@ export function useConfirmacaoAcaoCritica() {
   const [callback, setCallback] = useState<(() => void) | null>(null);
 
   async function iniciar(params: { acao: AcaoCritica; alvoId: string; alvoDescricao?: string; confirmacao?: string; onSucesso?: () => void }) {
-    if (!accessToken) {
-      toast.error("Sessão inválida. Faça login novamente.");
-      return;
-    }
     setAcao(params.acao);
     setAlvoId(params.alvoId);
     setAlvoDescricao(params.alvoDescricao || "");
@@ -46,7 +40,7 @@ export function useConfirmacaoAcaoCritica() {
     setEtapa("enviando");
 
     const res: any = await solicitarCodigoSuperadminFn({
-      data: { token: accessToken, acao: params.acao, alvoDescricao: params.alvoDescricao },
+      data: { acao: params.acao, alvoDescricao: params.alvoDescricao },
     });
     if (!res?.ok) {
       toast.error(res?.message || "Não foi possível enviar o código de confirmação.");
@@ -58,9 +52,9 @@ export function useConfirmacaoAcaoCritica() {
   }
 
   async function confirmar() {
-    if (!acao || !alvoId || !accessToken) return;
+    if (!acao || !alvoId) return;
     setEtapa("confirmando");
-    const res: any = await confirmarAcaoSuperadminFn({ data: { token: accessToken, acao, alvoId, codigo, confirmacao: acao === "RESET_BASE_OPERACIONAL" ? "LIMPAR BASE" : undefined } });
+    const res: any = await confirmarAcaoSuperadminFn({ data: { acao, alvoId, codigo, confirmacao: acao === "RESET_BASE_OPERACIONAL" ? "LIMPAR BASE" : undefined } });
     if (!res?.ok) {
       toast.error(res?.message || "Código inválido ou expirado.");
       setEtapa("aguardando_codigo");

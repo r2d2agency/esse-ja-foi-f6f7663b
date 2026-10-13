@@ -9,7 +9,6 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { listarEventosConsultaFn } from "@/lib/consulta-logs.functions";
-import { getSessionToken } from "@/lib/session";
 
 type Filtros = { placa?: string; veiculo?: string; codigo?: string; status?: string; produto?: string; pagina?: number };
 const statusOpcoes = { PENDENTE: "Pendente / enviada", PROCESSANDO: "Processando", RECEBIDA: "Resposta recebida", CONCLUIDA: "Concluída", ERRO: "Erro" };
@@ -38,7 +37,7 @@ function LogsConsultasPage() {
     queryKey: ["logs-consultas", filtros],
     queryFn: async () => {
       const resultado = await listarEventosConsultaFn({ data: {
-        ...filtros, pagina: filtros.pagina || 0, token: getSessionToken() || "",
+        ...filtros, pagina: filtros.pagina || 0,
         status: filtros.status as keyof typeof statusOpcoes | undefined,
         produto: filtros.produto as keyof typeof produtos | undefined,
       } });

@@ -19,10 +19,14 @@ export const loginWithPassword = createServerFn({ method: "POST" })
   }).parse(data))
   .handler(async ({ data }) => {
     const { authenticate, issueToken } = await import("@/db/auth.server");
+    const { definirSessao } = await import("@/lib/sessao.server");
     try {
       const user = await authenticate(data.email, data.password);
       if (!user) return { ok: false as const, message: "E-mail ou senha inválidos." };
-      return { ok: true as const, user, accessToken: await issueToken(user.id) };
+      // A sessão passa a viver num cookie httpOnly: o navegador não guarda mais
+      // token nenhum, então token vencido/dessincronizado não derruba mais as chamadas.
+      definirSessao(await issueToken(user.id));
+      return { ok: true as const, user };
     } catch (error: any) {
       console.error("Falha na autenticação:", error);
       
@@ -44,6 +48,42 @@ export const loginWithPassword = createServerFn({ method: "POST" })
         message: "Não foi possível acessar o banco de dados. Verifique a DATABASE_URL e tente novamente.",
       };
     }
+  });
+
+/**
+ * Perfil do dono do cookie de sessão, ou `autenticado: false` quando o cookie
+ * está ausente/inválido/expirado. É a fonte do store de auth no cliente: como o
+ * cookie é lido no servidor, não há como o navegador ficar com uma sessão velha.
+ */
+export const getSessaoAtualFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) => z.object({}).parse(d))
+  .handler(async () => {
+    const { perfilDaSessao } = await import("@/lib/sessao.server");
+    const user = await perfilDaSessao();
+    if (!user) return { autenticado: false as const, user: null };
+    return {
+      autenticado: true as const,
+      user: {
+        id: user.id,
+        nome: user.nome,
+        email: user.email,
+        role: user.role,
+        whatsapp: user.whatsapp ?? undefined,
+        cpf: user.cpf ?? undefined,
+        pode_ver_valores: user.pode_ver_valores ?? undefined,
+        tipo_pessoa: user.tipo_pessoa ?? undefined,
+        protegido: user.protegido ?? undefined,
+      },
+    };
+  });
+
+/** Apaga o cookie de sessão no navegador. Sem localStorage para limpar. */
+export const logoutFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) => z.object({}).parse(d))
+  .handler(async () => {
+    const { encerrarSessao } = await import("@/lib/sessao.server");
+    encerrarSessao();
+    return { ok: true as const };
   });
 
 export const solicitarResetSenha = createServerFn({ method: "POST" })

@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { obterConsultaRegistradaFn } from "@/lib/consulta-veicular.functions";
-import { getSessionToken } from "@/lib/session";
 
 /** Atualiza a tela a partir do banco; somente o webhook resgata dados na Company. */
 export function useConsultaConferi(resultado: any, atualizar: (resultado: any) => void) {
@@ -12,7 +11,7 @@ export function useConsultaConferi(resultado: any, atualizar: (resultado: any) =
   const { data, error } = useQuery({
     queryKey: ["consulta-conferi", id],
     enabled: ativo,
-    queryFn: () => obterConsultaRegistradaFn({ data: { id, token: getSessionToken() || "" } }),
+    queryFn: () => obterConsultaRegistradaFn({ data: { id } }),
     refetchInterval: ativo ? 6000 : false,
     retry: 2,
   });

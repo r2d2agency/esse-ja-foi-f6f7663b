@@ -52,19 +52,16 @@ function LoginPage() {
         return;
       }
 
-      const { user, accessToken } = result;
+      const { user } = result;
+      // O servidor já gravou o cookie httpOnly de sessão; nada de token no navegador.
       login({
         user: { id: user.id, nome: user.nome, email: user.email, role: user.role as any, protegido: (user as any).protegido },
-        accessToken,
-        refreshToken: accessToken,
       });
-      localStorage.setItem("accessToken", accessToken);
-      localStorage.setItem("refreshToken", accessToken);
       toast.success(`Bem-vindo, ${user.nome}!`);
 
       try {
         const { getStatusPrimeiroAcessoFn } = await import("@/lib/pre-cadastro.functions");
-        const st: any = await getStatusPrimeiroAcessoFn({ data: { token: accessToken } });
+        const st: any = await getStatusPrimeiroAcessoFn({ data: {} });
         if (st?.ok && (st.data.precisaTrocarSenha || st.data.precisaAceitarTermo)) {
           navigate({ to: "/primeiro-acesso" });
           return;

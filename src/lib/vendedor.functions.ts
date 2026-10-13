@@ -55,8 +55,9 @@ export const cadastrarVendedorFn = createServerFn({ method: "POST" })
       const user = (rows as any).rows?.[0] || (rows as any)[0];
       
       const { issueToken } = await import("@/db/auth.server");
-      const accessToken = await issueToken(user.id);
-      
+      const { definirSessao } = await import("@/lib/sessao.server");
+      definirSessao(await issueToken(user.id));
+
       // Dispara OTP para confirmação de cadastro
       try {
         const { gerarEnviarOTP } = await import("@/db/mail.server");
@@ -65,7 +66,7 @@ export const cadastrarVendedorFn = createServerFn({ method: "POST" })
         console.error("Erro ao enviar e-mail de boas-vindas/OTP:", mailErr);
       }
 
-      return { ok: true as const, user, accessToken };
+      return { ok: true as const, user };
 
     } catch (error: any) {
       // O drizzle-orm/postgres-js embrulha o erro real do Postgres em `.cause` — `error.message`

@@ -1,10 +1,9 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-async function userIdFrom(token?: string | null) {
-  if (!token) return null;
-  const { verifyToken } = await import("@/db/auth.server");
-  return verifyToken(token);
+async function userIdFrom() {
+  const { usuarioDaSessao } = await import("@/lib/sessao.server");
+  return usuarioDaSessao();
 }
 
 export const listarLaudosExternosFn = createServerFn({ method: "POST" })
@@ -22,7 +21,6 @@ export const salvarLaudoExternoFn = createServerFn({ method: "POST" })
   .validator((d: unknown) =>
     z
       .object({
-        token: z.string().nullable().optional(),
         veiculo_id: z.string().uuid(),
         tipo: z.string().default("CAUTELAR"),
         fornecedor: z.string().trim().optional(),
@@ -37,10 +35,9 @@ export const salvarLaudoExternoFn = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     try {
-      const criadoPor = await userIdFrom(data.token ?? null);
+      const criadoPor = await userIdFrom();
       const m = await import("@/db/laudos-externos.server");
-      const { token: _t, ...resto } = data;
-      return await m.salvarLaudoExterno({ ...resto, criado_por: criadoPor });
+      return await m.salvarLaudoExterno({ ...data, criado_por: criadoPor });
     } catch (e: any) {
       return { ok: false as const, message: e?.message || "Erro ao salvar o laudo." };
     }

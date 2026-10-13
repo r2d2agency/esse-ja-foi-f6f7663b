@@ -32,11 +32,10 @@ export const darLanceFn = createServerFn({ method: "POST" })
   .validator((data: any) => z.object({
     leilaoId: z.string().uuid(),
     valor: z.number().positive("O valor do lance deve ser maior que zero."),
-    token: z.string().min(10)
   }).parse(data))
   .handler(async ({ data }) => {
-    const { verifyToken } = await import("@/db/auth.server");
-    const compradorId = await verifyToken(data.token);
+    const { usuarioDaSessao } = await import("@/lib/sessao.server");
+    const compradorId = await usuarioDaSessao();
     if (!compradorId) throw new Error("Sessão expirada. Faça login novamente.");
     return registrarLance(data.leilaoId, compradorId, data.valor, "unknown", "unknown");
   });

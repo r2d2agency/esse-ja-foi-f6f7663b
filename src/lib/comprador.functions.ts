@@ -2,7 +2,13 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { migrateDb } from "@/db";
 
-const tokenSchema = z.object({ token: z.string().min(10) });
+/**
+ * Esquema-base de cada ação. A sessão vem do cookie httpOnly
+ * (`usuarioDaSessao`), então nenhuma ação recebe `token` do cliente — antes cada
+ * validator exigia um campo que o servidor nem precisava e que o navegador
+ * tirava do `localStorage`, muitas vezes vencido.
+ */
+const tokenSchema = z.object({});
 
 async function ensureSchema() {
   try {
@@ -12,9 +18,10 @@ async function ensureSchema() {
   }
 }
 
-async function userFromToken(token: string) {
-  const { verifyToken } = await import("@/db/auth.server");
-  const userId = await verifyToken(token);
+/** Usuário dono do cookie de sessão, ou estoura com a mensagem de sempre. */
+async function userFromToken() {
+  const { usuarioDaSessao } = await import("@/lib/sessao.server");
+  const userId = await usuarioDaSessao();
   if (!userId) throw new Error("Sessão expirada. Faça login novamente.");
   return userId;
 }
@@ -41,7 +48,7 @@ export const getPerfilCompradorFn = createServerFn({ method: "POST" })
   .validator((d: unknown) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     await ensureSchema();
-    const userId = await userFromToken(data.token);
+    const userId = await userFromToken();
     const m = await import("@/db/comprador.server");
     const res = await m.getPerfilComprador(userId);
     if (!res) return { ok: false as const, message: "Perfil não encontrado." };
@@ -55,7 +62,7 @@ export const salvarEtapaCompradorFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     try {
       await ensureSchema();
-      const userId = await userFromToken(data.token);
+      const userId = await userFromToken();
       const m = await import("@/db/comprador.server");
       const res = await m.salvarEtapaComprador(userId, data.etapa, data.dados);
       return { ok: true as const, ...(res || {}) };
@@ -69,7 +76,7 @@ export const enviarCadastroCompradorFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     try {
       await ensureSchema();
-      const userId = await userFromToken(data.token);
+      const userId = await userFromToken();
       const m = await import("@/db/comprador.server");
       return await m.enviarCadastroCompradorParaAnalise(userId);
     } catch (e: any) {
@@ -82,7 +89,7 @@ export const enviarDocumentoCompradorFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     try {
       await ensureSchema();
-      const userId = await userFromToken(data.token);
+      const userId = await userFromToken();
       const m = await import("@/db/comprador.server");
       await m.salvarDocumentoComprador(userId, data.tipo, data.url);
       return { ok: true as const };
@@ -98,7 +105,7 @@ export const alternarFavoritoFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     try {
       await ensureSchema();
-      const userId = await userFromToken(data.token);
+      const userId = await userFromToken();
       const m = await import("@/db/comprador.server");
       return { ok: true as const, ...(await m.alternarFavorito(userId, data.anuncioId)) };
     } catch (e: any) {
@@ -111,7 +118,7 @@ export const listarFavoritosFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     try {
       await ensureSchema();
-      const userId = await userFromToken(data.token);
+      const userId = await userFromToken();
       const m = await import("@/db/comprador.server");
       return { ok: true as const, data: await m.listarFavoritos(userId) };
     } catch (e: any) {
@@ -128,7 +135,7 @@ export const salvarLembreteFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     try {
       await ensureSchema();
-      const userId = await userFromToken(data.token);
+      const userId = await userFromToken();
       const m = await import("@/db/comprador.server");
       await m.salvarLembrete(userId, data.anuncioId, data.lembrarEm ?? null);
       return { ok: true as const };
@@ -142,7 +149,7 @@ export const listarLembretesFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     try {
       await ensureSchema();
-      const userId = await userFromToken(data.token);
+      const userId = await userFromToken();
       const m = await import("@/db/comprador.server");
       return { ok: true as const, data: await m.listarLembretes(userId) };
     } catch (e: any) {
@@ -155,7 +162,7 @@ export const listarNotificacoesFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     try {
       await ensureSchema();
-      const userId = await userFromToken(data.token);
+      const userId = await userFromToken();
       const m = await import("@/db/comprador.server");
       return { ok: true as const, data: await m.listarNotificacoes(userId) };
     } catch (e: any) {
@@ -168,7 +175,7 @@ export const marcarNotificacoesLidasFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     try {
       await ensureSchema();
-      const userId = await userFromToken(data.token);
+      const userId = await userFromToken();
       const m = await import("@/db/comprador.server");
       return await m.marcarNotificacoesLidas(userId);
     } catch (e: any) {
@@ -183,7 +190,7 @@ export const getInteressesFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     try {
       await ensureSchema();
-      const userId = await userFromToken(data.token);
+      const userId = await userFromToken();
       const { db } = await import("@/db/index");
       const { sql } = await import("drizzle-orm");
       if (!db) return {};
@@ -211,7 +218,7 @@ export const updateInteressesFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     try {
       await ensureSchema();
-      const userId = await userFromToken(data.token);
+      const userId = await userFromToken();
       const { db } = await import("@/db/index");
       const { sql } = await import("drizzle-orm");
       if (!db) return { ok: false as const, message: "DB offline" };

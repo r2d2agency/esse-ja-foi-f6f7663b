@@ -4,7 +4,6 @@ import { getAnuncioPublico } from "@/lib/vitrine.functions";
 import { getLeilaoInfo, darLanceFn } from "@/lib/leilao.functions";
 import { Button } from "@/components/ui/button";
 import { ShieldCheck, MapPin, Fuel, Settings2, ArrowLeft, Gavel, Clock, TrendingUp, Heart, BellPlus, ClipboardCheck, X, ChevronLeft, ChevronRight, ChevronDown, Maximize2 } from "lucide-react";
-import { getSessionToken } from "@/lib/session";
 import { alternarFavoritoFn, salvarLembreteFn } from "@/lib/comprador.functions";
 import { useState, useEffect, useRef } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -53,7 +52,7 @@ function DetalheVeiculoPublico() {
 
   const { data: anuncio, isLoading: loadingAnuncio } = useQuery({
     queryKey: ["anuncio-publico", slug],
-    queryFn: () => getAnuncioPublico({ data: { slug, token: getSessionToken() } }),
+    queryFn: () => getAnuncioPublico({ data: { slug } }),
     enabled: podeVerVitrine,
   });
 
@@ -79,7 +78,6 @@ function DetalheVeiculoPublico() {
         data: {
           leilaoId: anuncio?.leilao_id,
           valor,
-          token: getSessionToken(),
         },
       }),
     onSuccess: () => {
@@ -93,7 +91,7 @@ function DetalheVeiculoPublico() {
 
   const favoritoMutation = useMutation({
     mutationFn: () =>
-      alternarFavoritoFn({ data: { token: getSessionToken(), anuncioId: anuncio?.id } }),
+      alternarFavoritoFn({ data: { anuncioId: anuncio?.id } }),
     onSuccess: (res: any) => {
       queryClient.invalidateQueries({ queryKey: ["anuncio-publico", slug] });
       toast.success(res?.favorito ? "Adicionado aos favoritos." : "Removido dos favoritos.");
@@ -105,7 +103,6 @@ function DetalheVeiculoPublico() {
     mutationFn: () =>
       salvarLembreteFn({
         data: {
-          token: getSessionToken(),
           anuncioId: anuncio?.id,
           lembrarEm: anuncio?.inicio_em || null,
         },

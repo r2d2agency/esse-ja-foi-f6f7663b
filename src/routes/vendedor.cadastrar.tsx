@@ -27,7 +27,6 @@ import { consultarAgregadosPorPlacaFn } from '@/lib/consulta-veicular.functions'
 import { getOnboardingStatusFn } from '@/lib/onboarding.functions';
 import { getTermoVigenteFn, aceitarTermoFn } from '@/lib/termos.functions';
 import { obterConfiguracoesPublicasFn } from '@/lib/config-publica.functions';
-import { getSessionToken } from '@/lib/session';
 import { maskPlaca, formatCurrency } from '@/lib/brasil';
 import { montarEtapas, percentual } from '@/components/vendedor/ProgressoCadastro';
 import { TODAS_MARCAS, MARCAS_POPULARES, MODELOS_POR_MARCA, CORES, COMBUSTIVEIS, CAMBIOS, PORTAS, UFS, RELACOES_PROPRIETARIO, BANCOS_COMUNS, ACESSORIOS_VEICULO } from '@/lib/constants-veiculos';
@@ -482,7 +481,7 @@ function CadastrarVeiculo() {
 
       if (!jaAceitouTermo) {
         const resTermo: any = await aceitarTermo({
-          data: { token: getSessionToken(), assinatura: user?.nome || '', tipo: 'VENDEDOR' },
+          data: { assinatura: user?.nome || '', tipo: 'VENDEDOR' },
         });
         if (resTermo?.ok === false) throw new Error(resTermo.message || 'Não foi possível registrar o aceite do termo.');
       }

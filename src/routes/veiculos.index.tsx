@@ -2,7 +2,6 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getVitrine } from "@/lib/vitrine.functions";
 import { alternarFavoritoFn } from "@/lib/comprador.functions";
-import { getSessionToken } from "@/lib/session";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -67,7 +66,7 @@ function VitrinePublica() {
 
   const { data: veiculos, isLoading, isError, error } = useQuery({
     queryKey: ["vitrine-veiculos"],
-    queryFn: () => getVitrine({ data: { token: getSessionToken() } }),
+    queryFn: () => getVitrine({ data: {} }),
     enabled: podeVerVitrine,
     // Compradores logados acompanham valor de lance em tempo real direto na vitrine.
     refetchInterval: podeVerVitrine ? 5000 : false,
@@ -75,7 +74,7 @@ function VitrinePublica() {
 
   const favoritar = useMutation({
     mutationFn: (anuncioId: string) =>
-      alternarFavoritoFn({ data: { token: getSessionToken(), anuncioId } }),
+      alternarFavoritoFn({ data: { anuncioId } }),
     onSuccess: (res: any) => {
       qc.invalidateQueries({ queryKey: ["vitrine-veiculos"] });
       qc.invalidateQueries({ queryKey: ["comprador-favoritos"] });

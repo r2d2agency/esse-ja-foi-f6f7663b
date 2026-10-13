@@ -72,7 +72,6 @@ import {
   uploadMidiaWhatsAppFn,
 } from '@/lib/conversas.functions';
 import { listarTemplatesFn } from '@/lib/comunicacoes.functions';
-import { getSessionToken } from '@/lib/session';
 import { toast } from 'sonner';
 
 export const Route = createFileRoute('/admin/conversas')({
@@ -357,12 +356,6 @@ function CentralConversasPage() {
   } | null>(null);
   const inputArquivoRef = useRef<HTMLInputElement>(null);
 
-  // Lido na hora da chamada, não no render. No primeiro render a store do zustand
-  // ainda está vazia (o onRehydrateStorage não rodou), e o useMutation captura
-  // esse valor null para sempre — o servidor então recebe token vazio e devolve
-  // "Não autorizado", sem gerar log algum porque nunca chega ao INSERT.
-  const getToken = () => getSessionToken();
-
   /**
    * Server functions devolvem `{ok:false, error}` em vez de lançar. Sem esta
    * checagem a mutation tratava a falha como sucesso e o atendente via a
@@ -399,7 +392,7 @@ function CentralConversasPage() {
 
   const { data: respostasProntas } = useQuery({
     queryKey: ['respostas-prontas'],
-    queryFn: () => getRespostasProntas({ data: { token: getToken() } }),
+    queryFn: () => getRespostasProntas({ data: {} }),
   });
 
   // Só busca contatos com o diálogo aberto — evita varrer `profiles` a cada render.
@@ -419,7 +412,7 @@ function CentralConversasPage() {
   const mutationEnviar = useMutation({
     mutationFn: async (payload: any) => {
       const res: any = await enviarMsg({
-        data: { token: getToken(), conversaId: selectedId, payload },
+        data: { conversaId: selectedId, payload },
       });
       exigirOk(res);
       return res;
@@ -435,7 +428,7 @@ function CentralConversasPage() {
   const mutationApelido = useMutation({
     mutationFn: async () => {
       const res: any = await definirApelido({
-        data: { token: getToken(), conversaId: selectedId!, apelido: apelidoTemp },
+        data: { conversaId: selectedId!, apelido: apelidoTemp },
       });
       exigirOk(res);
       return res;
@@ -451,7 +444,7 @@ function CentralConversasPage() {
 
   const mutationResolver = useMutation({
     mutationFn: async () => {
-      const res: any = await resolverConversa({ data: { token: getToken(), conversaId: selectedId! } });
+      const res: any = await resolverConversa({ data: { conversaId: selectedId! } });
       exigirOk(res);
       return res;
     },
@@ -465,7 +458,7 @@ function CentralConversasPage() {
 
   const mutationSalvarResposta = useMutation({
     mutationFn: async (dados: any) => {
-      const res: any = await salvarResposta({ data: { token: getToken(), ...dados } });
+      const res: any = await salvarResposta({ data: { ...dados } });
       exigirOk(res);
       return res;
     },
@@ -479,7 +472,7 @@ function CentralConversasPage() {
 
   const mutationExcluirResposta = useMutation({
     mutationFn: async (id: string) => {
-      const res: any = await excluirResposta({ data: { token: getToken(), id } });
+      const res: any = await excluirResposta({ data: { id } });
       exigirOk(res);
       return res;
     },
@@ -492,7 +485,7 @@ function CentralConversasPage() {
 
   const mutationUpload = useMutation({
     mutationFn: async (dados: { arquivo: string; nome: string; tipo: string }) => {
-      const res: any = await uploadMidia({ data: { token: getToken(), ...dados } });
+      const res: any = await uploadMidia({ data: { ...dados } });
       exigirOk(res);
       return res;
     },
@@ -674,7 +667,7 @@ function CentralConversasPage() {
       template_id: string;
       variaveis: string[];
     }) => {
-      const res: any = await iniciarConversa({ data: { token: getToken(), ...dados } });
+      const res: any = await iniciarConversa({ data: { ...dados } });
       exigirOk(res);
       return res;
     },

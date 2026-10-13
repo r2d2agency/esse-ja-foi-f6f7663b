@@ -5,7 +5,6 @@ import { getVeiculoDetalheAdminFn, assumirAnaliseVeiculoFn, atualizarStatusAnali
 import { salvarVeiculoFn } from "@/lib/cadastro.functions";
 import { obterConsultaRegistradaFn, consultarDesvalorizacaoFipeFn, listarConsultasVeiculoFn } from "@/lib/consulta-veicular.functions";
 import { salvarConfiguracaoLeilao } from "@/lib/leilao.functions";
-import { getSessionToken } from "@/lib/session";
 import { useAuth } from "@/hooks/use-auth";
 import { useConfirmacaoAcaoCritica } from "@/components/admin/ConfirmacaoAcaoCritica";
 import { useEffect, useRef, useState } from "react";
@@ -347,8 +346,8 @@ function DetalheVeiculoAdminPage() {
     const versao = versaoAcompanhamentoFipe.current;
     try {
       const res: any = consultaId
-        ? await obterConsultaRegistradaFn({ data: { id: consultaId, token: getSessionToken() || "" } })
-        : await consultarDesvalorizacaoFipe({ data: { token: getSessionToken(), veiculoId: v.id } });
+        ? await obterConsultaRegistradaFn({ data: { id: consultaId } })
+        : await consultarDesvalorizacaoFipe({ data: { veiculoId: v.id } });
       if (versao !== versaoAcompanhamentoFipe.current) return;
       if (!res?.ok) {
         toast.error(res?.message || "Não foi possível consultar a FIPE pela placa.");

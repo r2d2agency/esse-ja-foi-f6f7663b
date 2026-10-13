@@ -2,10 +2,9 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequest, getRequestHeader } from "@tanstack/react-start/server";
 import { z } from "zod";
 
-async function userIdFrom(token?: string | null) {
-  if (!token) return null;
-  const { verifyToken } = await import("@/db/auth.server");
-  return verifyToken(token);
+async function userIdFrom() {
+  const { usuarioDaSessao } = await import("@/lib/sessao.server");
+  return usuarioDaSessao();
 }
 
 const tipoTermoSchema = z.enum(["VENDEDOR", "COMPRADOR"]).optional();
@@ -46,7 +45,6 @@ export const aceitarTermoFn = createServerFn({ method: "POST" })
   .validator((d: unknown) =>
     z
       .object({
-        token: z.string().nullable().optional(),
         assinatura: z.string().min(3),
         tipo: tipoTermoSchema,
       })
@@ -54,7 +52,7 @@ export const aceitarTermoFn = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     try {
-      const userId = await userIdFrom(data.token ?? null);
+      const userId = await userIdFrom();
       if (!userId) return { ok: false as const, message: "Sessão expirada." };
 
       let ip: string | null = null;

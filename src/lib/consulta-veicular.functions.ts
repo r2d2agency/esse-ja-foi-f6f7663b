@@ -1,17 +1,16 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-async function userIdFrom(token?: string | null) {
-  if (!token) return null;
-  const { verifyToken } = await import("@/db/auth.server");
-  return verifyToken(token);
+async function userIdFrom() {
+  const { usuarioDaSessao } = await import("@/lib/sessao.server");
+  return usuarioDaSessao();
 }
 
 export const obterConsultaRegistradaFn = createServerFn({ method: "POST" })
-  .validator((d: unknown) => z.object({ id: z.string().uuid(), token: z.string() }).parse(d))
+  .validator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data }) => {
     try {
-      if (!(await userIdFrom(data.token))) throw new Error("Sessão expirada. Entre novamente.");
+      if (!(await userIdFrom())) throw new Error("Sessão expirada. Entre novamente.");
       const m = await import("@/db/consulta-veicular.server");
       return await m.obterConsultaRegistrada(data.id);
     } catch (e: any) {
@@ -89,11 +88,11 @@ export const consultarAgregadosPorPlacaFn = createServerFn({ method: "POST" })
 
 export const consultarLaudoVeiculoFn = createServerFn({ method: "POST" })
   .validator((d: unknown) =>
-    z.object({ token: z.string().nullable().optional(), veiculoId: z.string().uuid() }).parse(d),
+    z.object({ veiculoId: z.string().uuid() }).parse(d),
   )
   .handler(async ({ data }) => {
     try {
-      const criadoPor = await userIdFrom(data.token ?? null);
+      const criadoPor = await userIdFrom();
       const m = await import("@/db/consulta-veicular.server");
       return await m.consultarLaudoVeiculo(data.veiculoId, criadoPor);
     } catch (e: any) {
@@ -104,11 +103,11 @@ export const consultarLaudoVeiculoFn = createServerFn({ method: "POST" })
 /** Usada no cadastro do veículo (admin): busca valor FIPE atual + histórico de desvalorização pela placa. */
 export const consultarDesvalorizacaoFipeFn = createServerFn({ method: "POST" })
   .validator((d: unknown) =>
-    z.object({ token: z.string().nullable().optional(), veiculoId: z.string().uuid() }).parse(d),
+    z.object({ veiculoId: z.string().uuid() }).parse(d),
   )
   .handler(async ({ data }) => {
     try {
-      const criadoPor = await userIdFrom(data.token ?? null);
+      const criadoPor = await userIdFrom();
       const m = await import("@/db/consulta-veicular.server");
       return await m.consultarDesvalorizacaoFipe(data.veiculoId, criadoPor);
     } catch (e: any) {
