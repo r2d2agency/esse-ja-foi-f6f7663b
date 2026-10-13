@@ -219,6 +219,13 @@ export const Route = createFileRoute("/api/public/webhooks/whatsapp")({
                 await processarMensagemRecebida(msg.from, msg);
               } catch (err: any) {
                 console.error("[WhatsApp Webhook] Falha ao processar mensagem:", err);
+                // O Drizzle envolve o erro real do Postgres em `.cause`; sem isto
+                // o log mostrava só a query e nunca o motivo (ex.: "column does
+                // not exist", "invalid input syntax for type uuid").
+                const causa = err?.cause;
+                const detalhe = causa
+                  ? `${String(causa?.message || causa)}${causa?.code ? ` (SQLSTATE ${causa.code})` : ""}`
+                  : String(err?.message || err);
                 await registrarLogMeta({
                   direcao: "ENTRADA",
                   operacao: "WEBHOOK",
@@ -228,7 +235,7 @@ export const Route = createFileRoute("/api/public/webhooks/whatsapp")({
                   status: "ERRO",
                   resumo: `Falha ao processar mensagem de ${msg?.from ?? "?"}.`,
                   payload: {
-                    erro: String(err?.message || err).slice(0, 1000),
+                    erro: detalhe.slice(0, 1000),
                     mensagem: msg,
                   },
                   duracaoMs: Date.now() - inicio,
