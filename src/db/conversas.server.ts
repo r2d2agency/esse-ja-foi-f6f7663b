@@ -124,6 +124,37 @@ export async function ensureConversasSchema(silent = true) {
     // Índice ausente não quebra nada: só deixa a lista lenta com muitas linhas.
     console.error("[conversas.server] ERRO ao criar índices:", err);
   }
+
+  // 5. Reparo: quem tem mensagem do cliente mas está sem `janela_expira_em`.
+  //
+  // Antes desta correção a conversa nascia sem a coluna preenchida e só o UPDATE
+  // seguinte a salvava — quando esse UPDATE rodava. As que ficaram com NULL
+  // apareciam "Janela fechada — apenas templates" com o cliente tendo acabado
+  // de escrever, que é o sintoma errado: a janela mede inatividade do cliente,
+  // então basta a existência de mensagem recebida para ela estar aberta.
+  //
+  // Idempotente: só mexe em linha com `janela_expira_em` nula, e o COALESCE
+  // usa a última mensagem recebida como referência.
+  try {
+    await db.execute(sql`
+      UPDATE whatsapp_conversas c
+      SET janela_expira_em = COALESCE(
+        (SELECT max(m.criado_em) FROM whatsapp_mensagens m
+         WHERE m.conversa_id = c.id AND m.enviado_por_atendente = false),
+        c.ultima_resposta_cliente_em,
+        c.criado_em
+      ) + interval '24 hours'
+      WHERE c.janela_expira_em IS NULL
+        AND EXISTS (
+          SELECT 1 FROM whatsapp_mensagens m
+          WHERE m.conversa_id = c.id AND m.enviado_por_atendente = false
+        )
+    `);
+  } catch (err) {
+    // Reparo que falha não pode impedir o boot — o COALESCE nas leituras já
+    // trata a coluna nula.
+    console.error("[conversas.server] ERRO no reparo de janela_expira_em:", err);
+  }
 }
 
 export async function listarConversas(filtros: any) {
@@ -171,7 +202,12 @@ export async function listarConversas(filtros: any) {
             FROM whatsapp_mensagens m
             WHERE m.conversa_id = c.id
             ORDER BY m.criado_em DESC LIMIT 1) as ultima_direcao_atendente,
-           (c.janela_expira_em > now()) as janela_aberta
+           -- A janela é de INATIVIDADE do cliente: 24h desde a última mensagem
+           -- dele. Contar de outra coisa (ex.: do início do atendimento) fechava
+           -- a janela de conversas que o cliente tinha acabado de abrir.
+           -- COALESCE cobre as conversas antigas, criadas antes de a coluna
+           -- janela_expira_em passar a ser gravada junto com a mensagem.
+           (COALESCE(c.janela_expira_em, c.ultima_resposta_cliente_em + interval '24 hours', c.criado_em + interval '24 hours') > now()) as janela_aberta
     FROM whatsapp_conversas c
     LEFT JOIN profiles p ON p.id = c.contato_id
     LEFT JOIN profiles resp ON resp.id = c.responsavel_id
@@ -218,7 +254,8 @@ export async function getConversaCompleta(conversaId: string) {
            resp.nome as responsavel_nome,
            v.marca as veiculo_marca, v.modelo as veiculo_modelo, v.placa as veiculo_placa,
            v.id as veiculo_id,
-           (c.janela_expira_em > now()) as janela_aberta
+           -- Mesma regra da listagem: janela medida pela inatividade do cliente.
+           (COALESCE(c.janela_expira_em, c.ultima_resposta_cliente_em + interval '24 hours', c.criado_em + interval '24 hours') > now()) as janela_aberta
     FROM whatsapp_conversas c
     LEFT JOIN profiles p ON p.id = c.contato_id
     LEFT JOIN profiles resp ON resp.id = c.responsavel_id
@@ -284,7 +321,8 @@ export async function enviarMensagemAtendente(conversaId: string, atendenteId: s
   const { metaService } = await import("./meta-whatsapp.server");
 
   const convRes = await db.execute(sql`
-    SELECT c.contato_id, p.telefone, c.janela_expira_em
+    SELECT c.contato_id, p.telefone, c.janela_expira_em, c.ultima_resposta_cliente_em, c.criado_em,
+           (COALESCE(c.janela_expira_em, c.ultima_resposta_cliente_em + interval '24 hours', c.criado_em + interval '24 hours') > now()) as janela_aberta
     FROM whatsapp_conversas c
     JOIN profiles p ON p.id = c.contato_id
     WHERE c.id = ${conversaId}::uuid
@@ -307,10 +345,13 @@ export async function enviarMensagemAtendente(conversaId: string, atendenteId: s
   // nada sobre a janela.
   const isMidia = payload.tipo === 'IMAGEM' || payload.tipo === 'DOCUMENTO' || payload.tipo === 'AUDIO';
 
-  // Verifica janela de 24h para envio de texto livre ou mídia
+  // Verifica janela de 24h para envio de texto livre ou mídia.
+  // A janela é de INATIVIDADE do cliente: 24h desde a última mensagem dele.
+  // `janela_aberta` já sai calculado do banco, com o mesmo COALESCE usado na
+  // listagem — assim uma conversa antiga, cujo `janela_expira_em` nunca foi
+  // gravado, não fica bloqueada mesmo com o cliente ativo agora.
   if (isTexto || isMidia) {
-    const janelaAberta = conversa.janela_expira_em && new Date(conversa.janela_expira_em) > new Date();
-    if (!janelaAberta) {
+    if (!conversa.janela_aberta) {
       throw new Error("A janela de 24h com este contato está fechada. Envie um template para reabrir o atendimento.");
     }
   }
@@ -626,8 +667,8 @@ export async function processarMensagemRecebida(telefone: string, payload: any) 
 
   if (!conversaId) {
     const res = await db.execute(sql`
-      INSERT INTO whatsapp_conversas (contato_id, status)
-      VALUES (${perfilId}::uuid, 'NOVA')
+      INSERT INTO whatsapp_conversas (contato_id, status, ultima_resposta_cliente_em)
+      VALUES (${perfilId}::uuid, 'NOVA', now())
       RETURNING id
     `);
     conversaId = rowsOf(res)[0].id;
@@ -639,7 +680,17 @@ export async function processarMensagemRecebida(telefone: string, payload: any) 
     VALUES (${conversaId}::uuid, ${telefone}, ${JSON.stringify(normalizado)}::jsonb, 'RECEBIDA', 'MENSAGEM', false)
   `);
 
-  // 4. Atualizar conversa + abrir janela de 24h
+  // 4. Atualizar conversa + reabrir a janela de 24h
+  //
+  // A janela é medida a partir da ÚLTIMA mensagem do cliente, não do início do
+  // atendimento. Por isso `janela_expira_em` é regravada aqui e em todo UPDATE
+  // que parta do cliente: enquanto ele escreve, o atendente pode responder
+  // texto livre. Fechar nesse caso seria o sintoma que o usuário relatou —
+  // "a conversa é gerada pelo cliente e a janela aparece fechada".
+  //
+  // `ultima_resposta_cliente_em` é a fonte da verdade: gravada agora, ela faz o
+  // SELECT abaixo recalcular a janela mesmo que `janela_expira_em` esteja nula
+  // (foi o que aconteceu com as conversas criadas antes desta correção).
   await db.execute(sql`
     UPDATE whatsapp_conversas SET
       ultimo_evento_em = now(),
@@ -898,8 +949,13 @@ export async function iniciarConversa(
 
   if (!conversaId) {
     const res = await db.execute(sql`
-      INSERT INTO whatsapp_conversas (contato_id, status, responsavel_id, ultimo_evento_em)
-      VALUES (${perfilId}::uuid, 'AGUARDANDO_CLIENTE', ${atendenteId}::uuid, now())
+      -- ultima_resposta_cliente_em gravado como now(): o template foi enviado
+      -- porque o atendente QUER falar com este contato, então o relógio de
+      -- inatividade começa a contar daqui, e não do primeiro template.
+      -- Sem isso a conversa nascia com a janela fechada e a tela mostrava
+      -- "Janela fechada" mesmo com o cliente esperando retorno.
+      INSERT INTO whatsapp_conversas (contato_id, status, responsavel_id, ultimo_evento_em, ultima_resposta_cliente_em)
+      VALUES (${perfilId}::uuid, 'AGUARDANDO_CLIENTE', ${atendenteId}::uuid, now(), now())
       RETURNING id
     `);
     conversaId = rowsOf(res)[0].id;
@@ -933,11 +989,15 @@ export async function iniciarConversa(
     )
   `);
 
+  // Reenviar template também reinicia o relógio de inatividade — o template
+  // funciona fora da janela, então sem isso uma conversa reaberta por template
+  // continuaria fechada.
   await db.execute(sql`
     UPDATE whatsapp_conversas SET
       ultimo_evento_em = now(),
       ultima_mensagem_preview = ${`Template: ${dados.template_name}`},
-      status = 'AGUARDANDO_CLIENTE'
+      status = 'AGUARDANDO_CLIENTE',
+      ultima_resposta_cliente_em = now()
     WHERE id = ${conversaId}::uuid
   `);
 
