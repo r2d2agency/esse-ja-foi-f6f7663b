@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { db } from "./index";
 import { ensureComunicacoesSchema } from "./comunicacoes.server";
 import { registrarLogMeta, getUltimoErroLog } from "./logs-whatsapp.server";
+import { extrairErroPostgres } from "./erro-postgres";
 
 /**
  * Diagnóstico do WhatsApp Meta API.
@@ -147,6 +148,61 @@ export async function gerarDiagnosticoWhatsApp(): Promise<DiagnosticoWhatsApp> {
     } catch (e: any) {
       diag.tabelas[tabela] = { existe: false, linhas: 0 };
       problemas.push(`Erro ao conferir ${tabela}: ${String(e?.message || e).slice(0, 200)}`);
+    }
+  }
+
+  // --- Tipos das colunas ---
+  //
+  // Este bloco existe por causa de uma falha real e silenciosa: a tabela
+  // `whatsapp_conversas` existia, as queries passavam a bater nela, e todas
+  // falhavam porque `contato_id` não era `uuid`. Nenhum teste anterior pegava
+  // isso — a checagem de tabela só confirmava a existência, não o tipo.
+  // O erro aparecia na tela como "Failed query: SELECT id FROM
+  // whatsapp_conversas WHERE contato_id = ..." sem o motivo, então nada
+  // apontava a causa.
+  //
+  // `perfilId` vem de `profiles.id` (uuid). Se `contato_id` for text/varchar,
+  // `contato_id = $1::uuid` estoura. Vamos verificar o tipo das colunas de
+  // ligação antes que a conversa possa ser criada.
+  const COLUNAS_ESPERADAS: Array<{
+    tabela: string;
+    coluna: string;
+    tipo: string;
+    obrigatorio?: boolean;
+  }> = [
+    { tabela: "whatsapp_conversas", coluna: "contato_id", tipo: "uuid", obrigatorio: true },
+    { tabela: "whatsapp_conversas", coluna: "id", tipo: "uuid", obrigatorio: true },
+    { tabela: "whatsapp_conversas", coluna: "responsavel_id", tipo: "uuid" },
+    { tabela: "whatsapp_mensagens", coluna: "conversa_id", tipo: "uuid", obrigatorio: true },
+    { tabela: "whatsapp_mensagens", coluna: "id", tipo: "uuid", obrigatorio: true },
+  ];
+
+  for (const { tabela, coluna, tipo, obrigatorio } of COLUNAS_ESPERADAS) {
+    try {
+      const res = await db!.execute(sql`
+        SELECT data_type FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = ${tabela}
+          AND column_name = ${coluna}
+        LIMIT 1
+      `);
+      const linha = (Array.isArray(res) ? res[0] : (res as any).rows?.[0]) as any;
+
+      if (!linha) {
+        problemas.push(
+          `Coluna ausente: ${tabela}.${coluna}. Sem ela as queries de conversa falham.`,
+        );
+      } else if (linha.data_type !== tipo) {
+        problemas.push(
+          `Tipo incorreto em ${tabela}.${coluna}: esperado "${tipo}", encontrado "${linha.data_type}". ` +
+            `A query "${tabela} WHERE contato_id = ...::uuid" vai falhar com "tipo de dado incompatível" se o campo não for uuid.`,
+        );
+      }
+    } catch (e: any) {
+      const pg = extrairErroPostgres(e);
+      problemas.push(
+        `Erro ao conferir o tipo de ${tabela}.${coluna}: ${pg.mensagem.slice(0, 300)}`,
+      );
     }
   }
 

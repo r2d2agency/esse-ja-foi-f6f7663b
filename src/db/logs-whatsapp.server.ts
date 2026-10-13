@@ -115,7 +115,7 @@ export async function registrarLogMeta(params: {
         payload, status, erro_detalhe, duracao_ms
       ) VALUES (
         ${wabaId},
-        ${rotuloOperacao(operacao)},
+        ${operacao},
         ${direcao},
         ${endpoint},
         ${httpStatus},
@@ -137,7 +137,7 @@ export async function registrarLogMeta(params: {
         INSERT INTO whatsapp_webhook_logs (
           event_type, direcao, http_status, status, erro_detalhe
         ) VALUES (
-          ${rotuloOperacao(operacao)},
+          ${operacao},
           ${direcao},
           ${httpStatus},
           ${status},

@@ -4,6 +4,7 @@ import { db } from "@/db/index";
 import { ensureComunicacoesSchema } from "@/db/comunicacoes.server";
 import { sql } from "drizzle-orm";
 import { registrarLogMeta } from "@/db/logs-whatsapp.server";
+import { extrairErroPostgres } from "@/db/erro-postgres";
 
 export const Route = createFileRoute("/api/public/webhooks/whatsapp")({
   server: {
@@ -222,10 +223,7 @@ export const Route = createFileRoute("/api/public/webhooks/whatsapp")({
                 // O Drizzle envolve o erro real do Postgres em `.cause`; sem isto
                 // o log mostrava só a query e nunca o motivo (ex.: "column does
                 // not exist", "invalid input syntax for type uuid").
-                const causa = err?.cause;
-                const detalhe = causa
-                  ? `${String(causa?.message || causa)}${causa?.code ? ` (SQLSTATE ${causa.code})` : ""}`
-                  : String(err?.message || err);
+                const pg = extrairErroPostgres(err);
                 await registrarLogMeta({
                   direcao: "ENTRADA",
                   operacao: "WEBHOOK",
@@ -235,7 +233,10 @@ export const Route = createFileRoute("/api/public/webhooks/whatsapp")({
                   status: "ERRO",
                   resumo: `Falha ao processar mensagem de ${msg?.from ?? "?"}.`,
                   payload: {
-                    erro: detalhe.slice(0, 1000),
+                    erro: pg.mensagem.slice(0, 1000),
+                    sqlstate: pg.code,
+                    detalhe: pg.detalhe,
+                    dica: pg.hint,
                     mensagem: msg,
                   },
                   duracaoMs: Date.now() - inicio,
@@ -356,6 +357,7 @@ export const Route = createFileRoute("/api/public/webhooks/whatsapp")({
           console.error("[WhatsApp Webhook] Erro ao processar:", error);
           // Antes esta linha só existia no catch interno: um JSON.parse
           // quebrado ou uma falha no meio do caminho não deixava registro.
+          const pg = extrairErroPostgres(error);
           await registrarLogMeta({
             direcao: "ENTRADA",
             operacao: "WEBHOOK",
@@ -363,7 +365,10 @@ export const Route = createFileRoute("/api/public/webhooks/whatsapp")({
             status: "ERRO",
             resumo: "Erro ao processar evento do webhook.",
             payload: {
-              erro: String(error?.message || error).slice(0, 1000),
+              erro: pg.mensagem.slice(0, 1000),
+              sqlstate: pg.code,
+              detalhe: pg.detalhe,
+              dica: pg.hint,
               stack: String(error?.stack || "").slice(0, 1500),
             },
           });
