@@ -426,6 +426,16 @@ export async function enviarMensagemAtendente(conversaId: string, atendenteId: s
   // `tipo_midia` fora do JSON: a tela filtra por ele sem precisar descer no
   // payload, e o id/url do anexo ficam à mão para reenvio e para o histórico
   // depois que a Meta expira o media_id dela.
+  //
+  // `ON CONFLICT (meta_message_id) DO NOTHING`: a Meta aceita a mensagem e
+  // devolve o wamid, mas o INSERT estourava a restrição UNIQUE quando esse
+  // wamid já existia — o que tornava impossível enviar a SEGUNDA mensagem de
+  // qualquer conversa. A linha não era gravada, o UPDATE abaixo rodava mesmo
+  // assim, e a conversa ficava com o preview atualizado e o thread vazio:
+  // exatamente o sintoma de "a mensagem foi enviada mas não aparece no chat".
+  // `DO NOTHING` transforma a reentrega em sucesso: a mensagem já está
+  // registrada, então a conversa já tem o que mostrar.
+  const wamid = resMeta.messages?.[0]?.id ?? null;
   await db.execute(sql`
     INSERT INTO whatsapp_mensagens (conversa_id, autor_id, tipo, payload, meta_message_id, status, metadata, enviado_por_atendente, tipo_midia, media_id, media_url, arquivo_id)
     VALUES (
@@ -433,7 +443,7 @@ export async function enviarMensagemAtendente(conversaId: string, atendenteId: s
       ${atendenteId}::uuid,
       'MENSAGEM',
       ${JSON.stringify(payloadGravado)}::jsonb,
-      ${resMeta.messages?.[0]?.id},
+      ${wamid},
       'ENVIADA',
       '{"origem": "ATENDENTE"}'::jsonb,
       true,
@@ -441,16 +451,31 @@ export async function enviarMensagemAtendente(conversaId: string, atendenteId: s
       ${mediaId ? `'${mediaId}'` : null},
       ${mediaUrl ? `'${mediaUrl}'` : null},
       ${arquivoId ? `${arquivoId}::uuid` : null}
-    ) RETURNING id
+    )
+    ON CONFLICT (meta_message_id) DO NOTHING
+    RETURNING id
   `);
 
-  await db.execute(sql`
-    UPDATE whatsapp_conversas SET
-      ultimo_evento_em = now(),
-      ultima_mensagem_preview = ${previewTexto},
-      status = 'AGUARDANDO_CLIENTE'
-    WHERE id = ${conversaId}::uuid
-  `);
+  // O preview só pode avançar quando a linha realmente entrou. Sem esta
+  // checagem, um conflito de wamid atualizava o preview de uma mensagem que
+  // não foi gravada — a lista mostrava um texto que o thread não tinha.
+  const gravou = wamid
+    ? rowsOf(await db.execute(sql`
+        SELECT 1 FROM whatsapp_mensagens
+        WHERE conversa_id = ${conversaId}::uuid AND meta_message_id = ${wamid}
+        LIMIT 1
+      `)).length > 0
+    : true;
+
+  if (gravou) {
+    await db.execute(sql`
+      UPDATE whatsapp_conversas SET
+        ultimo_evento_em = now(),
+        ultima_mensagem_preview = ${previewTexto},
+        status = 'AGUARDANDO_CLIENTE'
+      WHERE id = ${conversaId}::uuid
+    `);
+  }
 }
 
 /**
