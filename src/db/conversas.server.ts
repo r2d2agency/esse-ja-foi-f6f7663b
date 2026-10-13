@@ -88,6 +88,19 @@ export async function ensureConversasSchema(silent = true) {
     console.error("[conversas.server] ERRO ao alterar whatsapp_mensagens:", err);
   }
 
+  // 2b. `telefone` é NOT NULL (herdado da tabela de campanhas) mas o envio
+  // do atendente não o preenche. Sem este DROP todo INSERT de mensagem
+  // enviada falha com not-null violation antes mesmo de chegar ao
+  // ON CONFLICT (meta_message_id) — a mensagem ia para o WhatsApp mas
+  // nunca aparecia no chat.
+  try {
+    await db.execute(sql`
+      ALTER TABLE whatsapp_mensagens ALTER COLUMN telefone DROP NOT NULL;
+    `);
+  } catch (err) {
+    console.error("[conversas.server] ERRO ao remover NOT NULL de telefone:", err);
+  }
+
   // 3. Tabela de respostas rápidas
   try {
     await db.execute(sql`
@@ -436,10 +449,14 @@ export async function enviarMensagemAtendente(conversaId: string, atendenteId: s
   // `DO NOTHING` transforma a reentrega em sucesso: a mensagem já está
   // registrada, então a conversa já tem o que mostrar.
   const wamid = resMeta.messages?.[0]?.id ?? null;
+  // `telefone` é NOT NULL na tabela (herdado das campanhas) e o envio do
+  // atendente não o preenche — sem isso o INSERT morre na validação antes
+  // de chegar ao ON CONFLICT. O telefone já foi buscado no SELECT da conversa.
   await db.execute(sql`
-    INSERT INTO whatsapp_mensagens (conversa_id, autor_id, tipo, payload, meta_message_id, status, metadata, enviado_por_atendente, tipo_midia, media_id, media_url, arquivo_id)
+    INSERT INTO whatsapp_mensagens (conversa_id, telefone, autor_id, tipo, payload, meta_message_id, status, metadata, enviado_por_atendente, tipo_midia, media_id, media_url, arquivo_id)
     VALUES (
       ${conversaId}::uuid,
+      ${conversa.telefone ?? null},
       ${atendenteId}::uuid,
       'MENSAGEM',
       ${JSON.stringify(payloadGravado)}::jsonb,
