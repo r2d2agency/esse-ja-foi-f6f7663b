@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "./index";
 import { ensureComunicacoesSchema } from "./comunicacoes.server";
+import { ensureConversasSchema } from "./conversas.server";
 import { registrarLogMeta, getUltimoErroLog } from "./logs-whatsapp.server";
 import { extrairErroPostgres } from "./erro-postgres";
 
@@ -103,6 +104,10 @@ export async function gerarDiagnosticoWhatsApp(): Promise<DiagnosticoWhatsApp> {
 
   try {
     await ensureComunicacoesSchema();
+    // whatsapp_conversas não é criada por nenhuma migração: `ensureConversasSchema`
+    // é a única que a cria. Rodar aqui é o que faz o botão "Rodar diagnóstico"
+    // consertar a tabela, em vez de só relatar que ela falta.
+    await ensureConversasSchema();
   } catch (e: any) {
     problemas.push(
       `Falha ao garantir as tabelas do WhatsApp: ${String(e?.message || e).slice(0, 300)}`,
@@ -277,10 +282,17 @@ export async function gerarDiagnosticoWhatsApp(): Promise<DiagnosticoWhatsApp> {
     //   conversas = 0, mensagens > 0 -> a mensagem entrou mas não virou conversa
     //   ambos = 0 -> nada chegou ao banco
     if (diag.contagens.conversas === 0 && diag.contagens.mensagens > 0) {
+      // A causa real já foi vista: `whatsapp_conversas` não existia (42P01),
+      // porque `ensureConversasSchema` era a única função que a criava e
+      // engolia qualquer falha. O INSERT do webhook falhava, nenhuma conversa
+      // nascia e o menu Conversas ficava vazio — sem nenhuma pista na tela.
+      // Agora o schema é garantido no boot, no webhook e aqui no diagnóstico.
+      const tabelaExiste = diag.tabelas["whatsapp_conversas"]?.existe;
       problemas.push(
         `Há ${diag.contagens.mensagens} mensagem(ns) gravada(s) mas NENHUMA conversa criada. ` +
-          "Isso indica que processarMensagemRecebida falhou no INSERT INTO whatsapp_conversas " +
-          "(provável coluna com tipo incompatível). Verifique a linha de erro do webhook no log acima.",
+          (tabelaExiste
+            ? "A tabela whatsapp_conversas existe agora — as próximas mensagens já devem criar conversas. Se as antigas não apareceram, elas foram gravadas sem conversa_id e precisam ser reprocessadas."
+            : "A tabela whatsapp_conversas NÃO existe. O diagnóstico acabou de tentar criá-la — se ainda falta, veja o erro do schema no log acima."),
       );
     }
     if (diag.contagens.conversas > 0) {

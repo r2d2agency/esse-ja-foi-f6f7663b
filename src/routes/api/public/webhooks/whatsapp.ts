@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { createHmac, timingSafeEqual } from "crypto";
 import { db } from "@/db/index";
 import { ensureComunicacoesSchema } from "@/db/comunicacoes.server";
+import { ensureConversasSchema } from "@/db/conversas.server";
 import { sql } from "drizzle-orm";
 import { registrarLogMeta } from "@/db/logs-whatsapp.server";
 import { extrairErroPostgres } from "@/db/erro-postgres";
@@ -81,6 +82,13 @@ export const Route = createFileRoute("/api/public/webhooks/whatsapp")({
           let ensureErro = "";
           try {
             await ensureComunicacoesSchema();
+            // whatsapp_conversas só é criada aqui — nenhuma migração toca nela.
+            // Se o boot falhar (transiente, ex.: conexão caiu no momento exato),
+            // o webhook se auto-corrige a cada mensagem recebida. Sem isto, uma
+            // única falha no boot deixava o sistema permanentemente mudo: toda
+            // mensagem falhava no INSERT INTO whatsapp_conversas e nenhuma
+            // conversa nascia.
+            await ensureConversasSchema();
           } catch (e: any) {
             ensureOk = false;
             ensureErro = String(e?.message || e);

@@ -4,8 +4,12 @@ import { db } from "./index";
 export async function ensureConversasSchema(silent = true) {
   if (!db) return;
 
+  // Cada passo roda em seu próprio try/catch. Antes, o CREATE TABLE era a
+  // primeira instrução dentro de um único try, então qualquer falha derrubava
+  // TODAS as seguintes — inclusive o `ALTER TABLE whatsapp_mensagens`, sem o
+  // qual nenhuma mensagem recebidora recebe conversa_id. Assim, uma única falha
+  // no boot deixava o sistema inteiro mudo.
   try {
-    // 1. Tabela de Conversas
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS whatsapp_conversas (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -27,7 +31,15 @@ export async function ensureConversasSchema(silent = true) {
         atualizado_em timestamptz DEFAULT now()
       );
     `);
+  } catch (err) {
+    // O CREATE TABLE é atômico: se qualquer FK não resolve (profiles ou
+    // anuncios_veiculo ainda não criados), o Postgres descarta a tabela inteira
+    // e devolve "relation does not exist". A tabela só é criada aqui — falhar
+    // aqui é o que estava deixando o menu Conversas vazio.
+    console.error("[conversas.server] ERRO ao criar whatsapp_conversas:", err);
+  }
 
+  try {
     await db.execute(sql`
       ALTER TABLE whatsapp_conversas
         ADD COLUMN IF NOT EXISTS contato_id uuid REFERENCES profiles(id),
@@ -35,7 +47,11 @@ export async function ensureConversasSchema(silent = true) {
         ADD COLUMN IF NOT EXISTS janela_expira_em timestamptz,
         ADD COLUMN IF NOT EXISTS ultima_resposta_cliente_em timestamptz;
     `);
+  } catch (err) {
+    console.error("[conversas.server] ERRO ao alterar whatsapp_conversas:", err);
+  }
 
+  try {
     // processarMensagemRecebida grava profiles.whatsapp_status ATIVO ao dar
     // entrada em um numero desconhecido. Sem esta coluna o INSERT estoura
     // (a tabela e criada em auth.server.ts sem ela) e nenhuma conversa nasce.
@@ -43,9 +59,13 @@ export async function ensureConversasSchema(silent = true) {
       ALTER TABLE profiles
         ADD COLUMN IF NOT EXISTS whatsapp_status text DEFAULT 'ATIVO';
     `);
+  } catch (err) {
+    console.error("[conversas.server] ERRO ao adicionar profiles.whatsapp_status:", err);
+  }
 
-    // 2. Tabela de Mensagens e Notas
-    // Nota: Reutiliza whatsapp_mensagens mas adiciona campos para notas internas e auditoria
+  // 2. Tabela de Mensagens e Notas
+  // Nota: Reutiliza whatsapp_mensagens mas adiciona campos para notas internas e auditoria
+  try {
     await db.execute(sql`
       ALTER TABLE whatsapp_mensagens
         ADD COLUMN IF NOT EXISTS conversa_id uuid REFERENCES whatsapp_conversas(id) ON DELETE CASCADE,
@@ -62,8 +82,14 @@ export async function ensureConversasSchema(silent = true) {
         ADD COLUMN IF NOT EXISTS media_url text,
         ADD COLUMN IF NOT EXISTS arquivo_id uuid;
     `);
+  } catch (err) {
+    // Sem `conversa_id` em whatsapp_mensagens toda mensagem gravada fica
+    // órfã: não aparece em nenhuma conversa e o histórico da tela fica vazio.
+    console.error("[conversas.server] ERRO ao alterar whatsapp_mensagens:", err);
+  }
 
-    // 3. Tabela de respostas rápidas
+  // 3. Tabela de respostas rápidas
+  try {
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS whatsapp_respostas_prontas (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -76,14 +102,27 @@ export async function ensureConversasSchema(silent = true) {
         atualizado_em timestamptz DEFAULT now()
       );
     `);
-
-    // 4. Índices para busca
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_conversas_contato ON whatsapp_conversas(contato_id)`);
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_mensagens_conversa ON whatsapp_mensagens(conversa_id)`);
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_respostas_prontas_escopo ON whatsapp_respostas_prontas(escopo, atendente_id)`);
-
   } catch (err) {
-    console.error("[conversas.server] Erro ao garantir schema:", err);
+    console.error(
+      "[conversas.server] ERRO ao criar whatsapp_respostas_prontas:",
+      err,
+    );
+  }
+
+  // 4. Índices para busca
+  try {
+    await db.execute(
+      sql`CREATE INDEX IF NOT EXISTS idx_conversas_contato ON whatsapp_conversas(contato_id)`,
+    );
+    await db.execute(
+      sql`CREATE INDEX IF NOT EXISTS idx_mensagens_conversa ON whatsapp_mensagens(conversa_id)`,
+    );
+    await db.execute(
+      sql`CREATE INDEX IF NOT EXISTS idx_respostas_prontas_escopo ON whatsapp_respostas_prontas(escopo, atendente_id)`,
+    );
+  } catch (err) {
+    // Índice ausente não quebra nada: só deixa a lista lenta com muitas linhas.
+    console.error("[conversas.server] ERRO ao criar índices:", err);
   }
 }
 
