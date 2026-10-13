@@ -110,6 +110,20 @@ export const migrateDb = async () => {
       await ensureRelatoriosSchema();
       await ensureMailSchema();
 
+      // Diagnóstico do WhatsApp: roda no boot e grava o resultado como linha de
+      // log. A conversa estava quebrada sem deixar rastro (o webhook só logava
+      // depois da assinatura), então o estado da configuração precisa aparecer na
+      // tela sem ninguém precisar rodar SELECT. Nunca pode derrubar o boot.
+      try {
+        const { gerarDiagnosticoWhatsApp } = await import('./diagnostico-whatsapp.server');
+        const diag = await gerarDiagnosticoWhatsApp();
+        if (diag.status !== 'OK') {
+          console.warn(`[Diagnóstico WhatsApp] ${diag.problemas.length} problema(s) encontrado(s).`);
+          for (const p of diag.problemas) console.warn(`  - ${p}`);
+        }
+      } catch (erro: any) {
+        console.error('[Diagnóstico WhatsApp] Falha ao rodar:', erro?.message || erro);
+      }
 
       await ensureSuperAdmin();
     } finally {

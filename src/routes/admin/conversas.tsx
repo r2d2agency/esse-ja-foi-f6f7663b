@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, Link } from '@tanstack/react-router';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -39,6 +39,7 @@ import {
   Image as ImageIcon,
   Video,
   MapPin,
+  ScrollText,
 } from 'lucide-react';
 import {
   Popover,
@@ -726,14 +727,29 @@ function CentralConversasPage() {
         <div className="p-4 border-b space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="font-bold text-sm">Conversas</h2>
-            <Button
-              size="sm"
-              className="h-7 text-xs bg-teal-600 hover:bg-teal-700 gap-1"
-              onClick={() => setNovaConversa(true)}
-            >
-              <Plus className="w-3 h-3" />
-              Nova conversa
-            </Button>
+            <div className="flex items-center gap-1">
+              {/* Atalho para o log da API Meta: a conversa só existe quando o
+                  webhook entrega, e o log é o que mostra se ele está chegando. */}
+              <Link to="/admin/conversas/logs">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs gap-1"
+                  title="Ver o log da API Meta"
+                >
+                  <ScrollText className="w-3 h-3" />
+                  Log da API Meta
+                </Button>
+              </Link>
+              <Button
+                size="sm"
+                className="h-7 text-xs bg-teal-600 hover:bg-teal-700 gap-1"
+                onClick={() => setNovaConversa(true)}
+              >
+                <Plus className="w-3 h-3" />
+                Nova conversa
+              </Button>
+            </div>
           </div>
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />

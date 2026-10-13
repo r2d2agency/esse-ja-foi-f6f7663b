@@ -28,6 +28,13 @@ export const Route = createFileRoute("/api/public/webhooks/whatsapp")({
 
           if (token === configToken) {
             console.log("[WhatsApp Webhook] Verificado com sucesso!");
+            await registrarLogMeta({
+              direcao: "ENTRADA",
+              operacao: "WEBHOOK",
+              status: "SUCESSO",
+              resumo: "Webhook verificado pela Meta (handshake concluído).",
+              payload: { modo: mode },
+            });
             return new Response(challenge, { status: 200 });
           }
 
@@ -38,6 +45,7 @@ export const Route = createFileRoute("/api/public/webhooks/whatsapp")({
             direcao: "ENTRADA",
             operacao: "WEBHOOK",
             status: "ERRO",
+            httpStatus: 403,
             resumo:
               "Verificação do webhook recusada: o token enviado pela Meta difere do configurado aqui.",
             payload: {
@@ -54,58 +62,154 @@ export const Route = createFileRoute("/api/public/webhooks/whatsapp")({
 
       // Recebimento de Eventos (POST)
       POST: async ({ request }) => {
-        const bodyText = await request.text();
-        const signature = request.headers.get("x-hub-signature-256");
-
-        if (!db) throw new Error("Database offline");
-        await ensureComunicacoesSchema();
-        const configRes = await db.execute(sql`SELECT app_secret FROM whatsapp_config LIMIT 1`);
-        const appSecret = (Array.isArray(configRes) ? configRes[0] : (configRes as any).rows?.[0])
-          ?.app_secret;
-
-        if (appSecret && signature) {
-          const expectedSignature =
-            "sha256=" + createHmac("sha256", appSecret).update(bodyText).digest("hex");
-
-          if (
-            !signature ||
-            !timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature))
-          ) {
-            console.error("[WhatsApp Webhook] Assinatura inválida.");
-            return new Response("Invalid signature", { status: 401 });
-          }
-        }
-
-        const payload = JSON.parse(bodyText);
-
-        // 2. Processar Payload
+        // O handler inteiro vive dentro deste try: antes, o JSON.parse e a
+        // validação da assinatura ficavam fora, então qualquer falha nesses
+        // passos matava a requisição sem escrever uma única linha — a tela de
+        // log continuava vazia e não havia como descobrir o motivo.
         try {
+          const bodyText = await request.text();
+          const signature = request.headers.get("x-hub-signature-256");
+          const inicio = Date.now();
+
           if (!db) throw new Error("Database offline");
+
+          // O schema e a config vêm antes de qualquer log porque o log precisa
+          // da tabela. Falha aqui também é registrada, senão o boot quebrado
+          // continuaria silencioso.
+          let ensureOk = true;
+          let ensureErro = "";
+          try {
+            await ensureComunicacoesSchema();
+          } catch (e: any) {
+            ensureOk = false;
+            ensureErro = String(e?.message || e);
+          }
+
+          let appSecret: string | null = null;
+          let configLida = true;
+          if (ensureOk) {
+            try {
+              const configRes = await db.execute(
+                sql`SELECT app_secret, waba_id, phone_number_id FROM whatsapp_config LIMIT 1`,
+              );
+              const linha = (Array.isArray(configRes)
+                ? configRes[0]
+                : (configRes as any).rows?.[0]) as any;
+              appSecret = linha?.app_secret ?? null;
+            } catch (e: any) {
+              configLida = false;
+              await registrarLogMeta({
+                direcao: "ENTRADA",
+                operacao: "WEBHOOK",
+                status: "ERRO",
+                httpStatus: 500,
+                resumo: "Falha ao ler whatsapp_config para validar a assinatura.",
+                payload: { erro: String(e?.message || e).slice(0, 1000) },
+              });
+            }
+          }
+
+          if (!ensureOk) {
+            await registrarLogMeta({
+              direcao: "ENTRADA",
+              operacao: "WEBHOOK",
+              status: "ERRO",
+              httpStatus: 500,
+              resumo:
+                "Falha ao garantir as tabelas do WhatsApp (ensureComunicacoesSchema). Sem elas nenhum evento pode ser processado.",
+              payload: { erro: ensureErro.slice(0, 1000) },
+            });
+            return new Response("Internal Server Error", { status: 500 });
+          }
+
+          // Linha-raiz do evento: gravada antes de qualquer validação, para que
+          // exista rastro mesmo que tudo abaixo falhe.
+          await registrarLogMeta({
+            direcao: "ENTRADA",
+            operacao: "WEBHOOK",
+            status: "SUCESSO",
+            httpStatus: 200,
+            resumo: "Evento recebido no webhook.",
+            payload: {
+              bytes: bodyText.length,
+              assinaturaPresente: Boolean(signature),
+              configLida,
+            },
+            duracaoMs: Date.now() - inicio,
+          });
+
+          const payload = JSON.parse(bodyText);
+
           // Extrair informações básicas
           const entry = payload.entry?.[0];
           const change = entry?.changes?.[0];
           const value = change?.value;
-          const wabaId = entry?.id;
-          const eventType = change?.field;
+          const wabaId = entry?.id ?? null;
+          const eventType = change?.field ?? null;
 
-          // 3. Registrar Log
-          await db.execute(sql`
-            INSERT INTO whatsapp_webhook_logs
-              (waba_id, event_type, direcao, endpoint, payload, status, erro_detalhe)
-            VALUES (
-              ${wabaId},
-              ${eventType},
-              'ENTRADA',
-              ${change?.field ? String(change.field) : null},
-              ${JSON.stringify(payload)}::jsonb,
-              'PROCESSADO',
-              null
-            )
-          `);
+          // --- Validação da assinatura HMAC ---
+          if (appSecret && signature) {
+            const expectedSignature =
+              "sha256=" + createHmac("sha256", appSecret).update(bodyText).digest("hex");
 
-          // 4. Lógica de Negócio (Idempotente)
+            if (
+              !signature ||
+              !timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature))
+            ) {
+              // Aqui estava o buraco que escondia a causa: o 401 era devolvido
+              // com um console.error e nenhuma linha no banco, então a tela de
+              // log parecia nunca ter sido chamada. O 401 continua (a Meta
+              // exige a recusa), mas agora ele fica visível.
+              console.error("[WhatsApp Webhook] Assinatura inválida.");
+              await registrarLogMeta({
+                direcao: "ENTRADA",
+                operacao: "WEBHOOK",
+                wabaId,
+                endpoint: eventType,
+                httpStatus: 401,
+                status: "ERRO",
+                resumo:
+                  "Assinatura inválida: o x-hub-signature-256 não confere com o app_secret gravado na configuração. Confira se o App Secret da Meta é o mesmo salvo em Comunicações > Configurações.",
+                payload: {
+                  assinaturaRecebida: signature.slice(0, 14) + "…",
+                  assinaturaEsperada: expectedSignature.slice(0, 14) + "…",
+                  bodyBytes: bodyText.length,
+                  eventType,
+                },
+                duracaoMs: Date.now() - inicio,
+              });
+              return new Response("Invalid signature", { status: 401 });
+            }
+          } else if (!appSecret) {
+            // Sem app_secret a validação é simplesmente ignorada — o webhook
+            // fica aberto. Estava acontecendo sem aviso nenhum.
+            await registrarLogMeta({
+              direcao: "ENTRADA",
+              operacao: "WEBHOOK",
+              httpStatus: 200,
+              status: "ERRO",
+              resumo:
+                "ATENÇÃO: nenhum app_secret configurado — a validação de assinatura foi ignorada e o webhook está sem verificação.",
+              payload: { eventType },
+              duracaoMs: Date.now() - inicio,
+            });
+          } else {
+            await registrarLogMeta({
+              direcao: "ENTRADA",
+              operacao: "WEBHOOK",
+              httpStatus: 200,
+              status: "ERRO",
+              resumo:
+                "ATENÇÃO: a Meta enviou o evento sem o header x-hub-signature-256, então a identidade não pode ser confirmada.",
+              payload: { eventType },
+              duracaoMs: Date.now() - inicio,
+            });
+          }
+
+          if (!db) throw new Error("Database offline");
+
+          // --- Mensagens recebidas ---
           if (value?.messages) {
-            // Mensagens recebidas
             const { processarMensagemRecebida } = await import("@/db/conversas.server");
             for (const msg of value.messages) {
               // Cada mensagem em seu próprio try/catch: um contato problemático
@@ -115,27 +219,26 @@ export const Route = createFileRoute("/api/public/webhooks/whatsapp")({
                 await processarMensagemRecebida(msg.from, msg);
               } catch (err: any) {
                 console.error("[WhatsApp Webhook] Falha ao processar mensagem:", err);
-                await db.execute(sql`
-                  INSERT INTO whatsapp_webhook_logs
-                    (waba_id, event_type, direcao, endpoint, payload, status, erro_detalhe)
-                  VALUES (
-                    ${wabaId},
-                    ${eventType},
-                    'ENTRADA',
-                    ${change?.field ? String(change.field) : null},
-                    ${JSON.stringify(msg)}::jsonb,
-                    'ERRO',
-                    ${String(err?.message || err).slice(0, 500)}
-                  )
-                `);
+                await registrarLogMeta({
+                  direcao: "ENTRADA",
+                  operacao: "WEBHOOK",
+                  wabaId,
+                  endpoint: eventType,
+                  httpStatus: 500,
+                  status: "ERRO",
+                  resumo: `Falha ao processar mensagem de ${msg?.from ?? "?"}.`,
+                  payload: {
+                    erro: String(err?.message || err).slice(0, 1000),
+                    mensagem: msg,
+                  },
+                  duracaoMs: Date.now() - inicio,
+                });
               }
             }
           }
 
+          // --- Atualizações de status (entregue, lido, falha) ---
           if (value?.statuses) {
-            // Atualizações de status (entregue, lido, falha).
-            // `status` aqui é o estado de entrega; o estado da fila do worker
-            // mora em `estado_fila`, então os dois não se atrapelham.
             for (const status of value.statuses) {
               const metaMessageId = status.id;
               const novo = String(status.status || "").toUpperCase();
@@ -186,6 +289,7 @@ export const Route = createFileRoute("/api/public/webhooks/whatsapp")({
             }
           }
 
+          // --- Status de template ---
           if (eventType === "message_template_status_update") {
             // O status vem em `value.event`, não em `value.event_type`: ler o
             // campo errado fazia a guarda abaixo falhar e o UPDATE nunca rodar,
@@ -207,31 +311,55 @@ export const Route = createFileRoute("/api/public/webhooks/whatsapp")({
                 await db.execute(sql`
                   UPDATE whatsapp_campanhas
                   SET status = 'AGUARDANDO', atualizado_em = now()
-                  WHERE status = 'TEMPLATE_INDESPONIVEL'
+                  WHERE status = 'TEMPLATE_INDISPONIVEL'
                     AND template_id IN (SELECT id FROM whatsapp_templates WHERE meta_name = ${templateName})
                 `);
               }
             }
           }
 
+          // Fechamento: diferencia "a Meta chamou e deu tudo certo" de "a Meta
+          // chamou mas o evento não tinha nada processável".
+          const qtdMensagens = value?.messages?.length ?? 0;
+          const qtdStatus = value?.statuses?.length ?? 0;
+          await registrarLogMeta({
+            direcao: "ENTRADA",
+            operacao: "WEBHOOK",
+            wabaId,
+            endpoint: eventType,
+            httpStatus: 200,
+            status: "SUCESSO",
+            resumo:
+              qtdMensagens || qtdStatus
+                ? `Evento processado: ${qtdMensagens} mensagem(ns), ${qtdStatus} atualização(ões) de status.`
+                : "Evento processado (sem mensagens nem status para tratar).",
+            payload: {
+              eventType,
+              wabaId,
+              telefone: value?.metadata?.phone_number_id ?? null,
+              mensagens: qtdMensagens,
+              status: qtdStatus,
+              temConfig: Boolean(appSecret),
+            },
+            duracaoMs: Date.now() - inicio,
+          });
+
           return new Response("EVENT_RECEIVED", { status: 200 });
         } catch (error: any) {
           console.error("[WhatsApp Webhook] Erro ao processar:", error);
-
-          if (db) {
-            await db.execute(sql`
-              INSERT INTO whatsapp_webhook_logs
-                (event_type, direcao, payload, status, erro_detalhe)
-              VALUES (
-                'ERRO_PROCESSAMENTO',
-                'ENTRADA',
-                ${JSON.stringify(payload)}::jsonb,
-                'ERRO',
-                ${error.message}
-              )
-            `);
-          }
-
+          // Antes esta linha só existia no catch interno: um JSON.parse
+          // quebrado ou uma falha no meio do caminho não deixava registro.
+          await registrarLogMeta({
+            direcao: "ENTRADA",
+            operacao: "WEBHOOK",
+            httpStatus: 500,
+            status: "ERRO",
+            resumo: "Erro ao processar evento do webhook.",
+            payload: {
+              erro: String(error?.message || error).slice(0, 1000),
+              stack: String(error?.stack || "").slice(0, 1500),
+            },
+          });
           return new Response("Internal Server Error", { status: 500 });
         }
       },

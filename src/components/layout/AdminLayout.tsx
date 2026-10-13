@@ -29,6 +29,7 @@ import {
   History,
   Terminal,
   MessageSquare,
+  ScrollText,
 } from "lucide-react";
 import { ReactNode, useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
@@ -184,6 +185,13 @@ const MENU_SECTIONS: MenuSection[] = [
         to: "/admin/conversas",
         activePrefixes: ["/admin/conversas"],
         description: "Atendimento WhatsApp com janela de 24h",
+      },
+      {
+        label: "Log WhatsApp",
+        icon: ScrollText,
+        to: "/admin/conversas/logs",
+        activePrefixes: ["/admin/conversas/logs"],
+        description: "Eventos da API Meta",
       },
       {
         label: "Lances",

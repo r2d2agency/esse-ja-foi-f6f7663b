@@ -9,8 +9,17 @@ import { db } from "./index";
  * funcionando. Este módulo é o ponto único de registro dos dois lados.
  *
  * Falha ao registrar não pode derrubar a operação principal: o log é
- * diagnóstico, não parte do fluxo.
+ * diagnóstico, não parte do fluxo. Mas ela também não pode desaparecer — o
+ * diagnóstico lê `getUltimoErroLog()` e mostra na tela que o log está falhando,
+ * que é a única forma de explicar uma tela de log vazia quando há atividade.
  */
+
+let ultimoErroLog: { mensagem: string; em: string } | null = null;
+
+/** Última falha ao escrever log, se houve. Lido pelo diagnóstico. */
+export function getUltimoErroLog() {
+  return ultimoErroLog;
+}
 
 export type DirecaoLog = "SAIDA" | "ENTRADA";
 
@@ -38,6 +47,8 @@ const ROTULO_OPERACAO: Record<string, string> = {
   WEBHOOK: "Evento recebido da Meta",
   ENVIAR_MENSAGEM_ATENDENTE: "Envio do atendente",
   UPLOAD_MIDIA: "Upload de mídia",
+  DIAGNOSTICO: "Diagnóstico do sistema",
+  INICIALIZACAO: "Inicialização do servidor",
 };
 
 /**
@@ -78,7 +89,13 @@ export async function registrarLogMeta(params: {
   payload?: unknown;
   duracaoMs?: number | null;
 }): Promise<void> {
-  if (!db) return;
+  if (!db) {
+    ultimoErroLog = {
+      mensagem: "Banco de dados indisponível (db é null) — nenhum log pode ser gravado.",
+      em: new Date().toISOString(),
+    };
+    return;
+  }
   const {
     direcao,
     operacao,
@@ -108,10 +125,34 @@ export async function registrarLogMeta(params: {
         ${duracaoMs}
       )
     `);
+    ultimoErroLog = null;
   } catch (erro: any) {
-    // A tabela pode não existir ainda (primeiro boot antes de qualquer request)
-    // ou o insert pode falhar por outro motivo. Registrar é acessório: um erro
-    // aqui jamais deve impedir o envio que estava sendo tentado.
-    console.error("[WhatsApp Logs] Falha ao registrar log:", erro?.message || erro);
+    const mensagem = String(erro?.message || erro);
+
+    // Segunda tentativa com a linha mínima: se a falha foi no payload
+    // (jsonb inválido, estouro de tamanho), sem ele a linha ainda entra e pelo
+    // menos o fato de que algo aconteceu fica registrado.
+    try {
+      await db.execute(sql`
+        INSERT INTO whatsapp_webhook_logs (
+          event_type, direcao, http_status, status, erro_detalhe
+        ) VALUES (
+          ${rotuloOperacao(operacao)},
+          ${direcao},
+          ${httpStatus},
+          ${status},
+          ${`[log simplificado] ${resumir(resumo, 1500) ?? ""}`.slice(0, 1500)}
+        )
+      `);
+      return;
+    } catch {
+      // Cai fora: nem a linha mínima entrou.
+    }
+
+    // Registrar é acessório: um erro aqui jamais deve impedir o envio que
+    // estava sendo tentado. Mas ele fica guardado para o diagnóstico mostrar,
+    // em vez de desaparecer no console do servidor.
+    ultimoErroLog = { mensagem, em: new Date().toISOString() };
+    console.error("[WhatsApp Logs] Falha ao registrar log:", mensagem);
   }
 }

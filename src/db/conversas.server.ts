@@ -67,8 +67,7 @@ export async function ensureConversasSchema(silent = true) {
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS whatsapp_respostas_prontas (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        -- Dentro do bloco DO as aspas simples precisam ser dobradas (''X'').
-        escopo text NOT NULL DEFAULT ''GLOBAL'', -- GLOBAL | ATENDENTE
+        escopo text NOT NULL DEFAULT 'GLOBAL', -- GLOBAL | ATENDENTE
         atendente_id uuid REFERENCES profiles(id),
         atalho text NOT NULL,
         titulo text,

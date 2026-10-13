@@ -73,6 +73,7 @@ import { Route as VistoriadorPerfilRouteImport } from './routes/vistoriador.perf
 import { Route as AdminAnaliseVistoriaIdRouteImport } from './routes/admin/analise-vistoria.$id'
 import { Route as AdminCompradorIdRouteImport } from './routes/admin/comprador.$id'
 import { Route as AdminContratoIdRouteImport } from './routes/admin/contrato.$id'
+import { Route as AdminConversasLogsRouteImport } from './routes/admin/conversas.logs'
 import { Route as AdminLeiloesIndexRouteImport } from './routes/admin/leiloes.index'
 import { Route as AdminLeiloesIdRouteImport } from './routes/admin/leiloes.$id'
 import { Route as AdminNegociacaoIdRouteImport } from './routes/admin/negociacao.$id'
@@ -416,6 +417,11 @@ const AdminContratoIdRoute = AdminContratoIdRouteImport.update({
   path: '/contrato/$id',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminConversasLogsRoute = AdminConversasLogsRouteImport.update({
+  id: '/logs',
+  path: '/logs',
+  getParentRoute: () => AdminConversasRoute,
+} as any)
 const AdminLeiloesIndexRoute = AdminLeiloesIndexRouteImport.update({
   id: '/leiloes/',
   path: '/leiloes/',
@@ -555,7 +561,7 @@ export interface FileRoutesByFullPath {
   '/admin/comunicacoes': typeof AdminComunicacoesRoute
   '/admin/configuracoes': typeof AdminConfiguracoesRoute
   '/admin/contratos': typeof AdminContratosRoute
-  '/admin/conversas': typeof AdminConversasRoute
+  '/admin/conversas': typeof AdminConversasRouteWithChildren
   '/admin/demo': typeof AdminDemoRoute
   '/admin/entregas': typeof AdminEntregasRoute
   '/admin/logs': typeof AdminLogsRoute
@@ -598,6 +604,7 @@ export interface FileRoutesByFullPath {
   '/admin/analise-vistoria/$id': typeof AdminAnaliseVistoriaIdRoute
   '/admin/comprador/$id': typeof AdminCompradorIdRoute
   '/admin/contrato/$id': typeof AdminContratoIdRoute
+  '/admin/conversas/logs': typeof AdminConversasLogsRoute
   '/admin/leiloes/$id': typeof AdminLeiloesIdRoute
   '/admin/negociacao/$id': typeof AdminNegociacaoIdRoute
   '/admin/pagamento/$id': typeof AdminPagamentoIdRoute
@@ -638,7 +645,7 @@ export interface FileRoutesByTo {
   '/admin/comunicacoes': typeof AdminComunicacoesRoute
   '/admin/configuracoes': typeof AdminConfiguracoesRoute
   '/admin/contratos': typeof AdminContratosRoute
-  '/admin/conversas': typeof AdminConversasRoute
+  '/admin/conversas': typeof AdminConversasRouteWithChildren
   '/admin/demo': typeof AdminDemoRoute
   '/admin/entregas': typeof AdminEntregasRoute
   '/admin/logs': typeof AdminLogsRoute
@@ -681,6 +688,7 @@ export interface FileRoutesByTo {
   '/admin/analise-vistoria/$id': typeof AdminAnaliseVistoriaIdRoute
   '/admin/comprador/$id': typeof AdminCompradorIdRoute
   '/admin/contrato/$id': typeof AdminContratoIdRoute
+  '/admin/conversas/logs': typeof AdminConversasLogsRoute
   '/admin/leiloes/$id': typeof AdminLeiloesIdRoute
   '/admin/negociacao/$id': typeof AdminNegociacaoIdRoute
   '/admin/pagamento/$id': typeof AdminPagamentoIdRoute
@@ -727,7 +735,7 @@ export interface FileRoutesById {
   '/admin/comunicacoes': typeof AdminComunicacoesRoute
   '/admin/configuracoes': typeof AdminConfiguracoesRoute
   '/admin/contratos': typeof AdminContratosRoute
-  '/admin/conversas': typeof AdminConversasRoute
+  '/admin/conversas': typeof AdminConversasRouteWithChildren
   '/admin/demo': typeof AdminDemoRoute
   '/admin/entregas': typeof AdminEntregasRoute
   '/admin/logs': typeof AdminLogsRoute
@@ -770,6 +778,7 @@ export interface FileRoutesById {
   '/admin/analise-vistoria/$id': typeof AdminAnaliseVistoriaIdRoute
   '/admin/comprador/$id': typeof AdminCompradorIdRoute
   '/admin/contrato/$id': typeof AdminContratoIdRoute
+  '/admin/conversas/logs': typeof AdminConversasLogsRoute
   '/admin/leiloes/$id': typeof AdminLeiloesIdRoute
   '/admin/negociacao/$id': typeof AdminNegociacaoIdRoute
   '/admin/pagamento/$id': typeof AdminPagamentoIdRoute
@@ -860,6 +869,7 @@ export interface FileRouteTypes {
     | '/admin/analise-vistoria/$id'
     | '/admin/comprador/$id'
     | '/admin/contrato/$id'
+    | '/admin/conversas/logs'
     | '/admin/leiloes/$id'
     | '/admin/negociacao/$id'
     | '/admin/pagamento/$id'
@@ -943,6 +953,7 @@ export interface FileRouteTypes {
     | '/admin/analise-vistoria/$id'
     | '/admin/comprador/$id'
     | '/admin/contrato/$id'
+    | '/admin/conversas/logs'
     | '/admin/leiloes/$id'
     | '/admin/negociacao/$id'
     | '/admin/pagamento/$id'
@@ -1031,6 +1042,7 @@ export interface FileRouteTypes {
     | '/admin/analise-vistoria/$id'
     | '/admin/comprador/$id'
     | '/admin/contrato/$id'
+    | '/admin/conversas/logs'
     | '/admin/leiloes/$id'
     | '/admin/negociacao/$id'
     | '/admin/pagamento/$id'
@@ -1529,6 +1541,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminContratoIdRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/conversas/logs': {
+      id: '/admin/conversas/logs'
+      path: '/logs'
+      fullPath: '/admin/conversas/logs'
+      preLoaderRoute: typeof AdminConversasLogsRouteImport
+      parentRoute: typeof AdminConversasRoute
+    }
     '/admin/leiloes/': {
       id: '/admin/leiloes/'
       path: '/leiloes'
@@ -1698,6 +1717,18 @@ const AdminAnunciosRouteWithChildren = AdminAnunciosRoute._addFileChildren(
   AdminAnunciosRouteChildren,
 )
 
+interface AdminConversasRouteChildren {
+  AdminConversasLogsRoute: typeof AdminConversasLogsRoute
+}
+
+const AdminConversasRouteChildren: AdminConversasRouteChildren = {
+  AdminConversasLogsRoute: AdminConversasLogsRoute,
+}
+
+const AdminConversasRouteWithChildren = AdminConversasRoute._addFileChildren(
+  AdminConversasRouteChildren,
+)
+
 interface AdminVeiculoIdRouteChildren {
   AdminVeiculoIdPosVistoriaRoute: typeof AdminVeiculoIdPosVistoriaRoute
 }
@@ -1719,7 +1750,7 @@ interface AdminRouteChildren {
   AdminComunicacoesRoute: typeof AdminComunicacoesRoute
   AdminConfiguracoesRoute: typeof AdminConfiguracoesRoute
   AdminContratosRoute: typeof AdminContratosRoute
-  AdminConversasRoute: typeof AdminConversasRoute
+  AdminConversasRoute: typeof AdminConversasRouteWithChildren
   AdminDemoRoute: typeof AdminDemoRoute
   AdminEntregasRoute: typeof AdminEntregasRoute
   AdminLogsRoute: typeof AdminLogsRoute
@@ -1754,7 +1785,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminComunicacoesRoute: AdminComunicacoesRoute,
   AdminConfiguracoesRoute: AdminConfiguracoesRoute,
   AdminContratosRoute: AdminContratosRoute,
-  AdminConversasRoute: AdminConversasRoute,
+  AdminConversasRoute: AdminConversasRouteWithChildren,
   AdminDemoRoute: AdminDemoRoute,
   AdminEntregasRoute: AdminEntregasRoute,
   AdminLogsRoute: AdminLogsRoute,

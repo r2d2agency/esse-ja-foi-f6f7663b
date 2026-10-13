@@ -301,6 +301,16 @@ export const getWebhookLogsFn = createServerFn({ method: "GET" }).handler(async 
   return logs as any[];
 });
 
+/**
+ * Roda o diagnóstico do WhatsApp sob demanda (botão na tela de log). O mesmo
+ * diagnóstico roda no boot; aqui ele pode ser repetido depois de corrigir a
+ * configuração, sem reiniciar o servidor.
+ */
+export const executarDiagnosticoFn = createServerFn({ method: "GET" }).handler(async () => {
+  const { gerarDiagnosticoWhatsApp } = await import("../db/diagnostico-whatsapp.server");
+  return (await gerarDiagnosticoWhatsApp()) as any;
+});
+
 export const criarTemplateMetaFn = createServerFn({ method: "POST" })
   .validator((data: any) => {
     if (!data || typeof data !== "object") {
