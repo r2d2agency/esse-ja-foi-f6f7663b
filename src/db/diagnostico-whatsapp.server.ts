@@ -41,6 +41,35 @@ function preenchido(valor: unknown): boolean {
   return typeof valor === "string" ? valor.trim().length > 0 : valor != null;
 }
 
+/**
+ * Roda a query real da listagem — a mesma que `listarConversas` monta, sem
+ * filtro. Só lê, então é seguro executar a qualquer hora.
+ *
+ * Existe porque o diagnóstico conferia tabela e tipo de coluna, mas havia um
+ * estado que escapava: `whatsapp_conversas` existe, `contato_id` é uuid, o
+ * INSERT do webhook funciona — e ainda assim a lista volta vazia. Isso só
+ * acontece se a própria query de listagem estoura, e o estouro morria no
+ * servidor: a tela mostrava "nenhuma conversa" sem explicar o motivo. Rodando a
+ * query aqui, o erro real do Postgres entra em `problemas` e aparece na tela.
+ */
+async function testarListagem(): Promise<string | null> {
+  try {
+    await db!.execute(sql`
+      SELECT c.id
+      FROM whatsapp_conversas c
+      LEFT JOIN profiles p ON p.id = c.contato_id
+      LEFT JOIN profiles resp ON resp.id = c.responsavel_id
+      LEFT JOIN anuncios_veiculo v ON v.id = c.contexto_veiculo_id
+      WHERE 1=1
+      ORDER BY c.ultimo_evento_em DESC
+      LIMIT 1
+    `);
+    return null;
+  } catch (e: any) {
+    return extrairErroPostgres(e).mensagem;
+  }
+}
+
 export type DiagnosticoWhatsApp = {
   geradoEm: string;
   status: "OK" | "ATENCAO";
@@ -259,6 +288,17 @@ export async function gerarDiagnosticoWhatsApp(): Promise<DiagnosticoWhatsApp> {
         `ATENÇÃO: ${diag.contagens.conversas} conversa(s) existem no banco mas a tela mostra vazio. ` +
           "O problema está na listagem, não na criação — revise o filtro de status e o JOIN com profiles.",
       );
+      // A própria hipótese anterior ("filtro de status / JOIN") fica sem prova:
+      // o filtro inicial é TODAS, que não filtra nada, e os JOINs são LEFT, que
+      // nunca removem linha. Se a lista continua vazia, resta a query estar
+      // estourando — e aí o erro do Postgres é a resposta.
+      const erroListagem = await testarListagem();
+      if (erroListagem) {
+        problemas.push(
+          `A query de listagem de conversas FALHA no banco: ${erroListagem} ` +
+            "É por isso que a tela mostra vazia mesmo com conversas gravadas.",
+        );
+      }
     }
   } catch (e: any) {
     problemas.push(`Erro ao contar conversas/mensagens: ${String(e?.message || e).slice(0, 200)}`);
