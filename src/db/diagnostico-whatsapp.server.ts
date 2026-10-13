@@ -238,6 +238,28 @@ export async function gerarDiagnosticoWhatsApp(): Promise<DiagnosticoWhatsApp> {
         "Nenhuma mensagem nem conversa registrada. Se a Meta já chamou o webhook, confira o App Secret — assinatura inválida devolve 401 antes de criar conversa.",
       );
     }
+
+    // O sintoma que este diagnóstico existe para explicar: a tela de log mostra
+    // eventos (o webhook chegou, assinou, respondeu) mas a lista de conversas
+    // continua vazia. Isso significa que `processarMensagemRecebida` falhou —
+    // e o motivo estava escondido porque o Drizzle engolia o erro do Postgres.
+    // Distinguir os três estados é o que aponta a correção:
+    //   conversas > 0  -> a criação funciona; o problema é a listagem
+    //   conversas = 0, mensagens > 0 -> a mensagem entrou mas não virou conversa
+    //   ambos = 0 -> nada chegou ao banco
+    if (diag.contagens.conversas === 0 && diag.contagens.mensagens > 0) {
+      problemas.push(
+        `Há ${diag.contagens.mensagens} mensagem(ns) gravada(s) mas NENHUMA conversa criada. ` +
+          "Isso indica que processarMensagemRecebida falhou no INSERT INTO whatsapp_conversas " +
+          "(provável coluna com tipo incompatível). Verifique a linha de erro do webhook no log acima.",
+      );
+    }
+    if (diag.contagens.conversas > 0) {
+      problemas.push(
+        `ATENÇÃO: ${diag.contagens.conversas} conversa(s) existem no banco mas a tela mostra vazio. ` +
+          "O problema está na listagem, não na criação — revise o filtro de status e o JOIN com profiles.",
+      );
+    }
   } catch (e: any) {
     problemas.push(`Erro ao contar conversas/mensagens: ${String(e?.message || e).slice(0, 200)}`);
   }
