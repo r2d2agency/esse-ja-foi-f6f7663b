@@ -519,11 +519,18 @@ function ComunicacoesPage() {
   };
 
   const handleProcessarEnvio = async (id: string) => {
-    toast.promise(processarEnvio({ data: id }), {
-      loading: "Processando fila de envio...",
-      success: "Envio concluído!",
-      error: (err) => `Erro no processamento: ${err.message}`,
-    });
+    // O handler devolve `{ok:false, error}` em vez de lançar: sem esta
+    // checagem o toast de sucesso aparecia mesmo quando o processamento falhava.
+    try {
+      const res: any = await processarEnvio({ data: id });
+      if (res && res.ok === false) {
+        toast.error(res.error || "Falha ao processar o envio da campanha.");
+        return;
+      }
+      toast.success("Envio concluído!");
+    } catch (err: any) {
+      toast.error(`Erro no processamento: ${err.message}`);
+    }
   };
 
   const handleEnviarTeste = async () => {

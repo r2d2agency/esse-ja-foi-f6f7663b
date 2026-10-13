@@ -363,6 +363,17 @@ function CentralConversasPage() {
   // "Não autorizado", sem gerar log algum porque nunca chega ao INSERT.
   const getToken = () => getSessionToken();
 
+  /**
+   * Server functions devolvem `{ok:false, error}` em vez de lançar. Sem esta
+   * checagem a mutation tratava a falha como sucesso e o atendente via a
+   * mensagem sumir sem nenhum aviso — o erro só existia no log do servidor.
+   */
+  const exigirOk = (res: any) => {
+    if (res && res.ok === false) {
+      throw new Error(res.error || "A operação não pôde ser concluída.");
+    }
+  };
+
   const filtrosQuery = useMemo(
     () => ({ status: filtros.status, ...(busca.trim() ? { busca: busca.trim() } : {}) }),
     [filtros.status, busca],
@@ -406,8 +417,13 @@ function CentralConversasPage() {
   }, [conversaAtiva?.mensagens]);
 
   const mutationEnviar = useMutation({
-    mutationFn: (payload: any) =>
-      enviarMsg({ data: { token: getToken(), conversaId: selectedId, payload } }),
+    mutationFn: async (payload: any) => {
+      const res: any = await enviarMsg({
+        data: { token: getToken(), conversaId: selectedId, payload },
+      });
+      exigirOk(res);
+      return res;
+    },
     onSuccess: () => {
       setMensagem('');
       queryClient.invalidateQueries({ queryKey: ['conversa', selectedId] });
@@ -417,8 +433,13 @@ function CentralConversasPage() {
   });
 
   const mutationApelido = useMutation({
-    mutationFn: () =>
-      definirApelido({ data: { token: getToken(), conversaId: selectedId!, apelido: apelidoTemp } }),
+    mutationFn: async () => {
+      const res: any = await definirApelido({
+        data: { token: getToken(), conversaId: selectedId!, apelido: apelidoTemp },
+      });
+      exigirOk(res);
+      return res;
+    },
     onSuccess: () => {
       setEditandoApelido(false);
       queryClient.invalidateQueries({ queryKey: ['conversa', selectedId] });
@@ -429,7 +450,11 @@ function CentralConversasPage() {
   });
 
   const mutationResolver = useMutation({
-    mutationFn: () => resolverConversa({ data: { token: getToken(), conversaId: selectedId! } }),
+    mutationFn: async () => {
+      const res: any = await resolverConversa({ data: { token: getToken(), conversaId: selectedId! } });
+      exigirOk(res);
+      return res;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['conversa', selectedId] });
       queryClient.invalidateQueries({ queryKey: ['conversas'] });
@@ -439,7 +464,11 @@ function CentralConversasPage() {
   });
 
   const mutationSalvarResposta = useMutation({
-    mutationFn: (dados: any) => salvarResposta({ data: { token: getToken(), ...dados } }),
+    mutationFn: async (dados: any) => {
+      const res: any = await salvarResposta({ data: { token: getToken(), ...dados } });
+      exigirOk(res);
+      return res;
+    },
     onSuccess: () => {
       setNovaResposta(false);
       queryClient.invalidateQueries({ queryKey: ['respostas-prontas'] });
@@ -449,7 +478,11 @@ function CentralConversasPage() {
   });
 
   const mutationExcluirResposta = useMutation({
-    mutationFn: (id: string) => excluirResposta({ data: { token: getToken(), id } }),
+    mutationFn: async (id: string) => {
+      const res: any = await excluirResposta({ data: { token: getToken(), id } });
+      exigirOk(res);
+      return res;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['respostas-prontas'] });
       toast.success('Resposta rápida excluída');
@@ -458,11 +491,14 @@ function CentralConversasPage() {
   });
 
   const mutationUpload = useMutation({
-    mutationFn: (dados: { arquivo: string; nome: string; tipo: string }) =>
-      uploadMidia({ data: { token: getToken(), ...dados } }),
+    mutationFn: async (dados: { arquivo: string; nome: string; tipo: string }) => {
+      const res: any = await uploadMidia({ data: { token: getToken(), ...dados } });
+      exigirOk(res);
+      return res;
+    },
     onSuccess: (res: any) => {
       if (!anexo) return;
-      setAnexo({ ...anexo, media_id: res?.media_id, arquivo_id: res?.arquivo_id, tamanho: res?.tamanho });
+      setAnexo({ ...anexo, media_id: res?.resultado?.media_id ?? res?.media_id, arquivo_id: res?.resultado?.arquivo_id ?? res?.arquivo_id, tamanho: res?.resultado?.tamanho ?? res?.tamanho });
     },
     onError: (err) => toast.error(`Erro ao subir anexo: ${err.message}`),
   });
@@ -545,10 +581,19 @@ function CentralConversasPage() {
    * não precisa ser obrigado a escolher um.
    */
   const mutationCadastrarContato = useMutation({
-    mutationFn: () =>
-      cadastrarContato({ data: { nome: novoNome, telefone: novoTelefone } }),
+    mutationFn: async () => {
+      const res: any = await cadastrarContato({
+        data: { nome: novoNome, telefone: novoTelefone },
+      });
+      exigirOk(res);
+      return res;
+    },
     onSuccess: (res: any) => {
-      const perfil = { id: res?.id, nome: novoNome.trim(), telefone: novoTelefone };
+      const perfil = {
+        id: res?.resultado?.id ?? res?.id,
+        nome: novoNome.trim(),
+        telefone: novoTelefone,
+      };
       setNovoContato(false);
       setNovoNome('');
       setNovoTelefone('');
@@ -623,17 +668,22 @@ function CentralConversasPage() {
     ).some((v) => !v);
 
   const mutationIniciarConversa = useMutation({
-    mutationFn: (dados: {
+    mutationFn: async (dados: {
       telefone: string;
       nome?: string | null;
       template_id: string;
       variaveis: string[];
-    }) => iniciarConversa({ data: { token: getToken(), ...dados } }),
+    }) => {
+      const res: any = await iniciarConversa({ data: { token: getToken(), ...dados } });
+      exigirOk(res);
+      return res;
+    },
     onSuccess: (res: any) => {
       fecharDialogoNovaConversa();
       queryClient.invalidateQueries({ queryKey: ['conversas'] });
-      queryClient.invalidateQueries({ queryKey: ['conversa', res?.conversaId] });
-      if (res?.conversaId) setSelectedId(res.conversaId);
+      const conversaId = res?.resultado?.conversaId ?? res?.conversaId;
+      queryClient.invalidateQueries({ queryKey: ['conversa', conversaId] });
+      if (conversaId) setSelectedId(conversaId);
       toast.success('Conversa iniciada');
     },
     onError: (err) => toast.error(`Erro ao iniciar conversa: ${err.message}`),

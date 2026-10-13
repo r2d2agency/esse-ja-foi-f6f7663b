@@ -213,7 +213,34 @@ export async function getConversaCompleta(conversaId: string) {
 }
 
 export async function enviarMensagemAtendente(conversaId: string, atendenteId: string, payload: any) {
-  if (!db) return;
+  // Este `return` mudo era o sintoma que o atendente via como "o envio não
+  // aconteceu e não apareceu nada": o handler do server function não lançava,
+  // não gravava log e não escrevia mensagem — a tela só ficava sem resposta.
+  // Agora ele lança, para que o try/catch do server function transforme a falha
+  // em erro visível.
+  if (!db) throw new Error("Banco de dados indisponível.");
+
+  // Linha de entrada gravada antes de qualquer consulta: se o envio falhar no
+  // meio (template não encontrado, janela, recusa da Meta), o log passa a
+  // mostrar que a tentativa existiu — antes, só sobravam as linhas que a Meta
+  // registrava quando a chamada chegava a sair.
+  const inicioEnvio = Date.now();
+  try {
+    const { registrarLogMeta } = await import("./logs-whatsapp.server");
+    await registrarLogMeta({
+      direcao: "SAIDA",
+      operacao: "ENVIAR_MENSAGEM_ATENDENTE",
+      status: "SUCESSO",
+      resumo: `Tentativa de envio iniciada (${payload?.tipo || "?"}${
+        payload?.template_name ? ` / ${payload.template_name}` : ""
+      }).`,
+      payload: { conversaId, tipo: payload?.tipo ?? null, template: payload?.template_name ?? null },
+      duracaoMs: 0,
+    });
+  } catch (e) {
+    // Falha de log nunca impede o envio.
+    console.error("[conversas] falha ao registrar início do envio:", e);
+  }
 
   const { metaService } = await import("./meta-whatsapp.server");
 

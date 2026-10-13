@@ -145,11 +145,42 @@ export const enviarMensagemAtendenteFn = createServerFn({ method: "POST" })
       .parse(data),
   )
   .handler(async ({ data }) => {
-    const atendenteId = await userIdFrom(data.token ?? null, "ENVIAR_MENSAGEM");
-    if (!atendenteId) throw new Error("Não autorizado");
-    const payload =
-      data.payload.tipo === "TEMPLATE" ? await montarPayloadTemplate(data.payload) : data.payload;
-    return db.enviarMensagemAtendente(data.conversaId, atendenteId, payload);
+    // Envio sempre responde. Antes o handler lançava e a exceção era engolida
+    // pelo servidor: o navegador recebia uma página de erro sem corpo, o
+    // atendente via "Falha ao carregar" e nenhum log de saída era gravado —
+    // impossível distinguir "a mensagem saiu" de "morreu no caminho". Agora o
+    // desfecho volta em `{ok, ...}` e é registrado.
+    try {
+      const atendenteId = await userIdFrom(data.token ?? null, "ENVIAR_MENSAGEM");
+      if (!atendenteId) throw new Error("Não autorizado");
+      const payload =
+        data.payload.tipo === "TEMPLATE"
+          ? await montarPayloadTemplate(data.payload)
+          : data.payload;
+      const resultado = await db.enviarMensagemAtendente(data.conversaId, atendenteId, payload);
+      return { ok: true, resultado };
+    } catch (error: any) {
+      console.error("[conversas] falha ao enviar mensagem:", error);
+      try {
+        const { registrarLogMeta } = await import("../db/logs-whatsapp.server");
+        await registrarLogMeta({
+          direcao: "SAIDA",
+          operacao: "ENVIAR_MENSAGEM_ATENDENTE",
+          httpStatus: 500,
+          status: "ERRO",
+          resumo: "Envio da mensagem falhou antes de chegar à Meta.",
+          payload: {
+            conversaId: data.conversaId,
+            tipo: data.payload?.tipo ?? null,
+            template: (data.payload as any)?.template_name ?? null,
+            erro: String(error?.message || error).slice(0, 1000),
+          },
+        });
+      } catch (e) {
+        console.error("[conversas] falha ao registrar erro de envio:", e);
+      }
+      return { ok: false, error: String(error?.message || error) };
+    }
   });
 
 /**
@@ -171,24 +202,48 @@ export const uploadMidiaWhatsAppFn = createServerFn({ method: "POST" })
       .parse(data),
   )
   .handler(async ({ data }) => {
-    const atendenteId = await userIdFrom(data.token ?? null, "UPLOAD_MIDIA");
-    if (!atendenteId) throw new Error("Não autorizado");
+    // Mesmo tratamento do envio: o anexo devolve `{ok:false, error}` em vez de
+    // derrubar a requisição, para o erro aparecer na tela.
+    try {
+      const atendenteId = await userIdFrom(data.token ?? null, "UPLOAD_MIDIA");
+      if (!atendenteId) throw new Error("Não autorizado");
 
-    const { metaService } = await import("@/db/meta-whatsapp.server");
-    const { mediaId, tamanho } = await metaService.uploadMedia(
-      data.arquivo,
-      data.nome,
-      data.tipo,
-    );
+      const { metaService } = await import("@/db/meta-whatsapp.server");
+      const { mediaId, tamanho } = await metaService.uploadMedia(
+        data.arquivo,
+        data.nome,
+        data.tipo,
+      );
 
-    const { salvarArquivo } = await import("@/db/arquivos.server");
-    const buffer = Buffer.from(
-      String(data.arquivo).replace(/^data:[^;]+;base64,/, ""),
-      "base64",
-    );
-    const arquivoId = await salvarArquivo(buffer, data.tipo);
+      const { salvarArquivo } = await import("@/db/arquivos.server");
+      const buffer = Buffer.from(
+        String(data.arquivo).replace(/^data:[^;]+;base64,/, ""),
+        "base64",
+      );
+      const arquivoId = await salvarArquivo(buffer, data.tipo);
 
-    return { media_id: mediaId, arquivo_id: arquivoId, tamanho };
+      return { ok: true, media_id: mediaId, arquivo_id: arquivoId, tamanho };
+    } catch (error: any) {
+      console.error("[conversas] falha ao subir mídia:", error);
+      try {
+        const { registrarLogMeta } = await import("../db/logs-whatsapp.server");
+        await registrarLogMeta({
+          direcao: "SAIDA",
+          operacao: "UPLOAD_MIDIA",
+          httpStatus: 500,
+          status: "ERRO",
+          resumo: "Falha ao subir anexo para a Meta.",
+          payload: {
+            nome: data.nome ?? null,
+            tipo: data.tipo ?? null,
+            erro: String(error?.message || error).slice(0, 1000),
+          },
+        });
+      } catch (e) {
+        console.error("[conversas] falha ao registrar erro de upload:", e);
+      }
+      return { ok: false, error: String(error?.message || error) };
+    }
   });
 
 export const definirApelidoFn = createServerFn({ method: "POST" })
@@ -205,15 +260,52 @@ export const definirApelidoFn = createServerFn({ method: "POST" })
     return db.definirApelido(data.conversaId, data.apelido);
   });
 
+/**
+ * Wrapper que garante que toda operação do atendimento responda com JSON
+ * legível em vez de derrubar a requisição. Sem isso o navegador recebia uma
+ * página de erro sem corpo (`503 ()`) e o atendente via "Falha ao carregar"
+ * sem nenhuma pista do motivo — e o log de saída ficava vazio porque a
+ * exceção morria antes de qualquer gravação. O `erro` é registrado em
+ * `whatsapp_webhook_logs`, onde a tela de Log WhatsApp o exibe.
+ */
+function comTratamento<T>(handler: () => Promise<T>): Promise<
+  { ok: true; resultado: T } | { ok: false; error: string }
+> {
+  return (async () => {
+    try {
+      const resultado = await handler();
+      return { ok: true, resultado };
+    } catch (error: any) {
+      console.error("[conversas] falha na operação:", error);
+      try {
+        const { registrarLogMeta } = await import("../db/logs-whatsapp.server");
+        await registrarLogMeta({
+          direcao: "SAIDA",
+          operacao: "OPERACAO_CONVERSA",
+          httpStatus: 500,
+          status: "ERRO",
+          resumo: "Operação da central de conversas falhou.",
+          payload: { erro: String(error?.message || error).slice(0, 1000) },
+        });
+      } catch (e) {
+        console.error("[conversas] falha ao registrar erro da operação:", e);
+      }
+      return { ok: false, error: String(error?.message || error) };
+    }
+  })();
+}
+
 export const resolverConversaFn = createServerFn({ method: "POST" })
   .validator((data: unknown) =>
     z.object({ token: z.string().nullable().optional(), conversaId: z.string().uuid() }).parse(data),
   )
-  .handler(async ({ data }) => {
-    const atendenteId = await userIdFrom(data.token ?? null, "RESOLVER_CONVERSA");
-    if (!atendenteId) throw new Error("Não autorizado");
-    return db.marcarConversaResolvida(data.conversaId);
-  });
+  .handler(async ({ data }) =>
+    comTratamento(async () => {
+      const atendenteId = await userIdFrom(data.token ?? null, "RESOLVER_CONVERSA");
+      if (!atendenteId) throw new Error("Não autorizado");
+      return db.marcarConversaResolvida(data.conversaId);
+    }),
+  );
 
 export const atribuirResponsavelFn = createServerFn({ method: "POST" })
   .validator((data: unknown) =>
@@ -225,11 +317,13 @@ export const atribuirResponsavelFn = createServerFn({ method: "POST" })
       })
       .parse(data),
   )
-  .handler(async ({ data }) => {
-    const atendenteId = await userIdFrom(data.token ?? null, "ATRIBUIR_RESPONSAVEL");
-    if (!atendenteId) throw new Error("Não autorizado");
-    return db.atribuirResponsavel(data.conversaId, data.responsavelId);
-  });
+  .handler(async ({ data }) =>
+    comTratamento(async () => {
+      const atendenteId = await userIdFrom(data.token ?? null, "ATRIBUIR_RESPONSAVEL");
+      if (!atendenteId) throw new Error("Não autorizado");
+      return db.atribuirResponsavel(data.conversaId, data.responsavelId);
+    }),
+  );
 
 export const listarRespostasProntasFn = createServerFn({ method: "GET" })
   .validator((data: unknown) =>
@@ -254,21 +348,25 @@ export const salvarRespostaProntaFn = createServerFn({ method: "POST" })
       })
       .parse(data),
   )
-  .handler(async ({ data }) => {
-    const atendenteId = await userIdFrom(data.token ?? null, "SALVAR_RESPOSTA");
-    if (!atendenteId) throw new Error("Não autorizado");
-    return db.salvarRespostaPronta(atendenteId, data);
-  });
+  .handler(async ({ data }) =>
+    comTratamento(async () => {
+      const atendenteId = await userIdFrom(data.token ?? null, "SALVAR_RESPOSTA");
+      if (!atendenteId) throw new Error("Não autorizado");
+      return db.salvarRespostaPronta(atendenteId, data);
+    }),
+  );
 
 export const excluirRespostaProntaFn = createServerFn({ method: "POST" })
   .validator((data: unknown) =>
     z.object({ token: z.string().nullable().optional(), id: z.string().uuid() }).parse(data),
   )
-  .handler(async ({ data }) => {
-    const atendenteId = await userIdFrom(data.token ?? null, "EXCLUIR_RESPOSTA");
-    if (!atendenteId) throw new Error("Não autorizado");
-    return db.excluirRespostaPronta(data.id, atendenteId);
-  });
+  .handler(async ({ data }) =>
+    comTratamento(async () => {
+      const atendenteId = await userIdFrom(data.token ?? null, "EXCLUIR_RESPOSTA");
+      if (!atendenteId) throw new Error("Não autorizado");
+      return db.excluirRespostaPronta(data.id, atendenteId);
+    }),
+  );
 
 /** Contatos com telefone, para o diálogo "Nova conversa". */
 export const listarContatosDisponiveisFn = createServerFn({ method: "GET" })
@@ -290,7 +388,7 @@ export const cadastrarContatoFn = createServerFn({ method: "POST" })
       })
       .parse(data),
   )
-  .handler(async ({ data }) => db.cadastrarContato(data));
+  .handler(async ({ data }) => comTratamento(() => db.cadastrarContato(data)));
 
 /**
  * Inicia uma conversa nova. Exige template: a janela de 24h só se abre quando o
@@ -314,42 +412,44 @@ export const iniciarConversaFn = createServerFn({ method: "POST" })
       })
       .parse(data),
   )
-  .handler(async ({ data }) => {
-    const atendenteId = await userIdFrom(data.token ?? null, "INICIAR_CONVERSA");
-    if (!atendenteId) throw new Error("Não autorizado");
-    const { listarTemplates } = await import("@/db/comunicacoes.server");
-    const template = await (async () => {
-      if (data.template_id) {
+  .handler(async ({ data }) =>
+    comTratamento(async () => {
+      const atendenteId = await userIdFrom(data.token ?? null, "INICIAR_CONVERSA");
+      if (!atendenteId) throw new Error("Não autorizado");
+      const { listarTemplates } = await import("@/db/comunicacoes.server");
+      const template = await (async () => {
+        if (data.template_id) {
+          const lista = await listarTemplates();
+          const t = lista.find((x: any) => x.id === data.template_id);
+          if (!t) throw new Error("Template não encontrado");
+          return t;
+        }
         const lista = await listarTemplates();
-        const t = lista.find((x: any) => x.id === data.template_id);
+        const t = lista.find((x: any) => x.meta_name === data.template_name);
         if (!t) throw new Error("Template não encontrado");
         return t;
+      })();
+
+      const valores = (data.variaveis || []).map((v: any) => String(v ?? ""));
+      const mapa: Record<string, string> = {};
+      valores.forEach((v: string, i: number) => {
+        mapa[String(i + 1)] = v;
+      });
+
+      const { montarComponents } = await import("@/db/meta-whatsapp.server");
+      let componentes: any[];
+      try {
+        componentes = montarComponents(template.conteudo, mapa);
+      } catch (e: any) {
+        throw new Error(e?.message || "Preencha todas as variáveis do template.");
       }
-      const lista = await listarTemplates();
-      const t = lista.find((x: any) => x.meta_name === data.template_name);
-      if (!t) throw new Error("Template não encontrado");
-      return t;
-    })();
 
-    const valores = (data.variaveis || []).map((v: any) => String(v ?? ""));
-    const mapa: Record<string, string> = {};
-    valores.forEach((v: string, i: number) => {
-      mapa[String(i + 1)] = v;
-    });
-
-    const { montarComponents } = await import("@/db/meta-whatsapp.server");
-    let componentes: any[];
-    try {
-      componentes = montarComponents(template.conteudo, mapa);
-    } catch (e: any) {
-      throw new Error(e?.message || "Preencha todas as variáveis do template.");
-    }
-
-    return db.iniciarConversa(atendenteId, {
-      telefone: data.telefone,
-      nome: data.nome ?? null,
-      template_name: template.meta_name,
-      idioma: template.idioma || "pt_BR",
-      componentes,
-    });
-  });
+      return db.iniciarConversa(atendenteId, {
+        telefone: data.telefone,
+        nome: data.nome ?? null,
+        template_name: template.meta_name,
+        idioma: template.idioma || "pt_BR",
+        componentes,
+      });
+    }),
+  );

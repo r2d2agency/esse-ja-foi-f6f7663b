@@ -413,7 +413,29 @@ export const getCampanhaDetalhesFn = createServerFn({ method: "GET" })
 export const processarEnvioCampanhaFn = createServerFn({ method: "POST" })
   .validator((id: string) => z.string().uuid().parse(id))
   .handler(async ({ data: id }) => {
-    return db.processarEnvioCampanha(id);
+    // O disparo da campanha devolve `{ok:false, error}` em vez de derrubar a
+    // requisição: sem isso o navegador recebia uma página de erro sem corpo e
+    // o log de saída ficava vazio, sem como saber por que o envio não saiu.
+    try {
+      const resultado = await db.processarEnvioCampanha(id);
+      return { ok: true, resultado };
+    } catch (error: any) {
+      console.error("[comunicacoes] falha ao processar envio da campanha:", error);
+      try {
+        const { registrarLogMeta } = await import("../db/logs-whatsapp.server");
+        await registrarLogMeta({
+          direcao: "SAIDA",
+          operacao: "PROCESSAR_ENVIO_CAMPANHA",
+          httpStatus: 500,
+          status: "ERRO",
+          resumo: "Falha ao processar o envio da campanha.",
+          payload: { campanhaId: id, erro: String(error?.message || error).slice(0, 1000) },
+        });
+      } catch (e) {
+        console.error("[comunicacoes] falha ao registrar erro da campanha:", e);
+      }
+      return { ok: false, error: String(error?.message || error) };
+    }
   });
 
 export const enviarTesteFn = createServerFn({ method: "POST" })
