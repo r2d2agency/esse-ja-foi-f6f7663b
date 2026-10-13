@@ -3,7 +3,6 @@ import { z } from "zod";
 
 export const listarEventosConsultaFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => z.object({
-    token: z.string(),
     placa: z.string().trim().max(20).optional(),
     veiculo: z.string().trim().max(120).optional(),
     codigo: z.string().trim().max(100).optional(),
@@ -13,8 +12,8 @@ export const listarEventosConsultaFn = createServerFn({ method: "POST" })
   }).parse(input))
   .handler(async ({ data }) => {
     try {
-      const { getUsuarioPorToken } = await import("@/db/auth.server");
-      const usuario = await getUsuarioPorToken(data.token);
+      const { perfilDaSessao } = await import("@/lib/sessao.server");
+      const usuario = await perfilDaSessao();
       if (!usuario?.ativo || usuario.role !== "admin") throw new Error("Entre com uma conta de administrador para consultar estes logs.");
       const { listarEventosConsulta } = await import("@/db/consulta-logs.server");
       return { ok: true as const, ...await listarEventosConsulta(data) };
