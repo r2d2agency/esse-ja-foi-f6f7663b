@@ -16,7 +16,6 @@ import {
   Filter,
   CheckCircle2,
   CheckCheck,
-  AlertCircle,
   Hash,
   Car,
   ChevronRight,
@@ -753,8 +752,6 @@ function CentralConversasPage() {
     mutationApelido.mutate();
   };
 
-  const janelaAberta = conversaAtiva?.janela_aberta ?? false;
-
   const respostasFiltradas = useMemo(() => {
     if (!respostasProntas || !filtroResposta) return [];
     const termo = filtroResposta.toLowerCase();
@@ -843,16 +840,9 @@ function CentralConversasPage() {
               </p>
               <div className="flex justify-between items-center">
                 <div className="flex items-center gap-1.5">
-                  <span
-                    className={cn(
-                      'w-2 h-2 rounded-full flex-shrink-0',
-                      c.janela_aberta ? 'bg-green-500' : 'bg-slate-300'
-                    )}
-                  />
+                  <span className="w-2 h-2 rounded-full flex-shrink-0 bg-green-500" />
                   <span className="text-[9px] text-muted-foreground">
-                    {c.janela_aberta
-                      ? formatarTempoRestanteCurto(c.janela_expira_em)
-                      : 'Janela fechada'}
+                    Envio liberado
                   </span>
                 </div>
                 <div className="flex items-center gap-1">
@@ -915,17 +905,8 @@ function CentralConversasPage() {
                     </div>
                   )}
                   <p className="text-[10px] text-muted-foreground flex items-center gap-1">
-                    {janelaAberta ? (
-                      <>
-                        <Clock className="w-3 h-3 text-green-500" />
-                        Janela aberta — expira em {formatarTempoRestanteCurto(conversaAtiva?.janela_expira_em)}
-                      </>
-                    ) : (
-                      <>
-                        <AlertCircle className="w-3 h-3 text-red-500" />
-                        Janela fechada — apenas templates
-                      </>
-                    )}
+                    <Clock className="w-3 h-3 text-green-500" />
+                    Envio liberado — janela de 24h não bloqueia mais as respostas
                   </p>
                 </div>
               </div>
@@ -1099,22 +1080,6 @@ function CentralConversasPage() {
             </div>
 
             <div className="p-2 md:p-4 bg-[#f0f2f5] border-t space-y-2">
-              {tabTipo === 'RESPONDER' && !janelaAberta && (
-                <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-lg p-3 text-xs flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-4 h-4 flex-shrink-0" />
-                    <span>Janela de 24h fechada. A Meta recusa texto livre aqui — envie um template para reabrir o atendimento.</span>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 text-xs border-amber-300 text-amber-800 hover:bg-amber-100"
-                    onClick={() => setPickerTemplate(true)}
-                  >
-                    Abrir template
-                  </Button>
-                </div>
-              )}
               <div className="flex gap-4 border-b pb-2">
                 <button
                   onClick={() => setTabTipo('RESPONDER')}
@@ -1216,10 +1181,7 @@ function CentralConversasPage() {
                           inserirResposta(respostasFiltradas[0]);
                         }
                       }}
-                      className={cn(
-                        'min-h-[52px] max-h-32 resize-none pr-20 py-3 rounded-lg bg-white border-slate-200',
-                        !janelaAberta ? 'opacity-60' : '',
-                      )}
+                      className="min-h-[52px] max-h-32 resize-none pr-20 py-3 rounded-lg bg-white border-slate-200"
                     />
                     <div className="absolute right-3 bottom-2.5 flex gap-3">
                       <button
@@ -1586,15 +1548,4 @@ function CentralConversasPage() {
       </Dialog>
     </div>
   );
-}
-
-function formatarTempoRestanteCurto(fim: string | null | undefined): string {
-  if (!fim) return '—';
-  const alvo = new Date(fim).getTime();
-  const diff = alvo - Date.now();
-  if (diff <= 0) return 'Fechada';
-  const horas = Math.floor(diff / 3600000);
-  const minutos = Math.floor((diff % 3600000) / 60000);
-  if (horas >= 1) return `${horas}h ${minutos}m restantes`;
-  return `${minutos}m restantes`;
 }

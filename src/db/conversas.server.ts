@@ -345,16 +345,12 @@ export async function enviarMensagemAtendente(conversaId: string, atendenteId: s
   // nada sobre a janela.
   const isMidia = payload.tipo === 'IMAGEM' || payload.tipo === 'DOCUMENTO' || payload.tipo === 'AUDIO';
 
-  // Verifica janela de 24h para envio de texto livre ou mídia.
-  // A janela é de INATIVIDADE do cliente: 24h desde a última mensagem dele.
-  // `janela_aberta` já sai calculado do banco, com o mesmo COALESCE usado na
-  // listagem — assim uma conversa antiga, cujo `janela_expira_em` nunca foi
-  // gravado, não fica bloqueada mesmo com o cliente ativo agora.
-  if (isTexto || isMidia) {
-    if (!conversa.janela_aberta) {
-      throw new Error("A janela de 24h com este contato está fechada. Envie um template para reabrir o atendimento.");
-    }
-  }
+  // A janela de 24h NÃO bloqueia mais o envio. Ela é uma regra da Meta para
+  // texto livre iniciado pelo atendente, e bloquear aqui produzia o sintoma
+  // relatado: o cliente escrevia, a conversa aparecia com a janela "fechada"
+  // e o atendente não conseguia responder. O envio segue livre; se a Meta
+  // recusar por janela, o erro dela chega no log e no retorno do envio.
+  void conversa.janela_aberta;
 
   let resMeta: any;
   let payloadGravado: any;
@@ -467,12 +463,17 @@ export async function enviarMensagemAtendente(conversaId: string, atendenteId: s
 export function normalizarPayloadRecebido(msg: any): any {
   if (!msg || typeof msg !== "object") return { tipo: "DESCONHECIDO", raw: msg };
 
+  // O identificador que a Meta dá a cada mensagem (`wa_id`), gravado junto do
+  // payload normalizado para permitir a checagem de reentrega.
+  const base: any = msg.id ? { wa_id: msg.id } : {};
+
   switch (msg.type) {
     case "text":
-      return { tipo: "TEXTO", text: { body: msg.text?.body ?? "" } };
+      return { ...base, tipo: "TEXTO", text: { body: msg.text?.body ?? "" } };
 
     case "image":
       return {
+        ...base,
         tipo: "IMAGEM",
         image: {
           id: msg.image?.id ?? null,
@@ -484,6 +485,7 @@ export function normalizarPayloadRecebido(msg: any): any {
 
     case "video":
       return {
+        ...base,
         tipo: "VIDEO",
         video: {
           id: msg.video?.id ?? null,
@@ -495,6 +497,7 @@ export function normalizarPayloadRecebido(msg: any): any {
 
     case "audio":
       return {
+        ...base,
         tipo: "AUDIO",
         audio: {
           id: msg.audio?.id ?? null,
@@ -506,6 +509,7 @@ export function normalizarPayloadRecebido(msg: any): any {
 
     case "document":
       return {
+        ...base,
         tipo: "DOCUMENTO",
         document: {
           id: msg.document?.id ?? null,
@@ -518,6 +522,7 @@ export function normalizarPayloadRecebido(msg: any): any {
 
     case "sticker":
       return {
+        ...base,
         tipo: "STICKER",
         sticker: {
           id: msg.sticker?.id ?? null,
@@ -528,6 +533,7 @@ export function normalizarPayloadRecebido(msg: any): any {
 
     case "location":
       return {
+        ...base,
         tipo: "LOCALIZACAO",
         location: {
           latitude: msg.location?.latitude ?? null,
@@ -539,6 +545,7 @@ export function normalizarPayloadRecebido(msg: any): any {
 
     case "interactive":
       return {
+        ...base,
         tipo: "BOTAO",
         interactive: {
           tipo: msg.interactive?.type ?? null,
@@ -558,6 +565,7 @@ export function normalizarPayloadRecebido(msg: any): any {
 
     case "reaction":
       return {
+        ...base,
         tipo: "REACAO",
         reaction: {
           emoji: msg.reaction?.emoji ?? null,
@@ -567,6 +575,7 @@ export function normalizarPayloadRecebido(msg: any): any {
 
     case "contacts":
       return {
+        ...base,
         tipo: "CONTATO",
         contacts: (msg.contacts ?? []).map((c: any) => ({
           nome: c.name?.formatted_name ?? null,
@@ -575,10 +584,10 @@ export function normalizarPayloadRecebido(msg: any): any {
       };
 
     case "system":
-      return { tipo: "SISTEMA", system: { body: msg.system?.body ?? null, tipo: msg.system?.type ?? null } };
+      return { ...base, tipo: "SISTEMA", system: { body: msg.system?.body ?? null, tipo: msg.system?.type ?? null } };
 
     default:
-      return { tipo: String(msg.type || "DESCONHECIDO").toUpperCase(), raw: msg };
+      return { ...base, tipo: String(msg.type || "DESCONHECIDO").toUpperCase(), raw: msg };
   }
 }
 
@@ -659,9 +668,17 @@ export async function processarMensagemRecebida(telefone: string, payload: any) 
   }
 
   // 2. Localizar conversa aberta
+  //
+  // Sem ORDER BY este SELECT podia devolver a conversa mais ANTIGA do contato, não
+  // a ativa. Com isso a mensagem do cliente entrava em uma linha da lista e o
+  // atendente abria outra: via a resposta "não aparecer", o thread vazio e a
+  // janela fechada na linha em que estava. A lista ordena por
+  // ultimo_evento_em DESC, então a conversa que aparece no topo é esta.
   let resConv = await db.execute(sql`
     SELECT id FROM whatsapp_conversas
     WHERE contato_id = ${perfilId}::uuid AND status != 'RESOLVIDA' AND status != 'ARQUIVADA'
+    ORDER BY ultimo_evento_em DESC
+    LIMIT 1
   `);
   let conversaId = rowsOf(resConv)[0]?.id;
 
@@ -672,6 +689,22 @@ export async function processarMensagemRecebida(telefone: string, payload: any) 
       RETURNING id
     `);
     conversaId = rowsOf(res)[0].id;
+  }
+
+  // 2b. Idempotência: a Meta reenvia o mesmo evento quando demora a responder ou
+  // quando a assinatura falha e a tentativa é repetida. Cada webhook carrega o
+  // wa_id da mensagem; se ele já foi gravado, esta é uma reentrega e a linha
+  // não pode ser duplicada no thread. `meta_message_id` é UNIQUE, mas a linha
+  // é gravada com o ID vindo da Meta no retorno do envio (e NULL aqui), então
+  // a checagem explícita é a única que segura a duplicata.
+  const waId = payload?.id;
+  if (waId) {
+    const resExiste = await db.execute(sql`
+      SELECT 1 FROM whatsapp_mensagens
+      WHERE conversa_id = ${conversaId}::uuid AND payload->>'wa_id' = ${waId}
+      LIMIT 1
+    `);
+    if (rowsOf(resExiste).length > 0) return;
   }
 
   // 3. Salvar mensagem
