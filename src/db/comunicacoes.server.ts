@@ -10,7 +10,8 @@ function requireDb() {
 
 export async function ensureComunicacoesSchema(silent = true) {
   const d = requireDb();
-  if (!silent && process.env['NODE_ENV'] === 'development') console.log("[comunicacoes.server] Garantindo tabelas de comunicação...");
+  if (!silent && process.env["NODE_ENV"] === "development")
+    console.log("[comunicacoes.server] Garantindo tabelas de comunicação...");
 
   try {
     // 1. Configurações WhatsApp Meta
@@ -32,7 +33,7 @@ export async function ensureComunicacoesSchema(silent = true) {
         atualizado_em timestamptz DEFAULT now()
       );
     `);
-    
+
     await d.execute(sql`
       ALTER TABLE whatsapp_config
         ADD COLUMN IF NOT EXISTS waba_id text,
@@ -96,7 +97,7 @@ export async function ensureComunicacoesSchema(silent = true) {
         criado_em timestamptz DEFAULT now()
       );
     `);
-    
+
     await d.execute(sql`
       ALTER TABLE whatsapp_templates
         ADD COLUMN IF NOT EXISTS nome_interno text,
@@ -124,7 +125,7 @@ export async function ensureComunicacoesSchema(silent = true) {
         atualizado_em timestamptz DEFAULT now()
       );
     `);
-    
+
     await d.execute(sql`
       ALTER TABLE whatsapp_segmentos
         ADD COLUMN IF NOT EXISTS nome text,
@@ -165,7 +166,7 @@ export async function ensureComunicacoesSchema(silent = true) {
         atualizado_em timestamptz DEFAULT now()
       );
     `);
-    
+
     await d.execute(sql`
       ALTER TABLE whatsapp_campanhas
         ADD COLUMN IF NOT EXISTS nome text,
@@ -195,7 +196,7 @@ export async function ensureComunicacoesSchema(silent = true) {
         atualizado_em timestamptz DEFAULT now()
       );
     `);
-    
+
     await d.execute(sql`
       ALTER TABLE whatsapp_mensagens
         ADD COLUMN IF NOT EXISTS campanha_id uuid REFERENCES whatsapp_campanhas(id) ON DELETE CASCADE,
@@ -204,8 +205,12 @@ export async function ensureComunicacoesSchema(silent = true) {
         ADD COLUMN IF NOT EXISTS status text DEFAULT 'NA_FILA',
         ADD COLUMN IF NOT EXISTS meta_message_id text;
     `);
-    await d.execute(sql`CREATE INDEX IF NOT EXISTS idx_wa_mensagens_campanha ON whatsapp_mensagens(campanha_id);`);
-    await d.execute(sql`CREATE INDEX IF NOT EXISTS idx_wa_mensagens_status ON whatsapp_mensagens(status);`);
+    await d.execute(
+      sql`CREATE INDEX IF NOT EXISTS idx_wa_mensagens_campanha ON whatsapp_mensagens(campanha_id);`,
+    );
+    await d.execute(
+      sql`CREATE INDEX IF NOT EXISTS idx_wa_mensagens_status ON whatsapp_mensagens(status);`,
+    );
 
     // 6b. Fila de disparo: o estado do worker em coluna separada do status de
     // entrega. O webhook da Meta grava 'DELIVERED'/'READ'/'FAILED' em `status`,
@@ -281,7 +286,7 @@ export async function ensureComunicacoesSchema(silent = true) {
         criado_em timestamptz DEFAULT now()
       );
     `);
-    
+
     await d.execute(sql`
       ALTER TABLE whatsapp_logs
         ADD COLUMN IF NOT EXISTS acao text;
@@ -298,31 +303,29 @@ export async function ensureComunicacoesSchema(silent = true) {
       ["interesses_marcas", "jsonb DEFAULT '[]'"],
       ["interesses_regioes", "jsonb DEFAULT '[]'"],
       ["interesses_anos", "jsonb DEFAULT '[]'"],
-      ["verificado", "boolean DEFAULT false"]
+      ["verificado", "boolean DEFAULT false"],
     ];
-
-
 
     for (const [name, type] of profileCols) {
       try {
         // O tipo é interpolado dentro de uma string SQL, então as aspas simples
         // do DEFAULT precisam ser dobradas — senão a string fecha antes do
         // valor e o Postgres devolve "syntax error at or near".
-        // Dobramos com o marcador ''D'' para escapar uma única aspa: com
-        // replaceAll("''") em "jsonb DEFAULT ''[]''" o resultado ficava
-        // "jsonb DEFAULT ''''[]''''" (4 aspas), e o Postgres via fim de string
-        // seguido de identificador inválido.
-        const tipoLimpo = String(type).replace(/'/g, "''D''");
-        await d.execute(sql.raw(
-          `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS ${name} ${tipoLimpo};`
-        ));
+        // A troca é feita uma única vez, na hora de montar o SQL. Tentar
+        // compensar um valor já escapado (a ideia do marcador ''D'') gerava
+        // `DEFAULT ''D''PF''D''` e quebrava todas essas colunas.
+        const tipoLimpo = String(type).replace(/'/g, "''");
+        await d.execute(
+          sql.raw(`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS ${name} ${tipoLimpo};`),
+        );
       } catch (e) {
-        if (process.env['NODE_ENV'] === 'development') console.error(`Erro ao adicionar coluna ${name} em profiles:`, e);
+        if (process.env["NODE_ENV"] === "development")
+          console.error(`Erro ao adicionar coluna ${name} em profiles:`, e);
       }
     }
 
-
-    if (!silent && process.env['NODE_ENV'] === 'development') console.log("[comunicacoes.server] Tabelas OK.");
+    if (!silent && process.env["NODE_ENV"] === "development")
+      console.log("[comunicacoes.server] Tabelas OK.");
   } catch (err) {
     console.error("[comunicacoes.server] Erro ao garantir tabelas:", err);
     throw err;
@@ -378,7 +381,7 @@ async function curarConfigDuplicada(d: any) {
       END $$;
     `);
   } catch (e) {
-    if (process.env['NODE_ENV'] === 'development')
+    if (process.env["NODE_ENV"] === "development")
       console.error("[comunicacoes.server] Falha ao deduplicar whatsapp_config:", e);
   }
 }
@@ -413,7 +416,7 @@ export async function updateWhatsappConfig(config: any) {
   // { ok: true } e a tela confirmava "salvado" sem ter gravado nada.
   if ((rowsOf(res) as any[]).length === 0) {
     throw new Error(
-      "Nenhuma linha de configuração foi atualizada. Recarregue a página e tente de novo."
+      "Nenhuma linha de configuração foi atualizada. Recarregue a página e tente de novo.",
     );
   }
   return { ok: true };
@@ -450,10 +453,12 @@ export async function listarSegmentos() {
  * (pode_receber_comunicacoes + whatsapp_status ATIVO), para o número da tela
  * bater com o número de quem vai receber.
  */
-export async function listarContatosWhatsapp(filtros: {
-  busca?: string | null;
-  apenasElegiveis?: boolean;
-} = {}) {
+export async function listarContatosWhatsapp(
+  filtros: {
+    busca?: string | null;
+    apenasElegiveis?: boolean;
+  } = {},
+) {
   const d = requireDb();
   const busca = (filtros.busca ?? "").trim();
   const termo = busca ? `%${busca}%` : null;
@@ -471,15 +476,17 @@ export async function listarContatosWhatsapp(filtros: {
     FROM profiles p
     WHERE p.role = 'comprador'
       AND (p.ativo IS NOT FALSE)
-      ${termo
-        ? sql`AND (
+      ${
+        termo
+          ? sql`AND (
             p.nome ILIKE ${termo}
             OR p.telefone ILIKE ${termo}
             OR coalesce(p.whatsapp, '') ILIKE ${termo}
             OR coalesce(p.cidade, '') ILIKE ${termo}
             OR coalesce(p.email, '') ILIKE ${termo}
           )`
-        : sql``}
+          : sql``
+      }
       ${apenasElegiveis ? sql`AND p.pode_receber_comunicacoes = true AND p.whatsapp_status = 'ATIVO'` : sql``}
     ORDER BY p.nome ASC
     LIMIT 300
@@ -549,11 +556,11 @@ export async function criarCampanha(data: any, usuarioId: string) {
       ${data.nome},
       ${data.veiculo_id ? sql`${data.veiculo_id}::uuid` : null},
       ${data.template_id}::uuid,
-      ${data.origem_publico ?? 'AMBOS'},
+      ${data.origem_publico ?? "AMBOS"},
       ${data.janela_inicio || null},
       ${data.janela_fim || null},
       ${data.intervalo_minutos ?? 5},
-      ${data.agendado_para ? 'AGUARDANDO' : 'RASCUNHO'},
+      ${data.agendado_para ? "AGUARDANDO" : "RASCUNHO"},
       ${data.agendado_para || null},
       ${usuarioId}::uuid,
       ${JSON.stringify(data.mapeamento_variaveis ?? {})}::jsonb
@@ -586,7 +593,7 @@ export async function getCampanhaDetalhes(id: string) {
     LEFT JOIN whatsapp_templates t ON t.id = c.template_id
     WHERE c.id = ${id}::uuid
   `);
-  
+
   const campanha = rowsOf(res)?.[0];
   if (!campanha) return null;
 
@@ -599,9 +606,9 @@ export async function getCampanhaDetalhes(id: string) {
     LIMIT 100
   `);
 
-  return { 
-    ...campanha, 
-    mensagens: rowsOf(mensagensRes) || [] 
+  return {
+    ...campanha,
+    mensagens: rowsOf(mensagensRes) || [],
   };
 }
 

@@ -130,10 +130,7 @@ export async function ensureConversasSchema(silent = true) {
       );
     `);
   } catch (err) {
-    console.error(
-      "[conversas.server] ERRO ao criar whatsapp_respostas_prontas:",
-      err,
-    );
+    console.error("[conversas.server] ERRO ao criar whatsapp_respostas_prontas:", err);
   }
 
   // 4. Índices para busca
@@ -191,12 +188,12 @@ export async function listarConversas(filtros: any) {
   // enquanto o banco guarda 'TODAS'/'NAO_LIDAS'/'RESOLVIDA'. Sem este mapeamento
   // o 'Todas' inicial virava `AND c.status = 'Todas'` e a lista voltava vazia.
   const statusBanco: Record<string, string> = {
-    Todas: 'TODAS',
-    'Não lidas': 'NAO_LIDAS',
-    NOVA: 'NOVA',
-    EM_ATENDIMENTO: 'EM_ATENDIMENTO',
-    AGUARDANDO_CLIENTE: 'AGUARDANDO_CLIENTE',
-    RESOLVIDAS: 'RESOLVIDA',
+    Todas: "TODAS",
+    "Não lidas": "NAO_LIDAS",
+    NOVA: "NOVA",
+    EM_ATENDIMENTO: "EM_ATENDIMENTO",
+    AGUARDANDO_CLIENTE: "AGUARDANDO_CLIENTE",
+    RESOLVIDAS: "RESOLVIDA",
   };
 
   const statusNorm = statusBanco[filtros.status as string] ?? filtros.status;
@@ -241,8 +238,8 @@ export async function listarConversas(filtros: any) {
     WHERE 1=1
   `;
 
-  if (filtrosNorm.status && filtrosNorm.status !== 'TODAS') {
-    if (filtrosNorm.status === 'NAO_LIDAS') {
+  if (filtrosNorm.status && filtrosNorm.status !== "TODAS") {
+    if (filtrosNorm.status === "NAO_LIDAS") {
       query = sql`${query} AND c.nao_lidas > 0`;
     } else {
       query = sql`${query} AND c.status = ${filtrosNorm.status}`;
@@ -279,7 +276,10 @@ export async function getConversaCompleta(conversaId: string) {
            p.nome as contato_nome, p.telefone as contato_telefone, p.role as contato_role,
            p.cpf as contato_cpf, p.cnpj as contato_cnpj,
            resp.nome as responsavel_nome,
-           v.marca as veiculo_marca, v.modelo as veiculo_modelo, v.placa as veiculo_placa,
+           -- contexto_veiculo_id aponta para o ANÚNCIO, não para o veículo:
+           -- anuncios_veiculo não tem marca/modelo/placa, e era isso que fazia
+           -- a query falhar com "column v.marca does not exist".
+           vei.marca as veiculo_marca, vei.modelo as veiculo_modelo, vei.placa as veiculo_placa,
            v.id as veiculo_id,
            -- Mesma regra da listagem: janela medida pela inatividade do cliente.
            (COALESCE(c.janela_expira_em, c.ultima_resposta_cliente_em + interval '24 hours', c.criado_em + interval '24 hours') > now()) as janela_aberta
@@ -287,6 +287,7 @@ export async function getConversaCompleta(conversaId: string) {
     LEFT JOIN profiles p ON p.id = c.contato_id
     LEFT JOIN profiles resp ON resp.id = c.responsavel_id
     LEFT JOIN anuncios_veiculo v ON v.id = c.contexto_veiculo_id
+    LEFT JOIN veiculos vei ON vei.id = v.veiculo_id
     WHERE c.id = ${conversaId}::uuid
   `);
 
@@ -311,11 +312,15 @@ export async function getConversaCompleta(conversaId: string) {
 
   return {
     ...conversa,
-    mensagens: rowsOf(msgRes) || []
+    mensagens: rowsOf(msgRes) || [],
   };
 }
 
-export async function enviarMensagemAtendente(conversaId: string, atendenteId: string, payload: any) {
+export async function enviarMensagemAtendente(
+  conversaId: string,
+  atendenteId: string,
+  payload: any,
+) {
   // Este `return` mudo era o sintoma que o atendente via como "o envio não
   // aconteceu e não apareceu nada": o handler do server function não lançava,
   // não gravava log e não escrevia mensagem — a tela só ficava sem resposta.
@@ -337,7 +342,11 @@ export async function enviarMensagemAtendente(conversaId: string, atendenteId: s
       resumo: `Tentativa de envio iniciada (${payload?.tipo || "?"}${
         payload?.template_name ? ` / ${payload.template_name}` : ""
       }).`,
-      payload: { conversaId, tipo: payload?.tipo ?? null, template: payload?.template_name ?? null },
+      payload: {
+        conversaId,
+        tipo: payload?.tipo ?? null,
+        template: payload?.template_name ?? null,
+      },
       duracaoMs: 0,
     });
   } catch (e) {
@@ -356,7 +365,7 @@ export async function enviarMensagemAtendente(conversaId: string, atendenteId: s
   `);
   const conversa = rowsOf(convRes)[0];
 
-  if (payload.tipo === 'NOTA_INTERNA') {
+  if (payload.tipo === "NOTA_INTERNA") {
     await db.execute(sql`
       INSERT INTO whatsapp_mensagens (conversa_id, autor_id, tipo, payload, status, enviado_por_atendente)
       VALUES (${conversaId}::uuid, ${atendenteId}::uuid, 'NOTA_INTERNA', ${JSON.stringify(payload.conteudo)}::jsonb, 'ENVIADA', true)
@@ -365,12 +374,13 @@ export async function enviarMensagemAtendente(conversaId: string, atendenteId: s
   }
 
   const isTemplate = Boolean(payload.template_name);
-  const isTexto = payload.tipo === 'TEXTO' || (!isTemplate && payload.conteudo?.text?.body);
+  const isTexto = payload.tipo === "TEXTO" || (!isTemplate && payload.conteudo?.text?.body);
   // Imagem, documento e áudio trafegam como média livre e também dependem da
   // janela de 24h. Sem esta lista, um anexo com janela fechada passava pela
   // verificação de texto e a Meta rejeitava com 131047 — erro que não diz
   // nada sobre a janela.
-  const isMidia = payload.tipo === 'IMAGEM' || payload.tipo === 'DOCUMENTO' || payload.tipo === 'AUDIO';
+  const isMidia =
+    payload.tipo === "IMAGEM" || payload.tipo === "DOCUMENTO" || payload.tipo === "AUDIO";
 
   // A janela de 24h NÃO bloqueia mais o envio. Ela é uma regra da Meta para
   // texto livre iniciado pelo atendente, e bloquear aqui produzia o sintoma
@@ -381,7 +391,7 @@ export async function enviarMensagemAtendente(conversaId: string, atendenteId: s
 
   let resMeta: any;
   let payloadGravado: any;
-  let previewTexto = '';
+  let previewTexto = "";
   let tipoMidia: string | null = null;
   let mediaId: string | null = null;
   let mediaUrl: string | null = null;
@@ -393,14 +403,14 @@ export async function enviarMensagemAtendente(conversaId: string, atendenteId: s
     resMeta = await metaService.enviarMensagem(
       conversa.telefone,
       payload.template_name,
-      payload.idioma || 'pt_BR',
+      payload.idioma || "pt_BR",
       componentes,
-      'ENVIAR_MENSAGEM_ATENDENTE',
+      "ENVIAR_MENSAGEM_ATENDENTE",
     );
     payloadGravado = {
-      tipo: 'TEMPLATE',
+      tipo: "TEMPLATE",
       template_name: payload.template_name,
-      idioma: payload.idioma || 'pt_BR',
+      idioma: payload.idioma || "pt_BR",
       componentes,
     };
     previewTexto = `Template: ${payload.template_name}`;
@@ -413,38 +423,42 @@ export async function enviarMensagemAtendente(conversaId: string, atendenteId: s
     arquivoId = midia.arquivo_id ?? null;
     if (!mediaId) throw new Error("Mídia sem identificador. Reenvie o anexo.");
 
-    if (payload.tipo === 'IMAGEM') {
-      tipoMidia = 'IMAGEM';
+    if (payload.tipo === "IMAGEM") {
+      tipoMidia = "IMAGEM";
       resMeta = await metaService.enviarImagem(
         conversa.telefone,
         mediaId,
         midia.caption ?? null,
-        'ENVIAR_MENSAGEM_ATENDENTE',
+        "ENVIAR_MENSAGEM_ATENDENTE",
       );
-      previewTexto = midia.caption?.trim() ? `📷 ${midia.caption.trim()}` : '📷 Imagem';
-    } else if (payload.tipo === 'DOCUMENTO') {
-      tipoMidia = 'DOCUMENTO';
+      previewTexto = midia.caption?.trim() ? `📷 ${midia.caption.trim()}` : "📷 Imagem";
+    } else if (payload.tipo === "DOCUMENTO") {
+      tipoMidia = "DOCUMENTO";
       resMeta = await metaService.enviarDocumento(
         conversa.telefone,
         mediaId,
         midia.filename ?? null,
         midia.caption ?? null,
-        'ENVIAR_MENSAGEM_ATENDENTE',
+        "ENVIAR_MENSAGEM_ATENDENTE",
       );
-      previewTexto = `📄 ${midia.filename || 'Documento'}`;
+      previewTexto = `📄 ${midia.filename || "Documento"}`;
     } else {
-      tipoMidia = 'AUDIO';
-      resMeta = await metaService.enviarAudio(conversa.telefone, mediaId, 'ENVIAR_MENSAGEM_ATENDENTE');
-      previewTexto = '🎤 Áudio';
+      tipoMidia = "AUDIO";
+      resMeta = await metaService.enviarAudio(
+        conversa.telefone,
+        mediaId,
+        "ENVIAR_MENSAGEM_ATENDENTE",
+      );
+      previewTexto = "🎤 Áudio";
     }
 
     payloadGravado = { tipo: payload.tipo, ...midia };
   } else {
     // Envio de texto livre
     const texto = payload.conteudo.text.body;
-    resMeta = await metaService.enviarTexto(conversa.telefone, texto, 'ENVIAR_MENSAGEM_ATENDENTE');
+    resMeta = await metaService.enviarTexto(conversa.telefone, texto, "ENVIAR_MENSAGEM_ATENDENTE");
     payloadGravado = {
-      tipo: 'TEXTO',
+      tipo: "TEXTO",
       text: { body: texto },
     };
     previewTexto = texto;
@@ -491,11 +505,13 @@ export async function enviarMensagemAtendente(conversaId: string, atendenteId: s
   // checagem, um conflito de wamid atualizava o preview de uma mensagem que
   // não foi gravada — a lista mostrava um texto que o thread não tinha.
   const gravou = wamid
-    ? rowsOf(await db.execute(sql`
+    ? rowsOf(
+        await db.execute(sql`
         SELECT 1 FROM whatsapp_mensagens
         WHERE conversa_id = ${conversaId}::uuid AND meta_message_id = ${wamid}
         LIMIT 1
-      `)).length > 0
+      `),
+      ).length > 0
     : true;
 
   if (gravou) {
@@ -640,7 +656,11 @@ export function normalizarPayloadRecebido(msg: any): any {
       };
 
     case "system":
-      return { ...base, tipo: "SISTEMA", system: { body: msg.system?.body ?? null, tipo: msg.system?.type ?? null } };
+      return {
+        ...base,
+        tipo: "SISTEMA",
+        system: { body: msg.system?.body ?? null, tipo: msg.system?.type ?? null },
+      };
 
     default:
       return { ...base, tipo: String(msg.type || "DESCONHECIDO").toUpperCase(), raw: msg };
@@ -674,14 +694,16 @@ export function previewDeMensagem(normalizado: any): string {
     case "SISTEMA":
       return normalizado.system?.body ?? "Sistema";
     case "TEMPLATE":
-      return normalizado.template_name ? `Template: ${normalizado.template_name}` : "Arquivo recebido";
+      return normalizado.template_name
+        ? `Template: ${normalizado.template_name}`
+        : "Arquivo recebido";
     default:
       return "Arquivo recebido";
   }
 }
 
 function apenasDigitos(s: string | null | undefined): string {
-  return (s || '').replace(/\D/g, '');
+  return (s || "").replace(/\D/g, "");
 }
 
 export async function processarMensagemRecebida(telefone: string, payload: any) {
@@ -783,7 +805,7 @@ export async function processarMensagemRecebida(telefone: string, payload: any) 
   await db.execute(sql`
     UPDATE whatsapp_conversas SET
       ultimo_evento_em = now(),
-      ultima_mensagem_preview = ${preview || 'Mensagem recebida'},
+      ultima_mensagem_preview = ${preview || "Mensagem recebida"},
       nao_lidas = nao_lidas + 1,
       status = 'EM_ATENDIMENTO',
       janela_expira_em = now() + interval '24 hours',
@@ -849,8 +871,8 @@ export async function salvarRespostaPronta(
   dados: { atalho: string; titulo?: string; conteudo: string; escopo?: string },
 ) {
   if (!db) return;
-  const escopo = dados.escopo === 'GLOBAL' ? 'GLOBAL' : 'ATENDENTE';
-  const dono = escopo === 'GLOBAL' ? null : atendenteId;
+  const escopo = dados.escopo === "GLOBAL" ? "GLOBAL" : "ATENDENTE";
+  const dono = escopo === "GLOBAL" ? null : atendenteId;
   const res = await db.execute(sql`
     INSERT INTO whatsapp_respostas_prontas (escopo, atendente_id, atalho, titulo, conteudo)
     VALUES (${escopo}, ${dono}::uuid, ${dados.atalho.trim()}, ${dados.titulo?.trim() || null}, ${dados.conteudo})
@@ -894,7 +916,7 @@ export async function listarContatosDisponiveis(busca?: string | null) {
       AND (
         ${termo} IS NULL
         OR lower(COALESCE(p.nome, '')) LIKE ${termo}
-        OR regexp_replace(p.telefone, '\D', '', 'g') LIKE ${`%${digitos || ''}%`}
+        OR regexp_replace(p.telefone, '\D', '', 'g') LIKE ${`%${digitos || ""}%`}
       )
     ORDER BY p.nome ASC
     LIMIT 50
@@ -908,9 +930,9 @@ export async function listarContatosDisponiveis(busca?: string | null) {
     const termo = busca.trim().toLowerCase();
     const recadastrado = lista.find(
       (c: any) =>
-        (c.nome || '').toLowerCase() === termo ||
+        (c.nome || "").toLowerCase() === termo ||
         (digitosBusca.length >= 9 &&
-          (c.telefone || '').replace(/\D/g, '').endsWith(digitosBusca.slice(-9))),
+          (c.telefone || "").replace(/\D/g, "").endsWith(digitosBusca.slice(-9))),
     );
     if (recadastrado) {
       return [recadastrado, ...lista.filter((c: any) => c.id !== recadastrado.id)];
@@ -1092,4 +1114,3 @@ export async function iniciarConversa(
 
   return { conversaId: conversaId as string };
 }
-

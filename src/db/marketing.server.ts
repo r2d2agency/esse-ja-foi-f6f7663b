@@ -46,14 +46,21 @@ export async function listarMarketingContatos(filtro: MarketingFiltro = {}) {
   const busca = filtro.busca?.trim() || null;
   const tipo = filtro.tipo && filtro.tipo !== "todos" ? filtro.tipo : null;
   const status = filtro.status && filtro.status !== "todos" ? filtro.status : null;
+  // O termo só existe quando há busca. Sem isso virava a string "%null%" e a
+  // query não achava ninguém — a lista aparecia vazia mesmo com a base cheia.
+  const termo = busca ? `%${busca}%` : null;
+  // Os casts ::text são obrigatórios: sem eles o Postgres não consegue inferir
+  // o tipo de um parâmetro que só aparece em `IS NULL` e a consulta falha. Como
+  // o erro sobe para o catch da server fn, a tela mostrava lista vazia em vez
+  // do erro.
   const rows = await d.execute(sql`
     SELECT c.*, COALESCE(json_agg(json_build_object('id', t.id, 'nome', t.nome, 'cor', t.cor))
       FILTER (WHERE t.id IS NOT NULL), '[]') AS tags
     FROM marketing_contatos c
     LEFT JOIN marketing_contato_tags ct ON ct.contato_id = c.id
     LEFT JOIN marketing_tags t ON t.id = ct.tag_id
-    WHERE (${busca} IS NULL OR c.nome ILIKE ${"%" + (busca || "") + "%"} OR c.email ILIKE ${"%" + (busca || "") + "%"} OR c.empresa ILIKE ${"%" + (busca || "") + "%"} OR c.telefone ILIKE ${"%" + (busca || "") + "%"})
-      AND (${tipo} IS NULL OR c.tipo = ${tipo}) AND (${status} IS NULL OR c.status = ${status})
+    WHERE (${termo}::text IS NULL OR c.nome ILIKE ${termo} OR c.email ILIKE ${termo} OR c.empresa ILIKE ${termo} OR c.telefone ILIKE ${termo})
+      AND (${tipo}::text IS NULL OR c.tipo = ${tipo}) AND (${status}::text IS NULL OR c.status = ${status})
       AND (${filtro.somenteComCoordenadas !== true} OR (c.latitude IS NOT NULL AND c.longitude IS NOT NULL))
     GROUP BY c.id ORDER BY c.criado_em DESC`);
   return rowsOf(rows);
@@ -201,6 +208,32 @@ export async function importarMarketingContatos(
       continue;
     }
 
+    // O registro é montado antes da checagem de duplicidade porque o caminho
+    // "atualizar existente" precisa dele: sem isso a linha nova tentava usar
+    // uma const declarada mais abaixo (erro de inicialização em tempo de
+    // execução) e a reimportação nunca sobrescrevia nada.
+    const registro: ItemImportacao = {
+      nome,
+      email,
+      telefone,
+      empresa: String(item.empresa ?? "").trim() || null,
+      // O diálogo pergunta se a lista é de lojistas, prospects ou compradores;
+      // sem isso toda lista importada virava "prospect" e o disparo não achava
+      // ninguém.
+      tipo: String(item.tipo ?? "").trim() || tipoPadrao,
+      cep: String(item.cep ?? "").trim() || null,
+      endereco: String(item.endereco ?? "").trim() || null,
+      numero: String(item.numero ?? "").trim() || null,
+      bairro: String(item.bairro ?? "").trim() || null,
+      cidade: String(item.cidade ?? "").trim() || null,
+      uf:
+        String(item.uf ?? "")
+          .trim()
+          .toUpperCase() || null,
+      origem: String(item.origem ?? "").trim() || "importacao_planilha",
+      observacoes: String(item.observacoes ?? "").trim() || null,
+    };
+
     let motivo: string | null = null;
     try {
       motivo = await idDuplicado(d, email, telefone, vistos);
@@ -228,27 +261,6 @@ export async function importarMarketingContatos(
       continue;
     }
 
-    const registro: ItemImportacao = {
-      nome,
-      email,
-      telefone,
-      empresa: String(item.empresa ?? "").trim() || null,
-      // O diálogo pergunta se a lista é de lojistas, prospects ou compradores;
-      // sem isso toda lista importada virava "prospect" e o disparo não achava
-      // ninguém.
-      tipo: String(item.tipo ?? "").trim() || tipoPadrao,
-      cep: String(item.cep ?? "").trim() || null,
-      endereco: String(item.endereco ?? "").trim() || null,
-      numero: String(item.numero ?? "").trim() || null,
-      bairro: String(item.bairro ?? "").trim() || null,
-      cidade: String(item.cidade ?? "").trim() || null,
-      uf:
-        String(item.uf ?? "")
-          .trim()
-          .toUpperCase() || null,
-      origem: String(item.origem ?? "").trim() || "importacao_planilha",
-      observacoes: String(item.observacoes ?? "").trim() || null,
-    };
     const r = await d.execute(
       sql`INSERT INTO marketing_contatos (nome,email,telefone,empresa,tipo,cep,endereco,numero,bairro,cidade,uf,origem,observacoes)
           VALUES (${registro.nome},${registro.email},${registro.telefone},${registro.empresa},${registro.tipo},${registro.cep},${registro.endereco},${registro.numero},${registro.bairro},${registro.cidade},${registro.uf},${registro.origem},${registro.observacoes})
@@ -339,6 +351,31 @@ export async function excluirMarketingContato(id: string) {
   );
   if (!rowsOf(r)[0]) throw new Error("Contato não encontrado.");
   return { ok: true as const };
+}
+
+/**
+ * Id do contato que já ocupa este e-mail/telefone.
+ *
+ * Separado de `idDuplicado` porque aqui o chamador quer atualizar, não
+ * descartar: precisa saber *qual* registro sobrescrever.
+ */
+async function idContatoPorEmailOuTelefone(
+  email: string | null,
+  telefone: string | null,
+): Promise<string | null> {
+  const d = requireDb();
+  const clausulas = [
+    email ? sql`lower(c.email) = ${email}` : null,
+    telefone ? sql`c.telefone = ${telefone}` : null,
+  ].filter((c): c is ReturnType<typeof sql> => c !== null);
+  if (!clausulas.length) return null;
+  for (const clausula of clausulas) {
+    const linha = rowsOf(
+      await d.execute(sql`SELECT c.id FROM marketing_contatos c WHERE ${clausula} LIMIT 1`),
+    )[0];
+    if (linha?.id) return String(linha.id);
+  }
+  return null;
 }
 
 /**

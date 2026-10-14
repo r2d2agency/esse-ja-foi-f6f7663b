@@ -9,7 +9,7 @@ const filtroSchema = z.object({
 });
 
 /**
- * GET aqui é de propósito: TanStack Start executa `createServerFn` GET no
+ * POST aqui é de propósito: TanStack Start executa `createServerFn` GET no
  * navegador, onde DATABASE_URL não existe. Como `useServerFn` chama a função
  * diretamente, uma função GET que toca o banco sempre retornava vazio — por
  * isso a lista de contatos nunca aparecia.
