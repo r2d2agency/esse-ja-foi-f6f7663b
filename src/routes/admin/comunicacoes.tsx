@@ -77,6 +77,7 @@ import {
   listarContatosWhatsappFn,
   listarSegmentosComTotalFn,
   criarTemplateMetaFn,
+  uploadMidiaTemplateFn,
   excluirTemplateMetaFn,
   estimarPublicoFn,
   criarCampanhaFn,
@@ -109,6 +110,7 @@ import {
   Target,
   LayoutTemplate,
   FileDown,
+  Upload,
 } from "lucide-react";
 
 export const Route = createFileRoute("/admin/comunicacoes")({
@@ -359,6 +361,7 @@ function ComunicacoesPage() {
   const listarContatosFn = useServerFn(listarContatosWhatsappFn);
   const listarSegmentosFn = useServerFn(listarSegmentosComTotalFn);
   const criarTemplate = useServerFn(criarTemplateMetaFn);
+  const uploadMidia = useServerFn(uploadMidiaTemplateFn);
   const estimarPublico = useServerFn(estimarPublicoFn);
   const criarCampanha = useServerFn(criarCampanhaFn);
   const criarCampanhaDisparo = useServerFn(criarCampanhaDisparoFn);
@@ -401,10 +404,28 @@ function ComunicacoesPage() {
     category: "MARKETING",
     language: "pt_BR",
     components: [{ type: "BODY", text: "" }],
+    // Anexo do cabeçalho. Fica fora de `components` porque o `media_id` da Meta
+    // não pertence à estrutura do template: ele é resolvido no disparo.
+    midia_id: null,
+    midia_tipo: null,
+    midia_nome: null,
+    midia_arquivo_id: null,
   });
+  // Estado só da tela: o arquivo escolhido ainda não subiu. A prévia usa o
+  // dataURL; o disparo usa o `media_id` que volta do servidor.
+  const [midiaTemplate, setMidiaTemplate] = useState<{
+    nome: string;
+    tipo: string;
+    tamanho: number;
+    preview: string;
+  } | null>(null);
 
   // Wizard Campanha State
   const [isCampanhaWizardOpen, setIsCampanhaWizardOpen] = useState(false);
+  // Campanha Geral = comunicado sem veículo (convite para se cadastrar, aviso
+  // institucional). Nela o passo 2 é pulado e `veiculo_id` fica vazio, que o
+  // backend já aceita.
+  const [campanhaGeral, setCampanhaGeral] = useState(false);
   const [campanhaStep, setCampanhaStep] = useState(1);
   const [novaCampanha, setNovaCampanha] = useState<any>({
     nome: "",
@@ -643,10 +664,12 @@ function ComunicacoesPage() {
   // campanha nasceria mirando o grupo da campanha anterior em silêncio.
   const handleFecharCampanha = () => {
     setIsCampanhaWizardOpen(false);
+    setCampanhaGeral(false);
     setTagsSelecionadas([]);
   };
 
   const handleAbrirCampanha = () => {
+    setCampanhaGeral(false);
     setTagsSelecionadas([]);
     setIsCampanhaWizardOpen(true);
   };
@@ -840,7 +863,69 @@ function ComunicacoesPage() {
     });
   };
 
+  /**
+   * Anexo do cabeçalho do template. Sobes para a Meta antes do "Enviar para
+   * Análise": o `media_id` precisa existir para o disparo anexar a mídia, mas
+   * a Meta não devolve erro de template pendente — então o upload acontece
+   * aqui, na hora de escolher o arquivo, e o resultado fica no `newTemplate`.
+   */
+  const handleEscolherMidiaTemplate = (file: File) => {
+    const tipo = file.type || "";
+    const ehImagem = tipo.startsWith("image/");
+    const ehPdf = tipo === "application/pdf";
+    if (!ehImagem && !ehPdf) {
+      toast.error("O cabeçalho aceita apenas imagem ou PDF.");
+      return;
+    }
+    // A Meta limita envio de mídia a 16 MB; acima disso o Graph API devolve 413.
+    if (file.size > 16 * 1024 * 1024) {
+      toast.error("O arquivo excede 16 MB (limite da Meta).");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const dataUrl = String(reader.result);
+      setMidiaTemplate({ nome: file.name, tipo, tamanho: file.size, preview: ehImagem ? dataUrl : "" });
+      toast.promise(
+        (async () => {
+          const res: any = await uploadMidia({ data: { arquivo: dataUrl, nome: file.name, tipo } });
+          if (!res?.ok) throw new Error(res?.error || "Falha no upload da mídia.");
+          setNewTemplate((atual: any) => ({
+            ...atual,
+            midia_id: res.midia_id,
+            midia_tipo: res.midia_tipo,
+            midia_nome: res.midia_nome,
+            midia_arquivo_id: res.midia_arquivo_id,
+            // HEADER de mídia: sem texto, o formato diz à Meta o que renderizar.
+            components: [
+              { type: "HEADER", format: res.midia_tipo === "document" ? "DOCUMENT" : "IMAGE" },
+              ...atual.components.filter((c: any) => c.type !== "HEADER"),
+            ],
+          }));
+          return res.midia_nome as string;
+        })(),
+        {
+          loading: `Subindo ${file.name} para a Meta...`,
+          success: (nome: string) => `${nome} anexado ao template.`,
+          error: (err: Error) => `Erro no anexo: ${err.message}`,
+        },
+      );
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleCriarTemplate = async () => {
+    // Um HEADER de mídia sem `media_id` significa que o upload falhou ou
+    // nunca rodou: a Meta recusa o template e o disparo não teria anexo.
+    const header = newTemplate.components.find((c: any) => c.type === "HEADER");
+    const headerEhMidia = String(header?.format || "TEXT").toUpperCase() !== "TEXT";
+    if (headerEhMidia && !newTemplate.midia_id) {
+      toast.error(
+        "O anexo do cabeçalho ainda não subiu. Selecione a imagem ou PDF antes de continuar.",
+      );
+      return;
+    }
     toast.promise(criarTemplate({ data: newTemplate }), {
       loading: "Enviando para análise da Meta...",
       success: (res: any) => {
@@ -852,7 +937,12 @@ function ComunicacoesPage() {
             category: "MARKETING",
             language: "pt_BR",
             components: [{ type: "BODY", text: "" }],
+            midia_id: null,
+            midia_tipo: null,
+            midia_nome: null,
+            midia_arquivo_id: null,
           });
+          setMidiaTemplate(null);
           queryClient.invalidateQueries({ queryKey: ["wa-templates"] });
           return "Template criado e enviado para análise!";
         }
@@ -1076,11 +1166,14 @@ function ComunicacoesPage() {
                         <Card
                           className={cn(
                             "cursor-pointer border-2 hover:border-teal-500 transition-all",
-                            novaCampanha.veiculo_id
+                            novaCampanha.veiculo_id && !campanhaGeral
                               ? "border-teal-600 bg-teal-50"
                               : "border-slate-200",
                           )}
-                          onClick={() => setCampanhaStep(2)}
+                          onClick={() => {
+                            setCampanhaGeral(false);
+                            setCampanhaStep(2);
+                          }}
                         >
                           <CardContent className="p-6 text-center space-y-3">
                             <Car className="w-10 h-10 mx-auto text-teal-600" />
@@ -1090,16 +1183,26 @@ function ComunicacoesPage() {
                             </p>
                           </CardContent>
                         </Card>
-                        <Card className="opacity-50 cursor-not-allowed border-slate-200">
+                        <Card
+                          className={cn(
+                            "cursor-pointer border-2 hover:border-teal-500 transition-all",
+                            !novaCampanha.veiculo_id && !campanhaGeral
+                              ? "border-teal-600 bg-teal-50"
+                              : "border-slate-200",
+                          )}
+                          onClick={() => {
+                            setCampanhaGeral(true);
+                            setNovaCampanha({ ...novaCampanha, veiculo_id: "" });
+                            setCampanhaStep(3);
+                          }}
+                        >
                           <CardContent className="p-6 text-center space-y-3">
-                            <Megaphone className="w-10 h-10 mx-auto text-slate-400" />
+                            <Megaphone className="w-10 h-10 mx-auto text-teal-600" />
                             <h3 className="font-bold">Campanha Geral</h3>
                             <p className="text-xs text-muted-foreground">
-                              Comunicados institucionais ou avisos gerais
+                              Comunicados institucionais, avisos ou convites — sem vínculo com um
+                              veículo
                             </p>
-                            <Badge variant="outline" className="text-[10px]">
-                              Em breve
-                            </Badge>
                           </CardContent>
                         </Card>
                       </div>
@@ -1130,6 +1233,7 @@ function ComunicacoesPage() {
                           <div
                             key={veiculo.id}
                             onClick={() => {
+                              setCampanhaGeral(false);
                               setNovaCampanha({
                                 ...novaCampanha,
                                 veiculo_id: veiculo.id,
@@ -1472,24 +1576,31 @@ function ComunicacoesPage() {
                                       <SelectItem value="__vazio__">
                                         — (vazio, preencho depois) —
                                       </SelectItem>
-                                      <SelectItem value="veiculo.nome_completo">
-                                        Veículo — Marca + Modelo
-                                      </SelectItem>
-                                      <SelectItem value="veiculo.marca">Veículo — Marca</SelectItem>
-                                      <SelectItem value="veiculo.modelo">
-                                        Veículo — Modelo
-                                      </SelectItem>
-                                      <SelectItem value="veiculo.ano">Veículo — Ano</SelectItem>
-                                      <SelectItem value="veiculo.placa">Veículo — Placa</SelectItem>
-                                      <SelectItem value="veiculo.cor">Veículo — Cor</SelectItem>
-                                      <SelectItem value="veiculo.km">Veículo — Km</SelectItem>
-                                      <SelectItem value="veiculo.valor">
-                                        Veículo — Preço (R$)
-                                      </SelectItem>
-                                      <SelectItem value="anuncio.url">
-                                        Anúncio — Link do veículo
-                                      </SelectItem>
-                                      <SelectItem value="vendedor.nome">Vendedor — Nome</SelectItem>
+                            {/* Na Campanha Geral não há veículo: as opções de
+                                veículo/vendedor/anúncio saem da lista, senão o
+                                motor entregaria string vazia e a Meta recusaria. */}
+                            {!campanhaGeral && (
+                              <>
+                                <SelectItem value="veiculo.nome_completo">
+                                  Veículo — Marca + Modelo
+                                </SelectItem>
+                                <SelectItem value="veiculo.marca">Veículo — Marca</SelectItem>
+                                <SelectItem value="veiculo.modelo">
+                                  Veículo — Modelo
+                                </SelectItem>
+                                <SelectItem value="veiculo.ano">Veículo — Ano</SelectItem>
+                                <SelectItem value="veiculo.placa">Veículo — Placa</SelectItem>
+                                <SelectItem value="veiculo.cor">Veículo — Cor</SelectItem>
+                                <SelectItem value="veiculo.km">Veículo — Km</SelectItem>
+                                <SelectItem value="veiculo.valor">
+                                  Veículo — Preço (R$)
+                                </SelectItem>
+                                <SelectItem value="anuncio.url">
+                                  Anúncio — Link do veículo
+                                </SelectItem>
+                                <SelectItem value="vendedor.nome">Vendedor — Nome</SelectItem>
+                              </>
+                            )}
                                       <SelectItem value="contato.nome">Contato — Nome</SelectItem>
                                       <SelectItem value="contato.telefone">
                                         Contato — Telefone
@@ -1556,11 +1667,12 @@ function ComunicacoesPage() {
                           </div>
                           <div className="rounded-md bg-white dark:bg-black/40 border p-3 text-sm whitespace-pre-wrap">
                             {(() => {
-                              const corpo = Array.isArray(templateCampanha?.components)
-                                ? (templateCampanha.components.find(
-                                    (c: any) => c.type === "BODY",
-                                  )?.text ?? "")
-                                : "";
+                              // O conteúdo mora em `.conteudo` (array de componentes),
+                              // não em `.components` — usar o helper, que trata as duas formas.
+                              const corpo =
+                                componentesDoTemplate(templateCampanha).find(
+                                  (c: any) => c.type === "BODY",
+                                )?.text ?? "";
                               const valores = exemplo?.variaveis ?? {};
                               const texto = substituirVariaveis(corpo, valores);
                               // {{n}} que sobrou = variável sem valor: a Meta recusa.
@@ -1737,7 +1849,16 @@ function ComunicacoesPage() {
                         <div className="space-y-4">
                           <div className="p-4 border rounded-lg bg-slate-50 dark:bg-slate-900/50 space-y-2">
                             <p className="text-[10px] text-muted-foreground uppercase">Conteúdo</p>
-                            <p className="text-sm font-bold truncate">{novaCampanha.nome}</p>
+                            <p className="text-sm font-bold truncate">
+                              {campanhaGeral
+                                ? "Campanha Geral"
+                                : (() => {
+                                    const v = listaVeiculos.find(
+                                      (veiculo: any) => veiculo.id === novaCampanha.veiculo_id,
+                                    );
+                                    return v ? `${v.marca} ${v.modelo} - ${v.placa}` : "Sem veículo";
+                                  })()}
+                            </p>
                             <div className="flex items-center gap-2">
                               <FileText className="w-3 h-3 text-slate-400" />
                               <span className="text-xs">
@@ -1815,7 +1936,7 @@ function ComunicacoesPage() {
                       <Button
                         className="bg-teal-600 hover:bg-teal-700"
                         onClick={() => {
-                          if (campanhaStep === 2 && !novaCampanha.veiculo_id) {
+                          if (campanhaStep === 2 && !campanhaGeral && !novaCampanha.veiculo_id) {
                             toast.error("Selecione um veículo");
                             return;
                           }
@@ -2258,7 +2379,28 @@ function ComunicacoesPage() {
                       <div className="space-y-6">
                         <Label>Estrutura do Template</Label>
                         <div className="grid grid-cols-2 gap-4">
-                          <div className="border rounded-lg p-4 cursor-pointer hover:border-teal-500 bg-teal-50/50">
+                          <div
+                            className={cn(
+                              "border rounded-lg p-4 cursor-pointer hover:border-teal-500 transition-all",
+                              !midiaTemplate ? "bg-teal-50/50 border-teal-500" : "",
+                            )}
+                            onClick={() => {
+                              // Voltar para texto puro descarta o anexo: a Meta
+                              // não aceita HEADER de texto junto com HEADER de
+                              // mídia no mesmo template.
+                              setMidiaTemplate(null);
+                              setNewTemplate({
+                                ...newTemplate,
+                                midia_id: null,
+                                midia_tipo: null,
+                                midia_nome: null,
+                                midia_arquivo_id: null,
+                                components: newTemplate.components.filter(
+                                  (c: any) => c.type !== "HEADER",
+                                ),
+                              });
+                            }}
+                          >
                             <h4 className="font-semibold flex items-center gap-2">
                               <FileText className="w-4 h-4 text-teal-600" />
                               Apenas Texto
@@ -2267,17 +2409,22 @@ function ComunicacoesPage() {
                               Ideal para mensagens informativas simples.
                             </p>
                           </div>
-                          <div className="border rounded-lg p-4 opacity-50 cursor-not-allowed grayscale">
+                          <div
+                            className={cn(
+                              "border rounded-lg p-4 cursor-pointer hover:border-teal-500 transition-all",
+                              midiaTemplate ? "bg-teal-50/50 border-teal-500" : "",
+                            )}
+                            // Não avança o passo: escolher "Texto + Mídia" só
+                            // liga o campo de anexo, que aparece no passo 3.
+                            onClick={() => setWizardStep(3)}
+                          >
                             <h4 className="font-semibold flex items-center gap-2">
                               <Layout className="w-4 h-4" />
                               Texto + Mídia
                             </h4>
                             <p className="text-xs text-muted-foreground mt-1">
-                              Imagens, Vídeos ou Documentos no topo.
+                              Imagem ou PDF no topo da mensagem.
                             </p>
-                            <Badge variant="outline" className="mt-2 text-[10px]">
-                              Em breve
-                            </Badge>
                           </div>
                         </div>
                       </div>
@@ -2286,29 +2433,113 @@ function ComunicacoesPage() {
                     {wizardStep === 3 && (
                       <div className="space-y-4">
                         <Label>Cabeçalho (Opcional)</Label>
-                        <Input
-                          placeholder="Título em negrito no topo da mensagem"
-                          maxLength={60}
-                          // Sem `value`, o texto digitado some a cada re-render.
-                          // A ordem HEADER→BODY é garantida no envio, pelo
-                          // normalizarComponentes do meta-whatsapp.server.ts.
-                          value={
-                            newTemplate.components.find((c: any) => c.type === "HEADER")?.text || ""
-                          }
-                          onChange={(e) => {
-                            const comps = newTemplate.components.filter(
-                              (c: any) => c.type !== "HEADER",
+                        {(() => {
+                          const header = newTemplate.components.find(
+                            (c: any) => c.type === "HEADER",
+                          );
+                          const headerEhMidia =
+                            String(header?.format || "TEXT").toUpperCase() !== "TEXT";
+                          if (!headerEhMidia) {
+                            return (
+                              <Input
+                                placeholder="Título em negrito no topo da mensagem"
+                                maxLength={60}
+                                // Sem `value`, o texto digitado some a cada re-render.
+                                // A ordem HEADER→BODY é garantida no envio, pelo
+                                // normalizarComponentes do meta-whatsapp.server.ts.
+                                value={header?.text || ""}
+                                onChange={(e) => {
+                                  const comps = newTemplate.components.filter(
+                                    (c: any) => c.type !== "HEADER",
+                                  );
+                                  if (e.target.value) {
+                                    comps.unshift({ type: "HEADER", text: e.target.value });
+                                  }
+                                  setNewTemplate({ ...newTemplate, components: comps });
+                                }}
+                              />
                             );
-                            if (e.target.value) {
-                              comps.unshift({
-                                type: "HEADER",
-                                format: "TEXT",
-                                text: e.target.value,
-                              });
-                            }
-                            setNewTemplate({ ...newTemplate, components: comps });
-                          }}
-                        />
+                          }
+                          const arquivo = midiaTemplate;
+                          return (
+                            <div className="space-y-3">
+                              {arquivo && (
+                                <div className="border rounded-lg p-3 space-y-2">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="flex items-center gap-3 min-w-0">
+                                      {arquivo.tipo === "document" ? (
+                                        <FileText className="w-10 h-10 text-teal-600 shrink-0" />
+                                      ) : (
+                                        <img
+                                          src={arquivo.preview}
+                                          alt={arquivo.nome}
+                                          className="w-14 h-14 object-cover rounded-md border"
+                                        />
+                                      )}
+                                      <div className="min-w-0">
+                                        <p className="text-sm font-medium truncate">
+                                          {arquivo.nome}
+                                        </p>
+                                        <p className="text-[11px] text-muted-foreground">
+                                          {(arquivo.tamanho / 1024 / 1024).toFixed(2)} MB ·{" "}
+                                          {arquivo.tipo === "document" ? "PDF" : "Imagem"}
+                                        </p>
+                                        {newTemplate.midia_id && (
+                                          <p className="text-[11px] text-teal-600">
+                                            ✓ Anexado ao template
+                                          </p>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => {
+                                        // Voltar para texto puro: o HEADER de
+                                        // mídia sai junto, senão o template vai
+                                        // para a Meta sem o anexo correspondente.
+                                        setMidiaTemplate(null);
+                                        setNewTemplate({
+                                          ...newTemplate,
+                                          midia_id: null,
+                                          midia_tipo: null,
+                                          midia_nome: null,
+                                          midia_arquivo_id: null,
+                                          components: newTemplate.components.filter(
+                                            (c: any) => c.type !== "HEADER",
+                                          ),
+                                        });
+                                      }}
+                                    >
+                                      <Trash2 className="w-4 h-4" /> Remover
+                                    </Button>
+                                  </div>
+                                </div>
+                              )}
+                              <label className="block">
+                                <input
+                                  type="file"
+                                  accept="image/*,application/pdf"
+                                  className="hidden"
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) handleEscolherMidiaTemplate(file);
+                                    // Permite escolher o mesmo arquivo de novo.
+                                    e.target.value = "";
+                                  }}
+                                />
+                                <span className="inline-flex items-center gap-2 px-4 py-2 rounded-md border text-sm cursor-pointer hover:border-teal-500 transition-all">
+                                  <Upload className="w-4 h-4" />
+                                  {arquivo ? "Trocar anexo" : "Anexar imagem ou PDF"}
+                                </span>
+                              </label>
+                              <p className="text-[11px] text-muted-foreground">
+                                O arquivo vai no topo da mensagem. Aceita imagem ou PDF de
+                                até 16 MB (limite da Meta).
+                              </p>
+                            </div>
+                          );
+                        })()}
                         <p className="text-xs text-muted-foreground">Máximo 60 caracteres.</p>
                       </div>
                     )}
@@ -2353,11 +2584,36 @@ function ComunicacoesPage() {
                           </div>
                           <div className="bg-white dark:bg-zinc-800 rounded-lg shadow-sm p-3 relative max-w-[90%] ml-0">
                             <div className="absolute top-2 -left-2 w-0 h-0 border-t-[8px] border-t-transparent border-r-[12px] border-r-white dark:border-r-zinc-800 border-b-[8px] border-b-transparent"></div>
-                            {newTemplate.components.find((c: any) => c.type === "HEADER") && (
-                              <p className="font-bold text-sm mb-1">
-                                {newTemplate.components.find((c: any) => c.type === "HEADER").text}
-                              </p>
-                            )}
+                            {(() => {
+                              const header = newTemplate.components.find(
+                                (c: any) => c.type === "HEADER",
+                              );
+                              if (!header) return null;
+                              const headerEhMidia =
+                                String(header.format || "TEXT").toUpperCase() !== "TEXT";
+                              if (headerEhMidia) {
+                                // A prévia mostra o dataURL local: o `media_id` da
+                                // Meta não serve para o navegador exibir a imagem.
+                                if (midiaTemplate?.preview) {
+                                  return (
+                                    <img
+                                      src={midiaTemplate.preview}
+                                      alt={midiaTemplate.nome}
+                                      className="rounded-md mb-1 max-h-32 w-full object-cover"
+                                    />
+                                  );
+                                }
+                                return (
+                                  <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                                    <FileText className="w-3 h-3" />
+                                    {midiaTemplate?.nome || "Anexo (PDF)"}
+                                  </p>
+                                );
+                              }
+                              return (
+                                <p className="font-bold text-sm mb-1">{header.text}</p>
+                              );
+                            })()}
                             <p className="text-sm whitespace-pre-wrap">
                               {newTemplate.components.find((c: any) => c.type === "BODY")?.text ||
                                 "Digite o conteúdo..."}

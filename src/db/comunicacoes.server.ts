@@ -112,6 +112,18 @@ export async function ensureComunicacoesSchema(silent = true) {
         ADD COLUMN IF NOT EXISTS ultima_sincronizacao timestamptz DEFAULT now();
     `);
 
+    // Anexo do cabeçalho (imagem ou PDF). O `conteudo` guarda a estrutura do
+    // template, não o binário; o `media_id` da Meta expira em 30 dias, então a
+    // cópia local em `arquivos_upload` (`midia_arquivo_id`) é o que permite
+    // reenviar o template quando o id vencer.
+    await d.execute(sql`
+      ALTER TABLE whatsapp_templates
+        ADD COLUMN IF NOT EXISTS midia_id text,
+        ADD COLUMN IF NOT EXISTS midia_tipo text,
+        ADD COLUMN IF NOT EXISTS midia_nome text,
+        ADD COLUMN IF NOT EXISTS midia_arquivo_id uuid;
+    `);
+
     // 3. Segmentos (Listas de Compradores)
     await d.execute(sql`
       CREATE TABLE IF NOT EXISTS whatsapp_segmentos (

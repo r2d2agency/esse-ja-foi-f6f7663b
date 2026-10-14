@@ -201,7 +201,13 @@ async function enviarComRetry(msg: any, campanha: any): Promise<ResultadoEnvio> 
 
   while (tentativa < MAX_TENTATIVAS) {
     try {
-      const componentes = montarComponents(campanha.template_conteudo, msg.variaveis ?? {});
+      // O anexo (imagem/PDF do cabeçalho) mora na linha do template, não na
+      // mensagem — cada contato recebe a mesma mídia. Por isso ela é resolvida
+      // aqui e passada junto com os componentes.
+      const midia = campanha.midia_id
+        ? { tipo: campanha.midia_tipo, mediaId: campanha.midia_id, nome: campanha.midia_nome }
+        : null;
+      const componentes = montarComponents(campanha.template_conteudo, msg.variaveis ?? {}, midia);
       const r = await metaService.enviarMensagem(
         normalizarParaMeta(msg.telefone),
         campanha.meta_name,
@@ -394,7 +400,8 @@ export async function processarDisparo(opts: { apenasAgendadas?: boolean } = {})
   `);
 
   const res = await d.execute(sql`
-    SELECT c.*, t.meta_name, t.idioma, t.conteudo as template_conteudo, t.status as template_status
+    SELECT c.*, t.meta_name, t.idioma, t.conteudo as template_conteudo, t.status as template_status,
+      t.midia_id, t.midia_tipo, t.midia_nome
     FROM whatsapp_campanhas c
     LEFT JOIN whatsapp_templates t ON t.id = c.template_id
     WHERE c.status = 'PROCESSANDO'

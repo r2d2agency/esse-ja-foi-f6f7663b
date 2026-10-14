@@ -110,15 +110,38 @@ function componenteBotao(botao: any, posicao: number, valores: Record<string, st
  * link também pedem parâmetro (erro 131008), e vêm como componente próprio.
  * Vale tanto para o conteúdo como array (formato que a Meta devolve) quanto
  * como objeto com `components`.
+ *
+ * `midia` (opcional) é o anexo do cabeçalho: `{ tipo: "image"|"document",
+ * mediaId, nome? }`. Sem ele o HEADER sai como texto puro.
  */
-export function montarComponents(conteudo: any, valores: Record<string, string> = {}): any[] {
+export function montarComponents(
+  conteudo: any,
+  valores: Record<string, string> = {},
+  midia: { tipo?: string; mediaId?: string; nome?: string } | null = null,
+): any[] {
   const comps = componentesDoConteudo(conteudo);
   if (!comps.length) return [];
 
   const saida: any[] = [];
+  const anexo = midia?.mediaId ? midia : null;
 
   for (const comp of comps) {
     const tipo = String(comp?.type || "").toUpperCase();
+
+    if (tipo === "HEADER") {
+      const formato = String(comp.format || "TEXT").toUpperCase();
+      if (anexo && formato !== "TEXT") {
+        const tipoMidia = anexo.tipo === "document" ? "document" : "image";
+        const parameter: any = { type: tipoMidia, [tipoMidia]: { id: anexo.mediaId } };
+        if (tipoMidia === "document" && anexo.nome) parameter.document.filename = anexo.nome;
+        saida.push({ type: "header", parameters: [parameter] });
+        continue;
+      }
+
+      const texto = String(comp.text || "").trim();
+      if (texto) saida.push({ type: "header", parameters: [{ type: "text", text: texto }] });
+      continue;
+    }
 
     if (tipo === "BODY") {
       const parameters = parametersPara(comp.text || "", valores, "corpo do template");
@@ -384,23 +407,31 @@ export class MetaWhatsAppService {
     if (db && data.id) {
       await db.execute(sql`
         INSERT INTO whatsapp_templates (
-          meta_id, 
-          nome_interno, 
-          meta_name, 
-          categoria, 
-          idioma, 
-          status, 
+          meta_id,
+          nome_interno,
+          meta_name,
+          categoria,
+          idioma,
+          status,
           conteudo,
+          midia_id,
+          midia_tipo,
+          midia_nome,
+          midia_arquivo_id,
           ultima_sincronizacao
         )
         VALUES (
-          ${data.id}, 
-          ${template.nome_interno || template.name}, 
-          ${template.name}, 
-          ${template.category}, 
-          ${template.language || "pt_BR"}, 
-          'PENDING', 
+          ${data.id},
+          ${template.nome_interno || template.name},
+          ${template.name},
+          ${template.category},
+          ${template.language || "pt_BR"},
+          'PENDING',
           ${JSON.stringify(template.components)}::jsonb,
+          ${template.midia_id ?? null},
+          ${template.midia_tipo ?? null},
+          ${template.midia_nome ?? null},
+          ${template.midia_arquivo_id ?? null},
           now()
         )
       `);

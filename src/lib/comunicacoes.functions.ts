@@ -398,6 +398,54 @@ export const criarTemplateMetaFn = createServerFn({ method: "POST" })
     }
   });
 
+/**
+ * Anexo do cabeçalho do template (imagem ou PDF). Mesma receita do upload da
+ * tela de conversas: sobe o binário para a Meta — que devolve o `media_id`
+ * usado no disparo — e guarda uma cópia em `arquivos_upload`, porque o id da
+ * Meta expira em 30 dias e sem a cópia o template fica sem mídia.
+ *
+ * Imagem e PDF são os únicos formatos aceitos num HEADER de template; vídeo
+ * precisa de aprovação manual da Meta e não vale o custo aqui.
+ */
+export const uploadMidiaTemplateFn = createServerFn({ method: "POST" })
+  .validator((data: any) =>
+    z
+      .object({
+        arquivo: z.string().min(1),
+        nome: z.string().min(1),
+        tipo: z.string().min(1),
+      })
+      .parse(data),
+  )
+  .handler(async ({ data }) => {
+    try {
+      const tipoArquivo = String(data.tipo || "").toLowerCase();
+      const ehImagem = tipoArquivo.startsWith("image/");
+      const ehPdf = tipoArquivo === "application/pdf";
+      if (!ehImagem && !ehPdf) {
+        throw new Error("O cabeçalho do template aceita apenas imagem ou PDF.");
+      }
+
+      const { mediaId } = await metaService.uploadMedia(data.arquivo, data.nome, data.tipo);
+
+      const { salvarArquivo } = await import("../db/arquivos.server");
+      const buffer = Buffer.from(String(data.arquivo).replace(/^data:[^;]+;base64,/, ""), "base64");
+      const arquivoId = await salvarArquivo(buffer, data.tipo);
+
+      return {
+        ok: true,
+        // `document` é o tipo que a Meta exige para PDF; o resto é imagem.
+        midia_tipo: ehPdf ? "document" : "image",
+        midia_id: mediaId,
+        midia_nome: data.nome,
+        midia_arquivo_id: arquivoId,
+      };
+    } catch (error: any) {
+      console.error("[comunicacoes] falha ao subir mídia do template:", error);
+      return { ok: false, error: String(error?.message || error) };
+    }
+  });
+
 export const excluirTemplateMetaFn = createServerFn({ method: "POST" })
   .validator((data: any) => {
     const nome = String(data?.meta_name || "").trim();
