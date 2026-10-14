@@ -87,6 +87,7 @@ import {
   enviarTesteFn,
   processarEnvioCampanhaFn,
 } from "@/lib/comunicacoes.functions";
+import { listarMarketingTagsFn } from "@/lib/marketing.functions";
 import {
   listarAutomacoesFn,
   salvarAutomacaoFn,
@@ -333,6 +334,7 @@ function ComunicacoesPage() {
   const getAutomacoes = useServerFn(listarAutomacoesFn);
   const salvarAutomacao = useServerFn(salvarAutomacaoFn);
   const getExecucoes = useServerFn(getExecucoesAutomacaoFn);
+  const listarTagsMarketing = useServerFn(listarMarketingTagsFn);
 
   const [activeTab, setActiveTab] = useState("campanhas");
   const [selectedAutomacao, setSelectedAutomacao] = useState<any>(null);
@@ -384,6 +386,7 @@ function ComunicacoesPage() {
     janela_inicio: "08:00",
     janela_fim: "18:00",
     intervalo_minutos: 5,
+    tags: [],
   });
 
   // Wizard Automação State
@@ -402,6 +405,7 @@ function ComunicacoesPage() {
   // Removido duplicado handleSalvarAutomacao e automacoes query aqui
 
   const [estimativa, setEstimativa] = useState<any>({ total: 0, elegiveis: 0, nao_elegiveis: 0 });
+  const [tagsSelecionadas, setTagsSelecionadas] = useState<string[]>([]);
 
   const { data: indicadores } = useQuery({
     queryKey: ["wa-indicadores"],
@@ -445,6 +449,31 @@ function ComunicacoesPage() {
     queryKey: ["veiculos-campanha", buscaVeiculo],
     queryFn: () => getVeiculosAdmin({ data: { busca: buscaVeiculo.trim() || undefined } }),
     enabled: isCampanhaWizardOpen,
+  });
+
+  // Etiquetas criadas no Marketing: é assim que uma campanha mira "só quem
+  // recebeu esta etiqueta". A contagem vem junto, para a tela mostrar se a tag
+  // tem 0 ou 200 contatos antes de você montar a fila.
+  const { data: tagsMarketing } = useQuery({
+    queryKey: ["wa-marketing-tags"],
+    queryFn: () => listarTagsMarketing(),
+  });
+
+  // A contagem com etiqueta tem que vir do servidor com a tag no critério:
+  // `estimarPublico` ignora tag, então sem esta consulta a tela mostrava o
+  // mesmo número com e sem etiqueta e a fila entrava diferente.
+  const { data: estimativaTags } = useQuery({
+    queryKey: [
+      "wa-estimativa",
+      tagsSelecionadas,
+      novaCampanha.filtros.tipo,
+      novaCampanha.filtros.uf,
+    ],
+    queryFn: () =>
+      estimarPublico({
+        data: { ...novaCampanha.filtros, origem: "IMPORTADOS", tagIds: tagsSelecionadas },
+      }),
+    enabled: campanhaStep === 3 && tagsSelecionadas.length > 0,
   });
 
   // Contatos e segmentos: as abas mostravam linhas fictícias escritas no JSX, não
@@ -493,36 +522,59 @@ function ComunicacoesPage() {
     });
   };
 
-  // Tem que levar a origem junto: sem ela o servidor assume "AMBOS" e a
-  // estimativa não muda quando o usuário escolhe "só lista importada" — era a
-  // causa de aparecer 2 elegíveis e a fila montar 0.
+  // A estimativa tem que levar origem e tags: sem origem o servidor assume
+  // "AMBOS" (a contagem não mudava ao escolher "só lista importada") e sem a
+  // tag ela ignorava a etiqueta que a tela mostrava — a tela prometia 500 e a
+  // fila entrava com 3.
+  const dadosEstimativa = {
+    ...novaCampanha.filtros,
+    origem: novaCampanha.origem_publico,
+    tagIds: tagsSelecionadas,
+  };
+
   const handleEstimar = async () => {
-    const res = await estimarPublico({
-      data: { ...novaCampanha.filtros, origem: novaCampanha.origem_publico },
-    });
+    const res = await estimarPublico({ data: dadosEstimativa });
     setEstimativa(res);
+  };
+
+  // Fechar sem esquecer a etiqueta escolhida: se ela ficasse marcada, a próxima
+  // campanha nasceria mirando o grupo da campanha anterior em silêncio.
+  const handleFecharCampanha = () => {
+    setIsCampanhaWizardOpen(false);
+    setTagsSelecionadas([]);
+  };
+
+  const handleAbrirCampanha = () => {
+    setTagsSelecionadas([]);
+    setIsCampanhaWizardOpen(true);
   };
 
   const handleSalvarCampanha = async (enviarAgora = false) => {
     // A nova fn carrega janela, intervalo e público; a antiga criarCampanha
     // continua existindo mas não recebe esses campos.
-    toast.promise(criarCampanhaDisparo({ data: { ...novaCampanha, enviar_agora: enviarAgora } }), {
-      loading: "Salvando campanha e montando a fila...",
-      success: (res: any) => {
-        if (res.ok && res.id) {
-          setIsCampanhaWizardOpen(false);
-          queryClient.invalidateQueries({ queryKey: ["wa-campanhas"] });
-          const enviados = res.inseridos ?? 0;
-          if (enviarAgora) {
-            handleProcessarEnvio(res.id);
-            return `Campanha criada com ${enviados} contatos. O envio respeita a janela e o intervalo configurados.`;
+    toast.promise(
+      criarCampanhaDisparo({
+        data: { ...novaCampanha, filtros: dadosEstimativa, enviar_agora: enviarAgora },
+      }),
+      {
+        loading: "Salvando campanha e montando a fila...",
+        success: (res: any) => {
+          if (res.ok && res.id) {
+            setIsCampanhaWizardOpen(false);
+            queryClient.invalidateQueries({ queryKey: ["wa-campanhas"] });
+            setTagsSelecionadas([]);
+            const enviados = res.inseridos ?? 0;
+            if (enviarAgora) {
+              handleProcessarEnvio(res.id);
+              return `Campanha criada com ${enviados} contatos. O envio respeita a janela e o intervalo configurados.`;
+            }
+            return `Campanha criada com ${enviados} contatos na fila.`;
           }
-          return `Campanha criada com ${enviados} contatos na fila.`;
-        }
-        throw new Error(res.error || "Erro ao salvar");
+          throw new Error(res.error || "Erro ao salvar");
+        },
+        error: (err) => `Falha: ${err.message}`,
       },
-      error: (err) => `Falha: ${err.message}`,
-    });
+    );
   };
 
   const handleProcessarEnvio = async (id: string) => {
@@ -894,7 +946,10 @@ function ComunicacoesPage() {
                 Envios em massa pelo WhatsApp Cloud API
               </p>
             </div>
-            <Dialog open={isCampanhaWizardOpen} onOpenChange={setIsCampanhaWizardOpen}>
+            <Dialog
+              open={isCampanhaWizardOpen}
+              onOpenChange={(aberto) => (aberto ? undefined : handleFecharCampanha())}
+            >
               <DialogTrigger asChild>
                 <Button className="bg-teal-600 hover:bg-teal-700">
                   <Plus className="w-4 h-4 mr-2" /> Nova Campanha
@@ -1018,11 +1073,67 @@ function ComunicacoesPage() {
                       <div className="flex justify-between items-end">
                         <Label className="text-lg">Público Alvo</Label>
                         <div className="text-right">
-                          <p className="text-2xl font-bold text-teal-600">{estimativa.elegiveis}</p>
+                          <p className="text-2xl font-bold text-teal-600">
+                            {tagsSelecionadas.length
+                              ? (estimativaTags?.elegiveis ?? "…")
+                              : estimativa.elegiveis}
+                          </p>
                           <p className="text-[10px] text-muted-foreground">
                             Elegíveis para WhatsApp
                           </p>
                         </div>
+                      </div>
+
+                      {/* Etiquetas do Marketing: marcar uma tag muda o público de
+                          "todos os contatos" para "só quem tem esta etiqueta". */}
+                      <div className="space-y-2">
+                        <Label>Filtrar por etiqueta (opcional)</Label>
+                        {!tagsMarketing || (tagsMarketing as any).ok === false ? (
+                          <p className="text-xs text-muted-foreground">
+                            Crie etiquetas em Marketing para mirar grupos específicos.
+                          </p>
+                        ) : (tagsMarketing as any).data?.length === 0 ? (
+                          <p className="text-xs text-muted-foreground">
+                            Nenhuma etiqueta criada. Crie uma em Marketing para mirar grupos
+                            específicos.
+                          </p>
+                        ) : (
+                          <div className="flex flex-wrap gap-2">
+                            {(tagsMarketing as any).data.map((t: any) => {
+                              const ativa = tagsSelecionadas.includes(t.id);
+                              return (
+                                <button
+                                  key={t.id}
+                                  type="button"
+                                  onClick={() =>
+                                    setTagsSelecionadas((prev) =>
+                                      ativa ? prev.filter((id) => id !== t.id) : [...prev, t.id],
+                                    )
+                                  }
+                                  className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${
+                                    ativa
+                                      ? "border-teal-600 bg-teal-50 text-teal-700"
+                                      : "border-slate-200 bg-white text-slate-600 hover:border-slate-400"
+                                  }`}
+                                >
+                                  <span
+                                    className="mr-1.5 inline-block h-2 w-2 rounded-full align-middle"
+                                    style={{ backgroundColor: t.cor || "#14b8a6" }}
+                                  />
+                                  {t.nome}
+                                  <span className="ml-1.5 text-[10px] opacity-60">
+                                    {Number(t.total ?? 0) || 0}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                        <p className="text-[11px] text-muted-foreground">
+                          {tagsSelecionadas.length
+                            ? "Com etiqueta selecionada, só ela define o público (origem e filtros abaixo são ignorados)."
+                            : "Sem etiqueta, o público é definido pela origem e pelos filtros abaixo."}
+                        </p>
                       </div>
 
                       <div className="space-y-2">
@@ -1059,7 +1170,7 @@ function ComunicacoesPage() {
                                 novaCampanha.origem_publico === o.value
                                   ? "border-teal-600 bg-teal-50 dark:bg-teal-950/40"
                                   : "border-slate-200 bg-white"
-                              }`}
+                              } ${tagsSelecionadas.length ? "opacity-40 pointer-events-none" : ""}`}
                             >
                               <p className="text-sm font-bold">{o.label}</p>
                               <p className="text-xs text-muted-foreground">{o.desc}</p>
@@ -1068,7 +1179,11 @@ function ComunicacoesPage() {
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-4">
+                      <div
+                        className={`grid grid-cols-2 gap-4 ${
+                          tagsSelecionadas.length ? "opacity-40 pointer-events-none" : ""
+                        }`}
+                      >
                         <div className="space-y-2">
                           <Label>Tipo de Comprador</Label>
                           <Select
@@ -1118,11 +1233,14 @@ function ComunicacoesPage() {
                           <Users className="w-5 h-5 text-slate-400" />
                           <div>
                             <p className="text-sm font-semibold">
-                              {estimativa.total} compradores encontrados
+                              {tagsSelecionadas.length
+                                ? `${estimativaTags?.total ?? "…"} contatos com a etiqueta`
+                                : `${estimativa.total} compradores encontrados`}
                             </p>
                             <p className="text-xs text-muted-foreground">
-                              {estimativa.nao_elegiveis} não elegíveis (ausência de WhatsApp ou
-                              desativado)
+                              {tagsSelecionadas.length
+                                ? `${estimativaTags?.nao_elegiveis ?? "…"} não elegíveis (sem WhatsApp ou número inválido)`
+                                : `${estimativa.nao_elegiveis} não elegíveis (ausência de WhatsApp ou desativado)`}
                             </p>
                           </div>
                         </div>
@@ -1392,9 +1510,7 @@ function ComunicacoesPage() {
                   <Button
                     variant="ghost"
                     onClick={() =>
-                      campanhaStep > 1
-                        ? setCampanhaStep(campanhaStep - 1)
-                        : setIsCampanhaWizardOpen(false)
+                      campanhaStep > 1 ? setCampanhaStep(campanhaStep - 1) : handleFecharCampanha()
                     }
                   >
                     {campanhaStep === 1 ? "Cancelar" : "Voltar"}
@@ -1439,7 +1555,7 @@ function ComunicacoesPage() {
                 <CardContent className="p-12 text-center text-muted-foreground flex flex-col items-center gap-4">
                   <Send className="w-12 h-12 opacity-20" />
                   <p>Nenhuma campanha realizada até o momento.</p>
-                  <Button variant="outline" onClick={() => setIsCampanhaWizardOpen(true)}>
+                  <Button variant="outline" onClick={handleAbrirCampanha}>
                     Criar minha primeira campanha
                   </Button>
                 </CardContent>
@@ -1610,6 +1726,7 @@ function ComunicacoesPage() {
                           size="sm"
                           onClick={() => {
                             setNovaCampanha((c: any) => ({ ...c, segmento_id: s.id }));
+                            setTagsSelecionadas([]);
                             setIsCampanhaWizardOpen(true);
                             setCampanhaStep(3);
                           }}

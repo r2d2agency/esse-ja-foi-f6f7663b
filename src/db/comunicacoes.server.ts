@@ -539,6 +539,9 @@ export async function estimarPublico(filtros: any) {
     uf: filtros?.uf ?? null,
     cidade: filtros?.cidade ?? null,
     statusCompliance: filtros?.status === "APROVADO" ? "APROVADO" : null,
+    // Sem isto a etiqueta escolhida na tela não chegava à contagem: a campanha
+    // mirava a base inteira enquanto o wizard mostrava outro número.
+    tagIds: filtros?.tagIds ?? null,
   });
   return { total, elegiveis: total, nao_elegiveis: 0 };
 }

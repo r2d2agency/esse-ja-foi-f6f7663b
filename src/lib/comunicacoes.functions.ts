@@ -112,13 +112,20 @@ export const listarSegmentosComTotalFn = createServerFn({ method: "GET" }).handl
   return listarSegmentosComTotal();
 });
 
-export const contarPublicoFn = createServerFn({ method: "GET" })
+/**
+ * POST aqui é de propósito: TanStack Start executa `createServerFn` GET no
+ * navegador, onde DATABASE_URL não existe. Como `useServerFn` chama a função
+ * diretamente, uma função GET que toca o banco sempre retornava vazio — por
+ * isso a lista de contatos nunca aparecia.
+ */
+export const contarPublicoFn = createServerFn({ method: "POST" })
   .validator((data: any) =>
     z
       .object({
         origem: z.enum(["COMPRADORES", "IMPORTADOS", "AMBOS"]).optional(),
         uf: z.string().optional(),
         cidade: z.string().optional(),
+        tagIds: z.array(z.string().uuid()).optional(),
       })
       .parse(data ?? {}),
   )
@@ -129,6 +136,7 @@ export const contarPublicoFn = createServerFn({ method: "GET" })
         origem: data.origem ?? "AMBOS",
         uf: data.uf ?? null,
         cidade: data.cidade ?? null,
+        tagIds: data.tagIds ?? null,
       }),
     };
   });
@@ -142,6 +150,7 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
         veiculo_id: z.string().uuid().optional().nullable(),
         segmento_id: z.string().uuid().optional().nullable(),
         origem_publico: z.enum(["COMPRADORES", "IMPORTADOS", "AMBOS"]).default("AMBOS"),
+        tag_ids: z.array(z.string().uuid()).optional(),
         janela_inicio: z.string().optional().nullable(),
         janela_fim: z.string().optional().nullable(),
         intervalo_minutos: z.number().int().min(1).max(1440).default(5),
@@ -186,6 +195,9 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
         uf: data.filtros?.uf ?? null,
         cidade: data.filtros?.cidade ?? null,
         tipo: data.filtros?.tipo ?? null,
+        // A tag tem que chegar ao motor: sem ela a fila era montada com "todos
+        // os prospects" e a campanha mirava a base inteira em vez da etiqueta.
+        tagIds: data.tag_ids ?? data.filtros?.tagIds ?? null,
         // A UI manda `filtros.status`; a estimativa já lê esse campo como
         // statusCompliance. Sem este alias a fila ignorava o filtro que a
         // tela mostrava — a estimativa apontava 2 elegíveis e a fila entrava

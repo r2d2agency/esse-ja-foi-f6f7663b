@@ -21,6 +21,12 @@ export type CriterioPublico = {
   segmentoId?: string | null;
   loteId?: string | null;
   busca?: string | null;
+  /**
+   * Ids de `marketing_tags`. Vazio/null = sem filtro de tag. Com pelo menos
+   * um id, a fila é montada só dos contatos marcados com aquela tag, e o
+   * restante dos filtros (origem/UF/tipo) é ignorado — a tag já é a seleção.
+   */
+  tagIds?: string[] | null;
 };
 
 export type Destinatario = {
@@ -104,6 +110,12 @@ function filtroProspects(c: CriterioPublico) {
   const cidade = limparFiltro(c.cidade);
   const busca = limparFiltro(c.busca);
 
+  // Tag marcada na tela: em vez de "todos os prospects", a fila é só quem
+  // recebeu aquela etiqueta no Marketing. A tag já é a seleção, então origem,
+  // tipo e UF ficam de fora — misturá-los esvaziava a fila sem aviso.
+  const tagIds = (Array.isArray(c.tagIds) ? c.tagIds : []).filter((t) => !!t);
+  const comTag = tagIds.length > 0;
+
   // `comprador_id IS NULL` é o que impede mandar convite para quem já se
   // cadastrou: quem já é comprador chega pela outra UNION.
   return sql`
@@ -117,11 +129,34 @@ function filtroProspects(c: CriterioPublico) {
     WHERE m.comprador_id IS NULL
       AND m.status NOT IN ('descartado', 'convertido')
       AND btrim(coalesce(m.telefone, '')) <> ''
-      AND (${c.loteId ?? null}::uuid IS NULL OR m.origem = ${c.loteId ?? null})
-      AND (${uf}::text IS NULL OR upper(coalesce(m.uf, '')) = upper(${uf}))
-      AND (${cidade}::text IS NULL OR lower(coalesce(m.cidade, '')) = lower(${cidade}))
-      AND (${busca}::text IS NULL
-        OR coalesce(nullif(m.empresa, ''), m.nome) ILIKE ${"%" + busca + "%"})
+      ${
+        comTag
+          ? sql`AND m.id IN (
+        SELECT ct.contato_id FROM marketing_contato_tags ct
+        WHERE ct.tag_id IN (${sql.join(
+          tagIds.map((t) => sql`${t}::uuid`),
+          ", ",
+        )})
+      )`
+          : sql``
+      }
+      AND (
+        ${comTag}
+        OR (${c.loteId ?? null}::uuid IS NULL OR m.origem = ${c.loteId ?? null})
+      )
+      AND (
+        ${comTag}
+        OR (${uf}::text IS NULL OR upper(coalesce(m.uf, '')) = upper(${uf}))
+      )
+      AND (
+        ${comTag}
+        OR (${cidade}::text IS NULL OR lower(coalesce(m.cidade, '')) = lower(${cidade}))
+      )
+      AND (
+        ${comTag}
+        OR (${busca}::text IS NULL
+          OR coalesce(nullif(m.empresa, ''), m.nome) ILIKE ${"%" + busca + "%"})
+      )
   `;
 }
 
@@ -133,9 +168,15 @@ export async function resolverPublico(criterio: CriterioPublico = {}): Promise<D
   const d = requireDb();
   const origem: OrigemPublico = criterio.origem ?? "AMBOS";
 
+  // Com tag marcada, a tag define o público: buscar compradores junto traria
+  // gente de fora da etiqueta e a contagem da tela não bateria com a fila.
+  const comTag = Array.isArray(criterio.tagIds) && criterio.tagIds.length > 0;
+
   const partes: any[] = [];
-  if (origem === "COMPRADORES" || origem === "AMBOS") partes.push(filtroCompradores(criterio));
-  if (origem === "IMPORTADOS" || origem === "AMBOS") partes.push(filtroProspects(criterio));
+  if (!comTag && (origem === "COMPRADORES" || origem === "AMBOS"))
+    partes.push(filtroCompradores(criterio));
+  if (origem === "IMPORTADOS" || origem === "AMBOS" || comTag)
+    partes.push(filtroProspects(criterio));
   if (!partes.length) return [];
 
   // As duas partes têm as mesmas colunas; a dedup real é por telefone, feita

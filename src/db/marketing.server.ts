@@ -420,6 +420,26 @@ export async function criarMarketingTag(nome: string, cor?: string) {
   )[0];
 }
 
+/**
+ * Etiquetas com quantas pessoas estão em cada uma.
+ *
+ * A campanha precisa escolher "só quem tem esta etiqueta", e sem a contagem a
+ * tela mostrava a tag sem dizer se ela tem 0 ou 200 contatos.
+ */
+export async function listarMarketingTags() {
+  const d = requireDb();
+  await ensureMarketingSchema();
+  return rowsOf(
+    await d.execute(sql`
+      SELECT t.*, (
+        SELECT count(*) FROM marketing_contato_tags ct WHERE ct.tag_id = t.id
+      ) AS total
+      FROM marketing_tags t
+      ORDER BY t.nome
+    `),
+  );
+}
+
 export async function atribuirMarketingTag(contatoIds: string[], tagId: string) {
   const d = requireDb();
   await ensureMarketingSchema();
