@@ -433,16 +433,6 @@ function ComunicacoesPage() {
   const [estimativa, setEstimativa] = useState<any>({ total: 0, elegiveis: 0, nao_elegiveis: 0 });
   const [tagsSelecionadas, setTagsSelecionadas] = useState<string[]>([]);
 
-  /**
-   * Variáveis ({{1}}, {{2}}…) que o template escolhido na campanha pede,
-   * derivadas do conteúdo real — antes o passo de mapeamento era decorativo
-   * com {{1}}/{{2}}/{{3}} fixos e nada era salvo, então a Meta recusava o
-   * disparo com "Preencha {{n}}".
-   */
-  const templateCampanha = (templates ?? []).find((t: any) => t.id === novaCampanha.template_id);
-  const totalVariaveis = contarVariaveisTemplate(templateCampanha);
-  const variaveisTemplate = Array.from({ length: totalVariaveis }, (_, i) => i + 1);
-
   const { data: indicadores } = useQuery({
     queryKey: ["wa-indicadores"],
     queryFn: () => getIndicadores(),
@@ -476,6 +466,20 @@ function ComunicacoesPage() {
     queryKey: ["wa-templates"],
     queryFn: () => getTemplates(),
   });
+
+  /**
+   * Variáveis ({{1}}, {{2}}…) que o template escolhido na campanha pede,
+   * derivadas do conteúdo real — antes o passo de mapeamento era decorativo
+   * com {{1}}/{{2}}/{{3}} fixos e nada era salvo, então a Meta recusava o
+   * disparo com "Preencha {{n}}".
+   *
+   * Fica DEPOIS da query de templates: declarada antes dela, o código lia a
+   * `const templates` ainda na zona morta e a página inteira quebrava com
+   * "Cannot access 'Q' before initialization" (nome minificado da variável).
+   */
+  const templateCampanha = (templates ?? []).find((t: any) => t.id === novaCampanha.template_id);
+  const totalVariaveis = contarVariaveisTemplate(templateCampanha);
+  const variaveisTemplate = Array.from({ length: totalVariaveis }, (_, i) => i + 1);
 
   // A seleção de veículo usava getAnuncios filtrado por status PUBLICISHED:
   // só veículos já publicados apareciam, e a maioria dos cadastrados está em
