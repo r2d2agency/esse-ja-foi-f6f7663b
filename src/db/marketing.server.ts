@@ -98,6 +98,8 @@ export type ItemImportacao = {
 export type ResultadoImportacao = {
   inseridos: number;
   duplicados: number;
+  /** Linhas que já existiam e foram sobrescritas (só com atualizarExistentes). */
+  atualizados: number;
   invalidos: number;
   erros: string[];
   /**
@@ -156,6 +158,8 @@ async function idDuplicado(
 export async function importarMarketingContatos(
   contatos: Array<Record<string, unknown>>,
   tipoPadrao = "prospect",
+  /** Quando true, linha que já existe é atualizada em vez de descartada. */
+  atualizarExistentes = false,
 ): Promise<ResultadoImportacao> {
   const d = requireDb();
   await ensureMarketingSchema();
@@ -163,7 +167,8 @@ export async function importarMarketingContatos(
   const erros: string[] = [];
   let inseridos = 0,
     duplicados = 0,
-    invalidos = 0;
+    invalidos = 0,
+    atualizados = 0;
   const inseridosIds: string[] = [];
 
   for (let i = 0; i < contatos.length; i++) {
@@ -205,6 +210,19 @@ export async function importarMarketingContatos(
       console.warn(`[marketing] duplicidade não verificada na linha ${i + 1}:`, e?.message ?? e);
     }
     if (motivo) {
+      const existenteId = atualizarExistentes
+        ? await idContatoPorEmailOuTelefone(email, telefone)
+        : null;
+      if (existenteId) {
+        // Reimportar atualiza (tipo incluído), então a lista não fica velha
+        // depois de importar a segunda vez com outro tipo.
+        await reimportarMarketingContato(existenteId, registro);
+        atualizados++;
+        inseridosIds.push(existenteId);
+        if (email) vistos.set(email, true);
+        if (telefone) vistos.set(telefone, true);
+        continue;
+      }
       duplicados++;
       erros.push(`Linha ${i + 1}: ignorada, ${motivo}.`);
       continue;
@@ -246,7 +264,113 @@ export async function importarMarketingContatos(
       if (linha.id) inseridosIds.push(String(linha.id));
     }
   }
-  return { inseridos, duplicados, invalidos, erros, inseridosIds };
+  return { inseridos, duplicados, invalidos, atualizados, erros, inseridosIds };
+}
+
+/**
+ * Atualiza os campos editáveis de um contato.
+ *
+ * Existe porque a lista de lojistas muda de natureza: o mesmo contato hoje é
+ * prospect e amanhã é lojista ou comprador. Sem editar, a única forma de
+ * "promover" alguém era importar outra planilha — e a importação tratava a
+ * linha como duplicada e a descartava.
+ */
+export async function atualizarMarketingContato(id: string, dados: Partial<ItemImportacao>) {
+  const d = requireDb();
+  await ensureMarketingSchema();
+  const atual = rowsOf(
+    await d.execute(sql`SELECT * FROM marketing_contatos WHERE id = ${id}::uuid LIMIT 1`),
+  )[0];
+  if (!atual) throw new Error("Contato não encontrado.");
+
+  // Só grava o que veio preenchido: editar um campo não apaga os outros.
+  const pegou = (campo: keyof ItemImportacao, coluna: string) => {
+    const v = dados[campo];
+    return v === undefined ? sql.raw(coluna) : sql`${typeof v === "string" ? v.trim() : v}`;
+  };
+
+  const email = dados.email === undefined ? atual.email : dados.email;
+  const telefone = dados.telefone === undefined ? atual.telefone : (dados.telefone ?? null);
+
+  // Duplicidade só é problema quando muda para um valor que outro contato já usa.
+  const conflito = rowsOf(
+    await d.execute(sql`
+      SELECT id FROM marketing_contatos
+      WHERE id <> ${id}::uuid
+        AND (
+          (${email}::text IS NOT NULL AND lower(email) = ${email})
+          OR (${telefone}::text IS NOT NULL AND telefone = ${telefone})
+        )
+      LIMIT 1
+    `),
+  )[0];
+  if (conflito) throw new Error("Já existe outro contato com este e-mail ou telefone.");
+
+  const linhas = await d.execute(sql`
+    UPDATE marketing_contatos SET
+      nome = ${pegou("nome", "nome")},
+      email = ${email},
+      telefone = ${telefone},
+      empresa = ${pegou("empresa", "empresa")},
+      tipo = ${pegou("tipo", "tipo")},
+      cep = ${pegou("cep", "cep")},
+      endereco = ${pegou("endereco", "endereco")},
+      numero = ${pegou("numero", "numero")},
+      bairro = ${pegou("bairro", "bairro")},
+      cidade = ${pegou("cidade", "cidade")},
+      uf = ${pegou("uf", "uf")},
+      observacoes = ${pegou("observacoes", "observacoes")},
+      atualizado_em = now()
+    WHERE id = ${id}::uuid
+    RETURNING *
+  `);
+  const salvo = rowsOf(linhas)[0];
+  if (!salvo) throw new Error("Contato não encontrado.");
+  return salvo;
+}
+
+/** Remove um contato e seus vínculos de tag. */
+export async function excluirMarketingContato(id: string) {
+  const d = requireDb();
+  await ensureMarketingSchema();
+  await d.execute(sql`DELETE FROM marketing_contato_tags WHERE contato_id = ${id}::uuid`);
+  const r = await d.execute(
+    sql`DELETE FROM marketing_contatos WHERE id = ${id}::uuid RETURNING id`,
+  );
+  if (!rowsOf(r)[0]) throw new Error("Contato não encontrado.");
+  return { ok: true as const };
+}
+
+/**
+ * Reimporta uma linha que já existe como atualização em vez de descartá-la.
+ *
+ * Usado pela importação: quando o e-mail/telefone bate, os dados da planilha
+ * sobrescrevem o contato (e o tipo vira o escolhido no diálogo), então Importar
+ * duas vezes a mesma lista não deixa a base velha para trás.
+ */
+export async function reimportarMarketingContato(
+  id: string,
+  registro: ItemImportacao,
+): Promise<void> {
+  const d = requireDb();
+  await d.execute(sql`
+    UPDATE marketing_contatos SET
+      nome = ${registro.nome},
+      email = ${registro.email},
+      telefone = ${registro.telefone},
+      empresa = ${registro.empresa},
+      tipo = ${registro.tipo},
+      cep = ${registro.cep},
+      endereco = ${registro.endereco},
+      numero = ${registro.numero},
+      bairro = ${registro.bairro},
+      cidade = ${registro.cidade},
+      uf = ${registro.uf},
+      origem = ${registro.origem},
+      observacoes = ${registro.observacoes},
+      atualizado_em = now()
+    WHERE id = ${id}::uuid
+  `);
 }
 
 export async function criarMarketingTag(nome: string, cor?: string) {

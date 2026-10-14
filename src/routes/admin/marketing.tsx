@@ -5,6 +5,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   listarMarketingContatosFn,
   importarMarketingContatosFn,
+  atualizarMarketingContatoFn,
+  excluirMarketingContatoFn,
   criarMarketingTagFn,
   atribuirMarketingTagFn,
   converterContatoEmCompradorFn,
@@ -48,6 +50,8 @@ import {
   Settings,
   FileSpreadsheet,
   FileText,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import MapaContatos from "@/components/shared/MapaContatos";
 import {
@@ -99,6 +103,10 @@ function MarketingPage() {
 
   // Importação
   const [tipoContato, setTipoContato] = useState("lojista");
+  const [atualizarExistentes, setAtualizarExistentes] = useState(false);
+  const [contatoEditando, setContatoEditando] = useState<any>(null);
+  const [editForm, setEditForm] = useState<Record<string, string>>({});
+  const [contatoExcluir, setContatoExcluir] = useState<any>(null);
   const [mapeamento, setMapeamento] = useState<Record<string, string>>({});
   const [errosImportacao, setErrosImportacao] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -131,6 +139,8 @@ function MarketingPage() {
   }, [busca]);
 
   const importar = useServerFn(importarMarketingContatosFn);
+  const atualizarContato = useServerFn(atualizarMarketingContatoFn);
+  const excluirContato = useServerFn(excluirMarketingContatoFn);
   const criarTag = useServerFn(criarMarketingTagFn);
   const atribuirTag = useServerFn(atribuirMarketingTagFn);
   const converterComprador = useServerFn(converterContatoEmCompradorFn);
@@ -252,13 +262,14 @@ function MarketingPage() {
       data: {
         contatos: arquivo.linhas.map((l) => mapearLinha(l, mapeamento)),
         tipo: tipoContato,
+        atualizarExistentes,
       },
     })
       .then((r) => {
         if (!r.ok) throw new Error(r.message);
         const d = r.data;
         setErrosImportacao(d.erros ?? []);
-        if (d.inseridos > 0) {
+        if (d.inseridos > 0 || d.atualizados > 0) {
           // Sem isso o importado fica invisível: a lista ainda estava filtrada
           // pelo tipo/busca anteriores (ex. "Prospects"), e lojista não entra
           // nesse filtro. Forçamos os dois para o que foi importado agora.
@@ -267,18 +278,18 @@ function MarketingPage() {
           setFiltroTipo(tipoContato);
           setVisao("lista");
           toast.success(
-            `Importação concluída: ${d.inseridos} novo(s), ${d.duplicados} duplicado(s), ${d.invalidos} inválido(s).`,
+            `Importação concluída: ${d.inseridos} novo(s), ${d.atualizados} atualizado(s), ${d.duplicados} duplicado(s), ${d.invalidos} inválido(s).`,
           );
           setImportOpen(false);
           setArquivo(null);
           setImportadosIds(d.inseridosIds ?? []);
           queryClient.invalidateQueries({
-            // Sem exact: false o invalidation só casa a chave exata
-            // ["admin-marketing"], que não existe — a query real é
-            // ["admin-marketing", busca, tipo, sóCoordenadas].
             queryKey: ["admin-marketing"],
             exact: false,
           });
+          // O filtro/tipo foram trocados acima, então a chave da query mudou:
+          // sem isso a UI ainda mostrava o resultado da busca anterior.
+          queryClient.refetchQueries({ queryKey: ["admin-marketing"], exact: false });
         } else {
           toast.warning(
             `Nenhum contato importado: ${d.duplicados} duplicado(s), ${d.invalidos} inválido(s). Veja os motivos abaixo.`,
@@ -287,6 +298,34 @@ function MarketingPage() {
       })
       .catch((e: any) => toast.error(e.message))
       .finally(() => setImportando(false));
+  }
+
+  async function salvarEdicao() {
+    if (!contatoEditando) return;
+    try {
+      const r = await atualizarContato({ data: { id: contatoEditando.id, dados: editForm } });
+      if (!r.ok) throw new Error(r.message);
+      toast.success("Contato atualizado.");
+      setContatoEditando(null);
+      setEditForm({});
+      queryClient.invalidateQueries({ queryKey: ["admin-marketing"], exact: false });
+    } catch (e: any) {
+      toast.error(e.message);
+    }
+  }
+
+  async function confirmarExclusao() {
+    if (!contatoExcluir) return;
+    try {
+      const r = await excluirContato({ data: { id: contatoExcluir.id } });
+      if (!r.ok) throw new Error(r.message);
+      toast.success("Contato excluído.");
+      setContatoExcluir(null);
+      setSelecionados((prev) => prev.filter((id) => id !== contatoExcluir.id));
+      queryClient.invalidateQueries({ queryKey: ["admin-marketing"], exact: false });
+    } catch (e: any) {
+      toast.error(e.message);
+    }
   }
 
   async function aplicarTag() {
@@ -528,26 +567,27 @@ function MarketingPage() {
                 <TableHead>WhatsApp</TableHead>
                 <TableHead>Cidade</TableHead>
                 <TableHead>Tags</TableHead>
+                <TableHead>Ações</TableHead>
                 <TableHead>Comprador</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center py-10">
+                  <TableCell colSpan={10} className="text-center py-10">
                     <Loader2 className="h-6 w-6 animate-spin mx-auto text-slate-400" />
                   </TableCell>
                 </TableRow>
               ) : contatos.length === 0 && importados.length > 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center py-10 text-slate-500">
+                  <TableCell colSpan={10} className="text-center py-10 text-slate-500">
                     {importados.length} contato(s) recém-importado(s), aguardando a lista
                     recarregar…
                   </TableCell>
                 </TableRow>
               ) : contatos.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center py-10 text-slate-500">
+                  <TableCell colSpan={10} className="text-center py-10 text-slate-500">
                     Nenhum contato na base. Importe uma planilha para começar.
                   </TableCell>
                 </TableRow>
@@ -627,6 +667,43 @@ function MarketingPage() {
                             {t.nome}
                           </Badge>
                         ))}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs"
+                          title="Editar contato"
+                          onClick={() => {
+                            setContatoEditando(c);
+                            setEditForm({
+                              nome: c.nome ?? "",
+                              email: c.email ?? "",
+                              telefone: c.telefone ?? "",
+                              empresa: c.empresa ?? "",
+                              tipo: c.tipo ?? "",
+                              cep: c.cep ?? "",
+                              endereco: c.endereco ?? "",
+                              numero: c.numero ?? "",
+                              bairro: c.bairro ?? "",
+                              cidade: c.cidade ?? "",
+                              uf: c.uf ?? "",
+                            });
+                          }}
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs text-red-600"
+                          title="Excluir contato"
+                          onClick={() => setContatoExcluir(c)}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -734,6 +811,25 @@ function MarketingPage() {
 
               <div className="space-y-2">
                 <p className="text-xs font-bold text-slate-500 uppercase">
+                  Quando o contato já existir
+                </p>
+                <label className="flex items-start gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={atualizarExistentes}
+                    onChange={(e) => setAtualizarExistentes(e.target.checked)}
+                  />
+                  <span>
+                    Atualizar em vez de ignorar. O contato já cadastrado recebe os dados da
+                    planilha, inclusive o tipo (lojista, prospect, comprador) escolhido acima —
+                    serve para promover um prospect a lojista ou corrigir telefone e cidade.
+                  </span>
+                </label>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-xs font-bold text-slate-500 uppercase">
                   Mapear colunas do arquivo
                 </p>
                 <div className="grid grid-cols-2 gap-2">
@@ -795,6 +891,129 @@ function MarketingPage() {
               </DialogFooter>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edição de contato */}
+      <Dialog open={!!contatoEditando} onOpenChange={(o) => !o && setContatoEditando(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar contato</DialogTitle>
+            <DialogDescription>
+              Altere os campos e salve. Deixe em branco para limpar.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <label className="text-xs font-bold text-slate-500 uppercase">Nome</label>
+              <Input
+                value={editForm.nome ?? ""}
+                onChange={(e) => setEditForm((f) => ({ ...f, nome: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase">E-mail</label>
+              <Input
+                value={editForm.email ?? ""}
+                onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase">Telefone</label>
+              <Input
+                value={editForm.telefone ?? ""}
+                onChange={(e) => setEditForm((f) => ({ ...f, telefone: e.target.value }))}
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="text-xs font-bold text-slate-500 uppercase">Empresa / Loja</label>
+              <Input
+                value={editForm.empresa ?? ""}
+                onChange={(e) => setEditForm((f) => ({ ...f, empresa: e.target.value }))}
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="text-xs font-bold text-slate-500 uppercase">Tipo</label>
+              <select
+                className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm"
+                value={editForm.tipo ?? "lojista"}
+                onChange={(e) => setEditForm((f) => ({ ...f, tipo: e.target.value }))}
+              >
+                <option value="lojista">Lojista</option>
+                <option value="prospect">Prospect</option>
+                <option value="comprador">Comprador</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase">Cidade</label>
+              <Input
+                value={editForm.cidade ?? ""}
+                onChange={(e) => setEditForm((f) => ({ ...f, cidade: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase">UF</label>
+              <Input
+                value={editForm.uf ?? ""}
+                onChange={(e) => setEditForm((f) => ({ ...f, uf: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase">Endereço</label>
+              <Input
+                value={editForm.endereco ?? ""}
+                onChange={(e) => setEditForm((f) => ({ ...f, endereco: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase">Bairro</label>
+              <Input
+                value={editForm.bairro ?? ""}
+                onChange={(e) => setEditForm((f) => ({ ...f, bairro: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase">Número</label>
+              <Input
+                value={editForm.numero ?? ""}
+                onChange={(e) => setEditForm((f) => ({ ...f, numero: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase">CEP</label>
+              <Input
+                value={editForm.cep ?? ""}
+                onChange={(e) => setEditForm((f) => ({ ...f, cep: e.target.value }))}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setContatoEditando(null)}>
+              Cancelar
+            </Button>
+            <Button onClick={salvarEdicao}>Salvar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Exclusão de contato */}
+      <Dialog open={!!contatoExcluir} onOpenChange={(o) => !o && setContatoExcluir(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Excluir contato</DialogTitle>
+            <DialogDescription>
+              {contatoExcluir?.nome} será removido da base de marketing, junto com suas tags. Essa
+              ação não desfaz conversões já feitas em comprador.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setContatoExcluir(null)}>
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={confirmarExclusao}>
+              Excluir
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
