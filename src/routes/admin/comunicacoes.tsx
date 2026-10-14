@@ -505,14 +505,6 @@ function ComunicacoesPage() {
     : Array.isArray(veiculosCampanha?.data)
       ? veiculosCampanha.data
       : [];
-  // As etiquetas também chegam como `{ ok, data }`. Os chips leem `t.id`
-  // direto, então aqui garante array — sem isso, marcar uma etiqueta quebrava o
-  // wizard com "id is not a function" no lugar de mostrar os contatos.
-  const listaTags = Array.isArray(tagsMarketing)
-    ? tagsMarketing
-    : Array.isArray(tagsMarketing?.data)
-      ? tagsMarketing.data
-      : [];
 
   // Etiquetas criadas no Marketing: é assim que uma campanha mira "só quem
   // recebeu esta etiqueta". A contagem vem junto, para a tela mostrar se a tag
@@ -521,6 +513,15 @@ function ComunicacoesPage() {
     queryKey: ["wa-marketing-tags"],
     queryFn: () => listarTagsMarketing(),
   });
+  // As etiquetas também chegam como `{ ok, data }`. Os chips leem `t.id` direto,
+  // então garante array — e TEM que ficar depois da query: declarar antes de
+  // `tagsMarketing` leria o const na zona morta e a página inteira quebraria
+  // com "Cannot access 'Q' before initialization" (nome minificado).
+  const listaTags = Array.isArray(tagsMarketing)
+    ? tagsMarketing
+    : Array.isArray(tagsMarketing?.data)
+      ? tagsMarketing.data
+      : [];
 
   // A contagem com etiqueta tem que vir do servidor com a tag no critério:
   // `estimarPublico` ignora tag, então sem esta consulta a tela mostrava o
