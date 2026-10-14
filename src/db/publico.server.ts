@@ -56,15 +56,16 @@ export function normalizarParaMeta(telefone: string): string {
 }
 
 /**
- * O wizard envia "TODOS" (tipo) e "" (uf) como "sem filtro". O SQL abaixo
- * compara esses valores literalmente — `tipo_pessoa = 'TODOS'` e
- * `uf = ''` não correspondem a nenhuma linha. Por isso a UI sempre via 0
- * compradores. Aqui normalizamos: string vazia ou "TODOS" viram null,
- * que é o "sem filtro" que a query entende.
+ * O wizard envia "TODOS" (tipo) e "" (uf) como "sem filtro", e os filtros
+ * não usados chegam como a string "null" (o driver serializa null assim).
+ * O SQL compara esses valores literalmente — `tipo_pessoa = 'TODOS'` e
+ * `uf = ''` não correspondem a nenhuma linha, então a UI sempre via 0
+ * compradores. Aqui normalizamos: vazio, "TODOS" ou "null" viram null de
+ * verdade, que é o "sem filtro" que a query entende.
  */
 function limparFiltro(valor: string | null | undefined): string | null {
   const v = String(valor ?? "").trim();
-  if (!v || v.toUpperCase() === "TODOS") return null;
+  if (!v || v === "null" || v.toUpperCase() === "TODOS") return null;
   return v;
 }
 
