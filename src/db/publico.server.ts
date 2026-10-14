@@ -71,7 +71,7 @@ export function normalizarParaMeta(telefone: string): string {
  */
 function limparFiltro(valor: string | null | undefined): string | null {
   const v = String(valor ?? "").trim();
-  if (!v || v === "null" || v.toUpperCase() === "TODOS") return null;
+  if (!v || v.toUpperCase() === "NULL" || v.toUpperCase() === "TODOS") return null;
   return v;
 }
 
@@ -101,7 +101,11 @@ function filtroCompradores(c: CriterioPublico) {
       AND (${tipo}::text IS NULL OR p.tipo_pessoa = ${tipo})
       AND (${uf}::text IS NULL OR upper(coalesce(p.uf, '')) = upper(${uf}))
       AND (${cidade}::text IS NULL OR lower(coalesce(p.cidade, '')) = lower(${cidade}))
-      AND (${busca}::text IS NULL OR p.nome ILIKE ${"%" + busca + "%"})
+      ${
+        busca
+          ? sql`AND p.nome ILIKE ${"%" + busca + "%"}`
+          : sql``
+      }
   `;
 }
 
@@ -155,7 +159,7 @@ function filtroProspects(c: CriterioPublico) {
       AND (
         ${comTag}
         OR (${busca}::text IS NULL
-          OR coalesce(nullif(m.empresa, ''), m.nome) ILIKE ${"%" + busca + "%"})
+          OR coalesce(nullif(m.empresa, ''), m.nome) ILIKE ${busca ? "%" + busca + "%" : null})
       )
   `;
 }
@@ -179,10 +183,14 @@ export async function resolverPublico(criterio: CriterioPublico = {}): Promise<D
     partes.push(filtroProspects(criterio));
   if (!partes.length) return [];
 
-  // As duas partes têm as mesmas colunas; a dedup real é por telefone, feita
-  // abaixo em JS, porque comprador e prospect têm ids diferentes.
+  // UNION ALL como texto puro: o `sql.join` com um separador string tratava o
+  // separador como parâmetro ($11) no meio da query e o Postgres rejeitava com
+  // "Failed query". `sql.raw` mantém o texto literal sem abrir injeção — as
+  // duas partes são montadas aqui dentro, nunca vêm do usuário.
   const consulta =
-    partes.length === 1 ? partes[0] : sql`SELECT * FROM (${sql.join(partes, " UNION ALL ")}) uniao`;
+    partes.length === 1
+      ? partes[0]
+      : sql`SELECT * FROM (${sql.join(partes, sql.raw(" UNION ALL "))}) uniao`;
 
   const res = await d.execute(consulta);
   const linhas: any[] = rowsOf(res);

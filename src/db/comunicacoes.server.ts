@@ -533,15 +533,19 @@ export async function estimarPublico(filtros: any) {
   // parâmetro, e a contagem considera também os contatos importados — o
   // público real do marketing inclui prospects que ainda não são compradores.
   const { contarPublico } = await import("./publico.server");
+  // O wizard guarda o filtro de compliance em `filtros.status`; como a tela
+  // também pode mandar `statusCompliance` direto, os dois são aceitos.
+  const statusCompliance = filtros?.statusCompliance ?? filtros?.status ?? null;
   const total = await contarPublico({
     origem: filtros?.origem ?? "AMBOS",
     tipo: filtros?.tipo ?? null,
     uf: filtros?.uf ?? null,
     cidade: filtros?.cidade ?? null,
-    statusCompliance: filtros?.status === "APROVADO" ? "APROVADO" : null,
+    statusCompliance: statusCompliance || null,
     // Sem isto a etiqueta escolhida na tela não chegava à contagem: a campanha
     // mirava a base inteira enquanto o wizard mostrava outro número.
     tagIds: filtros?.tagIds ?? null,
+    busca: filtros?.busca ?? null,
   });
   return { total, elegiveis: total, nao_elegiveis: 0 };
 }

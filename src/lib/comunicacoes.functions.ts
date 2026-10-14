@@ -126,6 +126,11 @@ export const contarPublicoFn = createServerFn({ method: "POST" })
         uf: z.string().optional(),
         cidade: z.string().optional(),
         tagIds: z.array(z.string().uuid()).optional(),
+        statusCompliance: z.string().optional(),
+        busca: z.string().optional(),
+        tipo: z.string().optional(),
+        segmentoId: z.string().optional(),
+        loteId: z.string().optional(),
       })
       .parse(data ?? {}),
   )
@@ -137,6 +142,11 @@ export const contarPublicoFn = createServerFn({ method: "POST" })
         uf: data.uf ?? null,
         cidade: data.cidade ?? null,
         tagIds: data.tagIds ?? null,
+        statusCompliance: data.statusCompliance ?? null,
+        busca: data.busca ?? null,
+        tipo: data.tipo ?? null,
+        segmentoId: data.segmentoId ?? null,
+        loteId: data.loteId ?? null,
       }),
     };
   });
