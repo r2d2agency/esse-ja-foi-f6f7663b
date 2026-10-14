@@ -204,6 +204,10 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
         // vazia.
         statusCompliance: data.filtros?.status ?? data.filtros?.statusCompliance ?? null,
         mapeamento: data.mapeamento_variaveis ?? {},
+        // Sem o veículo no critério, as variáveis `veiculo.*` entravam vazias e
+        // a Meta recusava o template. O motor busca o veículo uma vez e reúso
+        // para todos os destinatários.
+        veiculoId: data.veiculo_id ?? data.filtros?.veiculo_id ?? null,
       } as any);
 
       return { ok: true, id: campanhaId, ...fila };

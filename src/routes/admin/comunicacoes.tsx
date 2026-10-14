@@ -169,6 +169,32 @@ function contarPlaceholders(texto: string): number {
   return numeros.length ? Math.max(...numeros) : 0;
 }
 
+/**
+ * Amostra do que cada campo do veículo vai entregar de verdade, para o passo
+ * de mapeamento não exigir que você confie às cegas. O motor monta o valor
+ * final; aqui é só uma prévia do registro escolhido.
+ */
+const RESUMO_VARIAVEIS: Record<string, (v: any) => string> = {
+  "veiculo.nome_completo": (v) => [v.marca, v.modelo].filter(Boolean).join(" "),
+  "veiculo.marca": (v) => v.marca,
+  "veiculo.modelo": (v) => v.modelo,
+  "veiculo.ano": (v) => String(v.ano_modelo ?? ""),
+  "veiculo.placa": (v) => v.placa,
+  "veiculo.cor": (v) => v.cor,
+  "veiculo.km": (v) => (v.km != null ? `${Number(v.km).toLocaleString("pt-BR")} km` : ""),
+  "veiculo.valor": (v) =>
+    v.valor_interesse_cliente != null
+      ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+          Number(v.valor_interesse_cliente),
+        )
+      : "",
+  // O motor formata igual; a prévia só precisa mostrar que o campo existe.
+  "anuncio.url": () => "(definido ao publicar o veículo)",
+  "vendedor.nome": (v) => v.vendedor_nome,
+  "contato.nome": () => "(nome de cada contato)",
+  "contato.telefone": () => "(telefone de cada contato)",
+};
+
 /** O botão Enviar só habilita com telefone válido e todas as variáveis preenchidas. */
 export function podeEnviarTeste(template: any, valores: string[], digitos: string): boolean {
   if (digitos.length < 10 || digitos.length > 13) return false;
@@ -406,6 +432,16 @@ function ComunicacoesPage() {
 
   const [estimativa, setEstimativa] = useState<any>({ total: 0, elegiveis: 0, nao_elegiveis: 0 });
   const [tagsSelecionadas, setTagsSelecionadas] = useState<string[]>([]);
+
+  /**
+   * Variáveis ({{1}}, {{2}}…) que o template escolhido na campanha pede,
+   * derivadas do conteúdo real — antes o passo de mapeamento era decorativo
+   * com {{1}}/{{2}}/{{3}} fixos e nada era salvo, então a Meta recusava o
+   * disparo com "Preencha {{n}}".
+   */
+  const templateCampanha = (templates ?? []).find((t: any) => t.id === novaCampanha.template_id);
+  const totalVariaveis = contarVariaveisTemplate(templateCampanha);
+  const variaveisTemplate = Array.from({ length: totalVariaveis }, (_, i) => i + 1);
 
   const { data: indicadores } = useQuery({
     queryKey: ["wa-indicadores"],
@@ -948,7 +984,7 @@ function ComunicacoesPage() {
             </div>
             <Dialog
               open={isCampanhaWizardOpen}
-              onOpenChange={(aberto) => (aberto ? undefined : handleFecharCampanha())}
+              onOpenChange={(aberto) => (aberto ? handleAbrirCampanha() : handleFecharCampanha())}
             >
               <DialogTrigger asChild>
                 <Button className="bg-teal-600 hover:bg-teal-700">
@@ -1294,39 +1330,148 @@ function ComunicacoesPage() {
                       <div className="bg-blue-50 dark:bg-blue-900/10 p-4 rounded-lg border border-blue-100 dark:border-blue-900/50 flex gap-3">
                         <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
                         <p className="text-xs text-blue-900 dark:text-blue-200">
-                          Preencha as variáveis do template com os dados dinâmicos do veículo ou
-                          comprador.
+                          {variaveisTemplate.length
+                            ? `O template tem ${variaveisTemplate.length} ${variaveisTemplate.length === 1 ? "variável" : "variáveis"}. Escolha o que entra em cada uma — dado do veículo, do contato ou texto que você mesmo escreve.`
+                            : "Este template não usa variáveis. Pode seguir em frente sem mapear nada."}
                         </p>
                       </div>
 
-                      <div className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4 items-center">
-                          <div className="space-y-1">
-                            <Label className="text-xs">
-                              {"{{"}1{"}}"} Nome do Comprador
-                            </Label>
-                            <div className="p-2 bg-slate-100 rounded border text-xs text-muted-foreground flex items-center gap-2">
-                              <Users className="w-3 h-3" /> Automático: comprador.nome
-                            </div>
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs">
-                              {"{{"}2{"}}"} Marca/Modelo Veículo
-                            </Label>
-                            <div className="p-2 bg-slate-100 rounded border text-xs text-muted-foreground flex items-center gap-2">
-                              <Car className="w-3 h-3" /> Automático: veiculo.nome_completo
-                            </div>
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs">
-                              {"{{"}3{"}}"} Link do Anúncio
-                            </Label>
-                            <div className="p-2 bg-slate-100 rounded border text-xs text-muted-foreground flex items-center gap-2">
-                              <Globe className="w-3 h-3" /> Automático: anuncio.url
-                            </div>
-                          </div>
+                      {!variaveisTemplate.length ? null : (
+                        <div className="space-y-3">
+                          {variaveisTemplate.map((numero) => {
+                            const chave = `{{${numero}}}`;
+                            // O mapeamento é salvo com a chave da variável
+                            // ("{{1}}"); o motor aceita "1" também — o parâmetro
+                            // chega dos dois jeitos.
+                            const valorAtual = String(
+                              novaCampanha.mapeamento_variaveis?.[numero] ??
+                                novaCampanha.mapeamento_variaveis?.[chave] ??
+                                "",
+                            );
+                            const selecionada = valorAtual.startsWith("literal:")
+                              ? "__literal__"
+                              : valorAtual || "";
+                            const veiculo = veiculosCampanha?.find(
+                              (v: any) => v.id === novaCampanha.veiculo_id,
+                            );
+
+                            return (
+                              <div
+                                key={numero}
+                                className="rounded-lg border p-3 space-y-2 bg-white"
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="font-mono text-sm font-semibold text-teal-700">
+                                    {chave}
+                                  </span>
+                                  <span className="text-[11px] text-muted-foreground truncate">
+                                    {valorAtual.startsWith("literal:")
+                                      ? "texto fixo"
+                                      : valorAtual
+                                        ? "dado dinâmico"
+                                        : "variável vazia — a mensagem falha"}
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                  <Select
+                                    value={selecionada}
+                                    onValueChange={(v) => {
+                                      // "Digitar manualmente" reaproveita o texto
+                                      // que já estava mapeado, para você não
+                                      // perder o que escreveu ao trocar de ideia.
+                                      const texto =
+                                        v === "__literal__"
+                                          ? valorAtual.replace(/^literal:/, "")
+                                          : v;
+                                      const proximo = {
+                                        ...(novaCampanha.mapeamento_variaveis ?? {}),
+                                      };
+                                      if (v === "__vazio__") delete proximo[numero];
+                                      else
+                                        proximo[numero] =
+                                          v === "__literal__" ? `literal:${texto}` : v;
+                                      setNovaCampanha({
+                                        ...novaCampanha,
+                                        mapeamento_variaveis: proximo,
+                                      });
+                                    }}
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Escolha a origem" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="__vazio__">
+                                        — (vazio, preencho depois) —
+                                      </SelectItem>
+                                      <SelectItem value="veiculo.nome_completo">
+                                        Veículo — Marca + Modelo
+                                      </SelectItem>
+                                      <SelectItem value="veiculo.marca">Veículo — Marca</SelectItem>
+                                      <SelectItem value="veiculo.modelo">
+                                        Veículo — Modelo
+                                      </SelectItem>
+                                      <SelectItem value="veiculo.ano">Veículo — Ano</SelectItem>
+                                      <SelectItem value="veiculo.placa">Veículo — Placa</SelectItem>
+                                      <SelectItem value="veiculo.cor">Veículo — Cor</SelectItem>
+                                      <SelectItem value="veiculo.km">Veículo — Km</SelectItem>
+                                      <SelectItem value="veiculo.valor">
+                                        Veículo — Preço (R$)
+                                      </SelectItem>
+                                      <SelectItem value="anuncio.url">
+                                        Anúncio — Link do veículo
+                                      </SelectItem>
+                                      <SelectItem value="vendedor.nome">Vendedor — Nome</SelectItem>
+                                      <SelectItem value="contato.nome">Contato — Nome</SelectItem>
+                                      <SelectItem value="contato.telefone">
+                                        Contato — Telefone
+                                      </SelectItem>
+                                      <SelectItem value="__literal__">
+                                        Digitar manualmente
+                                      </SelectItem>
+                                    </SelectContent>
+                                  </Select>
+
+                                  {selecionada === "__literal__" ? (
+                                    <Input
+                                      placeholder="Texto que vai na mensagem"
+                                      value={
+                                        valorAtual.startsWith("literal:")
+                                          ? valorAtual.replace(/^literal:/, "")
+                                          : ""
+                                      }
+                                      onChange={(e) => {
+                                        const proximo = `literal:${e.target.value}`;
+                                        setNovaCampanha({
+                                          ...novaCampanha,
+                                          mapeamento_variaveis: {
+                                            ...(novaCampanha.mapeamento_variaveis ?? {}),
+                                            [numero]: proximo,
+                                          },
+                                        });
+                                      }}
+                                    />
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground flex items-center gap-1 truncate">
+                                      {valorAtual.startsWith("literal:") ? (
+                                        <>→ {valorAtual.slice("literal:".length)}</>
+                                      ) : valorAtual ? (
+                                        <>
+                                          <Check className="w-3 h-3 text-green-600" />{" "}
+                                          {veiculo
+                                            ? `Ex.: ${RESUMO_VARIAVEIS[valorAtual]?.(veiculo) ?? valorAtual}`
+                                            : valorAtual}
+                                        </>
+                                      ) : (
+                                        "Escolha um campo ou digite o texto"
+                                      )}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
-                      </div>
+                      )}
                     </div>
                   )}
 

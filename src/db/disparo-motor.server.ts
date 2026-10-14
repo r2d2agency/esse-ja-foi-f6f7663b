@@ -26,6 +26,10 @@ function requireDb() {
   return db;
 }
 
+/** Texto do template não pode conter R$ solto: a Meta entende como URL. */
+const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+const km = new Intl.NumberFormat("pt-BR");
+
 function rowsOf(res: any): any[] {
   if (!res) return [];
   if (Array.isArray(res)) return res;
@@ -102,23 +106,80 @@ async function reservarLote(campanhaId: string, workerId: string) {
   return rowsOf(res);
 }
 
+/**
+ * Campos do veículo e do anunciante disponíveis ao mapeamento de variáveis.
+ * Cada chave é o que o wizard mostra; o valor é o caminho resolvido por
+ * `resolverCaminho` (mesma convenção da automação: `veiculo.marca`).
+ */
+export const VEICULO_VARIAVEIS: { chave: string; rotulo: string; exemplo: string }[] = [
+  { chave: "veiculo.nome_completo", rotulo: "Marca + Modelo", exemplo: "Honda CG 160" },
+  { chave: "veiculo.marca", rotulo: "Marca", exemplo: "Honda" },
+  { chave: "veiculo.modelo", rotulo: "Modelo", exemplo: "CG 160" },
+  { chave: "veiculo.ano", rotulo: "Ano", exemplo: "2023" },
+  { chave: "veiculo.placa", rotulo: "Placa", exemplo: "BRA2E19" },
+  { chave: "veiculo.cor", rotulo: "Cor", exemplo: "Vermelha" },
+  { chave: "veiculo.km", rotulo: "Quilometragem", exemplo: "12.500 km" },
+  { chave: "veiculo.valor", rotulo: "Preço (R$)", exemplo: "R$ 18.900" },
+  { chave: "veiculo.descricao", rotulo: "Descrição do anúncio", exemplo: "Único dono,…" },
+  { chave: "anuncio.url", rotulo: "Link do anúncio", exemplo: "https://…" },
+  { chave: "anuncio.titulo", rotulo: "Título do anúncio", exemplo: "Honda CG 160 2023" },
+  { chave: "vendedor.nome", rotulo: "Nome do vendedor", exemplo: "João" },
+  { chave: "vendedor.telefone", rotulo: "WhatsApp do vendedor", exemplo: "(17) 99999-9999" },
+];
+
+export const CONTATO_VARIAVEIS: { chave: string; rotulo: string }[] = [
+  { chave: "contato.nome", rotulo: "Nome do contato" },
+  { chave: "contato.email", rotulo: "E-mail do contato" },
+  { chave: "contato.telefone", rotulo: "Telefone do contato" },
+];
+
+/**
+ * Percurso de ponto (`veiculo.marca`), igual ao `resolveOrigem` da automação.
+ * Texto livre usa o prefixo `literal:` — a tela só digita, não consulta banco.
+ */
+export function resolverCaminho(caminho: string, contexto: any): string {
+  const partes = String(caminho || "").split(".");
+  let atual: any = contexto;
+  for (const p of partes) {
+    if (atual && typeof atual === "object") atual = atual[p];
+    else return "";
+  }
+  return String(atual ?? "");
+}
+
 /** Valores do corpo do template, na ordem dos {{n}}. */
 function valoresDoTemplate(
   _template: any,
   mapeamento: Record<string, string>,
   dest: { nome: string | null; email: string | null; telefone: string },
+  contexto: Record<string, any> | null,
 ): Record<string, string> {
-  const base: Record<string, string> = {
-    nome: dest.nome ?? "",
-    email: dest.email ?? "",
-    telefone: dest.telefone,
+  // Sem o veículo montado aqui, `veiculo.marca` resolvia para "" e a Meta
+  // recusava a mensagem com "Preencha {{1}}…". O contexto reúne contato,
+  // veículo e anunciante no mesmo formato que a automação usa.
+  const ctx: Record<string, any> = {
+    contato: {
+      nome: dest.nome ?? "",
+      email: dest.email ?? "",
+      telefone: dest.telefone,
+    },
+    veiculo: contexto?.veiculo ?? {},
+    anuncio: contexto?.anuncio ?? {},
+    vendedor: contexto?.vendedor ?? {},
   };
+
   // O mapeamento da campanha diz qual campo entra em qual {{n}}. Sem ele, os
   // valores saem vazios e a Meta rejeita a mensagem.
   const saida: Record<string, string> = {};
   for (const [variavel, campo] of Object.entries(mapeamento ?? {})) {
     const chave = String(variavel).replace(/[{}]/g, "");
-    saida[chave] = base[campo] ?? (campo?.startsWith("literal:") ? campo.slice(8) : "");
+    if (!campo) continue;
+    if (campo.startsWith("literal:")) {
+      saida[chave] = campo.slice("literal:".length);
+      continue;
+    }
+    const resolvido = resolverCaminho(campo, ctx);
+    saida[chave] = resolvido;
   }
   return saida;
 }
@@ -387,13 +448,68 @@ export async function processarDisparo(opts: { apenasAgendadas?: boolean } = {})
 }
 
 /**
+ * Dados do veículo no formato que o mapeamento de variáveis consome
+ * (`veiculo.marca`, `veiculo.ano`, ...). Vazio quando a campanha não tem
+ * veículo — aí só entram variáveis de contato e texto livre.
+ */
+async function contextoVeiculo(veiculoId: string | null | undefined) {
+  if (!veiculoId) return null;
+  const d = requireDb();
+  const res = await d.execute(sql`
+    SELECT
+      v.id, v.placa, v.marca, v.modelo, v.cor, v.km,
+      v.valor_interesse_cliente, v.status_analise,
+      -- Ano de fabricação e modelo podem diferir; o template pede "ano", então
+      -- o modelo (o que aparece no documento) vence quando existe.
+      coalesce(v.ano_modelo, v.ano_fabricacao) AS ano,
+      p.nome AS vendedor_nome, p.telefone AS vendedor_telefone
+    FROM veiculos v
+    LEFT JOIN profiles p ON (p.id = v.perfil_id OR p.id = v.vendedor_id)
+    WHERE v.id = ${veiculoId}::uuid
+    LIMIT 1
+  `);
+  const l: any = rowsOf(res)[0];
+  if (!l) return null;
+
+  const preco = brl.format(Number(l.valor_interesse_cliente ?? 0));
+  const nomeCompleto = [l.marca, l.modelo].filter(Boolean).join(" ");
+
+  return {
+    veiculo: {
+      id: l.id,
+      marca: l.marca ?? "",
+      modelo: l.modelo ?? "",
+      nome_completo: nomeCompleto,
+      // Template costuma ter só "ano"; ano_modelo é o que aparece no documento.
+      ano: l.ano_modelo != null ? String(l.ano_modelo) : "",
+      placa: l.placa ?? "",
+      cor: l.cor ?? "",
+      km: l.km != null ? `${km.format(Number(l.km))} km` : "",
+      valor: l.valor_interesse_cliente != null ? preco : "",
+    },
+    anuncio: {
+      titulo: nomeCompleto,
+      url: "",
+    },
+    vendedor: {
+      nome: l.vendedor_nome ?? "",
+      telefone: l.vendedor_telefone ?? "",
+    },
+  };
+}
+
+/**
  * Popula a fila de uma campanha a partir do público resolvido.
  * Usa INSERT ... SELECT quando dá, mas a montagem por lote é necessária para
  * anexar as variáveis já calculadas por destinatário.
  */
-export async function popularFilaCampanha(campanhaId: string, criterio: CriterioPublico) {
+export async function popularFilaCampanha(
+  campanhaId: string,
+  criterio: CriterioPublico & { veiculoId?: string | null; mapeamento?: Record<string, string> },
+) {
   const d = requireDb();
   const publicos = await resolverPublico(criterio);
+  const contexto = await contextoVeiculo((criterio as any).veiculoId);
   let inseridos = 0;
   let ignorados = 0;
 
@@ -406,6 +522,7 @@ export async function popularFilaCampanha(campanhaId: string, criterio: Criterio
         { conteudo: null },
         (criterio as any).mapeamento ?? {},
         p,
+        contexto,
       );
       await d.execute(sql`
         INSERT INTO whatsapp_mensagens
