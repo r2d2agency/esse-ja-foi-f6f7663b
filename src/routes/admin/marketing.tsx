@@ -251,6 +251,13 @@ function MarketingPage() {
         const d = r.data;
         setErrosImportacao(d.erros ?? []);
         if (d.inseridos > 0) {
+          // Sem isso o importado fica invisível: a lista ainda estava filtrada
+          // pelo tipo/busca anteriores (ex. "Prospects"), e lojista não entra
+          // nesse filtro. Forçamos os dois para o que foi importado agora.
+          setBusca("");
+          setBuscaAplicada("");
+          setFiltroTipo(tipoContato);
+          setVisao("lista");
           toast.success(
             `Importação concluída: ${d.inseridos} novo(s), ${d.duplicados} duplicado(s), ${d.invalidos} inválido(s).`,
           );
@@ -294,6 +301,14 @@ function MarketingPage() {
     [arquivo],
   );
 
+  // Conta por tipo, para a pessoa ver onde o que foi importado parou mesmo
+  // com o filtro em "Todos".
+  const contagemPorTipo = useMemo(() => {
+    const acc: Record<string, number> = {};
+    for (const c of contatos) acc[c.tipo] = (acc[c.tipo] ?? 0) + 1;
+    return acc;
+  }, [contatos]);
+
   return (
     <div className="p-6 space-y-8 max-w-7xl mx-auto">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -317,6 +332,30 @@ function MarketingPage() {
 
       <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-3">
         <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-3 flex-wrap">
+            <p className="text-sm font-bold text-slate-900">
+              {contatos.length} contato(s)
+              {buscaAplicada && (
+                <span className="font-normal text-slate-500"> para “{buscaAplicada}”</span>
+              )}
+              {filtroTipo !== "todos" && (
+                <span className="font-normal text-slate-500"> · tipo: {filtroTipo}</span>
+              )}
+            </p>
+            {!buscaAplicada && filtroTipo === "todos" && contatos.length > 0 && (
+              <div className="flex gap-1 flex-wrap">
+                {Object.entries(contagemPorTipo).map(([tipo, qtd]) => (
+                  <button
+                    key={tipo}
+                    onClick={() => setFiltroTipo(tipo)}
+                    className="rounded-full border border-slate-200 px-2 py-0.5 text-[11px] text-slate-600 hover:border-slate-400 capitalize"
+                  >
+                    {tipo}: {qtd}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <p className="text-sm font-bold text-slate-900 flex items-center gap-2">
             <BadgeCheck
               className={`h-4 w-4 ${uazapiConfigurado ? "text-teal-600" : "text-slate-400"}`}
