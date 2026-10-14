@@ -94,7 +94,7 @@ function filtroCompradores(c: CriterioPublico) {
       AND (${tipo}::text IS NULL OR p.tipo_pessoa = ${tipo})
       AND (${uf}::text IS NULL OR upper(coalesce(p.uf, '')) = upper(${uf}))
       AND (${cidade}::text IS NULL OR lower(coalesce(p.cidade, '')) = lower(${cidade}))
-      AND (${busca}::text IS NULL OR p.nome ILIKE ${"%${busca}%"})
+      AND (${busca}::text IS NULL OR p.nome ILIKE ${"%" + busca + "%"})
   `;
 }
 
@@ -120,7 +120,7 @@ function filtroProspects(c: CriterioPublico) {
       AND (${uf}::text IS NULL OR upper(coalesce(m.uf, '')) = upper(${uf}))
       AND (${cidade}::text IS NULL OR lower(coalesce(m.cidade, '')) = lower(${cidade}))
       AND (${busca}::text IS NULL
-        OR coalesce(nullif(m.empresa, ''), m.nome) ILIKE ${"%${busca}%"})
+        OR coalesce(nullif(m.empresa, ''), m.nome) ILIKE ${"%" + busca + "%"})
   `;
 }
 
