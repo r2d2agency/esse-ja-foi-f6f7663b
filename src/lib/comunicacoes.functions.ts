@@ -186,7 +186,11 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
         uf: data.filtros?.uf ?? null,
         cidade: data.filtros?.cidade ?? null,
         tipo: data.filtros?.tipo ?? null,
-        statusCompliance: data.filtros?.statusCompliance ?? null,
+        // A UI manda `filtros.status`; a estimativa já lê esse campo como
+        // statusCompliance. Sem este alias a fila ignorava o filtro que a
+        // tela mostrava — a estimativa apontava 2 elegíveis e a fila entrava
+        // vazia.
+        statusCompliance: data.filtros?.status ?? data.filtros?.statusCompliance ?? null,
         mapeamento: data.mapeamento_variaveis ?? {},
       } as any);
 
