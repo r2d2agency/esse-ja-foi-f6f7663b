@@ -138,7 +138,7 @@ function MarketingPage() {
       toast.success(`Contato convertido em comprador com sucesso.`);
       setContatoConverter(null);
       setSenhaTemporaria("");
-      queryClient.invalidateQueries({ queryKey: ["admin-marketing"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-marketing"], exact: false });
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -191,7 +191,7 @@ function MarketingPage() {
       toast.success(
         `WhatsApp: ${r.data.verificados} verificado(s), ${r.data.invalidos} sem WhatsApp, ${r.data.erros} erro(s).`,
       );
-      queryClient.invalidateQueries({ queryKey: ["admin-marketing"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-marketing"], exact: false });
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -207,7 +207,7 @@ function MarketingPage() {
       toast.success(
         `Geocodificação: ${r.data.sucesso} localizado(s), ${r.data.falha} falha(s) de ${r.data.processados} processado(s).`,
       );
-      queryClient.invalidateQueries({ queryKey: ["admin-marketing"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-marketing"], exact: false });
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -263,7 +263,13 @@ function MarketingPage() {
           );
           setImportOpen(false);
           setArquivo(null);
-          queryClient.invalidateQueries({ queryKey: ["admin-marketing"] });
+          queryClient.invalidateQueries({
+            // Sem exact: false o invalidation só casa a chave exata
+            // ["admin-marketing"], que não existe — a query real é
+            // ["admin-marketing", busca, tipo, sóCoordenadas].
+            queryKey: ["admin-marketing"],
+            exact: false,
+          });
         } else {
           toast.warning(
             `Nenhum contato importado: ${d.duplicados} duplicado(s), ${d.invalidos} inválido(s). Veja os motivos abaixo.`,
@@ -287,7 +293,7 @@ function MarketingPage() {
       setTagOpen(false);
       setNomeTag("");
       setSelecionados([]);
-      queryClient.invalidateQueries({ queryKey: ["admin-marketing"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-marketing"], exact: false });
     } catch (e: any) {
       toast.error(e.message);
     }
