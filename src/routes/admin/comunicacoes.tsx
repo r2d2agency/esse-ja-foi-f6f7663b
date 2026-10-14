@@ -497,6 +497,22 @@ function ComunicacoesPage() {
     queryFn: () => getVeiculosAdmin({ data: { busca: buscaVeiculo.trim() || undefined } }),
     enabled: isCampanhaWizardOpen,
   });
+  // Mesmo caso dos templates: a server fn devolve `{ ok, data }`, e o `?.find`
+  // quebrava com "find is not a function" quando o passo 5 procurava o veículo
+  // selecionado.
+  const listaVeiculos = Array.isArray(veiculosCampanha)
+    ? veiculosCampanha
+    : Array.isArray(veiculosCampanha?.data)
+      ? veiculosCampanha.data
+      : [];
+  // As etiquetas também chegam como `{ ok, data }`. Os chips leem `t.id`
+  // direto, então aqui garante array — sem isso, marcar uma etiqueta quebrava o
+  // wizard com "id is not a function" no lugar de mostrar os contatos.
+  const listaTags = Array.isArray(tagsMarketing)
+    ? tagsMarketing
+    : Array.isArray(tagsMarketing?.data)
+      ? tagsMarketing.data
+      : [];
 
   // Etiquetas criadas no Marketing: é assim que uma campanha mira "só quem
   // recebeu esta etiqueta". A contagem vem junto, para a tela mostrar se a tag
@@ -1068,7 +1084,7 @@ function ComunicacoesPage() {
                               : "Nenhum veículo cadastrado ainda."}
                           </p>
                         )}
-                        {veiculosCampanha?.data?.map((veiculo: any) => (
+                        {listaVeiculos.map((veiculo: any) => (
                           <div
                             key={veiculo.id}
                             onClick={() => {
@@ -1139,14 +1155,14 @@ function ComunicacoesPage() {
                           <p className="text-xs text-muted-foreground">
                             Crie etiquetas em Marketing para mirar grupos específicos.
                           </p>
-                        ) : (tagsMarketing as any).data?.length === 0 ? (
+                        ) : listaTags.length === 0 ? (
                           <p className="text-xs text-muted-foreground">
                             Nenhuma etiqueta criada. Crie uma em Marketing para mirar grupos
                             específicos.
                           </p>
                         ) : (
                           <div className="flex flex-wrap gap-2">
-                            {(tagsMarketing as any).data.map((t: any) => {
+                            {listaTags.map((t: any) => {
                               const ativa = tagsSelecionadas.includes(t.id);
                               return (
                                 <button
@@ -1362,7 +1378,7 @@ function ComunicacoesPage() {
                             const selecionada = valorAtual.startsWith("literal:")
                               ? "__literal__"
                               : valorAtual || "";
-                            const veiculo = veiculosCampanha?.find(
+                            const veiculo = listaVeiculos.find(
                               (v: any) => v.id === novaCampanha.veiculo_id,
                             );
 
