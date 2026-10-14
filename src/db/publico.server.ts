@@ -55,26 +55,54 @@ export function normalizarParaMeta(telefone: string): string {
   return d;
 }
 
+/**
+ * O wizard envia "TODOS" (tipo) e "" (uf) como "sem filtro". O SQL abaixo
+ * compara esses valores literalmente — `tipo_pessoa = 'TODOS'` e
+ * `uf = ''` não correspondem a nenhuma linha. Por isso a UI sempre via 0
+ * compradores. Aqui normalizamos: string vazia ou "TODOS" viram null,
+ * que é o "sem filtro" que a query entende.
+ */
+function limparFiltro(valor: string | null | undefined): string | null {
+  const v = String(valor ?? "").trim();
+  if (!v || v.toUpperCase() === "TODOS") return null;
+  return v;
+}
+
 function filtroCompradores(c: CriterioPublico) {
+  const tipo = limparFiltro(c.tipo);
+  const uf = limparFiltro(c.uf);
+  const cidade = limparFiltro(c.cidade);
+  const busca = limparFiltro(c.busca);
+  const statusCompliance = limparFiltro(c.statusCompliance);
+
+  // O cadastro grava o telefone em `profiles.whatsapp` (ver
+  // comprador.server.ts), então `telefone` pode ser NULL para compradores
+  // válidos. Sem o COALESCE eles eram excluídos e a contagem dava 0.
   return sql`
     SELECT
       p.id AS comprador_id,
       NULL::uuid AS contato_marketing_id,
-      p.nome, p.telefone, p.email,
+      p.nome,
+      coalesce(nullif(btrim(p.telefone), ''), nullif(btrim(p.whatsapp), '')) AS telefone,
+      p.email,
       p.cidade, p.uf
     FROM profiles p
     WHERE p.role = 'comprador'
       AND p.ativo IS NOT FALSE
-      AND btrim(coalesce(p.telefone, '')) <> ''
-      AND (${c.statusCompliance ?? null}::text IS NULL OR p.status_compliance = ${c.statusCompliance ?? null})
-      AND (${c.tipo ?? null}::text IS NULL OR p.tipo_pessoa = ${c.tipo ?? null})
-      AND (${c.uf ?? null}::text IS NULL OR upper(coalesce(p.uf, '')) = upper(${c.uf ?? null}))
-      AND (${c.cidade ?? null}::text IS NULL OR lower(coalesce(p.cidade, '')) = lower(${c.cidade ?? null}))
-      AND (${c.busca ?? null}::text IS NULL OR p.nome ILIKE ${"%" + (c.busca ?? "") + "%"})
+      AND coalesce(nullif(btrim(p.telefone), ''), nullif(btrim(p.whatsapp), '')) IS NOT NULL
+      AND (${statusCompliance}::text IS NULL OR p.status_compliance = ${statusCompliance})
+      AND (${tipo}::text IS NULL OR p.tipo_pessoa = ${tipo})
+      AND (${uf}::text IS NULL OR upper(coalesce(p.uf, '')) = upper(${uf}))
+      AND (${cidade}::text IS NULL OR lower(coalesce(p.cidade, '')) = lower(${cidade}))
+      AND (${busca}::text IS NULL OR p.nome ILIKE ${"%${busca}%"})
   `;
 }
 
 function filtroProspects(c: CriterioPublico) {
+  const uf = limparFiltro(c.uf);
+  const cidade = limparFiltro(c.cidade);
+  const busca = limparFiltro(c.busca);
+
   // `comprador_id IS NULL` é o que impede mandar convite para quem já se
   // cadastrou: quem já é comprador chega pela outra UNION.
   return sql`
@@ -89,10 +117,10 @@ function filtroProspects(c: CriterioPublico) {
       AND m.status NOT IN ('descartado', 'convertido')
       AND btrim(coalesce(m.telefone, '')) <> ''
       AND (${c.loteId ?? null}::uuid IS NULL OR m.origem = ${c.loteId ?? null})
-      AND (${c.uf ?? null}::text IS NULL OR upper(coalesce(m.uf, '')) = upper(${c.uf ?? null}))
-      AND (${c.cidade ?? null}::text IS NULL OR lower(coalesce(m.cidade, '')) = lower(${c.cidade ?? null}))
-      AND (${c.busca ?? null}::text IS NULL
-        OR coalesce(nullif(m.empresa, ''), m.nome) ILIKE ${"%" + (c.busca ?? "") + "%"})
+      AND (${uf}::text IS NULL OR upper(coalesce(m.uf, '')) = upper(${uf}))
+      AND (${cidade}::text IS NULL OR lower(coalesce(m.cidade, '')) = lower(${cidade}))
+      AND (${busca}::text IS NULL
+        OR coalesce(nullif(m.empresa, ''), m.nome) ILIKE ${"%${busca}%"})
   `;
 }
 
