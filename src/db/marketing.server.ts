@@ -103,29 +103,19 @@ export type ResultadoImportacao = {
 };
 
 /**
- * Monta a condição de duplicidade por partes.
- *
- * A versão anterior era um WHERE com OR que interpolava o mesmo parâmetro
- * duas vezes (`($1 IS NOT NULL AND lower(email) = $2) OR ($3 IS NOT NULL AND
- * telefone = $4)`), e o driver postgres-js falhava na vinculação desses
- * parâmetros, derrubando a importação inteira. Montar a cláusula com `sql.join`
- * gera um único parâmetro por valor — sem ambiguidade.
- */
-function condicaoDuplicidade(email: string | null, telefone: string | null) {
-  const partes: any[] = [];
-  if (email) partes.push(sql`lower(c.email) = ${email}`);
-  if (telefone) partes.push(sql`c.telefone = ${telefone}`);
-  if (!partes.length) return sql`FALSE`;
-  // SQL "puro": qual parte do OR casou, para a UI mostrar o motivo.
-  return sql`(${sql.join(partes, " OR ")})`;
-}
-
-/**
  * Confere duplicidade dentro do próprio arquivo e contra o banco.
  *
  * Faz as duas coisas porque uma lista de lojistas quase sempre vem com a
  * mesma empresa repetida em linhas diferentes; gravar tudo e só depois
  * descobrir que metade era duplicada deixa a base inutilizável.
+ *
+ * A checagem no banco lê os candidatos e compara em JavaScript. A versão
+ * anterior montava um WHERE com OR que repetia o mesmo parâmetro
+ * (`($1 IS NOT NULL AND lower(email) = $2) OR ($3 IS NOT NULL AND telefone = $4)`),
+ * e o driver postgres-js falhava ao vincular esses parâmetros, derrubando a
+ * importação inteira — a pessoa clicava em "Importar" e nada entrava, sem
+ * nenhuma dica do motivo. Duas cláusulas separadas evitam essa classe de
+ * problema de vez: o OR deixa de existir e os valores são comparados aqui.
  */
 async function idDuplicado(
   d: NonNullable<typeof db>,
@@ -136,15 +126,25 @@ async function idDuplicado(
   if (email && vistos.has(email)) return email;
   if (telefone && vistos.has(telefone)) return telefone;
   if (!email && !telefone) return null;
-  const linha = rowsOf(
-    await d.execute(
-      sql`SELECT c.email, c.telefone FROM marketing_contatos c WHERE ${condicaoDuplicidade(email, telefone)} LIMIT 1`,
-    ),
-  )[0];
-  if (!linha) return null;
-  return email && String(linha.email ?? "").toLowerCase() === email
-    ? email
-    : "telefone já cadastrado";
+
+  const clausulas = [
+    email ? sql`lower(c.email) = ${email}` : null,
+    telefone ? sql`c.telefone = ${telefone}` : null,
+  ].filter((c): c is ReturnType<typeof sql> => c !== null);
+  // Se não há nada a comparar o loop principal já tratou a linha como inválida.
+  if (!clausulas.length) return null;
+
+  for (const clausula of clausulas) {
+    const linha = rowsOf(
+      await d.execute(
+        sql`SELECT c.email, c.telefone FROM marketing_contatos c WHERE ${clausula} LIMIT 1`,
+      ),
+    )[0];
+    if (!linha) continue;
+    if (email && String(linha.email ?? "").toLowerCase() === email) return email;
+    if (telefone && String(linha.telefone ?? "") === telefone) return "telefone já cadastrado";
+  }
+  return null;
 }
 
 export async function importarMarketingContatos(
@@ -189,7 +189,14 @@ export async function importarMarketingContatos(
       continue;
     }
 
-    const motivo = await idDuplicado(d, email, telefone, vistos);
+    let motivo: string | null = null;
+    try {
+      motivo = await idDuplicado(d, email, telefone, vistos);
+    } catch (e: any) {
+      // Falhar em descobrir duplicata é aceitável; travar a importação inteira
+      // por causa da checagem não é. O INSERT ainda protege a base.
+      console.warn(`[marketing] duplicidade não verificada na linha ${i + 1}:`, e?.message ?? e);
+    }
     if (motivo) {
       duplicados++;
       erros.push(`Linha ${i + 1}: ignorada, ${motivo}.`);
