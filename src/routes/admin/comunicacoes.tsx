@@ -86,6 +86,7 @@ import {
   processarDisparoAgoraFn,
   enviarTesteFn,
   processarEnvioCampanhaFn,
+  exemploDestinatarioFn,
 } from "@/lib/comunicacoes.functions";
 import { listarMarketingTagsFn } from "@/lib/marketing.functions";
 import {
@@ -191,9 +192,20 @@ const RESUMO_VARIAVEIS: Record<string, (v: any) => string> = {
   // O motor formata igual; a prévia só precisa mostrar que o campo existe.
   "anuncio.url": () => "(definido ao publicar o veículo)",
   "vendedor.nome": (v) => v.vendedor_nome,
-  "contato.nome": () => "(nome de cada contato)",
-  "contato.telefone": () => "(telefone de cada contato)",
+  // Estes dois mudam a cada contato: o wizard carrega um exemplo real e mostra
+  // o nome/telefone dele aqui. Sem contato eles ficam vazios e a prévia exibe
+  // "(sem contato de exemplo)".
+  "contato.nome": () => "(sem contato de exemplo)",
+  "contato.telefone": () => "(sem contato de exemplo)",
 };
+
+/** Corpo do template com cada {{n}} trocado pelo valor de exemplo, na ordem. */
+function substituirVariaveis(texto: string, valores: Record<string, any>): string {
+  return String(texto ?? "").replace(/\{\{(\d+)\}\}/g, (m, n) => {
+    const v = valores[String(n)] ?? valores[`{{${n}}}`];
+    return v == null ? m : String(v);
+  });
+}
 
 /** O botão Enviar só habilita com telefone válido e todas as variáveis preenchidas. */
 export function podeEnviarTeste(template: any, valores: string[], digitos: string): boolean {
@@ -354,6 +366,7 @@ function ComunicacoesPage() {
   const alterarStatusCampanha = useServerFn(alterarStatusCampanhaFn);
   const listarCampanhasDetalhado = useServerFn(listarCampanhasDetalhadoFn);
   const enviarTeste = useServerFn(enviarTesteFn);
+  const exemploDestinatario = useServerFn(exemploDestinatarioFn);
   const getAnuncios = useServerFn(getAnunciosAdmin);
   const getVeiculosAdmin = useServerFn(getVeiculosAdminFn);
   const processarEnvio = useServerFn(processarEnvioCampanhaFn);
@@ -523,6 +536,31 @@ function ComunicacoesPage() {
       ? tagsMarketing.data
       : [];
 
+  // Contato real para a prévia e o teste. A query só dispara quando o wizard
+  // abre e o mapeamento muda — é assim que a tela sabe o que cada {{n}} entrega
+  // sem que você precise adivinhar. `origem` sem "IMPORTADOS" pega o primeiro
+  // comprador/prospect disponível.
+  const { data: exemploDestinatarioRes } = useQuery({
+    queryKey: [
+      "wa-exemplo-contato",
+      novaCampanha.veiculo_id,
+      novaCampanha.mapeamento_variaveis,
+      novaCampanha.origem_publico,
+    ],
+    queryFn: () =>
+      exemploDestinatario({
+        data: {
+          veiculoId: novaCampanha.veiculo_id ?? null,
+          mapeamento: novaCampanha.mapeamento_variaveis ?? {},
+          origem: novaCampanha.origem_publico ?? "AMBOS",
+        },
+      }),
+    enabled: isCampanhaWizardOpen,
+  });
+  const exemplo = Array.isArray(exemploDestinatarioRes)
+    ? exemploDestinatarioRes[0]
+    : exemploDestinatarioRes?.data ?? exemploDestinatarioRes ?? null;
+
   // A contagem com etiqueta tem que vir do servidor com a tag no critério:
   // `estimarPublico` ignora tag, então sem esta consulta a tela mostrava o
   // mesmo número com e sem etiqueta e a fila entrava diferente.
@@ -656,7 +694,10 @@ function ComunicacoesPage() {
     }
   };
 
-  const handleEnviarTeste = async () => {
+  // `valores` entra como parâmetro porque o botão da campanha já monta a lista na
+  // hora do clique: depender do estado aqui lia o valor anterior ao set e o teste
+  // saía com variável vazia.
+  const handleEnviarTeste = async (valores: string[] = valoresTeste) => {
     const digitos = telefoneTeste.replace(/\D/g, "");
     if (digitos.length < 10 || digitos.length > 13) {
       toast.error("Informe o telefone com DDD e código do país. Ex: 5511999999999");
@@ -675,7 +716,7 @@ function ComunicacoesPage() {
     const total = contarVariaveisTemplate(template);
     if (total > 0) {
       const faltando = Array.from({ length: total }, (_, i) => i).filter(
-        (i) => !String(valoresTeste[i] ?? "").trim(),
+        (i) => !String(valores[i] ?? "").trim(),
       );
       if (faltando.length > 0) {
         const vars = faltando.map((i) => `{{${i + 1}}}`).join(", ");
@@ -689,7 +730,7 @@ function ComunicacoesPage() {
         data: {
           telefone: digitos,
           template_id: templateId,
-          variaveis: valoresTeste,
+          variaveis: valores,
         },
       }),
       {
@@ -1485,7 +1526,9 @@ function ComunicacoesPage() {
                                       ) : valorAtual ? (
                                         <>
                                           <Check className="w-3 h-3 text-green-600" />{" "}
-                                          {veiculo
+                                          {valorAtual.startsWith("contato.") && exemplo ? (
+                                            `Ex.: ${valorAtual === "contato.telefone" ? exemplo.telefone : exemplo.nome || "(sem nome)"}`
+                                          ) : veiculo
                                             ? `Ex.: ${RESUMO_VARIAVEIS[valorAtual]?.(veiculo) ?? valorAtual}`
                                             : valorAtual}
                                         </>
@@ -1498,6 +1541,46 @@ function ComunicacoesPage() {
                               </div>
                             );
                           })}
+                        </div>
+                      )}
+
+                      {!variaveisTemplate.length ? null : (
+                        <div className="rounded-lg border bg-muted/40 p-4 space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <Label className="text-sm">Prévia da mensagem</Label>
+                            <span className="text-[11px] text-muted-foreground">
+                              {exemplo
+                                ? `Contato de exemplo: ${exemplo.nome || "(sem nome)"}`
+                                : "Carregando contato de exemplo…"}
+                            </span>
+                          </div>
+                          <div className="rounded-md bg-white dark:bg-black/40 border p-3 text-sm whitespace-pre-wrap">
+                            {(() => {
+                              const corpo = Array.isArray(templateCampanha?.components)
+                                ? (templateCampanha.components.find(
+                                    (c: any) => c.type === "BODY",
+                                  )?.text ?? "")
+                                : "";
+                              const valores = exemplo?.variaveis ?? {};
+                              const texto = substituirVariaveis(corpo, valores);
+                              // {{n}} que sobrou = variável sem valor: a Meta recusa.
+                              if (/\{\{\d+\}\}/.test(texto)) {
+                                return (
+                                  <span className="text-destructive">
+                                    {texto}{" "}
+                                    <span className="text-[11px]">
+                                      (ainda há variável vazia — a Meta recusa)
+                                    </span>
+                                  </span>
+                                );
+                              }
+                              return texto || "(template sem corpo)";
+                            })()}
+                          </div>
+                          <p className="text-[11px] text-muted-foreground">
+                            É assim que a mensagem chega no WhatsApp. Se algo estiver
+                            errado, volte ao mapeamento acima.
+                          </p>
                         </div>
                       )}
                     </div>
@@ -1607,14 +1690,41 @@ function ComunicacoesPage() {
                           />
                           <Button
                             variant="outline"
-                            onClick={handleEnviarTeste}
+                            onClick={() => {
+                              // O teste precisa das variáveis já preenchidas, senão
+                              // a Meta recusa a mensagem. O contato de exemplo da
+                              // prévia carrega os valores reais; se ele ainda não
+                              // chegou (ou a variável não tem campo), avisa em vez
+                              // de disparar para falhar.
+                              const total = contarVariaveisTemplate(templateCampanha);
+                              const preenchidos = exemplo?.variaveis
+                                ? Array.from(
+                                    { length: total },
+                                    (_, i) => exemplo.variaveis[String(i + 1)] ?? "",
+                                  )
+                                : [];
+                              const vazias = preenchidos
+                                .slice(0, total)
+                                .some((v: string) => !String(v ?? "").trim());
+                              if (total > 0 && (vazias || !exemplo)) {
+                                toast.error(
+                                  !exemplo
+                                    ? "Aguarde o contato de exemplo carregar para enviar o teste."
+                                    : "Ainda há variável sem valor no contato de exemplo. Ajuste o mapeamento na etapa anterior.",
+                                );
+                                return;
+                              }
+                              handleEnviarTeste(preenchidos);
+                            }}
                             disabled={!novaCampanha.template_id}
                           >
                             <Send className="w-4 h-4 mr-2" /> Enviar Teste
                           </Button>
                         </div>
                         <p className="text-[11px] text-muted-foreground">
-                          Só funciona com template aprovado pela Meta.
+                          O teste usa o contato de exemplo da prévia
+                          {exemplo?.nome ? ` (${exemplo.nome})` : ""}. Só funciona com
+                          template aprovado pela Meta.
                         </p>
                       </div>
                     </div>
@@ -2464,7 +2574,9 @@ function ComunicacoesPage() {
                   Cancelar
                 </Button>
                 <Button
-                  onClick={handleEnviarTeste}
+                  // Sem arrow, o evento de clique entraria como `valores` e
+                  // estragaria o teste do diálogo de Templates.
+                  onClick={() => handleEnviarTeste()}
                   disabled={
                     !podeEnviarTeste(
                       templateParaTeste,

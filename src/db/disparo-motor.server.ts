@@ -499,6 +499,43 @@ async function contextoVeiculo(veiculoId: string | null | undefined) {
 }
 
 /**
+ * Pega um contato real para prévia e teste — o motor de fila já resolve o
+ * público; aqui é o mesmo critério, mas a fila inteira é pesada demais para a
+ * tela. Usa a mesma fonte (`resolverPublico`) e o mesmo mapeamento.
+ */
+export async function exemploDestinatario(criterio: {
+  veiculoId?: string | null;
+  mapeamento?: Record<string, string>;
+  origem?: string;
+}) {
+  const { resolverPublico } = await import("./publico.server");
+  const destinatarios = await resolverPublico({
+    origem: (criterio.origem as any) ?? "AMBOS",
+  });
+  const primeiro = destinatarios[0];
+  if (!primeiro) return null;
+  const contexto = await contextoVeiculo(criterio.veiculoId ?? null);
+  const mapeamento = criterio.mapeamento ?? {};
+  const valores = valoresDoTemplate(
+    { conteudo: null },
+    mapeamento,
+    {
+      nome: primeiro.nome ?? "",
+      email: primeiro.email ?? "",
+      telefone: primeiro.telefone,
+    },
+    contexto,
+  );
+  return {
+    nome: primeiro.nome ?? "",
+    email: primeiro.email ?? null,
+    telefone: primeiro.telefone,
+    origem: primeiro.origem,
+    variaveis: valores,
+  };
+}
+
+/**
  * Popula a fila de uma campanha a partir do público resolvido.
  * Usa INSERT ... SELECT quando dá, mas a montagem por lote é necessária para
  * anexar as variáveis já calculadas por destinatário.

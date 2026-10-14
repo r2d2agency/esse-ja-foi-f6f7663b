@@ -420,6 +420,31 @@ export const excluirTemplateMetaFn = createServerFn({ method: "POST" })
     }
   });
 
+/**
+ * Um contato de verdade para a prévia da mensagem. Sem isso a tela mostra
+ * "(nome de cada contato)" e, ao testar, a Meta recusa o template por variável
+ * vazia — você fica sem saber o que cada campo entrega. Aqui a prévia e o teste
+ * partem de um registro real, com o mesmo mapeamento que a campanha vai usar.
+ */
+export const exemploDestinatarioFn = createServerFn({ method: "POST" })
+  .validator((data: any) =>
+    z
+      .object({
+        veiculoId: z.string().uuid().optional().nullable(),
+        mapeamento: z.record(z.string(), z.string()).optional(),
+        origem: z.enum(["COMPRADORES", "IMPORTADOS", "AMBOS"]).optional(),
+      })
+      .parse(data ?? {}),
+  )
+  .handler(async ({ data }) => {
+    const { exemploDestinatario } = await import("@/db/disparo-motor.server");
+    return exemploDestinatario({
+      veiculoId: data.veiculoId ?? null,
+      mapeamento: data.mapeamento ?? {},
+      origem: data.origem ?? "AMBOS",
+    });
+  });
+
 export const estimarPublicoFn = createServerFn({ method: "POST" })
   .validator((data: any) => data)
   .handler(async ({ data }) => {
