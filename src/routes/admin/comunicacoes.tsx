@@ -477,7 +477,14 @@ function ComunicacoesPage() {
    * `const templates` ainda na zona morta e a página inteira quebrava com
    * "Cannot access 'Q' before initialization" (nome minificado da variável).
    */
-  const templateCampanha = (templates ?? []).find((t: any) => t.id === novaCampanha.template_id);
+  // A API devolve `data` (objeto) ou array; se chegar outro formato, `?? []`
+  // não protege o `.find`, então isso garante que é array de verdade.
+  const listaTemplates = Array.isArray(templates)
+    ? templates
+    : Array.isArray(templates?.data)
+      ? templates.data
+      : [];
+  const templateCampanha = listaTemplates.find((t: any) => t.id === novaCampanha.template_id);
   const totalVariaveis = contarVariaveisTemplate(templateCampanha);
   const variaveisTemplate = Array.from({ length: totalVariaveis }, (_, i) => i + 1);
 
@@ -1295,8 +1302,8 @@ function ComunicacoesPage() {
                     <div className="space-y-4">
                       <Label className="text-lg">Escolher Template</Label>
                       <div className="grid grid-cols-2 gap-3 max-h-80 overflow-y-auto pr-2">
-                        {templates
-                          ?.filter((t: any) => t.status === "APPROVED")
+                        {listaTemplates
+                          .filter((t: any) => t?.status === "APPROVED")
                           .map((template: any) => (
                             <div
                               key={template.id}
@@ -1609,7 +1616,7 @@ function ComunicacoesPage() {
                               <span className="text-xs">
                                 Template:{" "}
                                 {
-                                  templates?.find((t: any) => t.id === novaCampanha.template_id)
+                                  listaTemplates.find((t: any) => t.id === novaCampanha.template_id)
                                     ?.meta_name
                                 }
                               </span>
@@ -2346,7 +2353,7 @@ function ComunicacoesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {templates?.length === 0 && (
+                  {listaTemplates.length === 0 && (
                     <tr>
                       <td
                         colSpan={5}
@@ -2357,7 +2364,7 @@ function ComunicacoesPage() {
                       </td>
                     </tr>
                   )}
-                  {templates?.map((t: any) => (
+                  {listaTemplates.map((t: any) => (
                     <tr key={t.id} className="border-b">
                       <td className="px-4 py-3">{t.nome_interno}</td>
                       <td className="px-4 py-3">{t.categoria}</td>
@@ -2976,7 +2983,7 @@ function ComunicacoesPage() {
                     <div className="space-y-4">
                       <Label>Escolha o Template</Label>
                       <div className="grid grid-cols-1 gap-3">
-                        {templates?.map((t: any) => (
+                        {listaTemplates.map((t: any) => (
                           <Card
                             key={t.id}
                             className={cn(
