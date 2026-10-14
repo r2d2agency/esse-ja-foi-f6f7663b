@@ -116,6 +116,14 @@ function MarketingPage() {
       }),
   });
   const contatos = res?.data || [];
+  // Contatos recém-importados, para aparecerem mesmo que a lista do banco ainda
+  // não tenha voltado (a invalidação por prefixo nem sempre dispara refetch).
+  const [importadosIds, setImportadosIds] = useState<string[]>([]);
+  const importados = useMemo(
+    () =>
+      importadosIds.map((id) => contatos.find((c: any) => c.id === id)).filter(Boolean) as any[],
+    [importadosIds, contatos],
+  );
 
   useEffect(() => {
     const t = setTimeout(() => setBuscaAplicada(busca), 400);
@@ -263,6 +271,7 @@ function MarketingPage() {
           );
           setImportOpen(false);
           setArquivo(null);
+          setImportadosIds(d.inseridosIds ?? []);
           queryClient.invalidateQueries({
             // Sem exact: false o invalidation só casa a chave exata
             // ["admin-marketing"], que não existe — a query real é
@@ -529,6 +538,13 @@ function MarketingPage() {
                     <Loader2 className="h-6 w-6 animate-spin mx-auto text-slate-400" />
                   </TableCell>
                 </TableRow>
+              ) : contatos.length === 0 && importados.length > 0 ? (
+                <TableRow>
+                  <TableCell colSpan={9} className="text-center py-10 text-slate-500">
+                    {importados.length} contato(s) recém-importado(s), aguardando a lista
+                    recarregar…
+                  </TableCell>
+                </TableRow>
               ) : contatos.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={9} className="text-center py-10 text-slate-500">
@@ -537,7 +553,10 @@ function MarketingPage() {
                 </TableRow>
               ) : (
                 contatos.map((c: any) => (
-                  <TableRow key={c.id}>
+                  <TableRow
+                    key={c.id}
+                    className={importadosIds.includes(c.id) ? "bg-emerald-50" : ""}
+                  >
                     <TableCell>
                       <input
                         type="checkbox"

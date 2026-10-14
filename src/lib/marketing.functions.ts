@@ -44,6 +44,9 @@ export const importarMarketingContatosFn = createServerFn({ method: "POST" })
           duplicados: r.duplicados,
           invalidos: r.invalidos,
           erros: (r.erros ?? []).slice(0, 50),
+          // A UI usa esses ids para exibir o que entrou mesmo que a lista do
+          // banco ainda não tenha sido recarregada no cache.
+          inseridosIds: r.inseridosIds ?? [],
         },
       };
     } catch (e: any) {

@@ -100,6 +100,12 @@ export type ResultadoImportacao = {
   duplicados: number;
   invalidos: number;
   erros: string[];
+  /**
+   * Ids recém-gravados, para a UI mostrar o que importou sem depender da query
+   * cache invalidar. Vem vazio quando nada é inserido ou o banco não devolve
+   * RETURNING.
+   */
+  inseridosIds?: string[];
 };
 
 /**
@@ -158,6 +164,7 @@ export async function importarMarketingContatos(
   let inseridos = 0,
     duplicados = 0,
     invalidos = 0;
+  const inseridosIds: string[] = [];
 
   for (let i = 0; i < contatos.length; i++) {
     const item = contatos[i];
@@ -229,13 +236,17 @@ export async function importarMarketingContatos(
           VALUES (${registro.nome},${registro.email},${registro.telefone},${registro.empresa},${registro.tipo},${registro.cep},${registro.endereco},${registro.numero},${registro.bairro},${registro.cidade},${registro.uf},${registro.origem},${registro.observacoes})
           RETURNING id`,
     );
-    if (rowsOf(r)[0]) {
+    const linha = rowsOf(r)[0];
+    if (linha) {
       if (email) vistos.set(email, true);
       if (telefone) vistos.set(telefone, true);
       inseridos++;
+      // Guarda o id para a UI mostrar o que entrou, sem depender da query
+      // cache invalidar (a invalidação por prefixo não estava surtindo).
+      if (linha.id) inseridosIds.push(String(linha.id));
     }
   }
-  return { inseridos, duplicados, invalidos, erros };
+  return { inseridos, duplicados, invalidos, erros, inseridosIds };
 }
 
 export async function criarMarketingTag(nome: string, cor?: string) {
