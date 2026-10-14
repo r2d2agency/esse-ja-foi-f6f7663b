@@ -4,6 +4,20 @@ import { db } from "./index";
 export async function ensureConversasSchema(silent = true) {
   if (!db) return;
 
+  // 0. `telefone` é NOT NULL (herdado da tabela de campanhas) mas o envio
+  // do atendente não o preenche. Sem este DROP todo INSERT de mensagem
+  // enviada falha com not-null violation antes mesmo de chegar ao
+  // ON CONFLICT (meta_message_id) — a mensagem ia para o WhatsApp mas
+  // nunca aparecia no chat. Roda sempre para garantir que tabelas já
+  // existentes também perdem o NOT NULL.
+  try {
+    await db.execute(sql`
+      ALTER TABLE whatsapp_mensagens ALTER COLUMN telefone DROP NOT NULL;
+    `);
+  } catch (err) {
+    console.error("[conversas.server] ERRO ao remover NOT NULL de telefone:", err);
+  }
+
   // Cada passo roda em seu próprio try/catch. Antes, o CREATE TABLE era a
   // primeira instrução dentro de um único try, então qualquer falha derrubava
   // TODAS as seguintes — inclusive o `ALTER TABLE whatsapp_mensagens`, sem o
