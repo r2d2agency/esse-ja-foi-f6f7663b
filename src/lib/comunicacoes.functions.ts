@@ -397,6 +397,12 @@ export const excluirTemplateMetaFn = createServerFn({ method: "POST" })
 export const estimarPublicoFn = createServerFn({ method: "POST" })
   .validator((data: any) => data)
   .handler(async ({ data }) => {
+    // A origem chega solta dentro de `data` (o handleEstimar espalha filtros e
+    // origem no mesmo objeto). Sem este ajuste ela era ignorada e a contagem
+    // voltava sempre como se fosse "AMBOS".
+    if (data && typeof data === "object" && "origem" in data && !data.origem_publico) {
+      data = { ...data, origem_publico: data.origem };
+    }
     return db.estimarPublico(data);
   });
 
@@ -488,10 +494,8 @@ export const enviarTesteFn = createServerFn({ method: "POST" })
         // A mensagem de montarComponents fala em "mapeamento da campanha";
         // aqui o contexto é o teste avulso, então troca só o sujeito.
         throw new Error(
-          String(e?.message || "").replace(
-            "no mapeamento da campanha",
-            "no formulário de teste",
-          ) || "Preencha todas as variáveis do template.",
+          String(e?.message || "").replace("no mapeamento da campanha", "no formulário de teste") ||
+            "Preencha todas as variáveis do template.",
         );
       }
 

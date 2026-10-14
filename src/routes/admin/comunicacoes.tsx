@@ -251,7 +251,7 @@ function VariáveisTeste({
 
   // Verifica quais variáveis estão vazias
   const faltando = Array.from({ length: total }, (_, i) => i).filter(
-    (i) => !String(valores[i] ?? "").trim()
+    (i) => !String(valores[i] ?? "").trim(),
   );
 
   return (
@@ -266,7 +266,9 @@ function VariáveisTeste({
             {faltando.map((i) => (
               <li key={i}>
                 <code className="bg-destructive/10 px-1 rounded text-[11px]">
-                  {"{{"}{i + 1}{"}}"}
+                  {"{{"}
+                  {i + 1}
+                  {"}}"}
                 </code>
               </li>
             ))}
@@ -491,8 +493,13 @@ function ComunicacoesPage() {
     });
   };
 
+  // Tem que levar a origem junto: sem ela o servidor assume "AMBOS" e a
+  // estimativa não muda quando o usuário escolhe "só lista importada" — era a
+  // causa de aparecer 2 elegíveis e a fila montar 0.
   const handleEstimar = async () => {
-    const res = await estimarPublico({ data: novaCampanha.filtros });
+    const res = await estimarPublico({
+      data: { ...novaCampanha.filtros, origem: novaCampanha.origem_publico },
+    });
     setEstimativa(res);
   };
 
@@ -552,7 +559,7 @@ function ComunicacoesPage() {
     const total = contarVariaveisTemplate(template);
     if (total > 0) {
       const faltando = Array.from({ length: total }, (_, i) => i).filter(
-        (i) => !String(valoresTeste[i] ?? "").trim()
+        (i) => !String(valoresTeste[i] ?? "").trim(),
       );
       if (faltando.length > 0) {
         const vars = faltando.map((i) => `{{${i + 1}}}`).join(", ");
@@ -1015,6 +1022,49 @@ function ComunicacoesPage() {
                           <p className="text-[10px] text-muted-foreground">
                             Elegíveis para WhatsApp
                           </p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Origem do público</Label>
+                        <div className="flex flex-wrap gap-2">
+                          {[
+                            {
+                              value: "IMPORTADOS",
+                              label: "Lista importada (lojistas)",
+                              desc: "Contatos da planilha/CSV",
+                            },
+                            {
+                              value: "COMPRADORES",
+                              label: "Compradores da plataforma",
+                              desc: "Quem já tem cadastro",
+                            },
+                            {
+                              value: "AMBOS",
+                              label: "Ambos",
+                              desc: "Compradores + lista importada",
+                            },
+                          ].map((o) => (
+                            <button
+                              key={o.value}
+                              type="button"
+                              onClick={() => {
+                                setNovaCampanha({
+                                  ...novaCampanha,
+                                  origem_publico: o.value as any,
+                                });
+                                handleEstimar();
+                              }}
+                              className={`flex-1 min-w-[180px] rounded-lg border p-3 text-left ${
+                                novaCampanha.origem_publico === o.value
+                                  ? "border-teal-600 bg-teal-50 dark:bg-teal-950/40"
+                                  : "border-slate-200 bg-white"
+                              }`}
+                            >
+                              <p className="text-sm font-bold">{o.label}</p>
+                              <p className="text-xs text-muted-foreground">{o.desc}</p>
+                            </button>
+                          ))}
                         </div>
                       </div>
 
@@ -2097,9 +2147,8 @@ function ComunicacoesPage() {
                 <DialogTitle>Testar template</DialogTitle>
                 <DialogDescription>
                   Preencha as variáveis e o número para enviar{" "}
-                  <strong>{templateParaTeste?.nome_interno}</strong>.
-                  O WhatsApp só aceita template aprovado — se ainda estiver em análise, a Meta
-                  recusará.
+                  <strong>{templateParaTeste?.nome_interno}</strong>. O WhatsApp só aceita template
+                  aprovado — se ainda estiver em análise, a Meta recusará.
                 </DialogDescription>
               </DialogHeader>
               <VariáveisTeste
@@ -2241,8 +2290,7 @@ function ComunicacoesPage() {
                             <DialogHeader>
                               <DialogTitle>Payload da chamada</DialogTitle>
                               <DialogDescription>
-                                {log.event_type} ·{" "}
-                                {new Date(log.criado_em).toLocaleString("pt-BR")}
+                                {log.event_type} · {new Date(log.criado_em).toLocaleString("pt-BR")}
                               </DialogDescription>
                             </DialogHeader>
                             <pre className="max-h-[60vh] overflow-auto rounded-md bg-muted p-4 text-xs whitespace-pre-wrap break-all">

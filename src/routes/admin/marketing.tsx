@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   listarMarketingContatosFn,
   importarMarketingContatosFn,
@@ -46,8 +46,20 @@ import {
   List,
   BadgeCheck,
   Settings,
+  FileSpreadsheet,
+  FileText,
 } from "lucide-react";
 import MapaContatos from "@/components/shared/MapaContatos";
+import {
+  CAMPOS_LISTA,
+  LABEL_CAMPO,
+  CAMPOS_OBRIGATORIOS,
+  colunasDaLinha,
+  lerCsv,
+  lerPlanilhaExcel,
+  mapearLinha,
+  sugerirMapeamento,
+} from "@/lib/importar-lista";
 
 export const Route = createFileRoute("/admin/marketing")({
   component: MarketingPage,
@@ -86,8 +98,14 @@ function MarketingPage() {
   const [uazapiOpen, setUazapiOpen] = useState(false);
 
   // Importação
-  const [preview, setPreview] = useState<Array<Record<string, unknown>>>([]);
+  const [tipoContato, setTipoContato] = useState("lojista");
+  const [mapeamento, setMapeamento] = useState<Record<string, string>>({});
+  const [errosImportacao, setErrosImportacao] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [arquivo, setArquivo] = useState<{
+    nome: string;
+    linhas: Array<Record<string, unknown>>;
+  } | null>(null);
 
   const loadContatos = useServerFn(listarMarketingContatosFn);
   const { data: res, isLoading } = useQuery({
@@ -201,16 +219,16 @@ function MarketingPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const XLSX = await import("xlsx");
-      const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: "array", codepage: 65001 });
-      const sheet = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
-      if (!rows.length) {
-        toast.error("A planilha está vazia.");
+      const linhas = /\.csv$/i.test(file.name)
+        ? lerCsv(await file.text())
+        : await lerPlanilhaExcel(await file.arrayBuffer());
+      if (!linhas.length) {
+        toast.error("O arquivo está vazio ou não tem linhas válidas.");
         return;
       }
-      setPreview(rows);
+      setArquivo({ nome: file.name, linhas });
+      setMapeamento(sugerirMapeamento(linhas[0]));
+      setErrosImportacao([]);
     } catch (err: any) {
       toast.error("Não foi possível ler o arquivo: " + (err?.message || err));
     } finally {
@@ -218,47 +236,35 @@ function MarketingPage() {
     }
   }
 
-  function mapearContato(row: Record<string, unknown>): Record<string, unknown> {
-    const pega = (...chaves: string[]) => {
-      for (const k of Object.keys(row)) {
-        const kn = k.trim().toLowerCase();
-        if (chaves.includes(kn)) return row[k];
-      }
-      return "";
-    };
-    return {
-      nome: pega("nome", "nome_contato", "nome do contato", "razao_social", "razão social"),
-      email: pega("email", "e-mail", "e_mail"),
-      telefone: pega("telefone", "whatsapp", "celular", "phone", "fone", "telefone/whatsapp"),
-      empresa: pega("empresa", "nome_da_empresa", "nome da empresa", "loja", "companhia"),
-      cep: pega("cep"),
-      endereco: pega("endereco", "endereço", "logradouro", "rua", "avenida"),
-      numero: pega("numero", "número", "nº", "no"),
-      bairro: pega("bairro"),
-      cidade: pega("cidade", "municipio", "município"),
-      uf: pega("uf", "estado"),
-      observacoes: pega("observacoes", "observações", "obs"),
-      origem: "importacao_excel",
-    };
-  }
-
-  async function confirmarImportacao() {
+  function confirmarImportacao() {
+    if (!arquivo) return;
     setImportando(true);
-    try {
-      const contatosMapeados = preview.map(mapearContato);
-      const r = await importar({ data: { contatos: contatosMapeados } });
-      if (!r.ok) throw new Error(r.message);
-      toast.success(
-        `Importação concluída: ${r.data.inseridos} novos, ${r.data.duplicados} duplicados, ${r.data.invalidos} inválidos.`,
-      );
-      setImportOpen(false);
-      setPreview([]);
-      queryClient.invalidateQueries({ queryKey: ["admin-marketing"] });
-    } catch (e: any) {
-      toast.error(e.message);
-    } finally {
-      setImportando(false);
-    }
+    setErrosImportacao([]);
+    importar({
+      data: {
+        contatos: arquivo.linhas.map((l) => mapearLinha(l, mapeamento)),
+        tipo: tipoContato,
+      },
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error(r.message);
+        const d = r.data;
+        setErrosImportacao(d.erros ?? []);
+        if (d.inseridos > 0) {
+          toast.success(
+            `Importação concluída: ${d.inseridos} novo(s), ${d.duplicados} duplicado(s), ${d.invalidos} inválido(s).`,
+          );
+          setImportOpen(false);
+          setArquivo(null);
+          queryClient.invalidateQueries({ queryKey: ["admin-marketing"] });
+        } else {
+          toast.warning(
+            `Nenhum contato importado: ${d.duplicados} duplicado(s), ${d.invalidos} inválido(s). Veja os motivos abaixo.`,
+          );
+        }
+      })
+      .catch((e: any) => toast.error(e.message))
+      .finally(() => setImportando(false));
   }
 
   async function aplicarTag() {
@@ -282,6 +288,12 @@ function MarketingPage() {
 
   const todosMarcados = contatos.length > 0 && selecionados.length === contatos.length;
 
+  // Cabeçalhos do arquivo atual, usados nos selects de mapeamento.
+  const colunasDisponiveis = useMemo(
+    () => (arquivo?.linhas.length ? colunasDaLinha(arquivo.linhas[0]) : []),
+    [arquivo],
+  );
+
   return (
     <div className="p-6 space-y-8 max-w-7xl mx-auto">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -298,7 +310,7 @@ function MarketingPage() {
             </Button>
           )}
           <Button onClick={() => setImportOpen(true)}>
-            <Upload className="mr-2 h-4 w-4" /> Importar Excel
+            <Upload className="mr-2 h-4 w-4" /> Importar lista
           </Button>
         </div>
       </div>
@@ -592,40 +604,123 @@ function MarketingPage() {
         open={importOpen}
         onOpenChange={(o) => {
           setImportOpen(o);
-          if (!o) setPreview([]);
+          if (!o) {
+            setArquivo(null);
+            setErrosImportacao([]);
+          }
         }}
       >
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Importar contatos (.xlsx)</DialogTitle>
+            <DialogTitle>Importar lista de contatos</DialogTitle>
             <DialogDescription>
-              Selecione uma planilha Excel. Colunas reconhecidas: nome, e-mail, telefone/whatsapp,
-              empresa, cep, endereço, número, bairro, cidade, uf e observações.
+              Selecione um arquivo Excel (.xlsx, .xls) ou CSV. Depois escolha qual coluna do arquivo
+              vai em cada campo do sistema.
             </DialogDescription>
           </DialogHeader>
-          {!preview.length ? (
+          {!arquivo ? (
             <input
               ref={fileRef}
               type="file"
-              accept=".xlsx,.xls"
+              accept=".xlsx,.xls,.csv"
               onChange={aoEscolherArquivo}
               className="file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:bg-slate-900 file:text-white file:cursor-pointer"
             />
           ) : (
             <>
-              <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 max-h-60 overflow-auto">
-                <p className="font-bold mb-2">
-                  {preview.length} linha(s) encontrada(s). Prévia das 5 primeiras:
-                </p>
-                <pre className="text-xs whitespace-pre-wrap">
-                  {JSON.stringify(preview.slice(0, 5), null, 2)}
-                </pre>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setPreview([])}>
+              <div className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                <span className="flex items-center gap-2">
+                  {/\.csv$/i.test(arquivo.nome) ? (
+                    <FileText className="h-4 w-4 text-slate-500" />
+                  ) : (
+                    <FileSpreadsheet className="h-4 w-4 text-slate-500" />
+                  )}
+                  <strong>{arquivo.nome}</strong> — {arquivo.linhas.length} linha(s)
+                </span>
+                <Button variant="outline" size="sm" onClick={() => setArquivo(null)}>
                   Trocar arquivo
                 </Button>
-                <Button onClick={confirmarImportacao} disabled={importando}>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase">
+                  Tipo do contato
+                </label>
+                <div className="mt-1 flex gap-2">
+                  {[
+                    { value: "lojista", label: "Lojista" },
+                    { value: "prospect", label: "Prospect" },
+                    { value: "comprador", label: "Comprador" },
+                  ].map((t) => (
+                    <button
+                      key={t.value}
+                      type="button"
+                      onClick={() => setTipoContato(t.value)}
+                      className={`rounded-full border px-3 py-1 text-xs font-bold ${
+                        tipoContato === t.value
+                          ? "border-slate-900 bg-slate-900 text-white"
+                          : "border-slate-200 bg-white text-slate-600"
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-xs font-bold text-slate-500 uppercase">
+                  Mapear colunas do arquivo
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {CAMPOS_LISTA.map((campo) => (
+                    <div key={campo}>
+                      <label className="text-xs font-bold text-slate-500">
+                        {LABEL_CAMPO[campo]}
+                        {CAMPOS_OBRIGATORIOS.includes(campo) ? " *" : ""}
+                      </label>
+                      <select
+                        className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm"
+                        value={mapeamento[campo] ?? ""}
+                        onChange={(e) => setMapeamento((m) => ({ ...m, [campo]: e.target.value }))}
+                      >
+                        <option value="">— não usar —</option>
+                        {colunasDisponiveis.map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+                {!mapeamento.nome && (
+                  <p className="text-xs text-amber-600">
+                    Selecione a coluna com o nome do contato para permitir a importação.
+                  </p>
+                )}
+              </div>
+
+              {errosImportacao.length > 0 && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 max-h-40 overflow-auto">
+                  <p className="font-bold mb-1">Linhas não importadas:</p>
+                  <ul className="list-disc pl-5 space-y-0.5 text-xs">
+                    {errosImportacao.map((erro, i) => (
+                      <li key={i}>{erro}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setImportOpen(false)}
+                  disabled={importando}
+                >
+                  Cancelar
+                </Button>
+                <Button onClick={confirmarImportacao} disabled={importando || !mapeamento.nome}>
                   {importando ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   ) : (

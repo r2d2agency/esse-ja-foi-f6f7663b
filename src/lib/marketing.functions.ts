@@ -21,12 +21,31 @@ export const listarMarketingContatosFn = createServerFn({ method: "GET" })
 
 export const importarMarketingContatosFn = createServerFn({ method: "POST" })
   .inputValidator((d) =>
-    z.object({ contatos: z.array(z.record(z.string(), z.unknown())) }).parse(d),
+    z
+      .object({
+        contatos: z.array(z.record(z.string(), z.unknown())),
+        tipo: z.string().optional(),
+      })
+      .parse(d),
   )
   .handler(async ({ data }) => {
     try {
       const { importarMarketingContatos } = await import("@/db/marketing.server");
-      return { ok: true as const, data: await importarMarketingContatos(data.contatos) };
+      const r = await importarMarketingContatos(
+        data.contatos,
+        typeof data.tipo === "string" && data.tipo ? data.tipo : "prospect",
+      );
+      // As linhas rejeitadas voltam com o motivo: sem elas a importação parece
+      // ter "engolido" contatos sem explicar por quê.
+      return {
+        ok: true as const,
+        data: {
+          inseridos: r.inseridos,
+          duplicados: r.duplicados,
+          invalidos: r.invalidos,
+          erros: (r.erros ?? []).slice(0, 50),
+        },
+      };
     } catch (e: any) {
       return { ok: false as const, message: e.message };
     }

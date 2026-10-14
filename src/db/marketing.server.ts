@@ -59,38 +59,176 @@ export async function listarMarketingContatos(filtro: MarketingFiltro = {}) {
   return rowsOf(rows);
 }
 
-export async function importarMarketingContatos(contatos: Array<Record<string, unknown>>) {
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+/**
+ * Limpa um número de telefone. Retorna null quando não dá para aproveitar.
+ *
+ * A importação recebe os formatos mais variados — "(17) 99130-8048",
+ * "+55 17 991308048", "17991308048" — e a Meta só aceita dígitos com DDD e código
+ * de país. Guardar o valor cru é o que faz o disparo falhar mais tarde, sem
+ * ninguém saber por quê, então a normalização acontece aqui, na entrada.
+ */
+export function normalizarTelefoneImportacao(valor: unknown): string | null {
+  const bruto = String(valor ?? "").trim();
+  if (!bruto) return null;
+  const d = bruto.replace(/\D/g, "");
+  // 10-13 dígitos cobrem DDD+número com ou sem o 55; menos que isso não é
+  // nenhum formato brasileiro válido e o INSERT só criaria lixo na base.
+  if (d.length < 10 || d.length > 13) return null;
+  return d.length === 10 || d.length === 11 ? `55${d}` : d;
+}
+
+export type ItemImportacao = {
+  nome: string;
+  email: string | null;
+  telefone: string | null;
+  empresa: string | null;
+  tipo: string;
+  cep: string | null;
+  endereco: string | null;
+  numero: string | null;
+  bairro: string | null;
+  cidade: string | null;
+  uf: string | null;
+  origem: string;
+  observacoes: string | null;
+};
+
+export type ResultadoImportacao = {
+  inseridos: number;
+  duplicados: number;
+  invalidos: number;
+  erros: string[];
+};
+
+/**
+ * Monta a condição de duplicidade por partes.
+ *
+ * A versão anterior era um WHERE com OR que interpolava o mesmo parâmetro
+ * duas vezes (`($1 IS NOT NULL AND lower(email) = $2) OR ($3 IS NOT NULL AND
+ * telefone = $4)`), e o driver postgres-js falhava na vinculação desses
+ * parâmetros, derrubando a importação inteira. Montar a cláusula com `sql.join`
+ * gera um único parâmetro por valor — sem ambiguidade.
+ */
+function condicaoDuplicidade(email: string | null, telefone: string | null) {
+  const partes: any[] = [];
+  if (email) partes.push(sql`lower(c.email) = ${email}`);
+  if (telefone) partes.push(sql`c.telefone = ${telefone}`);
+  if (!partes.length) return sql`FALSE`;
+  // SQL "puro": qual parte do OR casou, para a UI mostrar o motivo.
+  return sql`(${sql.join(partes, " OR ")})`;
+}
+
+/**
+ * Confere duplicidade dentro do próprio arquivo e contra o banco.
+ *
+ * Faz as duas coisas porque uma lista de lojistas quase sempre vem com a
+ * mesma empresa repetida em linhas diferentes; gravar tudo e só depois
+ * descobrir que metade era duplicada deixa a base inutilizável.
+ */
+async function idDuplicado(
+  d: NonNullable<typeof db>,
+  email: string | null,
+  telefone: string | null,
+  vistos: Map<string, boolean>,
+): Promise<string | null> {
+  if (email && vistos.has(email)) return email;
+  if (telefone && vistos.has(telefone)) return telefone;
+  if (!email && !telefone) return null;
+  const linha = rowsOf(
+    await d.execute(
+      sql`SELECT c.email, c.telefone FROM marketing_contatos c WHERE ${condicaoDuplicidade(email, telefone)} LIMIT 1`,
+    ),
+  )[0];
+  if (!linha) return null;
+  return email && String(linha.email ?? "").toLowerCase() === email
+    ? email
+    : "telefone já cadastrado";
+}
+
+export async function importarMarketingContatos(
+  contatos: Array<Record<string, unknown>>,
+  tipoPadrao = "prospect",
+): Promise<ResultadoImportacao> {
   const d = requireDb();
   await ensureMarketingSchema();
+  const vistos = new Map<string, boolean>();
+  const erros: string[] = [];
   let inseridos = 0,
     duplicados = 0,
     invalidos = 0;
-  for (const item of contatos) {
-    const nome = String(item.nome || "").trim();
+
+  for (let i = 0; i < contatos.length; i++) {
+    const item = contatos[i];
+    // Nome é o mínimo para um contato ser identificável na lista.
+    const nome = String(item.nome ?? "").trim();
     const email =
-      String(item.email || "")
+      String(item.email ?? "")
         .trim()
         .toLowerCase() || null;
-    const telefone = String(item.telefone || item.whatsapp || "").trim() || null;
+    const telefone = normalizarTelefoneImportacao(item.telefone ?? item.whatsapp);
+
     if (!nome || (!email && !telefone)) {
       invalidos++;
+      erros.push(
+        `Linha ${i + 1}: sem nome e sem e-mail/telefone — preencha pelo menos um contato.`,
+      );
       continue;
     }
-    const existente = rowsOf(
-      await d.execute(
-        sql`SELECT id FROM marketing_contatos WHERE (${email} IS NOT NULL AND lower(email) = ${email}) OR (${telefone} IS NOT NULL AND telefone = ${telefone}) LIMIT 1`,
-      ),
-    )[0];
-    if (existente) {
+    if (email && !EMAIL_RE.test(email)) {
+      invalidos++;
+      erros.push(`Linha ${i + 1}: e-mail inválido ("${email}").`);
+      continue;
+    }
+    if (String(item.telefone ?? item.whatsapp ?? "").trim() && !telefone) {
+      invalidos++;
+      erros.push(
+        `Linha ${i + 1}: telefone inválido ("${String(item.telefone ?? item.whatsapp)}") — use DDD + número.`,
+      );
+      continue;
+    }
+
+    const motivo = await idDuplicado(d, email, telefone, vistos);
+    if (motivo) {
       duplicados++;
+      erros.push(`Linha ${i + 1}: ignorada, ${motivo}.`);
       continue;
     }
-    await d.execute(
-      sql`INSERT INTO marketing_contatos (nome,email,telefone,empresa,tipo,cep,endereco,numero,bairro,cidade,uf,origem,observacoes) VALUES (${nome},${email},${telefone},${item.empresa ? String(item.empresa) : null},${item.tipo ? String(item.tipo) : "prospect"},${item.cep ? String(item.cep) : null},${item.endereco ? String(item.endereco) : null},${item.numero ? String(item.numero) : null},${item.bairro ? String(item.bairro) : null},${item.cidade ? String(item.cidade) : null},${item.uf ? String(item.uf) : null},${item.origem ? String(item.origem) : "importacao_excel"},${item.observacoes ? String(item.observacoes) : null})`,
+
+    const registro: ItemImportacao = {
+      nome,
+      email,
+      telefone,
+      empresa: String(item.empresa ?? "").trim() || null,
+      // O diálogo pergunta se a lista é de lojistas, prospects ou compradores;
+      // sem isso toda lista importada virava "prospect" e o disparo não achava
+      // ninguém.
+      tipo: String(item.tipo ?? "").trim() || tipoPadrao,
+      cep: String(item.cep ?? "").trim() || null,
+      endereco: String(item.endereco ?? "").trim() || null,
+      numero: String(item.numero ?? "").trim() || null,
+      bairro: String(item.bairro ?? "").trim() || null,
+      cidade: String(item.cidade ?? "").trim() || null,
+      uf:
+        String(item.uf ?? "")
+          .trim()
+          .toUpperCase() || null,
+      origem: String(item.origem ?? "").trim() || "importacao_planilha",
+      observacoes: String(item.observacoes ?? "").trim() || null,
+    };
+    const r = await d.execute(
+      sql`INSERT INTO marketing_contatos (nome,email,telefone,empresa,tipo,cep,endereco,numero,bairro,cidade,uf,origem,observacoes)
+          VALUES (${registro.nome},${registro.email},${registro.telefone},${registro.empresa},${registro.tipo},${registro.cep},${registro.endereco},${registro.numero},${registro.bairro},${registro.cidade},${registro.uf},${registro.origem},${registro.observacoes})
+          RETURNING id`,
     );
-    inseridos++;
+    if (rowsOf(r)[0]) {
+      if (email) vistos.set(email, true);
+      if (telefone) vistos.set(telefone, true);
+      inseridos++;
+    }
   }
-  return { inseridos, duplicados, invalidos };
+  return { inseridos, duplicados, invalidos, erros };
 }
 
 export async function criarMarketingTag(nome: string, cor?: string) {
