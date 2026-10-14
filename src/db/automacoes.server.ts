@@ -72,6 +72,16 @@ export async function listarAutomacoes() {
 
 export async function salvarAutomacao(data: any, usuarioId: string) {
   const d = requireDb();
+  // JSON.stringify(null) vira "null" (string), e null::jsonb sem valor quebra o INSERT.
+  // COALESCE garante '{}' quando o campo não veio do formulário.
+  const configEnvio = data.config_envio ?? {};
+  const regras = data.regras ?? {};
+  const mapeamento = data.mapeamento_variaveis ?? [];
+  // Usuário não autenticado: não gravar FK inválida
+  const userIdValido = usuarioId && usuarioId !== '00000000-0000-0000-0000-000000000000'
+    ? usuarioId
+    : null;
+
   if (data.id) {
     await d.execute(sql`
       UPDATE whatsapp_automacoes SET
@@ -80,9 +90,9 @@ export async function salvarAutomacao(data: any, usuarioId: string) {
         publico = ${data.publico},
         template_id = ${data.template_id}::uuid,
         status = ${data.status},
-        config_envio = ${JSON.stringify(data.config_envio)}::jsonb,
-        regras = ${JSON.stringify(data.regras)}::jsonb,
-        mapeamento_variaveis = ${JSON.stringify(data.mapeamento_variaveis)}::jsonb,
+        config_envio = ${JSON.stringify(configEnvio)}::jsonb,
+        regras = ${JSON.stringify(regras)}::jsonb,
+        mapeamento_variaveis = ${JSON.stringify(mapeamento)}::jsonb,
         atualizado_em = now()
       WHERE id = ${data.id}::uuid
     `);
@@ -92,10 +102,10 @@ export async function salvarAutomacao(data: any, usuarioId: string) {
       INSERT INTO whatsapp_automacoes (
         nome, evento, publico, template_id, status, config_envio, regras, mapeamento_variaveis, criado_por
       ) VALUES (
-        ${data.nome}, ${data.evento}, ${data.publico}, ${data.template_id}::uuid, 
-        'RASCUNHO', ${JSON.stringify(data.config_envio)}::jsonb, 
-        ${JSON.stringify(data.regras)}::jsonb, ${JSON.stringify(data.mapeamento_variaveis)}::jsonb,
-        ${usuarioId}::uuid
+        ${data.nome}, ${data.evento}, ${data.publico}, ${data.template_id}::uuid,
+        'RASCUNHO', ${JSON.stringify(configEnvio)}::jsonb,
+        ${JSON.stringify(regras)}::jsonb, ${JSON.stringify(mapeamento)}::jsonb,
+        ${userIdValido}::uuid
       ) RETURNING id
     `);
     return rowsOf(res)[0];
