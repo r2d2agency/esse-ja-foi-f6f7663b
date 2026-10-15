@@ -554,6 +554,10 @@ export async function getUazapiConfig() {
 export async function salvarUazapiConfig(base_url: string, token: string) {
   const d = requireDb();
   await ensureMarketingSchema();
+  // Não grava config que não conecta: o token da instância é validado contra
+  // ela antes do INSERT, senão o 401 só apareceria na hora de verificar.
+  const teste = await validarConexaoUazapi(base_url, token);
+  if (!teste.ok) throw new Error(teste.erro);
   for (const [chave, valor] of [
     ["uazapi_base_url", base_url.trim().replace(/\/+$/, "")],
     ["uazapi_token", token.trim()],
@@ -565,6 +569,75 @@ export async function salvarUazapiConfig(base_url: string, token: string) {
     `);
   }
   return { ok: true };
+}
+
+/**
+ * Testa URL + token contra a instância de verdade antes de gravar.
+ *
+ * O 401 da Uazapi aparecia só no meio da verificação de números, quando
+ * dezenas de contatos já estavam em fila — e a mensagem crua não dizia que o
+ * problema era o token. Aqui ele é pego na hora de salvar, com o motivo claro.
+ * `GET /instance/status` é barato e responde com o estado da conexão.
+ */
+export async function validarConexaoUazapi(base_url: string, token: string) {
+  const base = (base_url || "").trim().replace(/\/+$/, "");
+  const tok = (token || "").trim();
+
+  if (!base) return { ok: false as const, erro: "Informe a URL da instância." };
+  if (!/^https?:\/\//i.test(base))
+    return { ok: false as const, erro: "A URL precisa começar com http:// ou https://." };
+  if (!tok) return { ok: false as const, erro: "Informe o token da instância." };
+
+  const ctrl = new AbortController();
+  const esgotou = setTimeout(() => ctrl.abort(), 15000);
+  try {
+    const res = await fetch(`${base}/instance/status`, {
+      method: "GET",
+      headers: { Accept: "application/json", token: tok },
+      signal: ctrl.signal,
+    });
+
+    if (res.status === 401 || res.status === 403) {
+      return {
+        ok: false as const,
+        erro:
+          "Token recusado pela instância (HTTP 401/403). " +
+          "Confirme se o token é o desta instância — na Uazapi cada número conectado tem o seu.",
+      };
+    }
+    if (res.status === 404) {
+      return {
+        ok: false as const,
+        erro:
+          "A URL respondeu, mas não achou a instância (HTTP 404). " +
+          "Confira a URL: ela aponta para a instância correta (ex: https://gleego.uazapi.com)?",
+      };
+    }
+    if (!res.ok) {
+      const texto = await res.text().catch(() => "");
+      return { ok: false as const, erro: `Uazapi retornou HTTP ${res.status}: ${texto.slice(0, 200)}` };
+    }
+
+    const dados: any = await res.json().catch(() => ({}));
+    // A Uazapi varia o nome do campo entre versões; aceita os mais comuns.
+    const status = String(
+      dados?.status?.status ?? dados?.status ?? dados?.instance?.status ?? "",
+    ).toLowerCase();
+    const conectado = status === "" ? true : status === "connected";
+    return {
+      ok: true as const,
+      conectado,
+      instancia: dados?.instance?.name ?? dados?.name ?? null,
+      telefone: dados?.instance?.owner ?? dados?.owner ?? null,
+      status,
+    };
+  } catch (e: any) {
+    if (e?.name === "AbortError")
+      return { ok: false as const, erro: "A instância não respondeu em 15s. Confira a URL." };
+    return { ok: false as const, erro: `Não foi possível falar com a instância: ${e?.message || e}` };
+  } finally {
+    clearTimeout(esgotou);
+  }
 }
 
 function normalizarTelefone(telefone: string): string | null {
@@ -617,6 +690,15 @@ export async function verificarWhatsappContatos(limite = 50) {
   });
   if (!res.ok) {
     const texto = await res.text().catch(() => "");
+    // O 401 aqui quase sempre é token de outra instância (ou token global da
+    // Uazapi, que não vale como credencial da instância). A mensagem precisa
+    // dizer isso — "Invalid token" crua não indica onde arrumar.
+    if (res.status === 401 || res.status === 403) {
+      throw new Error(
+        "Token recusado pela instância da Uazapi (HTTP 401). Use o token desta instância, " +
+          "não o token global — confira em Configurar > Verificação de WhatsApp.",
+      );
+    }
     throw new Error(`Uazapi retornou HTTP ${res.status}: ${texto.slice(0, 200)}`);
   }
   const resultados: Array<{

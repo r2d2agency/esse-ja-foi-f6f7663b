@@ -13,6 +13,7 @@ import {
   geocodificarContatosFn,
   getUazapiConfigFn,
   salvarUazapiConfigFn,
+  testarUazapiFn,
   verificarWhatsappContatosFn,
 } from "@/lib/marketing.functions";
 import { Input } from "@/components/ui/input";
@@ -52,6 +53,8 @@ import {
   FileText,
   Pencil,
   Trash2,
+  XCircle,
+  Zap,
 } from "lucide-react";
 import MapaContatos from "@/components/shared/MapaContatos";
 import {
@@ -172,6 +175,16 @@ function MarketingPage() {
   const getUazapiConfig = useServerFn(getUazapiConfigFn);
   const salvarUazapi = useServerFn(salvarUazapiConfigFn);
   const verificarWhatsapp = useServerFn(verificarWhatsappContatosFn);
+  const testarUazapi = useServerFn(testarUazapiFn);
+  // Resultado do "Testar": conectado + nome/número da instância, ou o motivo.
+  const [testeUazapi, setTesteUazapi] = useState<{
+    ok: boolean;
+    message?: string;
+    conectado?: boolean;
+    instancia?: string | null;
+    telefone?: string | null;
+  } | null>(null);
+  const [testandoUazapi, setTestandoUazapi] = useState(false);
 
   // Carrega a config Uazapi (token só sinaliza se está definido, nunca o valor)
   useEffect(() => {
@@ -188,6 +201,8 @@ function MarketingPage() {
   async function confirmarSalvarUazapi() {
     setSalvandoUazapi(true);
     try {
+      // Salvar já valida a instância, mas o toast genérico de erro escondia o
+      // motivo (401/404/timeout). Mostramos o motivo na tela, antes de gravar.
       const r = await salvarUazapi({
         data: {
           base_url: uazapiUrl,
@@ -198,10 +213,37 @@ function MarketingPage() {
       toast.success("Configuração da Uazapi salva.");
       setUazapiToken("••••••••••••");
       setUazapiConfigurado(true);
+      setTesteUazapi(null);
     } catch (e: any) {
       toast.error(e.message);
     } finally {
       setSalvandoUazapi(false);
+    }
+  }
+
+  async function testarConexaoUazapi() {
+    setTestandoUazapi(true);
+    setTesteUazapi(null);
+    try {
+      // Testa com os campos digitados (ou os salvos, se vazio/mascarado) —
+      // sem gravar nada. Se falhar, o usuário vê o motivo antes de salvar.
+      const r = await testarUazapi({
+        data: {
+          base_url: uazapiUrl,
+          token: uazapiToken === "••••••••••••" ? undefined : uazapiToken,
+        },
+      });
+      setTesteUazapi({
+        ok: !!r.ok,
+        message: r.ok ? undefined : (r.message || "Falha ao testar a instância."),
+        conectado: r.ok ? (r.conectado ?? true) : undefined,
+        instancia: r.ok ? r.instancia : undefined,
+        telefone: r.ok ? r.telefone : undefined,
+      });
+    } catch (e: any) {
+      setTesteUazapi({ ok: false, message: e?.message || "Falha ao testar a instância." });
+    } finally {
+      setTestandoUazapi(false);
     }
   }
 
@@ -509,10 +551,52 @@ function MarketingPage() {
               )}
               Salvar
             </Button>
+            {testeUazapi && (
+              <div
+                className={`col-span-full mt-2 text-xs flex items-start gap-2 rounded-md px-3 py-2 border ${
+                  testeUazapi.ok
+                    ? "border-teal-200 bg-teal-50 text-teal-800"
+                    : "border-red-200 bg-red-50 text-red-800"
+                }`}
+              >
+                {testeUazapi.ok ? (
+                  <>
+                    <BadgeCheck className="h-4 w-4 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="font-bold">Instância conectada.</p>
+                      {testeUazapi.instancia && (
+                        <p>
+                          {testeUazapi.instancia}
+                          {testeUazapi.telefone ? ` · ${testeUazapi.telefone}` : ""}
+                        </p>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                    <p>{testeUazapi.message}</p>
+                  </>
+                )}
+              </div>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-2"
+              onClick={testarConexaoUazapi}
+              disabled={testandoUazapi || !uazapiUrl}
+            >
+              {testandoUazapi ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Zap className="mr-2 h-4 w-4" />
+              )}
+              {testandoUazapi ? "Testando..." : "Testar conexão"}
+            </Button>
           </div>
         )}
       </div>
-
       <div className="flex flex-col md:flex-row gap-4">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />

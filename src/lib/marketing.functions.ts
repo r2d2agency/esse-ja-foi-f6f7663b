@@ -222,3 +222,39 @@ export const verificarWhatsappContatosFn = createServerFn({ method: "POST" })
       return { ok: false as const, message: e.message };
     }
   });
+
+/**
+ * Testa a instância Uazapi com os valores digitados na tela, sem gravar nada.
+ * Deixa o usuário ver "conectado" (e o número da instância) antes de salvar —
+ * e o 401 chega como frase explicável, não como erro cru no meio do disparo.
+ */
+export const testarUazapiFn = createServerFn({ method: "POST" })
+  .inputValidator((d) =>
+    z
+      .object({
+        base_url: z.string().optional(),
+        token: z.string().optional(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data }) => {
+    try {
+      const { getUazapiConfig, validarConexaoUazapi } = await import("@/db/marketing.server");
+      // Igual ao salvar: campo vazio/mascarado = mantém o que já está gravado.
+      const atual = await getUazapiConfig();
+      const base_url = data.base_url?.trim() || atual.uazapi_base_url || "";
+      const token =
+        !data.token || data.token === "••••••••••••" ? atual.uazapi_token || "" : data.token.trim();
+      const r = await validarConexaoUazapi(base_url, token);
+      return r.ok
+        ? {
+            ok: true as const,
+            conectado: r.conectado,
+            instancia: r.instancia,
+            telefone: r.telefone,
+          }
+        : { ok: false as const, message: r.erro };
+    } catch (e: any) {
+      return { ok: false as const, message: e?.message || "Falha ao testar a instância." };
+    }
+  });
