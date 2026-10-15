@@ -702,10 +702,10 @@ function normalizarIdGrupo(g: any): string {
 /**
  * Lista os grupos que a instância Uazapi participa.
  *
- * A Uazapi não tem um endpoint único estável entre versões — `/group/all`,
- * `/group/list` e `/chats` retornam listas de grupos conforme a versão.
- * Tentamos em ordem e usamos a primeira que responder. O formato do id
- * ("120363...@g.us") é o que o envio espera em `POST /send/text`.
+ * Caminho oficial (docs Uazapi): POST /group/list com
+ * {"limit","offset","noParticipants"}, lista em `groups`, paginado.
+ * Versões antigas ainda aceitam GET em /group/all e /chats — ficam de reserva.
+ * O formato do id ("120363...@g.us") é o que o envio espera em POST /send/text.
  */
 export async function listarGruposUazapi() {
   const cfg = await getUazapiConfig();
@@ -714,14 +714,90 @@ export async function listarGruposUazapi() {
   if (!base || !token)
     throw new Error("Configure a URL e o token da instância Uazapi antes de listar grupos.");
 
-  const rotas = ["/group/all", "/group/list", "/chats"];
-  // 8s por rota, não 15s: em sequência as três rotas deixavam o botão em
-  // "Carregando..." por até 45s antes de qualquer resposta, o que a tela
-  // mostrava como travamento.
+  // 8s por tentativa: em sequência, várias rotas deixavam o botão em
+  // "Carregando..." por quase um minuto antes de qualquer resposta.
   const TIMEOUT_MS = 8000;
   let ultimoMotivo = "";
 
-  for (const rota of rotas) {
+  const lerResposta = async (res: Response, rota: string) => {
+    if (res.status === 401 || res.status === 403)
+      throw new Error(
+        "Token recusado pela instância (HTTP 401/403). Confira em Marketing > Configurar.",
+      );
+    if (!res.ok) {
+      const texto = await res.text().catch(() => "");
+      return { erro: `Uazapi retornou HTTP ${res.status} em ${rota}: ${texto.slice(0, 200)}` };
+    }
+    const dados: any = await res.json().catch(() => null);
+    if (!dados) return { erro: `${rota} respondeu sem JSON utilizável.` };
+    // A lista pode vir direto, em {groups: []}, {data: []} ou {response: []}.
+    const bruta: any[] = Array.isArray(dados)
+      ? dados
+      : Array.isArray(dados?.groups)
+        ? dados.groups
+        : Array.isArray(dados?.data)
+          ? dados.data
+          : Array.isArray(dados?.response)
+            ? dados.response
+            : [];
+    const grupos = bruta
+      .map((g: any) => ({
+        id: normalizarIdGrupo(g),
+        nome: String(
+          g?.name ?? g?.subject ?? g?.groupName ?? g?.groupMetadata?.subject ?? "Grupo sem nome",
+        ),
+        participantes: Number(
+          g?.participants_count ??
+            g?.size ??
+            g?.participants?.length ??
+            g?.groupMetadata?.size ??
+            0,
+        ),
+      }))
+      .filter((g) => g.id.includes("@g.us"));
+    return { grupos };
+  };
+
+  // 1) Rota oficial: POST paginado. O offset é obrigatório — a lista vem em
+  //    páginas e sem ele ficava preso na primeira (ou vinha vazia).
+  const PAGINA = 100;
+  const achados: { id: string; nome: string; participantes: number }[] = [];
+  for (let offset = 0, paginas = 0; paginas < 20; offset += PAGINA, paginas++) {
+    const ctrl = new AbortController();
+    const esgotou = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+    try {
+      const res = await fetch(`${base}/group/list`, {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json", token },
+        body: JSON.stringify({ limit: PAGINA, offset, noParticipants: true }),
+        signal: ctrl.signal,
+      });
+      if (res.status === 404) {
+        ultimoMotivo = "/group/list não existe nesta versão (HTTP 404).";
+        break; // versão antiga: cai para as rotas GET de reserva
+      }
+      const r = await lerResposta(res, "/group/list");
+      if (r.erro) {
+        ultimoMotivo = r.erro;
+        break;
+      }
+      achados.push(...r.grupos!);
+      // Página veio menor que o pedido: acabou a lista.
+      if (r.grupos!.length < PAGINA) break;
+    } catch (e: any) {
+      if (e?.name === "AbortError") {
+        ultimoMotivo = `A instância não respondeu em ${TIMEOUT_MS / 1000}s em /group/list.`;
+        break;
+      }
+      throw e;
+    } finally {
+      clearTimeout(esgotou);
+    }
+  }
+  if (achados.length) return achados;
+
+  // 2) Reserva para versões antigas: GET /group/all e GET /chats.
+  for (const rota of ["/group/all", "/chats"]) {
     const ctrl = new AbortController();
     const esgotou = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
     try {
@@ -732,55 +808,19 @@ export async function listarGruposUazapi() {
       });
       if (res.status === 404) {
         ultimoMotivo = `${rota} não existe nesta versão (HTTP 404).`;
-        continue; // rota não existe nesta versão; tenta a próxima
-      }
-      if (res.status === 401 || res.status === 403)
-        throw new Error(
-          "Token recusado pela instância (HTTP 401/403). Confira em Marketing > Configurar.",
-        );
-      if (!res.ok) {
-        const texto = await res.text().catch(() => "");
-        throw new Error(`Uazapi retornou HTTP ${res.status} em ${rota}: ${texto.slice(0, 200)}`);
-      }
-      const dados: any = await res.json().catch(() => null);
-      if (!dados) {
-        ultimoMotivo = `${rota} respondeu sem JSON utilizável.`;
         continue;
       }
-      // A lista pode vir direto, em {groups: []}, em {data: []} ou em {response: []}.
-      const bruta: any[] = Array.isArray(dados)
-        ? dados
-        : Array.isArray(dados?.groups)
-          ? dados.groups
-          : Array.isArray(dados?.data)
-            ? dados.data
-            : Array.isArray(dados?.response)
-              ? dados.response
-              : [];
-      const grupos = bruta
-        .map((g: any) => ({
-          id: normalizarIdGrupo(g),
-          nome: String(
-            g?.name ?? g?.subject ?? g?.groupName ?? g?.groupMetadata?.subject ?? "Grupo sem nome",
-          ),
-          participantes: Number(
-            g?.participants_count ??
-              g?.size ??
-              g?.participants?.length ??
-              g?.groupMetadata?.size ??
-              0,
-          ),
-        }))
-        .filter((g) => g.id.includes("@g.us"));
-      // Só para numa rota quando ela realmente traz grupos. Antes uma
-      // resposta vazia (campo com outro nome, ou "groups": []) encerrava a
-      // busca e a tela não mostrava nenhum grupo sem explicar o motivo.
-      if (grupos.length) return grupos;
+      const r = await lerResposta(res, rota);
+      if (r.erro) {
+        ultimoMotivo = r.erro;
+        continue;
+      }
+      if (r.grupos!.length) return r.grupos;
       ultimoMotivo = `${rota} respondeu, mas sem nenhum grupo (@g.us) na lista.`;
     } catch (e: any) {
       if (e?.name === "AbortError") {
         ultimoMotivo = `A instância não respondeu em ${TIMEOUT_MS / 1000}s em ${rota}.`;
-        continue; // tenta a rota seguinte antes de desistir
+        continue;
       }
       throw e;
     } finally {
