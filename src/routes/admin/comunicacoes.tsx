@@ -89,7 +89,7 @@ import {
   processarEnvioCampanhaFn,
   exemploDestinatarioFn,
 } from "@/lib/comunicacoes.functions";
-import { listarMarketingTagsFn } from "@/lib/marketing.functions";
+import { listarMarketingTagsFn, listarGruposUazapiFn } from "@/lib/marketing.functions";
 import {
   listarAutomacoesFn,
   salvarAutomacaoFn,
@@ -377,6 +377,7 @@ function ComunicacoesPage() {
   const salvarAutomacao = useServerFn(salvarAutomacaoFn);
   const getExecucoes = useServerFn(getExecucoesAutomacaoFn);
   const listarTagsMarketing = useServerFn(listarMarketingTagsFn);
+  const listarGruposUazapi = useServerFn(listarGruposUazapiFn);
 
   const [activeTab, setActiveTab] = useState("campanhas");
   const [selectedAutomacao, setSelectedAutomacao] = useState<any>(null);
@@ -466,6 +467,28 @@ function ComunicacoesPage() {
 
   const [estimativa, setEstimativa] = useState<any>({ total: 0, elegiveis: 0, nao_elegiveis: 0 });
   const [tagsSelecionadas, setTagsSelecionadas] = useState<string[]>([]);
+
+  // Canal de envio: Meta (template oficial) ou Uazapi (conexão nova — a única
+  // rota que aceita grupos, já que a Meta não processa template para @g.us).
+  const [canalEnvio, setCanalEnvio] = useState<"META" | "UAZAPI">("META");
+  const [gruposAlvo, setGruposAlvo] = useState<string[]>([]);
+  const [gruposUazapi, setGruposUazapi] = useState<any[]>([]);
+  const [carregandoGrupos, setCarregandoGrupos] = useState(false);
+  const [erroGrupos, setErroGrupos] = useState<string | null>(null);
+
+  const carregarGruposUazapi = async () => {
+    setCarregandoGrupos(true);
+    setErroGrupos(null);
+    try {
+      const r: any = await listarGruposUazapi();
+      if (!r.ok) throw new Error(r.message || "Falha ao listar grupos.");
+      setGruposUazapi(r.data ?? []);
+    } catch (e: any) {
+      setErroGrupos(e?.message || "Falha ao listar grupos.");
+    } finally {
+      setCarregandoGrupos(false);
+    }
+  };
 
   const { data: indicadores } = useQuery({
     queryKey: ["wa-indicadores"],
@@ -666,11 +689,21 @@ function ComunicacoesPage() {
     setIsCampanhaWizardOpen(false);
     setCampanhaGeral(false);
     setTagsSelecionadas([]);
+    // Voltar o canal para META e limpar os grupos: se a opção Uazapi ficasse
+    // marcada, a próxima campanha de contatos nasceria como campanha de grupo.
+    setCanalEnvio("META");
+    setGruposAlvo([]);
+    setGruposUazapi([]);
+    setErroGrupos(null);
   };
 
   const handleAbrirCampanha = () => {
     setCampanhaGeral(false);
     setTagsSelecionadas([]);
+    setCanalEnvio("META");
+    setGruposAlvo([]);
+    setGruposUazapi([]);
+    setErroGrupos(null);
     setIsCampanhaWizardOpen(true);
   };
 
@@ -691,6 +724,8 @@ function ComunicacoesPage() {
           veiculo_id: campanhaGeral ? null : novaCampanha.veiculo_id,
           filtros: dadosEstimativa,
           enviar_agora: enviarAgora,
+          canal_envio: canalEnvio,
+          grupos_alvo: canalEnvio === "UAZAPI" ? gruposAlvo : [],
         },
       }),
       {
@@ -1308,9 +1343,139 @@ function ComunicacoesPage() {
                         </div>
                       </div>
 
+                      {/* Canal de envio. A Meta não processa template para grupo
+                          (@g.us), então enviar em grupo só existe pela conexão
+                          Uazapi — por isso a escolha é uma só e não duas. */}
+                      <div className="space-y-2">
+                        <Label>Canal de envio</Label>
+                        <div className="flex flex-col sm:flex-row gap-3">
+                          {[
+                            {
+                              value: "META" as const,
+                              label: "Meta API (oficial)",
+                              desc: "Template aprovado, número a número. Para contatos e listas.",
+                            },
+                            {
+                              value: "UAZAPI" as const,
+                              label: "Conexão (Uazapi)",
+                              desc: "Texto livre pelo número conectado. É a única rota que aceita grupos.",
+                            },
+                          ].map((o) => (
+                            <button
+                              key={o.value}
+                              type="button"
+                              onClick={() => {
+                                setCanalEnvio(o.value);
+                                // Grupo escolhido em outra campanha não pode
+                                // sobrar marcado aqui: a fila nasceria com
+                                // destinatário que ninguém revisou.
+                                if (o.value === "META") setGruposAlvo([]);
+                              }}
+                              className={`flex-1 rounded-lg border p-3 text-left ${
+                                canalEnvio === o.value
+                                  ? "border-teal-600 bg-teal-50 dark:bg-teal-950/40"
+                                  : "border-slate-200 bg-white"
+                              }`}
+                            >
+                              <p className="text-sm font-bold">{o.label}</p>
+                              <p className="text-xs text-muted-foreground">{o.desc}</p>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {canalEnvio === "UAZAPI" && (
+                        <div className="space-y-3 rounded-lg border border-teal-200 bg-teal-50/50 dark:bg-teal-950/20 p-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <Label>Grupos do WhatsApp</Label>
+                              <p className="text-xs text-muted-foreground">
+                                A mensagem usa o texto do corpo do template. Origem,
+                                filtros e estimativa não se aplicam a grupos.
+                              </p>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={carregarGruposUazapi}
+                              disabled={carregandoGrupos}
+                            >
+                              {carregandoGrupos
+                                ? "Carregando..."
+                                : gruposUazapi.length
+                                  ? "Atualizar lista"
+                                  : "Carregar grupos"}
+                            </Button>
+                          </div>
+
+                          {erroGrupos && (
+                            <p className="text-xs text-red-600 dark:text-red-400">{erroGrupos}</p>
+                          )}
+
+                          {gruposUazapi.length > 0 && (
+                            <div className="grid grid-cols-1 gap-2 max-h-56 overflow-y-auto pr-1">
+                              {gruposUazapi.map((g: any) => {
+                                const ativo = gruposAlvo.includes(g.id);
+                                return (
+                                  <label
+                                    key={g.id}
+                                    className={`flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-all ${
+                                      ativo
+                                        ? "border-teal-600 bg-white"
+                                        : "border-slate-200 bg-white hover:border-slate-400"
+                                    }`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      className="h-4 w-4 accent-teal-600"
+                                      checked={ativo}
+                                      onChange={() =>
+                                        setGruposAlvo((prev) =>
+                                          ativo
+                                            ? prev.filter((id) => id !== g.id)
+                                            : [...prev, g.id],
+                                        )
+                                      }
+                                    />
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-sm font-semibold truncate">{g.nome}</p>
+                                      <p className="text-[10px] text-muted-foreground font-mono truncate">
+                                        {g.id}
+                                      </p>
+                                    </div>
+                                    {typeof g.participantes === "number" && (
+                                      <span className="text-[10px] text-muted-foreground shrink-0">
+                                        {g.participantes} participantes
+                                      </span>
+                                    )}
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {gruposUazapi.length > 0 && gruposAlvo.length === 0 && (
+                            <p className="text-xs text-amber-600 dark:text-amber-400">
+                              Marque pelo menos um grupo para continuar.
+                            </p>
+                          )}
+                          {gruposAlvo.length > 0 && (
+                            <p className="text-xs font-semibold text-teal-700 dark:text-teal-400">
+                              {gruposAlvo.length}{" "}
+                              {gruposAlvo.length === 1 ? "grupo selecionado" : "grupos selecionados"}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
                       {/* Etiquetas do Marketing: marcar uma tag muda o público de
                           "todos os contatos" para "só quem tem esta etiqueta". */}
-                      <div className="space-y-2">
+                      <div
+                        className={`space-y-2 ${
+                          canalEnvio === "UAZAPI" ? "hidden" : ""
+                        }`}
+                      >
                         <Label>Filtrar por etiqueta (opcional)</Label>
                         {!tagsMarketing || (tagsMarketing as any).ok === false ? (
                           <p className="text-xs text-muted-foreground">
@@ -1360,7 +1525,11 @@ function ComunicacoesPage() {
                         </p>
                       </div>
 
-                      <div className="space-y-2">
+                      <div
+                        className={`space-y-2 ${
+                          canalEnvio === "UAZAPI" ? "hidden" : ""
+                        }`}
+                      >
                         <Label>Origem do público</Label>
                         <div className="flex flex-wrap gap-2">
                           {[
@@ -1452,7 +1621,11 @@ function ComunicacoesPage() {
                         </div>
                       </div>
 
-                      <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-lg flex items-center justify-between">
+                      <div
+                        className={`bg-slate-50 dark:bg-slate-900/50 p-4 rounded-lg flex items-center justify-between ${
+                          canalEnvio === "UAZAPI" ? "hidden" : ""
+                        }`}
+                      >
                         <div className="flex items-center gap-3">
                           <Users className="w-5 h-5 text-slate-400" />
                           <div>
@@ -1887,38 +2060,90 @@ function ComunicacoesPage() {
                           </div>
                           <div className="p-4 border rounded-lg bg-slate-50 dark:bg-slate-900/50 space-y-2">
                             <p className="text-[10px] text-muted-foreground uppercase">Conexão</p>
-                            <div className="flex items-center gap-2">
-                              <Globe className="w-3 h-3 text-green-500" />
-                              <span className="text-xs font-bold text-green-600">
-                                Meta WABA Conectada
-                              </span>
-                            </div>
-                            <p className="text-xs font-mono">{config?.phone_number}</p>
+                            {canalEnvio === "UAZAPI" ? (
+                              <>
+                                <div className="flex items-center gap-2">
+                                  <Globe className="w-3 h-3 text-teal-500" />
+                                  <span className="text-xs font-bold text-teal-600">
+                                    Conexão Uazapi (grupos)
+                                  </span>
+                                </div>
+                                <p className="text-xs">
+                                  {gruposAlvo.length}{" "}
+                                  {gruposAlvo.length === 1
+                                    ? "grupo selecionado"
+                                    : "grupos selecionados"}
+                                </p>
+                                {gruposAlvo.length > 0 && (
+                                  <p className="text-[10px] text-muted-foreground font-mono truncate">
+                                    {gruposAlvo
+                                      .map(
+                                        (id) =>
+                                          gruposUazapi.find((g: any) => g.id === id)?.nome ?? id,
+                                      )
+                                      .join(", ")}
+                                  </p>
+                                )}
+                              </>
+                            ) : (
+                              <>
+                                <div className="flex items-center gap-2">
+                                  <Globe className="w-3 h-3 text-green-500" />
+                                  <span className="text-xs font-bold text-green-600">
+                                    Meta WABA Conectada
+                                  </span>
+                                </div>
+                                <p className="text-xs font-mono">{config?.phone_number}</p>
+                              </>
+                            )}
                           </div>
                         </div>
 
                         <div className="p-4 border rounded-lg bg-slate-900 text-white space-y-4">
                           <p className="text-[10px] text-slate-400 uppercase">Resumo de Envio</p>
-                          <div className="space-y-3">
-                            <div className="flex justify-between items-center text-xs">
-                              <span>Público encontrado</span>
-                              <span>{estimativa.total}</span>
+                          {canalEnvio === "UAZAPI" ? (
+                            <div className="space-y-3">
+                              <div className="flex justify-between items-center text-xs">
+                                <span>Destino</span>
+                                <span>Grupos do WhatsApp</span>
+                              </div>
+                              <div className="flex justify-between items-center text-xs">
+                                <span>Grupos marcados</span>
+                                <span>{gruposAlvo.length}</span>
+                              </div>
+                              <div className="border-t border-slate-700 pt-2 flex justify-between items-center">
+                                <span className="text-sm font-bold">Total a enviar</span>
+                                <span className="text-xl font-black text-teal-400">
+                                  {gruposAlvo.length}
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-slate-400">
+                                Uma mensagem por grupo. O texto vem do corpo do template — a
+                                aprovação da Meta não se aplica por aqui.
+                              </p>
                             </div>
-                            <div className="flex justify-between items-center text-xs">
-                              <span>Duplicados removidos</span>
-                              <span>0</span>
+                          ) : (
+                            <div className="space-y-3">
+                              <div className="flex justify-between items-center text-xs">
+                                <span>Público encontrado</span>
+                                <span>{estimativa.total}</span>
+                              </div>
+                              <div className="flex justify-between items-center text-xs">
+                                <span>Duplicados removidos</span>
+                                <span>0</span>
+                              </div>
+                              <div className="flex justify-between items-center text-xs">
+                                <span>Não elegíveis</span>
+                                <span className="text-red-400">{estimativa.nao_elegiveis}</span>
+                              </div>
+                              <div className="border-t border-slate-700 pt-2 flex justify-between items-center">
+                                <span className="text-sm font-bold">Total a enviar</span>
+                                <span className="text-xl font-black text-teal-400">
+                                  {estimativa.elegiveis}
+                                </span>
+                              </div>
                             </div>
-                            <div className="flex justify-between items-center text-xs">
-                              <span>Não elegíveis</span>
-                              <span className="text-red-400">{estimativa.nao_elegiveis}</span>
-                            </div>
-                            <div className="border-t border-slate-700 pt-2 flex justify-between items-center">
-                              <span className="text-sm font-bold">Total a enviar</span>
-                              <span className="text-xl font-black text-teal-400">
-                                {estimativa.elegiveis}
-                              </span>
-                            </div>
-                          </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1955,7 +2180,15 @@ function ComunicacoesPage() {
                             toast.error("Selecione um veículo");
                             return;
                           }
-                          if (campanhaStep === 3) handleEstimar();
+                          if (campanhaStep === 3) {
+                            if (canalEnvio === "UAZAPI" && gruposAlvo.length === 0) {
+                              toast.error("Selecione pelo menos um grupo para continuar.");
+                              return;
+                            }
+                            // A campanha de grupo não tem público de contatos: sem
+                            // este `if` a estimativa rodava e atrasava o wizard.
+                            if (canalEnvio !== "UAZAPI") handleEstimar();
+                          }
                           setCampanhaStep(campanhaStep + 1);
                         }}
                       >

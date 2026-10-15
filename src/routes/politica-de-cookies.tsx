@@ -124,6 +124,7 @@ function PoliticaCookies() {
         <div className="container mx-auto flex flex-col items-center gap-4 px-4 text-sm text-slate-400">
           <Link to="/" className="hover:text-turquoise">Voltar para a página inicial</Link>
           <p>© 2026 Esse Já Foi — Todos os direitos reservados.</p>
+          <p className="text-xs">CNPJ 68.780.970/0001-90 • Tel: (11) 92486-9798</p>
         </div>
       </footer>
     </div>

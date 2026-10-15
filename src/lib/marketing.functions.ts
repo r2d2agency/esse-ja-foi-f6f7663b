@@ -224,6 +224,20 @@ export const verificarWhatsappContatosFn = createServerFn({ method: "POST" })
   });
 
 /**
+ * Lista os grupos WhatsApp que a instância Uazapi participa. POST de propósito,
+ * igual às demais: a chamada toca o banco (config) e a instância, e GET roda no
+ * navegador onde não há credenciais.
+ */
+export const listarGruposUazapiFn = createServerFn({ method: "POST" }).handler(async () => {
+  try {
+    const { listarGruposUazapi } = await import("@/db/marketing.server");
+    return { ok: true as const, data: await listarGruposUazapi() };
+  } catch (e: any) {
+    return { ok: false as const, message: e?.message || "Falha ao listar grupos." };
+  }
+});
+
+/**
  * Testa a instância Uazapi com os valores digitados na tela, sem gravar nada.
  * Deixa o usuário ver "conectado" (e o número da instância) antes de salvar —
  * e o 401 chega como frase explicável, não como erro cru no meio do disparo.

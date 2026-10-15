@@ -648,6 +648,127 @@ function normalizarTelefone(telefone: string): string | null {
 }
 
 /**
+ * Lista os grupos que a instância Uazapi participa.
+ *
+ * A Uazapi não tem um endpoint único estável entre versões — `/group/all`,
+ * `/group/list` e `/chats` retornam listas de grupos conforme a versão.
+ * Tentamos em ordem e usamos a primeira que responder. O formato do id
+ * ("120363...@g.us") é o que o envio espera em `POST /send/text`.
+ */
+export async function listarGruposUazapi() {
+  const cfg = await getUazapiConfig();
+  const base = (cfg.uazapi_base_url || "").trim().replace(/\/+$/, "");
+  const token = (cfg.uazapi_token || "").trim();
+  if (!base || !token)
+    throw new Error("Configure a URL e o token da instância Uazapi antes de listar grupos.");
+
+  const rotas = ["/group/all", "/group/list", "/chats"];
+  for (const rota of rotas) {
+    const ctrl = new AbortController();
+    const esgotou = setTimeout(() => ctrl.abort(), 15000);
+    try {
+      const res = await fetch(`${base}${rota}`, {
+        method: "GET",
+        headers: { Accept: "application/json", token },
+        signal: ctrl.signal,
+      });
+      if (res.status === 404) continue; // rota não existe nesta versão; tenta a próxima
+      if (res.status === 401 || res.status === 403)
+        throw new Error(
+          "Token recusado pela instância (HTTP 401). Confira em Marketing > Configurar.",
+        );
+      if (!res.ok) {
+        const texto = await res.text().catch(() => "");
+        throw new Error(`Uazapi retornou HTTP ${res.status} em ${rota}: ${texto.slice(0, 200)}`);
+      }
+      const dados: any = await res.json().catch(() => null);
+      if (!dados) continue;
+      // A lista pode vir direto, em {groups: []} ou em {data: []}.
+      const bruta: any[] = Array.isArray(dados)
+        ? dados
+        : Array.isArray(dados?.groups)
+          ? dados.groups
+          : Array.isArray(dados?.data)
+            ? dados.data
+            : [];
+      const grupos = bruta
+        .map((g: any) => ({
+          id: String(g?.id ?? g?.group_id ?? g?.jid ?? ""),
+          nome: String(g?.name ?? g?.subject ?? g?.groupName ?? "Grupo sem nome"),
+          participantes: Number(g?.participants_count ?? g?.size ?? g?.participants?.length ?? 0),
+        }))
+        .filter((g) => g.id.includes("@g.us"));
+      if (rota === "/chats") {
+        // /chats mistura conversas individuais; os grupos são os que têm @g.us
+        return grupos;
+      }
+      return grupos;
+    } catch (e: any) {
+      if (e?.name === "AbortError")
+        throw new Error("A instância não respondeu em 15s. Confira a URL.");
+      throw e;
+    } finally {
+      clearTimeout(esgotou);
+    }
+  }
+  throw new Error(
+    "Nenhuma rota de grupos respondeu nesta instância (group/all, group/list, chats). " +
+      "Confira se a versão da Uazapi suporta listagem de grupos.",
+  );
+}
+
+/**
+ * Envia texto livre pela instância Uazapi — o caminho que aceita grupos
+ * ("120363...@g.us") e que não depende de template aprovado pela Meta.
+ * A Meta não aceita template para grupo; por isso a campanha que mira grupo
+ * precisa sair por aqui, e não pelo serviço da Meta.
+ */
+export async function enviarTextoUazapi(alvo: string, texto: string) {
+  const cfg = await getUazapiConfig();
+  const base = (cfg.uazapi_base_url || "").trim().replace(/\/+$/, "");
+  const token = (cfg.uazapi_token || "").trim();
+  if (!base || !token) throw new Error("Instância Uazapi não configurada.");
+
+  const ctrl = new AbortController();
+  const esgotou = setTimeout(() => ctrl.abort(), 30000);
+  try {
+    const res = await fetch(`${base}/send/text`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        token,
+      },
+      body: JSON.stringify({
+        number: alvo,
+        text: texto,
+        // A Uazapi exige desfazer a marcação de "vizualizado" em alguns planos;
+        // sem ler o texto cru de novo, manter o default é suficiente.
+      }),
+      signal: ctrl.signal,
+    });
+    const dados: any = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const detalhe = dados?.message || (await res.text().catch(() => ""));
+      const err = new Error(
+        res.status === 401 || res.status === 403
+          ? "Token recusado pela instância (HTTP 401). Confira em Marketing > Configurar."
+          : `Uazapi retornou HTTP ${res.status}: ${String(detalhe).slice(0, 200)}`,
+      ) as any;
+      err.permanente = res.status === 400 || res.status === 404;
+      throw err;
+    }
+    const msgId = dados?.id ?? dados?.messageId ?? dados?.key?.id ?? null;
+    return { ok: true as const, id: msgId ? String(msgId) : null };
+  } catch (e: any) {
+    if (e?.name === "AbortError") throw new Error("A instância não respondeu em 30s (timeout).");
+    throw e;
+  } finally {
+    clearTimeout(esgotou);
+  }
+}
+
+/**
  * Verifica quais contatos possuem WhatsApp ativo via POST /chat/check da Uazapi
  * e grava o resultado em whatsapp_status (verificado | invalido | erro).
  */

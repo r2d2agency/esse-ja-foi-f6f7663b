@@ -125,6 +125,9 @@ function LandingVender() {
             </button>
           </div>
           <p className="text-sm text-slate-400">© Esse Já Foi. Todos os direitos reservados.</p>
+          <p className="mt-1 text-xs text-slate-400">
+            CNPJ 68.780.970/0001-90 • Tel: (11) 92486-9798
+          </p>
         </div>
       </footer>
     </div>

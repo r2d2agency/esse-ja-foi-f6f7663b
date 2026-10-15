@@ -270,6 +270,17 @@ export async function ensureComunicacoesSchema(silent = true) {
         ADD COLUMN IF NOT EXISTS ultimo_envio_em timestamptz;
     `);
 
+    // 6e. Canal de envio: por quem a mensagem sai.
+    //   META    = template oficial pelo serviço da Meta (caminho original).
+    //   UAZAPI  = conexão nova da Uazapi — a única rota que aceita grupo, já
+    //            que a Meta não processa template enviado para @g.us.
+    // `grupos_alvo` só existe para UAZAPI: são os ids "120363...@g.us".
+    await d.execute(sql`
+      ALTER TABLE whatsapp_campanhas
+        ADD COLUMN IF NOT EXISTS canal_envio text DEFAULT 'META',
+        ADD COLUMN IF NOT EXISTS grupos_alvo jsonb DEFAULT '[]'::jsonb;
+    `);
+
     // 6d. Lote importado: guarda de onde veio cada contato, para a tela mostrar
     // qual lista foi carregada e quando.
     await d.execute(sql`

@@ -199,6 +199,53 @@ async function enviarComRetry(msg: any, campanha: any): Promise<ResultadoEnvio> 
   let tentativa = Number(msg.tentativas ?? 0);
   let erro: MetaApiError | Error = new Error("Falha desconhecida.");
 
+  // Campanha Uazapi (conexão nova): texto livre direto na instância. Grupo é o
+  // caso principal — a Meta não aceita template para @g.us — mas número comum
+  // também sai por aqui. O texto é o BODY do template com as variáveis
+  // aplicadas; HEADER/BOTÕES da Meta não existem no WhatsApp normal.
+  if ((campanha.canal_envio ?? "META") === "UAZAPI") {
+    const { enviarTextoUazapi } = await import("./marketing.server");
+    const corpo = String(
+      campanha.template_conteudo?.find?.((c: any) => c.type === "BODY")?.text ?? "",
+    );
+    const texto = corpo.replace(/\{\{(\d+)\}\}/g, (_, n) => msg.variaveis?.[String(n)] ?? "");
+    if (!texto.trim()) {
+      await d.execute(sql`
+        UPDATE whatsapp_mensagens SET estado_fila = 'IGNORADA', status = 'FALHOU',
+          erro_mensagem = 'Template sem corpo de texto para envio via Uazapi.', atualizado_em = now()
+        WHERE id = ${msg.id}::uuid
+      `);
+      return { ok: false, permanente: true, numeroInexistente: false, mensagem: "Template sem corpo.", codigo: null };
+    }
+    try {
+      const r = await enviarTextoUazapi(msg.telefone, texto);
+      await d.execute(sql`
+        UPDATE whatsapp_mensagens SET
+          estado_fila = 'ENVIADA',
+          status = 'ENVIADA',
+          meta_message_id = ${r.id},
+          enviado_em = now(),
+          tentativas = ${tentativa + 1},
+          erro_codigo = NULL, erro_mensagem = NULL,
+          atualizado_em = now()
+        WHERE id = ${msg.id}::uuid
+      `);
+      return { ok: true, metaMessageId: r.id };
+    } catch (e: any) {
+      const permanente = e?.permanente === true;
+      await d.execute(sql`
+        UPDATE whatsapp_mensagens SET
+          estado_fila = 'FALHOU',
+          status = 'FALHOU',
+          tentativas = ${tentativa + 1},
+          erro_mensagem = ${String(e?.message ?? e).slice(0, 500)},
+          atualizado_em = now()
+        WHERE id = ${msg.id}::uuid
+      `);
+      return { ok: false, permanente, numeroInexistente: false, mensagem: String(e?.message ?? e), codigo: null };
+    }
+  }
+
   while (tentativa < MAX_TENTATIVAS) {
     try {
       // O anexo (imagem/PDF do cabeçalho) mora na linha do template, não na
@@ -414,7 +461,12 @@ export async function processarDisparo(opts: { apenasAgendadas?: boolean } = {})
   for (const campanha of campanhas) {
     // Template não aprovado não pode ser enviado: a Meta rejeita toda mensagem.
     // Bloquear a campanha é mais honesto do que queimar a fila inteira.
-    if (campanha.template_status && campanha.template_status !== "APPROVED") {
+    // Na Uazapi não há aprovação — o texto sai direto — então o gate não se aplica.
+    if (
+      (campanha.canal_envio ?? "META") === "META" &&
+      campanha.template_status &&
+      campanha.template_status !== "APPROVED"
+    ) {
       await d.execute(sql`
         UPDATE whatsapp_campanhas SET status = 'TEMPLATE_INDESPONIVEL', atualizado_em = now()
         WHERE id = ${campanha.id}::uuid

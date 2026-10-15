@@ -168,6 +168,10 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
         filtros: z.any().optional(),
         mapeamento_variaveis: z.record(z.string(), z.string()).optional(),
         enviar_agora: z.boolean().optional(),
+        // Quem entrega: META (template oficial) ou UAZAPI (conexão nova —
+        // a única rota que aceita grupos). Grupos só fazem sentido na UAZAPI.
+        canal_envio: z.enum(["META", "UAZAPI"]).default("META"),
+        grupos_alvo: z.array(z.string()).optional(),
       })
       .parse(data),
   )
@@ -183,7 +187,8 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
       const criado = await dbc.execute(sql`
         INSERT INTO whatsapp_campanhas (
           nome, veiculo_id, template_id, segmento_id, origem_publico,
-          janela_inicio, janela_fim, intervalo_minutos, status, agendado_para, mapeamento_variaveis
+          janela_inicio, janela_fim, intervalo_minutos, status, agendado_para, mapeamento_variaveis,
+          canal_envio, grupos_alvo
         ) VALUES (
           ${data.nome},
           ${data.veiculo_id ?? null},
@@ -195,10 +200,40 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
           ${data.intervalo_minutos},
           ${data.enviar_agora ? "AGUARDANDO" : "RASCUNHO"},
           ${data.agendado_para || null},
-          ${JSON.stringify(data.mapeamento_variaveis ?? {})}::jsonb
+          ${JSON.stringify(data.mapeamento_variaveis ?? {})}::jsonb,
+          ${data.canal_envio},
+          ${JSON.stringify(
+            (data.canal_envio === "UAZAPI" ? data.grupos_alvo : []) ?? [],
+          )}::jsonb
         ) RETURNING id
       `);
       const campanhaId = (criado as any[])[0].id;
+
+      // Grupo é destino, não contato: a fila nasce com uma linha por grupo e
+      // o telefone é o próprio id do grupo — assim o worker não precisa de
+      // um público resolvido para essa campanha.
+      if (data.canal_envio === "UAZAPI" && (data.grupos_alvo ?? []).length) {
+        await dbc.execute(sql`
+          INSERT INTO whatsapp_mensagens
+            (campanha_id, telefone, origem, estado_fila, variaveis)
+          SELECT
+            ${campanhaId}::uuid,
+            g.grupo,
+            'GRUPO_UAZAPI',
+            'PENDENTE',
+            '{}'::jsonb
+          FROM unnest(${JSON.stringify(
+            (data.grupos_alvo as string[]) ?? [],
+          )}::text[]) AS g(grupo)
+          ON CONFLICT (campanha_id, telefone) DO NOTHING
+        `);
+        await dbc.execute(sql`
+          UPDATE whatsapp_campanhas SET total_destinatarios = ${(data.grupos_alvo ?? []).length},
+            atualizado_em = now()
+          WHERE id = ${campanhaId}::uuid
+        `);
+        return { ok: true, id: campanhaId, inseridos: (data.grupos_alvo ?? []).length, ignorados: 0 };
+      }
 
       const fila = await popularFilaCampanha(campanhaId, {
         origem: data.origem_publico,
