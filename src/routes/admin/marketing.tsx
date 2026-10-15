@@ -104,6 +104,10 @@ function MarketingPage() {
   // Importação
   const [tipoContato, setTipoContato] = useState("lojista");
   const [atualizarExistentes, setAtualizarExistentes] = useState(false);
+  // Tag criada na hora da importação. Fica fora de `arquivo` porque é
+  // independente do arquivo escolhido — o usuário pode importar vários
+  // arquivos com a mesma tag.
+  const [tagImportacao, setTagImportacao] = useState("");
   const [contatoEditando, setContatoEditando] = useState<any>(null);
   const [editForm, setEditForm] = useState<Record<string, string>>({});
   const [contatoExcluir, setContatoExcluir] = useState<any>(null);
@@ -254,10 +258,29 @@ function MarketingPage() {
     }
   }
 
-  function confirmarImportacao() {
+  async function confirmarImportacao() {
     if (!arquivo) return;
     setImportando(true);
     setErrosImportacao([]);
+    // A tag é criada e aplicada ANTES da importação rodar no banco. Se a
+    // importação falhar (arquivo ruim, etc), a tag fica órfã — mas isso é
+    // melhor que o usuário importar 500 contatos, criar a tag, e descobrir
+    // depois que a aplicação falhou.
+    // A tag só é criada se o nome estiver preenchido; sem nome, a importação
+    // segue sem tag.
+    let tagId: string | null = null;
+    if (tagImportacao.trim()) {
+      try {
+        const t = await criarTag({ data: { nome: tagImportacao.trim() } });
+        if (!t.ok) throw new Error(t.message);
+        tagId = t.data?.id;
+        if (!tagId) throw new Error("Tag não retornada pelo servidor.");
+      } catch (e: any) {
+        toast.error(e.message);
+        setImportando(false);
+        return;
+      }
+    }
     importar({
       data: {
         contatos: arquivo.linhas.map((l) => mapearLinha(l, mapeamento)),
@@ -277,9 +300,29 @@ function MarketingPage() {
           setBuscaAplicada("");
           setFiltroTipo(tipoContato);
           setVisao("lista");
-          toast.success(
-            `Importação concluída: ${d.inseridos} novo(s), ${d.atualizados} atualizado(s), ${d.duplicados} duplicado(s), ${d.invalidos} inválido(s).`,
-          );
+          // A tag é aplicada aos contatos que acabaram de entrar. Sem isso o
+          // usuário teria que selecionar tudo de novo e aplicar a tag na mão.
+          // A tag só é aplicada se foi criada acima (tagId não é null).
+          if (tagId) {
+            atribuirTag({
+              data: { contatoIds: d.inseridosIds ?? [], tagId },
+            })
+              .then((r) => {
+                if (!r.ok) throw new Error(r.message);
+                toast.success(
+                  `Importação concluída: ${d.inseridos} novo(s), ${d.atualizados} atualizado(s), ${d.duplicados} duplicado(s), ${d.invalidos} inválido(s). Tag "${tagImportacao.trim()}" aplicada.`,
+                );
+              })
+              .catch((e: any) => {
+                toast.error(
+                  `Importação concluída, mas a tag não foi aplicada: ${e.message}`,
+                );
+              });
+          } else {
+            toast.success(
+              `Importação concluída: ${d.inseridos} novo(s), ${d.atualizados} atualizado(s), ${d.duplicados} duplicado(s), ${d.invalidos} inválido(s).`,
+            );
+          }
           setImportOpen(false);
           setArquivo(null);
           setImportadosIds(d.inseridosIds ?? []);
@@ -859,6 +902,23 @@ function MarketingPage() {
                     Selecione a coluna com o nome do contato para permitir a importação.
                   </p>
                 )}
+
+                <div className="space-y-2 border-t pt-4">
+                  <label className="text-xs font-bold text-slate-500">
+                    Etiquetar contatos importados
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm"
+                    placeholder="Ex: lista-outubro, feirao-sp, ..."
+                    value={tagImportacao}
+                    onChange={(e) => setTagImportacao(e.target.value)}
+                  />
+                  <p className="text-xs text-slate-500">
+                    Cria a tag se ela não existir e aplica a todos os contatos que entrarem.
+                    Deixe em branco para importar sem etiqueta.
+                  </p>
+                </div>
               </div>
 
               {errosImportacao.length > 0 && (
