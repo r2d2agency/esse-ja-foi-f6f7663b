@@ -656,9 +656,21 @@ function ComunicacoesPage() {
   });
 
   const handleSalvarAutomacao = async () => {
+    // O botão já fica desabilitado sem nome, mas o recorte aqui evita o voo cego
+    // caso a validação do servidor mude.
+    if (!novaAutomacao.nome.trim()) {
+      toast.error("Informe o nome da automação.");
+      return;
+    }
     toast.promise(salvarAutomacao({ data: novaAutomacao }), {
       loading: "Salvando automação...",
-      success: () => {
+      success: (res: any) => {
+        // O servidor devolve `{ok:false, error}` em vez de lançar erro: sem este
+        // desvio o toast de sucesso abria e a automação não existia.
+        if (res && res.ok === false) {
+          toast.error(res.error || "Não foi possível salvar a automação.");
+          return;
+        }
         setIsAutomacaoWizardOpen(false);
         refetchAutomacoes();
         setAutomacaoStep(1);
@@ -1199,7 +1211,10 @@ function ComunicacoesPage() {
               </DialogTrigger>
               <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle>Nova Campanha (Etapa {campanhaStep}/7)</DialogTitle>
+                  <DialogTitle>
+                    Nova Campanha (Etapa {campanhaStep}/7)
+                    {campanhaGeral && campanhaStep > 2 ? " — Campanha Geral" : ""}
+                  </DialogTitle>
                   <DialogDescription>
                     Divulgue veículos ou envie comunicados gerais
                   </DialogDescription>
@@ -2153,9 +2168,18 @@ function ComunicacoesPage() {
                 <DialogFooter className="flex justify-between sm:justify-between w-full border-t pt-4">
                   <Button
                     variant="ghost"
-                    onClick={() =>
-                      campanhaStep > 1 ? setCampanhaStep(campanhaStep - 1) : handleFecharCampanha()
-                    }
+                    onClick={() => {
+                      // Campanha Geral não tem etapa de veículo: voltar da etapa 3
+                      // precisa ir para a etapa 1, senão o usuário caía no seletor
+                      // de veículo que ele nunca deveria ver.
+                      if (campanhaStep === 1) {
+                        handleFecharCampanha();
+                      } else if (campanhaGeral && campanhaStep === 3) {
+                        setCampanhaStep(1);
+                      } else {
+                        setCampanhaStep(campanhaStep - 1);
+                      }
+                    }}
                   >
                     {campanhaStep === 1 ? "Cancelar" : "Voltar"}
                   </Button>
@@ -3661,7 +3685,25 @@ function ComunicacoesPage() {
                         O motor de automações cuidará do preenchimento das variáveis e
                         elegibilidade.
                       </p>
-                      <Button onClick={handleSalvarAutomacao} className="bg-teal-600">
+                      <div className="max-w-sm mx-auto space-y-2">
+                        <Label htmlFor="automacao-nome">Nome da automação</Label>
+                        <Input
+                          id="automacao-nome"
+                          value={novaAutomacao.nome}
+                          onChange={(e) =>
+                            setNovaAutomacao({ ...novaAutomacao, nome: e.target.value })
+                          }
+                          placeholder="Ex.: Aviso de veículo publicado"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Obrigatório — é o nome que aparece na lista de automações.
+                        </p>
+                      </div>
+                      <Button
+                        onClick={handleSalvarAutomacao}
+                        className="bg-teal-600"
+                        disabled={!novaAutomacao.nome.trim()}
+                      >
                         Concluir e Salvar como Rascunho
                       </Button>
                     </div>

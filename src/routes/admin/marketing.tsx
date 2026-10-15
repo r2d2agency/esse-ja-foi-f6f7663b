@@ -7,6 +7,7 @@ import {
   importarMarketingContatosFn,
   atualizarMarketingContatoFn,
   excluirMarketingContatoFn,
+  removerContatosSemWhatsappFn,
   criarMarketingTagFn,
   atribuirMarketingTagFn,
   converterContatoEmCompradorFn,
@@ -16,6 +17,13 @@ import {
   testarUazapiFn,
   verificarWhatsappContatosFn,
 } from "@/lib/marketing.functions";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -84,6 +92,10 @@ function MarketingPage() {
   const [busca, setBusca] = useState("");
   const [buscaAplicada, setBuscaAplicada] = useState("");
   const [filtroTipo, setFiltroTipo] = useState("todos");
+  // 'todos' | 'verificado' | 'invalido' | 'nao_verificado' | 'erro'
+  const [filtroWhatsapp, setFiltroWhatsapp] = useState("todos");
+  const [removerSemWhatsappOpen, setRemoverSemWhatsappOpen] = useState(false);
+  const [removendo, setRemovendo] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [tagOpen, setTagOpen] = useState(false);
   const [nomeTag, setNomeTag] = useState("");
@@ -124,10 +136,15 @@ function MarketingPage() {
 
   const loadContatos = useServerFn(listarMarketingContatosFn);
   const { data: res, isLoading } = useQuery({
-    queryKey: ["admin-marketing", buscaAplicada, filtroTipo, somenteComCoordenadas],
+    queryKey: ["admin-marketing", buscaAplicada, filtroTipo, filtroWhatsapp, somenteComCoordenadas],
     queryFn: () =>
       loadContatos({
-        data: { busca: buscaAplicada, tipo: filtroTipo, somenteComCoordenadas },
+        data: {
+          busca: buscaAplicada,
+          tipo: filtroTipo,
+          whatsappStatus: filtroWhatsapp,
+          somenteComCoordenadas,
+        },
       }),
   });
   const contatos = res?.data || [];
@@ -148,6 +165,26 @@ function MarketingPage() {
   const importar = useServerFn(importarMarketingContatosFn);
   const atualizarContato = useServerFn(atualizarMarketingContatoFn);
   const excluirContato = useServerFn(excluirMarketingContatoFn);
+  const removerSemWhatsapp = useServerFn(removerContatosSemWhatsappFn);
+
+  async function confirmarRemocaoSemWhatsapp() {
+    setRemovendo(true);
+    try {
+      const r: any = await removerSemWhatsapp();
+      if (r?.ok === false) {
+        toast.error(r.message || "Não foi possível remover os contatos.");
+        return;
+      }
+      setRemoverSemWhatsappOpen(false);
+      setSelecionados([]);
+      queryClient.invalidateQueries({ queryKey: ["admin-marketing"] });
+      toast.success(`${r?.data?.removidos ?? 0} contato(s) sem WhatsApp removido(s).`);
+    } catch (e: any) {
+      toast.error(e?.message || "Falha ao remover contatos.");
+    } finally {
+      setRemovendo(false);
+    }
+  }
   const criarTag = useServerFn(criarMarketingTagFn);
   const atribuirTag = useServerFn(atribuirMarketingTagFn);
   const converterComprador = useServerFn(converterContatoEmCompradorFn);
@@ -480,7 +517,21 @@ function MarketingPage() {
               {filtroTipo !== "todos" && (
                 <span className="font-normal text-slate-500"> · tipo: {filtroTipo}</span>
               )}
+              {filtroWhatsapp === "invalido" && (
+                <span className="font-normal text-slate-500"> · sem WhatsApp</span>
+              )}
             </p>
+            {contatos.some((c: any) => c.whatsapp_status === "invalido") && (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setRemoverSemWhatsappOpen(true)}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Remover{" "}
+                {contatos.filter((c: any) => c.whatsapp_status === "invalido").length}
+              </Button>
+            )}
             {!buscaAplicada && filtroTipo === "todos" && contatos.length > 0 && (
               <div className="flex gap-1 flex-wrap">
                 {Object.entries(contagemPorTipo).map(([tipo, qtd]) => (
@@ -619,6 +670,18 @@ function MarketingPage() {
               {f.label}
             </Button>
           ))}
+          <Select value={filtroWhatsapp} onValueChange={setFiltroWhatsapp}>
+            <SelectTrigger className="h-11 w-[200px] shrink-0">
+              <SelectValue placeholder="Status WhatsApp" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">WhatsApp: todos</SelectItem>
+              <SelectItem value="verificado">Verificados</SelectItem>
+              <SelectItem value="invalido">Não são WhatsApp</SelectItem>
+              <SelectItem value="erro">Com erro na verificação</SelectItem>
+              <SelectItem value="nao_verificado">Não verificados</SelectItem>
+            </SelectContent>
+          </Select>
           <div className="flex gap-1 shrink-0 border-l border-slate-200 pl-2">
             <Button
               variant={visao === "lista" ? "default" : "outline"}
@@ -1156,6 +1219,42 @@ function MarketingPage() {
             </Button>
             <Button variant="destructive" onClick={confirmarExclusao}>
               Excluir
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={removerSemWhatsappOpen} onOpenChange={setRemoverSemWhatsappOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remover contatos sem WhatsApp</DialogTitle>
+            <DialogDescription>
+              {contatos.filter((c: any) => c.whatsapp_status === "invalido").length} contato(s)
+              verificados como “não é WhatsApp” serão removidos da base de marketing, junto com suas
+              tags. Contatos com <strong>erro</strong> na verificação são mantidos — neles a
+              verificação não deu resposta, então ainda podem ser números válidos. Essa ação não
+              desfaz conversões já feitas em comprador.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setRemoverSemWhatsappOpen(false)}
+              disabled={removendo}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmarRemocaoSemWhatsapp}
+              disabled={removendo}
+            >
+              {removendo ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="mr-2 h-4 w-4" />
+              )}
+              Remover
             </Button>
           </DialogFooter>
         </DialogContent>

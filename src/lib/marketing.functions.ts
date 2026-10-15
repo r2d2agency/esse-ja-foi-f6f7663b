@@ -6,6 +6,7 @@ const filtroSchema = z.object({
   tipo: z.string().optional(),
   status: z.string().optional(),
   somenteComCoordenadas: z.boolean().optional(),
+  whatsappStatus: z.string().optional(),
 });
 
 /**
@@ -103,6 +104,20 @@ export const excluirMarketingContatoFn = createServerFn({ method: "POST" })
       return { ok: false as const, message: e.message };
     }
   });
+
+/**
+ * Remove os contatos verificados como "não são WhatsApp" (whatsapp_status =
+ * 'invalido'). A confirmação acontece na tela; aqui só executamos o DELETE.
+ */
+export const removerContatosSemWhatsappFn = createServerFn({ method: "POST" }).handler(async () => {
+  try {
+    const { removerContatosSemWhatsapp } = await import("@/db/marketing.server");
+    const r = await removerContatosSemWhatsapp();
+    return { ok: true as const, data: r };
+  } catch (e: any) {
+    return { ok: false as const, message: e.message };
+  }
+});
 
 export const criarMarketingTagFn = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ nome: z.string().min(1), cor: z.string().optional() }).parse(d))

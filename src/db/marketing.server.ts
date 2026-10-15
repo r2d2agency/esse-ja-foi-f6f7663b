@@ -38,6 +38,8 @@ export type MarketingFiltro = {
   tipo?: string;
   status?: string;
   somenteComCoordenadas?: boolean;
+  /** 'verificado' | 'invalido' | 'nao_verificado' | 'erro' */
+  whatsappStatus?: string;
 };
 
 export async function listarMarketingContatos(filtro: MarketingFiltro = {}) {
@@ -46,6 +48,8 @@ export async function listarMarketingContatos(filtro: MarketingFiltro = {}) {
   const busca = filtro.busca?.trim() || null;
   const tipo = filtro.tipo && filtro.tipo !== "todos" ? filtro.tipo : null;
   const status = filtro.status && filtro.status !== "todos" ? filtro.status : null;
+  const whatsappStatus =
+    filtro.whatsappStatus && filtro.whatsappStatus !== "todos" ? filtro.whatsappStatus : null;
   // O termo só existe quando há busca. Sem isso virava a string "%null%" e a
   // query não achava ninguém — a lista aparecia vazia mesmo com a base cheia.
   const termo = busca ? `%${busca}%` : null;
@@ -61,6 +65,7 @@ export async function listarMarketingContatos(filtro: MarketingFiltro = {}) {
     LEFT JOIN marketing_tags t ON t.id = ct.tag_id
     WHERE (${termo}::text IS NULL OR c.nome ILIKE ${termo} OR c.email ILIKE ${termo} OR c.empresa ILIKE ${termo} OR c.telefone ILIKE ${termo})
       AND (${tipo}::text IS NULL OR c.tipo = ${tipo}) AND (${status}::text IS NULL OR c.status = ${status})
+      AND (${whatsappStatus}::text IS NULL OR c.whatsapp_status = ${whatsappStatus})
       AND (${filtro.somenteComCoordenadas !== true} OR (c.latitude IS NOT NULL AND c.longitude IS NOT NULL))
     GROUP BY c.id ORDER BY c.criado_em DESC`);
   return rowsOf(rows);
@@ -351,6 +356,26 @@ export async function excluirMarketingContato(id: string) {
   );
   if (!rowsOf(r)[0]) throw new Error("Contato não encontrado.");
   return { ok: true as const };
+}
+
+/**
+ * Remove em lote os contatos que a verificação marcou como "não é WhatsApp".
+ * Os registros com erro de verificação ('erro') ficam de fora: nesses o Uazapi
+ * não respondeu, então apagá-los jogaria fora contato possivelmente válido.
+ */
+export async function removerContatosSemWhatsapp() {
+  const d = requireDb();
+  await ensureMarketingSchema();
+  // Primeiro os vínculos (etiquetas), depois os contatos: a ordem importa
+  // porque marketing_contato_tags aponta para o contato.
+  await d.execute(sql`
+    DELETE FROM marketing_contato_tags
+    WHERE contato_id IN (SELECT id FROM marketing_contatos WHERE whatsapp_status = 'invalido')
+  `);
+  const r = await d.execute(
+    sql`DELETE FROM marketing_contatos WHERE whatsapp_status = 'invalido' RETURNING id`,
+  );
+  return { removidos: rowsOf(r).length };
 }
 
 /**
