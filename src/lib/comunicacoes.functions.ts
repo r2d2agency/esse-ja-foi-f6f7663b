@@ -621,9 +621,23 @@ export const enviarTesteFn = createServerFn({ method: "POST" })
         mapa[String(i + 1)] = String(v ?? "");
       });
 
+      // O anexo mora na linha do template (imagem/PDF do cabeçalho), não na
+      // mensagem. Sem passá-lo, um template com HEADER de mídia saía sem o
+      // componente `header` e a Meta respondia 132000 "number of parameters
+      // does not match": ela conta o parâmetro do cabeçalho, nós não mandávamos.
+      // O disparo da campanha já fazia isso (disparo-motor.server.ts); o teste
+      // é que tinha esquecido.
+      const midia = (template as any).midia_id
+        ? {
+            tipo: (template as any).midia_tipo,
+            mediaId: (template as any).midia_id,
+            nome: (template as any).midia_nome,
+          }
+        : null;
+
       let componentes: any[];
       try {
-        componentes = montarComponents(template.conteudo, mapa);
+        componentes = montarComponents(template.conteudo, mapa, midia);
       } catch (e: any) {
         // A mensagem de montarComponents fala em "mapeamento da campanha";
         // aqui o contexto é o teste avulso, então troca só o sujeito.
