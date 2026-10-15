@@ -170,9 +170,39 @@ export class MetaWhatsAppService {
    * campo no payload de criação com "Unexpected key parameters".
    */
   private normalizarComponentes(components: any[] = []) {
-    return [...components].sort(
+    const ordenados = [...components].sort(
       (a, b) => (ORDEM_COMPONENTES[a?.type] ?? 99) - (ORDEM_COMPONENTES[b?.type] ?? 99),
     );
+
+    // HEADER de mídia NÃO leva `parameters` no pedido de criação: a Meta
+    // interpreta como template "sem mídia" e responde "invalid parameter".
+    // O anexo só entra no DISPARO, com o `media_id` resolvido na hora.
+    // Parameters vazios viram poluição no JSON; a Meta exige array não-vazio.
+    return ordenados
+      .map((c) => {
+        if (c?.parameters?.length === 0) {
+          const { parameters, ...semParameters } = c;
+          return semParameters;
+        }
+        if (c?.type === "HEADER" && String(c?.format || "").toUpperCase() !== "TEXT") {
+          const { parameters, ...semParameters } = c;
+          return { ...semParameters, text: "" };
+        }
+        return c;
+      })
+      .filter((c) => {
+        // Meta rejeita HEADER "vazio" e também BODY sem `text` (quando o texto
+        // são só placeholders). Manter os demais tipos intactos.
+        if (c?.type === "HEADER") {
+          const formato = String(c.format || "TEXT").toUpperCase();
+          if (formato === "TEXT") return Boolean(String(c.text || "").trim());
+          return true;
+        }
+        if (c?.type === "BODY") return Boolean(String(c.text || "").trim());
+        if (c?.type === "FOOTER") return Boolean(String(c.text || "").trim());
+        if (c?.type === "BUTTONS") return Boolean(c.buttons?.length);
+        return true;
+      });
   }
 
   async init() {

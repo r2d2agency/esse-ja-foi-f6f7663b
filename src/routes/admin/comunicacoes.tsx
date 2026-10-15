@@ -677,9 +677,21 @@ function ComunicacoesPage() {
   const handleSalvarCampanha = async (enviarAgora = false) => {
     // A nova fn carrega janela, intervalo e público; a antiga criarCampanha
     // continua existindo mas não recebe esses campos.
+    // Campanha Geral não tem veículo, então o nome vem do título digitado —
+    // sem isso o zod estourava "too_small" em `nome` no INSERT.
+    const nome =
+      campanhaGeral && !novaCampanha.nome.trim()
+        ? "Campanha Geral"
+        : novaCampanha.nome;
     toast.promise(
       criarCampanhaDisparo({
-        data: { ...novaCampanha, filtros: dadosEstimativa, enviar_agora: enviarAgora },
+        data: {
+          ...novaCampanha,
+          nome,
+          veiculo_id: campanhaGeral ? null : novaCampanha.veiculo_id,
+          filtros: dadosEstimativa,
+          enviar_agora: enviarAgora,
+        },
       }),
       {
         loading: "Salvando campanha e montando a fila...",
@@ -1192,7 +1204,10 @@ function ComunicacoesPage() {
                           )}
                           onClick={() => {
                             setCampanhaGeral(true);
-                            setNovaCampanha({ ...novaCampanha, veiculo_id: "" });
+                            // `null`, não "": o zod do servidor aceita uuid ou
+                            // null. String vazia estourava "invalid_format" no
+                            // veiculo_id na hora de salvar a campanha.
+                            setNovaCampanha({ ...novaCampanha, veiculo_id: null, nome: "" });
                             setCampanhaStep(3);
                           }}
                         >
