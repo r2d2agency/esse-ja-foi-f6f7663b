@@ -184,6 +184,13 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
       await ensureComunicacoesSchema();
 
       // O driver postgres-js devolve as linhas direto no array, não em { rows }.
+      // Os campos opcionivos vêm do formulário como string vazia quando o
+      // usuário não escolhe nada, e `?? null` só troca null/undefined — a
+      // string vazia passava reta e morria no cast ::uuid ("Failed query").
+      const uuidOuNull = (v: unknown) => {
+        const s = typeof v === "string" ? v.trim() : "";
+        return s ? s : null;
+      };
       const criado = await dbc.execute(sql`
         INSERT INTO whatsapp_campanhas (
           nome, veiculo_id, template_id, segmento_id, origem_publico,
@@ -191,9 +198,9 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
           canal_envio, grupos_alvo
         ) VALUES (
           ${data.nome},
-          ${data.veiculo_id ?? null},
+          ${uuidOuNull(data.veiculo_id)},
           ${data.template_id}::uuid,
-          ${data.segmento_id ?? null},
+          ${uuidOuNull(data.segmento_id)},
           ${data.origem_publico},
           ${data.janela_inicio || null},
           ${data.janela_fim || null},

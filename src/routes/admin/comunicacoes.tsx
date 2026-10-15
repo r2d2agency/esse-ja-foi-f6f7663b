@@ -480,9 +480,27 @@ function ComunicacoesPage() {
     setCarregandoGrupos(true);
     setErroGrupos(null);
     try {
-      const r: any = await listarGruposUazapi();
-      if (!r.ok) throw new Error(r.message || "Falha ao listar grupos.");
-      setGruposUazapi(r.data ?? []);
+      // Sem este tempo limite a promessa podia ficar pendente para sempre (a
+      // função servidora não descarta sozinha), e o botão travava em
+      // "Carregando..." com o clique desabilitado — sem saída a não ser
+      // recarregar a página.
+      const r: any = await Promise.race([
+        listarGruposUazapi(),
+        new Promise((_, rej) =>
+          setTimeout(
+            () => rej(new Error("A listagem demorou demais. Tente de novo.")),
+            40_000,
+          ),
+        ),
+      ]);
+      if (!r?.ok) throw new Error(r?.message || "Falha ao listar grupos.");
+      const grupos = Array.isArray(r?.data) ? r.data : [];
+      setGruposUazapi(grupos);
+      if (!grupos.length) {
+        setErroGrupos(
+          "Nenhum grupo encontrado nesta instância. Confirme que a conexão está ativa e que este número participa de pelo menos um grupo.",
+        );
+      }
     } catch (e: any) {
       setErroGrupos(e?.message || "Falha ao listar grupos.");
     } finally {

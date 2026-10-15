@@ -673,6 +673,33 @@ function normalizarTelefone(telefone: string): string | null {
 }
 
 /**
+ * O id do grupo é o JID "120363...@g.us", mas a Uazapi muda o nome do campo
+ * entre versões (id, jid, remoteJid, groupJid, group_id...). Procuramos em
+ * todos e devolvemos o primeiro que traga @g.us — sem isso uma versão nova
+ * entregava a lista com id vazio, o filtro jogava tudo fora e a tela ficava
+ * sem nenhum grupo para selecionar.
+ */
+function normalizarIdGrupo(g: any): string {
+  const candidatos = [
+    g?.id,
+    g?.jid,
+    g?.remoteJid,
+    g?.remote_jid,
+    g?.groupJid,
+    g?.group_jid,
+    g?.group_id,
+    g?.groupId,
+    g?.group?.jid,
+    g?.group?.id,
+  ];
+  for (const c of candidatos) {
+    const s = String(c ?? "").trim();
+    if (s.includes("@g.us")) return s;
+  }
+  return "";
+}
+
+/**
  * Lista os grupos que a instância Uazapi participa.
  *
  * A Uazapi não tem um endpoint único estável entre versões — `/group/all`,
@@ -688,57 +715,81 @@ export async function listarGruposUazapi() {
     throw new Error("Configure a URL e o token da instância Uazapi antes de listar grupos.");
 
   const rotas = ["/group/all", "/group/list", "/chats"];
+  // 8s por rota, não 15s: em sequência as três rotas deixavam o botão em
+  // "Carregando..." por até 45s antes de qualquer resposta, o que a tela
+  // mostrava como travamento.
+  const TIMEOUT_MS = 8000;
+  let ultimoMotivo = "";
+
   for (const rota of rotas) {
     const ctrl = new AbortController();
-    const esgotou = setTimeout(() => ctrl.abort(), 15000);
+    const esgotou = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
     try {
       const res = await fetch(`${base}${rota}`, {
         method: "GET",
         headers: { Accept: "application/json", token },
         signal: ctrl.signal,
       });
-      if (res.status === 404) continue; // rota não existe nesta versão; tenta a próxima
+      if (res.status === 404) {
+        ultimoMotivo = `${rota} não existe nesta versão (HTTP 404).`;
+        continue; // rota não existe nesta versão; tenta a próxima
+      }
       if (res.status === 401 || res.status === 403)
         throw new Error(
-          "Token recusado pela instância (HTTP 401). Confira em Marketing > Configurar.",
+          "Token recusado pela instância (HTTP 401/403). Confira em Marketing > Configurar.",
         );
       if (!res.ok) {
         const texto = await res.text().catch(() => "");
         throw new Error(`Uazapi retornou HTTP ${res.status} em ${rota}: ${texto.slice(0, 200)}`);
       }
       const dados: any = await res.json().catch(() => null);
-      if (!dados) continue;
-      // A lista pode vir direto, em {groups: []} ou em {data: []}.
+      if (!dados) {
+        ultimoMotivo = `${rota} respondeu sem JSON utilizável.`;
+        continue;
+      }
+      // A lista pode vir direto, em {groups: []}, em {data: []} ou em {response: []}.
       const bruta: any[] = Array.isArray(dados)
         ? dados
         : Array.isArray(dados?.groups)
           ? dados.groups
           : Array.isArray(dados?.data)
             ? dados.data
-            : [];
+            : Array.isArray(dados?.response)
+              ? dados.response
+              : [];
       const grupos = bruta
         .map((g: any) => ({
-          id: String(g?.id ?? g?.group_id ?? g?.jid ?? ""),
-          nome: String(g?.name ?? g?.subject ?? g?.groupName ?? "Grupo sem nome"),
-          participantes: Number(g?.participants_count ?? g?.size ?? g?.participants?.length ?? 0),
+          id: normalizarIdGrupo(g),
+          nome: String(
+            g?.name ?? g?.subject ?? g?.groupName ?? g?.groupMetadata?.subject ?? "Grupo sem nome",
+          ),
+          participantes: Number(
+            g?.participants_count ??
+              g?.size ??
+              g?.participants?.length ??
+              g?.groupMetadata?.size ??
+              0,
+          ),
         }))
         .filter((g) => g.id.includes("@g.us"));
-      if (rota === "/chats") {
-        // /chats mistura conversas individuais; os grupos são os que têm @g.us
-        return grupos;
-      }
-      return grupos;
+      // Só para numa rota quando ela realmente traz grupos. Antes uma
+      // resposta vazia (campo com outro nome, ou "groups": []) encerrava a
+      // busca e a tela não mostrava nenhum grupo sem explicar o motivo.
+      if (grupos.length) return grupos;
+      ultimoMotivo = `${rota} respondeu, mas sem nenhum grupo (@g.us) na lista.`;
     } catch (e: any) {
-      if (e?.name === "AbortError")
-        throw new Error("A instância não respondeu em 15s. Confira a URL.");
+      if (e?.name === "AbortError") {
+        ultimoMotivo = `A instância não respondeu em ${TIMEOUT_MS / 1000}s em ${rota}.`;
+        continue; // tenta a rota seguinte antes de desistir
+      }
       throw e;
     } finally {
       clearTimeout(esgotou);
     }
   }
   throw new Error(
-    "Nenhuma rota de grupos respondeu nesta instância (group/all, group/list, chats). " +
-      "Confira se a versão da Uazapi suporta listagem de grupos.",
+    `Nenhum grupo encontrado: ${ultimoMotivo || "nenhuma rota respondeu"} ` +
+      "Confira se a instância está conectada e se este número participa de algum grupo.",
   );
 }
 
