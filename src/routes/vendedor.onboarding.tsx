@@ -56,6 +56,14 @@ function mapStatusToUploadStatus(status?: string | null): UploadStatus {
   }
 }
 
+// Documento reprovado precisa poder ser trocado: o selo vira "Reenviar" e o
+// FileUpload libera os botões de troca/câmera no estado recusado.
+function statusUploadParaRecusa(status?: string | null): UploadStatus {
+  const mapped = mapStatusToUploadStatus(status);
+  if (mapped === "recusado") return "reenviar";
+  return mapped;
+}
+
 export const Route = createFileRoute("/vendedor/onboarding")({
   component: VendedorOnboardingPage,
   loader: async ({ context }) => {
@@ -220,6 +228,20 @@ function VendedorOnboardingPage() {
     return acc;
   }, {});
   const onboardingEmPendencia = perfil.status_compliance === 'PENDENCIA' || perfil.status_compliance === 'REPROVADO';
+
+  // Documentos que o admin reprovou e que o vendedor ainda precisa reenviar.
+  // Direciona a tela de pendência para a etapa certa (Documentos ou Validação).
+  const documentosRecusados = new Set(
+    pendenciasAbertas
+      .map((p: any) => String(p.documento_tipo || "").toLowerCase())
+      .filter((t: string) => !t.includes("comprovante")),
+  );
+  const precisaReenviarDocumento = documentosRecusados.size > 0;
+  // "cnh"/"cnh_verso"/"rg"/"rg_verso" vivem na etapa 3; "selfie" na etapa 4.
+  const recusouApenasSelfie =
+    documentosRecusados.size > 0 &&
+    [...documentosRecusados].every((t: string) => t.includes("selfie"));
+  const etapaCorrecao = recusouApenasSelfie ? 4 : 3;
 
   const saveProgress = async (finalizar = false) => {
     setIsSubmitting(true);
@@ -473,7 +495,7 @@ function VendedorOnboardingPage() {
                <FileUpload
                  label="CNH — Frente *"
                  value={files.cnhFrente}
-                 status={mapStatusToUploadStatus(perfil.documento_cnh_status)}
+                 status={statusUploadParaRecusa(perfil.documento_cnh_status)}
                  onChange={url => setFiles({...files, cnhFrente: url})}
                />
                {pendenciasPorDocumento.cnh_frente?.map((pendencia: any) => (
@@ -498,7 +520,7 @@ function VendedorOnboardingPage() {
                <FileUpload
                  label="CNH — Verso *"
                  value={files.cnhVerso}
-                 status={mapStatusToUploadStatus(perfil.documento_cnh_verso_status)}
+                 status={statusUploadParaRecusa(perfil.documento_cnh_verso_status)}
                  onChange={url => setFiles({...files, cnhVerso: url})}
                />
                {pendenciasPorDocumento.cnh_verso?.map((pendencia: any) => (
@@ -516,7 +538,7 @@ function VendedorOnboardingPage() {
            label="Documento do Veículo (CRLV-e) *" 
            description="Obrigatório para concluir o cadastro."
            value={files.crlv} 
-           status={mapStatusToUploadStatus(perfil.documento_crlv_status)}
+           status={statusUploadParaRecusa(perfil.documento_crlv_status)}
            onChange={url => setFiles({...files, crlv: url})} 
          />
          {pendenciasPorDocumento.crlv?.map((pendencia: any) => (
@@ -560,7 +582,7 @@ function VendedorOnboardingPage() {
       <FileUpload
         label="Selfie de Validação *"
         value={files.selfie}
-        status={mapStatusToUploadStatus(perfil.documento_selfie_status)}
+        status={statusUploadParaRecusa(perfil.documento_selfie_status)}
         onChange={url => setFiles({...files, selfie: url})}
       />
       {pendenciasPorDocumento.selfie?.map((pendencia: any) => (
@@ -602,9 +624,16 @@ function VendedorOnboardingPage() {
               </ul>
             </div>
             <div className="flex flex-col gap-3 mt-6">
-              <Button onClick={() => setStep(1)} variant="outline">
-                <RotateCcw className="mr-2 h-4 w-4" /> Voltar e corrigir cadastro
-              </Button>
+              {precisaReenviarDocumento ? (
+                <Button onClick={() => { setStep(etapaCorrecao); window.scrollTo(0, 0); }}>
+                  <RotateCcw className="mr-2 h-4 w-4" />
+                  Corrigir {recusouApenasSelfie ? "selfie" : "documentos"}
+                </Button>
+              ) : (
+                <Button onClick={() => setStep(etapaCorrecao)} variant="outline">
+                  <RotateCcw className="mr-2 h-4 w-4" /> Voltar e corrigir cadastro
+                </Button>
+              )}
             </div>
           </>
         ) : isPendente ? (
@@ -627,8 +656,14 @@ function VendedorOnboardingPage() {
             </div>
             
             <div className="flex flex-col gap-3 mt-6">
-              <Button onClick={() => setStep(1)} variant="outline">
-                <RotateCcw className="mr-2 h-4 w-4" /> Voltar e completar
+              <Button
+                onClick={() => setStep(precisaReenviarDocumento ? etapaCorrecao : 1)}
+                variant="outline"
+              >
+                <RotateCcw className="mr-2 h-4 w-4" />
+                {precisaReenviarDocumento
+                  ? "Voltar e reenviar o documento"
+                  : "Voltar e completar"}
               </Button>
             </div>
           </>
@@ -693,7 +728,7 @@ function VendedorOnboardingPage() {
                   const etapaKey = i === 0 ? 'conta' : i === 1 ? 'dados_pessoais' : i === 2 ? 'endereco' : i === 3 ? 'documentos' : 'validacao';
                   const concluida = progressoInfo?.etapas?.[etapaKey] === 'CONCLUIDO';
                   return (
-                    <div key={i} className={`text-[10px] uppercase font-bold text-center w-12 ${step === i + 1 ? 'text-amber-400' : concluida ? 'text-emerald-400' : 'text-white/40'}`}>
+                    <div key={i} className={`text-[10px] uppercase font-bold text-center w-12 ${step === i + 1 ? 'text-turquoise' : concluida ? 'text-turquoise/70' : 'text-white/40'}`}>
                       {label.split(' ')[0]}
                     </div>
                   );

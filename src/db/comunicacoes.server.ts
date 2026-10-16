@@ -665,7 +665,7 @@ export async function processarEnvioCampanha(campanhaId: string) {
 }
 
 // O driver postgres-js devolve as linhas como array (sem .rows).
-function rowsOf(res: any): any[] {
+export function rowsOf(res: any): any[] {
   if (!res) return [];
   if (Array.isArray(res)) return res;
   if (Array.isArray(res.rows)) return res.rows;
