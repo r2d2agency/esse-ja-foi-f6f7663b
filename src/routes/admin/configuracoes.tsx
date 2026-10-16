@@ -735,6 +735,7 @@ type DestinatarioNotificacao = {
   email: string;
   notificar_carro_analise: boolean;
   notificar_novo_lance: boolean;
+  notificar_novo_comprador: boolean;
 };
 
 function NotificacoesSection() {
@@ -744,6 +745,7 @@ function NotificacoesSection() {
   const [novoEmail, setNovoEmail] = useState("");
   const [novoCarroAnalise, setNovoCarroAnalise] = useState(true);
   const [novoNovoLance, setNovoNovoLance] = useState(true);
+  const [novoNovoComprador, setNovoNovoComprador] = useState(true);
   const [adicionando, setAdicionando] = useState(false);
 
   const carregar = useCallback(async () => {
@@ -774,6 +776,7 @@ function NotificacoesSection() {
           email: novoEmail.trim(),
           notificarCarroAnalise: novoCarroAnalise,
           notificarNovoLance: novoNovoLance,
+          notificarNovoComprador: novoNovoComprador,
         },
       });
       if (res?.ok) {
@@ -782,6 +785,7 @@ function NotificacoesSection() {
         setNovoEmail("");
         setNovoCarroAnalise(true);
         setNovoNovoLance(true);
+        setNovoNovoComprador(true);
         void carregar();
       } else {
         toast.error(res?.message || "Erro ao cadastrar destinatário.");
@@ -795,7 +799,7 @@ function NotificacoesSection() {
 
   async function atualizarFlag(
     d: DestinatarioNotificacao,
-    campo: "notificar_carro_analise" | "notificar_novo_lance",
+    campo: "notificar_carro_analise" | "notificar_novo_lance" | "notificar_novo_comprador",
     valor: boolean,
   ) {
     setDestinatarios((prev) =>
@@ -810,6 +814,8 @@ function NotificacoesSection() {
           notificarCarroAnalise:
             campo === "notificar_carro_analise" ? valor : d.notificar_carro_analise,
           notificarNovoLance: campo === "notificar_novo_lance" ? valor : d.notificar_novo_lance,
+          notificarNovoComprador:
+            campo === "notificar_novo_comprador" ? valor : d.notificar_novo_comprador,
         },
       });
       if (!res?.ok) toast.error(res?.message || "Erro ao salvar alteração.");
@@ -884,6 +890,13 @@ function NotificacoesSection() {
                   />
                   <span className="text-sm text-slate-700">Novo lance</span>
                 </div>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={d.notificar_novo_comprador}
+                    onCheckedChange={(v: boolean) => atualizarFlag(d, "notificar_novo_comprador", v)}
+                  />
+                  <span className="text-sm text-slate-700">Novo lojista</span>
+                </div>
               </div>
             </div>
           ))}
@@ -918,6 +931,10 @@ function NotificacoesSection() {
           <div className="flex items-center gap-2">
             <Switch checked={novoNovoLance} onCheckedChange={setNovoNovoLance} />
             <span className="text-sm text-slate-700">Novo lance</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Switch checked={novoNovoComprador} onCheckedChange={setNovoNovoComprador} />
+            <span className="text-sm text-slate-700">Novo lojista</span>
           </div>
         </div>
         <Button className="bg-teal-900" onClick={adicionar} disabled={adicionando}>

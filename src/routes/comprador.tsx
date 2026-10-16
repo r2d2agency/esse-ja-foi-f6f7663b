@@ -1,10 +1,12 @@
 import { createFileRoute, Link, useNavigate, useRouterState } from '@tanstack/react-router';
 import { useEffect } from 'react';
-import { Home, Search, Heart, MessageSquare, FileText, User, LogOut, ShoppingBag } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { Home, Search, Heart, MessageSquare, FileText, User, LogOut, ShoppingBag, AlertTriangle, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
 import { Outlet } from '@tanstack/react-router';
 import { LogoEsf } from '@/components/shared/LogoEsf';
+import { getPerfilCompradorFn } from '@/lib/comprador.functions';
 
 export const Route = createFileRoute('/comprador')({
   component: CompradorLayout,
@@ -30,6 +32,18 @@ function CompradorLayout() {
 
   const ativo = (to: string, exact?: boolean) =>
     exact ? pathname === to || pathname === `${to}/` : pathname.startsWith(to);
+
+  // O User da sessão não traz os campos de compliance, então o aviso de
+  // cadastro incompleto lê o perfil do lojista em separado.
+  const { data: perfilData } = useQuery({
+    queryKey: ["comprador-perfil"],
+    queryFn: () => getPerfilCompradorFn({ data: {} }),
+  });
+  const perfil: any = (perfilData as any)?.perfil || {};
+  const statusCompliance: string = perfil.status_compliance || "NAO_ENVIADO";
+  // Avisa em tudo que é canto enquanto o cadastro não estiver completo, com
+  // exceção de quem já está na fila de análise (aí a pendência some do layout).
+  const cadastroIncompleto = statusCompliance !== "APROVADO" && statusCompliance !== "AGUARDANDO_ANALISE";
 
   const sair = () => {
     logout();
@@ -81,7 +95,28 @@ function CompradorLayout() {
       </header>
 
       <main className="px-5 pb-28 pt-6 lg:ml-64 lg:px-10 lg:pb-12 lg:pt-10">
-        <div className="mx-auto max-w-6xl">
+        <div className="mx-auto max-w-6xl space-y-6">
+          {cadastroIncompleto && (
+            <div className="flex flex-col gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-900 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+                <div>
+                  <p className="text-sm font-black">Cadastro incompleto</p>
+                  <p className="text-sm text-amber-800">
+                    {perfil.compliance_motivo_pendencia
+                      ? String(perfil.compliance_motivo_pendencia)
+                      : "Você pode navegar na vitrine, mas precisa concluir seu cadastro para ver valores e dar lances."}
+                  </p>
+                </div>
+              </div>
+              <Link
+                to="/comprador/documentos"
+                className="inline-flex shrink-0 items-center gap-1 rounded-xl bg-amber-600 px-4 py-2 text-sm font-bold text-white hover:bg-amber-700"
+              >
+                Completar cadastro <ChevronRight className="h-4 w-4" />
+              </Link>
+            </div>
+          )}
           <Outlet />
         </div>
       </main>

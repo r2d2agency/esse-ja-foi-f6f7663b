@@ -194,6 +194,10 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
         return s ? s : null;
       };
       const templateId = uuidOuNull(data.template_id);
+      // O wizard deixa o nome em branco quando o usuário só escolhe público e
+      // template. Nome é NOT NULL na tabela e o validador exige min(1), então
+      // sem isso o envio volta como "too_small" no path ["nome"].
+      const nomeCampanha = String(data.nome || "").trim() || `Campanha ${new Date().toISOString().slice(0, 10)}`;
       const criado = templateId
         ? await dbc.execute(sql`
             INSERT INTO whatsapp_campanhas (
@@ -201,7 +205,7 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
               janela_inicio, janela_fim, intervalo_minutos, status, agendado_para, mapeamento_variaveis,
               canal_envio, grupos_alvo
             ) VALUES (
-              ${data.nome},
+              ${nomeCampanha},
               ${uuidOuNull(data.veiculo_id)},
               ${templateId}::uuid,
               ${uuidOuNull(data.segmento_id)},
@@ -224,7 +228,7 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
               janela_inicio, janela_fim, intervalo_minutos, status, agendado_para, mapeamento_variaveis,
               canal_envio, grupos_alvo
             ) VALUES (
-              ${data.nome},
+              ${nomeCampanha},
               ${uuidOuNull(data.veiculo_id)},
               NULL,
               ${uuidOuNull(data.segmento_id)},

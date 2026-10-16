@@ -158,6 +158,7 @@ export const salvarDestinatarioNotificacaoFn = createServerFn({ method: "POST" }
     email: z.string().email("E-mail inválido"),
     notificarCarroAnalise: z.boolean(),
     notificarNovoLance: z.boolean(),
+    notificarNovoComprador: z.boolean().optional(),
   }).parse(d))
   .handler(async ({ data }) => {
     const m = await import("@/db/notificacoes-admin.server");

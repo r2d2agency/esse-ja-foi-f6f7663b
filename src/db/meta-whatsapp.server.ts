@@ -158,6 +158,14 @@ export function montarComponents(
     }
   }
 
+  // Template sem nenhum {{n}} ainda tem um BODY na Meta, e o envio precisa
+  // levar esse componente — sem ele a API responde 132012 "Parameter format
+  // does not match format in the created template". O texto vai vazio.
+  if (!saida.some((c) => String(c?.type || "").toUpperCase() === "BODY")) {
+    const corpo = comps.find((c) => String(c?.type || "").toUpperCase() === "BODY");
+    saida.push({ type: "body", parameters: [{ type: "text", text: String(corpo?.text || "").trim() }] });
+  }
+
   return saida;
 }
 

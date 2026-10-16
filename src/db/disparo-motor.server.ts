@@ -468,6 +468,21 @@ export async function processarDisparo(opts: { apenasAgendadas?: boolean } = {})
   const resumo = { campanhas: campanhas.length, enviados: 0, falhas: 0, bloqueadas: 0 };
 
   for (const campanha of campanhas) {
+    // Campanha do canal Meta precisa de template: sem ele a chamada à Meta
+    // quebra no primeiro envio. O wizard aceita template_id vazio (campanha
+    // de texto livre), então aqui a tratamos como indisponível.
+    if ((campanha.canal_envio ?? "META") === "META" && !campanha.template_id) {
+      await d.execute(sql`
+        UPDATE whatsapp_campanhas SET status = 'TEMPLATE_INDESPONIVEL', atualizado_em = now()
+        WHERE id = ${campanha.id}::uuid
+      `);
+      console.warn(
+        `[disparo] campanha "${campanha.nome}" bloqueada: canal META sem template`,
+      );
+      resumo.bloqueadas++;
+      continue;
+    }
+
     // Template não aprovado não pode ser enviado: a Meta rejeita toda mensagem.
     // Bloquear a campanha é mais honesto do que queimar a fila inteira.
     // Na Uazapi não há aprovação — o texto sai direto — então o gate não se aplica.

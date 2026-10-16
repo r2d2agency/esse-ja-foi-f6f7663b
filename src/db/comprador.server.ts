@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { db } from "./index";
 import { hashPassword, issueToken } from "./auth.server";
 import { ensurePerfilSchema } from "./perfil.server";
+import { notificarAdminsNovoCompradorParaAnalise } from "./notificacoes-admin.server";
 
 // O driver postgres-js devolve as linhas como array (sem .rows).
 function rowsOf(res: any): any[] {
@@ -330,6 +331,21 @@ export async function enviarCadastroCompradorParaAnalise(id: string) {
     "Assim que aprovado você poderá dar lances nos lances.",
     "/comprador",
   );
+
+  // Avisa os responsáveis por e-mail, igual fazemos quando um vendedor envia
+  // veículo para análise. Nunca bloqueia o cadastro: se o e-mail falhar, o
+  // lojista não é penalizado.
+  void notificarAdminsNovoCompradorParaAnalise({
+    id,
+    nome: atual.perfil?.nome,
+    email: atual.perfil?.email,
+    whatsapp: atual.perfil?.whatsapp,
+    cnpj: atual.perfil?.cnpj,
+    razao_social: atual.perfil?.razao_social,
+    responsavel_nome: atual.perfil?.responsavel_nome,
+    cidade: atual.perfil?.cidade,
+    uf: atual.perfil?.uf,
+  });
 
   return { ok: true as const };
 }

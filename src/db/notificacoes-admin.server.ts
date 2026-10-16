@@ -33,12 +33,18 @@ export async function ensureNotificacoesDestinatariosSchema() {
       email text NOT NULL,
       notificar_carro_analise boolean NOT NULL DEFAULT true,
       notificar_novo_lance boolean NOT NULL DEFAULT true,
+      notificar_novo_comprador boolean NOT NULL DEFAULT true,
       criado_em timestamptz NOT NULL DEFAULT now(),
       atualizado_em timestamptz NOT NULL DEFAULT now()
     );
   `);
   await d.execute(sql`
     CREATE UNIQUE INDEX IF NOT EXISTS notificacoes_destinatarios_email_uidx ON notificacoes_destinatarios (lower(email));
+  `);
+  // Instalações antigas já têm a tabela sem a coluna nova.
+  await d.execute(sql`
+    ALTER TABLE notificacoes_destinatarios
+    ADD COLUMN IF NOT EXISTS notificar_novo_comprador boolean NOT NULL DEFAULT true;
   `);
 
   prepared = true;
@@ -50,13 +56,14 @@ export type DestinatarioNotificacaoInput = {
   email: string;
   notificarCarroAnalise: boolean;
   notificarNovoLance: boolean;
+  notificarNovoComprador?: boolean;
 };
 
 export async function listarDestinatariosNotificacao() {
   await ensureNotificacoesDestinatariosSchema();
   const d = requireDb();
   const rows = await d.execute(sql`
-    SELECT id, nome, email, notificar_carro_analise, notificar_novo_lance, criado_em
+    SELECT id, nome, email, notificar_carro_analise, notificar_novo_lance, notificar_novo_comprador, criado_em
     FROM notificacoes_destinatarios
     ORDER BY criado_em DESC;
   `);
@@ -78,6 +85,7 @@ export async function salvarDestinatarioNotificacao(input: DestinatarioNotificac
         nome = ${nome}, email = ${email},
         notificar_carro_analise = ${input.notificarCarroAnalise},
         notificar_novo_lance = ${input.notificarNovoLance},
+        notificar_novo_comprador = ${input.notificarNovoComprador ?? true},
         atualizado_em = now()
       WHERE id = ${input.id}::uuid;
     `);
@@ -90,8 +98,8 @@ export async function salvarDestinatarioNotificacao(input: DestinatarioNotificac
   if (rowsOf(dup).length > 0) throw new RegraNegocioError("Já existe um destinatário cadastrado com este e-mail.", 409);
 
   const rows = await d.execute(sql`
-    INSERT INTO notificacoes_destinatarios (nome, email, notificar_carro_analise, notificar_novo_lance)
-    VALUES (${nome}, ${email}, ${input.notificarCarroAnalise}, ${input.notificarNovoLance})
+    INSERT INTO notificacoes_destinatarios (nome, email, notificar_carro_analise, notificar_novo_lance, notificar_novo_comprador)
+    VALUES (${nome}, ${email}, ${input.notificarCarroAnalise}, ${input.notificarNovoLance}, ${input.notificarNovoComprador})
     RETURNING id;
   `);
   return { id: rowsOf(rows)[0]?.id as string };
@@ -104,7 +112,7 @@ export async function removerDestinatarioNotificacao(id: string) {
   return { ok: true };
 }
 
-async function emailsParaNotificacao(coluna: "notificar_carro_analise" | "notificar_novo_lance") {
+async function emailsParaNotificacao(coluna: "notificar_carro_analise" | "notificar_novo_lance" | "notificar_novo_comprador") {
   await ensureNotificacoesDestinatariosSchema();
   const d = requireDb();
   const rows = await d.execute(sql`
@@ -217,6 +225,55 @@ export async function notificarAdminsNovoLance(dados: {
     );
   } catch (e) {
     console.error("[notificacoes-admin] erro ao notificar novo lance", e);
+  }
+}
+
+/** Dispara e-mail aos destinatários cadastrados quando um lojista envia o cadastro para análise. Nunca lança erro. */
+export async function notificarAdminsNovoCompradorParaAnalise(dados: {
+  id: string;
+  nome?: string | null;
+  email?: string | null;
+  whatsapp?: string | null;
+  cnpj?: string | null;
+  razao_social?: string | null;
+  responsavel_nome?: string | null;
+  cidade?: string | null;
+  uf?: string | null;
+}) {
+  try {
+    const emails = await emailsParaNotificacao("notificar_novo_comprador");
+    if (emails.length === 0) return;
+
+    const { enviarEmailSimples } = await import("./mail.server");
+    const link = `${appUrl()}/admin/comprador/${dados.id}`;
+    const assunto = "Novo lojista para análise — Esse Já Foi";
+    const html = `
+      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+        <h2 style="color: #0f172a;">Novo lojista para análise</h2>
+        <p>Um lojista concluiu o pré-cadastro e enviou os documentos para análise.</p>
+        <div style="background: #f1f5f9; padding: 16px; border-radius: 8px;">
+          <p style="margin: 0;"><strong>${dados.razao_social || dados.nome || "Lojista"}</strong></p>
+          ${dados.cnpj ? `<p style="margin: 4px 0 0; color: #64748b;">CNPJ: ${dados.cnpj}</p>` : ""}
+          ${dados.responsavel_nome ? `<p style="margin: 4px 0 0; color: #64748b;">Responsável: ${dados.responsavel_nome}</p>` : ""}
+          ${dados.cidade || dados.uf ? `<p style="margin: 4px 0 0; color: #64748b;">${[dados.cidade, dados.uf].filter(Boolean).join(" - ")}</p>` : ""}
+          ${dados.whatsapp ? `<p style="margin: 4px 0 0; color: #64748b;">WhatsApp: ${dados.whatsapp}</p>` : ""}
+          ${dados.email ? `<p style="margin: 4px 0 0; color: #64748b;">E-mail: ${dados.email}</p>` : ""}
+        </div>
+        <p style="margin-top: 20px;">
+          <a href="${link}" style="display: inline-block; background: #0d9488; color: #ffffff; text-decoration: none; padding: 10px 20px; border-radius: 8px; font-weight: bold;">Abrir ficha do lojista</a>
+        </p>
+      </div>
+    `;
+
+    await Promise.all(
+      emails.map((email) =>
+        enviarEmailSimples(email, assunto, html).catch((e) =>
+          console.error("[notificacoes-admin] falha ao enviar e-mail de novo lojista", email, e),
+        ),
+      ),
+    );
+  } catch (e) {
+    console.error("[notificacoes-admin] erro ao notificar novo lojista", e);
   }
 }
 
