@@ -10,6 +10,8 @@ import {
   removerContatosSemWhatsappFn,
   criarMarketingTagFn,
   atribuirMarketingTagFn,
+  listarMarketingTagsFn,
+  removerMarketingTagFn,
   converterContatoEmCompradorFn,
   geocodificarContatosFn,
   getUazapiConfigFn,
@@ -94,6 +96,10 @@ function MarketingPage() {
   const [filtroTipo, setFiltroTipo] = useState("todos");
   // 'todos' | 'verificado' | 'invalido' | 'nao_verificado' | 'erro'
   const [filtroWhatsapp, setFiltroWhatsapp] = useState("todos");
+  // Etiquetas cadastradas (para o filtro e para adicionar no diálogo de edição).
+  const [tags, setTags] = useState<any[]>([]);
+  // Filtro por etiqueta: OR entre as escolhidas (mesma lógica do servidor).
+  const [filtroTags, setFiltroTags] = useState<string[]>([]);
   const [removerSemWhatsappOpen, setRemoverSemWhatsappOpen] = useState(false);
   const [removendo, setRemovendo] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -136,7 +142,7 @@ function MarketingPage() {
 
   const loadContatos = useServerFn(listarMarketingContatosFn);
   const { data: res, isLoading } = useQuery({
-    queryKey: ["admin-marketing", buscaAplicada, filtroTipo, filtroWhatsapp, somenteComCoordenadas],
+    queryKey: ["admin-marketing", buscaAplicada, filtroTipo, filtroWhatsapp, somenteComCoordenadas, filtroTags],
     queryFn: () =>
       loadContatos({
         data: {
@@ -144,10 +150,20 @@ function MarketingPage() {
           tipo: filtroTipo,
           whatsappStatus: filtroWhatsapp,
           somenteComCoordenadas,
+          tagIds: filtroTags,
         },
       }),
   });
   const contatos = res?.data || [];
+
+  // A lista de etiquetas é um catálogo, não um resultado de filtro: fica em
+  // chave própria para não refetch a cada digitação na busca.
+  const loadTags = useServerFn(listarMarketingTagsFn);
+  useEffect(() => {
+    loadTags().then((r: any) => {
+      if (r?.ok && Array.isArray(r.data)) setTags(r.data);
+    });
+  }, []);
   // Contatos recém-importados, para aparecerem mesmo que a lista do banco ainda
   // não tenha voltado (a invalidação por prefixo nem sempre dispara refetch).
   const [importadosIds, setImportadosIds] = useState<string[]>([]);
@@ -187,6 +203,7 @@ function MarketingPage() {
   }
   const criarTag = useServerFn(criarMarketingTagFn);
   const atribuirTag = useServerFn(atribuirMarketingTagFn);
+  const removerTag = useServerFn(removerMarketingTagFn);
   const converterComprador = useServerFn(converterContatoEmCompradorFn);
 
   async function confirmarConversao() {
@@ -436,6 +453,49 @@ function MarketingPage() {
     }
   }
 
+  async function adicionarTagContato(contatoId: string, tagId: string) {
+    try {
+      const r = await atribuirTag({ data: { contatoIds: [contatoId], tagId } });
+      if (!r.ok) throw new Error(r.message);
+      const tag = tags.find((t: any) => t.id === tagId);
+      const atuais: any[] = contatoEditando?.tags || [];
+      if (tag && !atuais.some((t: any) => t.id === tagId)) {
+        refreshTagsContato(contatoId, [...atuais, tag]);
+      }
+      queryClient.invalidateQueries({ queryKey: ["admin-marketing"], exact: false });
+    } catch (e: any) {
+      toast.error(e.message);
+    }
+  }
+
+  async function removerTagContato(contatoId: string, tagId: string) {
+    try {
+      const r = await removerTag({ data: { contatoId, tagId } });
+      if (!r.ok) throw new Error(r.message);
+      const atuais: any[] = contatoEditando?.tags || [];
+      refreshTagsContato(contatoId, atuais.filter((t: any) => t.id !== tagId));
+      queryClient.invalidateQueries({ queryKey: ["admin-marketing"], exact: false });
+    } catch (e: any) {
+      toast.error(e.message);
+    }
+  }
+
+  /**
+   * Atualiza as etiquetas do contato editado (para o chip de remover aparecer
+   * sem fechar o diálogo). Pega a versão mais recente do contato na lista
+   * em memória — que já foi refetchada — ou do próprio contato editado.
+   */
+  function refreshTagsContato(contatoId: string, novasTags?: any[]) {
+    if (novasTags) {
+      setContatoEditando((prev: any) => ({ ...prev, tags: novasTags }));
+      return;
+    }
+    const atualizado = contatos.find((c: any) => c.id === contatoId);
+    if (atualizado) {
+      setContatoEditando((prev: any) => ({ ...prev, tags: atualizado.tags || prev?.tags }));
+    }
+  }
+
   async function confirmarExclusao() {
     if (!contatoExcluir) return;
     try {
@@ -682,6 +742,43 @@ function MarketingPage() {
               <SelectItem value="nao_verificado">Não verificados</SelectItem>
             </SelectContent>
           </Select>
+          <Select
+            value={filtroTags.length ? "filtrando" : ""}
+            onValueChange={(v) => {
+              if (v === "todas") setFiltroTags([]);
+              else setFiltroTags((prev) => (prev.includes(v) ? prev : [...prev, v]));
+            }}
+          >
+            <SelectTrigger className="h-11 w-[180px] shrink-0">
+              <SelectValue placeholder="Filtrar por tag" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todas">Tag: todas</SelectItem>
+              {tags.map((t: any) => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.nome} ({t.total ?? 0})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {filtroTags.length > 0 && (
+            <div className="flex gap-1 shrink-0 flex-wrap">
+              {filtroTags.map((id) => {
+                const t = tags.find((x: any) => x.id === id);
+                if (!t) return null;
+                return (
+                  <button
+                    key={id}
+                    onClick={() => setFiltroTags((prev) => prev.filter((x) => x !== id))}
+                    className="rounded-full border border-slate-200 px-2 py-0.5 text-[11px] text-slate-700 hover:border-red-400 hover:text-red-600"
+                    title="Remover filtro"
+                  >
+                    {t.nome} ✕
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <div className="flex gap-1 shrink-0 border-l border-slate-200 pl-2">
             <Button
               variant={visao === "lista" ? "default" : "outline"}
@@ -1192,6 +1289,51 @@ function MarketingPage() {
                 value={editForm.cep ?? ""}
                 onChange={(e) => setEditForm((f) => ({ ...f, cep: e.target.value }))}
               />
+            </div>
+            {/* Etiquetas do contato: adicionar e remover sem fechar o diálogo */}
+            <div className="col-span-2 space-y-2">
+              <label className="text-xs font-bold text-slate-500 uppercase">Etiquetas</label>
+              <div className="flex gap-1 flex-wrap">
+                {(contatoEditando?.tags || []).length === 0 && (
+                  <span className="text-sm text-slate-400">Nenhuma etiqueta.</span>
+                )}
+                {(contatoEditando?.tags || []).map((t: any) => (
+                  <span
+                    key={t.id}
+                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-700"
+                  >
+                    <span
+                      className="h-2 w-2 rounded-full"
+                      style={{ backgroundColor: t.cor || "#94a3b8" }}
+                    />
+                    {t.nome}
+                    <button
+                      onClick={() => removerTagContato(contatoEditando.id, t.id)}
+                      className="text-slate-400 hover:text-red-600"
+                      title="Remover etiqueta"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ))}
+              </div>
+              <div className="flex gap-1 flex-wrap">
+                {tags
+                  .filter((t: any) => !(contatoEditando?.tags || []).some((x: any) => x.id === t.id))
+                  .map((t: any) => (
+                    <button
+                      key={t.id}
+                      onClick={() => adicionarTagContato(contatoEditando.id, t.id)}
+                      className="inline-flex items-center gap-1 rounded-full border border-dashed border-slate-300 px-2 py-0.5 text-[11px] text-slate-500 hover:border-slate-500 hover:text-slate-700"
+                    >
+                      <span
+                        className="h-2 w-2 rounded-full"
+                        style={{ backgroundColor: t.cor || "#94a3b8" }}
+                      />
+                      + {t.nome}
+                    </button>
+                  ))}
+              </div>
             </div>
           </div>
           <DialogFooter>

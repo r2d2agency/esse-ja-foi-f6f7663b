@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -88,6 +88,7 @@ import {
   enviarTesteFn,
   processarEnvioCampanhaFn,
   exemploDestinatarioFn,
+  getEnviosCampanhaFn,
 } from "@/lib/comunicacoes.functions";
 import { listarMarketingTagsFn, listarGruposUazapiFn } from "@/lib/marketing.functions";
 import {
@@ -136,6 +137,28 @@ function varianteStatus(status: string): any {
   if (status === "PENDING") return "warning";
   if (status === "REJECTED") return "destructive";
   return "secondary";
+}
+
+/**
+ * Rótulo e aparência do detalhe de envios, a partir do `estado_fila` do
+ * motor e do `status` que a Meta devolve via webhook.
+ */
+function rotuloStatusEnvio(envio: any) {
+  if (["FALHOU"].includes(envio?.estado_fila)) return "Erro";
+  if (["ENVIADA"].includes(envio?.estado_fila)) return "Concluído";
+  if (["IGNORADA"].includes(envio?.estado_fila)) return "Ignorado";
+  if (["LIDA", "ENTREGUE", "ENVIADA"].includes(envio?.status)) return "Concluído";
+  if (["FALHOU", "REJEITADA"].includes(envio?.status)) return "Erro";
+  return "Agendado";
+}
+
+function varianteStatusEnvio(envio: any): any {
+  if (["FALHOU"].includes(envio?.estado_fila)) return "destructive";
+  if (["ENVIADA"].includes(envio?.estado_fila)) return "success";
+  if (["IGNORADA"].includes(envio?.estado_fila)) return "secondary";
+  if (["LIDA", "ENTREGUE", "ENVIADA"].includes(envio?.status)) return "success";
+  if (["FALHOU", "REJEITADA"].includes(envio?.status)) return "destructive";
+  return "warning";
 }
 /** Quantas variáveis o corpo do template usa, na ordem {{1}}, {{2}}... */
 /** O conteúdo pode chegar como array de componentes (formato da Meta) ou como objeto com `components`. */
@@ -373,6 +396,7 @@ function ComunicacoesPage() {
   const getAnuncios = useServerFn(getAnunciosAdmin);
   const getVeiculosAdmin = useServerFn(getVeiculosAdminFn);
   const processarEnvio = useServerFn(processarEnvioCampanhaFn);
+  const getEnviosCampanha = useServerFn(getEnviosCampanhaFn);
   const getAutomacoes = useServerFn(listarAutomacoesFn);
   const salvarAutomacao = useServerFn(salvarAutomacaoFn);
   const getExecucoes = useServerFn(getExecucoesAutomacaoFn);
@@ -469,6 +493,10 @@ function ComunicacoesPage() {
 
   const [estimativa, setEstimativa] = useState<any>({ total: 0, elegiveis: 0, nao_elegiveis: 0 });
   const [tagsSelecionadas, setTagsSelecionadas] = useState<string[]>([]);
+  // Campanha aberta no detalhe de envios (contatos agendados, data e hora,
+  // estado). A query em si vive abaixo, junto das outras.
+  const [enviosCampanha, setEnviosCampanha] = useState<any>(null);
+  const [enviosCampabela, setEnviosCampabela] = useState<any[] | null>(null);
 
   // Canal de envio: Meta (template oficial) ou Uazapi (conexão nova — a única
   // rota que aceita grupos, já que a Meta não processa template para @g.us).
@@ -755,6 +783,10 @@ function ComunicacoesPage() {
           nome,
           veiculo_id: campanhaGeral ? null : novaCampanha.veiculo_id,
           filtros: dadosEstimativa,
+          // A tag tem que ir no topo também: o motor lê `tag_ids` primeiro e
+          // só cai em `filtros.tagIds` como fallback. Sem isto a fila nascia
+          // vazia e o motor marcava a campanha como concluída sem enviar nada.
+          tag_ids: tagsSelecionadas,
           enviar_agora: enviarAgora,
           canal_envio: canalEnvio,
           grupos_alvo: canalEnvio === "UAZAPI" ? gruposAlvo : [],
@@ -768,6 +800,13 @@ function ComunicacoesPage() {
             queryClient.invalidateQueries({ queryKey: ["wa-campanhas"] });
             setTagsSelecionadas([]);
             const enviados = res.inseridos ?? 0;
+            // A estimativa prometia contatos e a fila entrou vazia: avisar o
+            // motivo evita a campanha nascer "concluída" sem ter enviado nada.
+            if (enviados === 0) {
+              toast.warning(
+                "Nenhum contato entrou na fila. Confira se a tag tem prospects com telefone e que não estejam convertidos ou descartados."
+              );
+            }
             if (enviarAgora) {
               handleProcessarEnvio(res.id);
               return `Campanha criada com ${enviados} contatos. O envio respeita a janela e o intervalo configurados.`;
@@ -860,8 +899,13 @@ function ComunicacoesPage() {
   };
 
   // O worker roda sozinho a cada minuto; este botão serve para não esperar o
-  // próximo ciclo depois de criar ou agendar.
-  const handleProcessarAgora = async () => {
+  // próximo ciclo depois de criar ou agendar. Recebe o id da campanha para
+  // processar só ela (antes rodava todas).
+  const handleProcessarAgora = async (campanhaId?: string) => {
+    if (campanhaId) {
+      await handleProcessarEnvio(campanhaId);
+      return;
+    }
     const res: any = await processarDisparoAgora().catch((e: any) => ({
       ok: false,
       error: e?.message || String(e),
@@ -873,6 +917,30 @@ function ComunicacoesPage() {
       toast.error(res.error || "Erro ao processar o disparo.");
     }
   };
+
+  // Carrega a fila da campanha aberta no detalhe. Fechar o detalhe limpa a
+  // lista: sem isto a tabela do card seguinte mostrava os contatos da
+  // campanha anterior.
+  useEffect(() => {
+    if (!enviosCampanha?.id) {
+      setEnviosCampabela(null);
+      return;
+    }
+    let ativo = true;
+    getEnviosCampanha(enviosCampanha.id)
+      .then((dados: any) => {
+        if (!ativo) return;
+        // O motor guarda o nome em `variaveis->>'contato.nome'`; a query já
+        // devolve esse valor pronto.
+        setEnviosCampabela(dados ?? []);
+      })
+      .catch(() => {
+        if (ativo) setEnviosCampabela([]);
+      });
+    return () => {
+      ativo = false;
+    };
+  }, [enviosCampanha?.id]);
 
   const handleExportarContatos = () => {
     if (!contatos?.length) {
@@ -2331,6 +2399,15 @@ function ComunicacoesPage() {
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              title="Ver contatos agendados"
+                              onClick={() => setEnviosCampanha(campanha)}
+                            >
+                              <Eye className="w-3.5 h-3.5 mr-1" />
+                              {campanha.total_destinatarios ?? 0}
+                            </Button>
                             {["AGUARDANDO", "PROCESSANDO"].includes(campanha.status) ? (
                               <Button
                                 variant="ghost"
@@ -2356,7 +2433,7 @@ function ComunicacoesPage() {
                               variant="ghost"
                               size="icon"
                               title="Disparar agora, sem esperar o próximo ciclo"
-                              onClick={handleProcessarAgora}
+                              onClick={() => handleProcessarAgora(campanha.id)}
                             >
                               <ChevronRight className="w-4 h-4" />
                             </Button>
@@ -2367,6 +2444,71 @@ function ComunicacoesPage() {
                   </tbody>
                 </table>
               </div>
+            )}
+
+            {/* Detalhe por envio: cada linha da campanha abre a fila de contatos.
+                A lista vem da própria linha de campanha (envios), então o
+                administrador vê o que foi agendado sem abrir outra tela. */}
+            {enviosCampanha && (
+              <Card className="mt-4">
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between">
+                    <span>Envios — {enviosCampanha.nome}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setEnviosCampanha(null)}
+                    >
+                      Fechar
+                    </Button>
+                  </CardTitle>
+                  <CardDescription>
+                    {enviosCampabela?.length ?? 0} contato(s) na fila
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="border rounded-lg overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead className="bg-slate-50 border-b">
+                        <tr>
+                          <th className="px-3 py-2 text-left font-medium text-muted-foreground">Contato</th>
+                          <th className="px-3 py-2 text-left font-medium text-muted-foreground">Telefone</th>
+                          <th className="px-3 py-2 text-left font-medium text-muted-foreground">Agendado para</th>
+                          <th className="px-3 py-2 text-left font-medium text-muted-foreground">Enviado em</th>
+                          <th className="px-3 py-2 text-left font-medium text-muted-foreground">Status</th>
+                          <th className="px-3 py-2 text-left font-medium text-muted-foreground">Erro</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {(enviosCampabela ?? []).map((envio: any) => (
+                          <tr key={envio.id}>
+                            <td className="px-3 py-2">{envio.contato_nome || "—"}</td>
+                            <td className="px-3 py-2 font-mono">{envio.telefone}</td>
+                            <td className="px-3 py-2">
+                              {envio.proxima_tentativa_em
+                                ? new Date(envio.proxima_tentativa_em).toLocaleString()
+                                : "—"}
+                            </td>
+                            <td className="px-3 py-2">
+                              {envio.enviado_em
+                                ? new Date(envio.enviado_em).toLocaleString()
+                                : "—"}
+                            </td>
+                            <td className="px-3 py-2">
+                              <Badge variant={varianteStatusEnvio(envio)} className="text-[10px]">
+                                {rotuloStatusEnvio(envio)}
+                              </Badge>
+                            </td>
+                            <td className="px-3 py-2 text-destructive">
+                              {envio.erro_mensagem || "—"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
             )}
           </div>
         </TabsContent>

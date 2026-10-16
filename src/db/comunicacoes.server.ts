@@ -609,12 +609,15 @@ export async function criarCampanha(data: any, usuarioId: string) {
   // A fila é montada pelo motor, que dedup por telefone e resolve o público
   // unificado. O INSERT por destinatário que existia aqui saía em N voltas.
   const { popularFilaCampanha } = await import("./disparo-motor.server");
+  // A tag mora no topo (`tag_ids`), com fallback para `filtros.tagIds`: sem
+  // isso a campanha com tag gravava mas enfileirava zero pessoas.
   const fila = await popularFilaCampanha(campanhaId, {
     origem: data.origem_publico ?? "AMBOS",
     tipo: data.filtros?.tipo ?? null,
     uf: data.filtros?.uf ?? null,
     cidade: data.filtros?.cidade ?? null,
     statusCompliance: data.filtros?.status ?? null,
+    tagIds: (data as any).tag_ids ?? data.filtros?.tagIds ?? null,
     mapeamento: data.mapeamento_variaveis ?? {},
   } as any);
 
@@ -647,6 +650,51 @@ export async function getCampanhaDetalhes(id: string) {
     ...campanha,
     mensagens: rowsOf(mensagensRes) || [],
   };
+}
+
+/**
+ * Fila de uma campanha, para o detalhe por contato.
+ *
+ * A tabela não guarda o nome do contato — a mensagem carrega apenas telefone e
+ * o id de quem é comprador/prospect. O nome sai de `variaveis->>'contato.nome'`
+ * (o motor já resolve o contato ao montar a fila), com fallback para a tabela
+ * de perfis e por fim para o próprio telefone.
+ *
+ * `estado_fila` é o ciclo do nosso motor (PENDENTE/RESERVADA/ENVIADA/FALHOU/
+ * IGNORADA); `status` é o que a Meta devolve via webhook (ENVIADA/ENTREGUE/
+ * LIDA). O detalhe mostra os dois porque a fila dizer "ENVIADA" não garante
+ * entrega — a Meta confirma depois, e o erro (`erro_mensagem`/`erro_codigo`)
+ * é o que explica uma mensagem que não saiu.
+ */
+export async function listarEnviosCampanha(campanhaId: string) {
+  const d = requireDb();
+  const res = await d.execute(sql`
+    SELECT
+      m.id,
+      m.telefone,
+      COALESCE(
+        NULLIF(m.variaveis->'contato'->>'nome', ''),
+        p.nome,
+        mc.nome
+      ) as contato_nome,
+      m.estado_fila,
+      m.status,
+      m.origem,
+      m.proxima_tentativa_em,
+      m.enviado_em,
+      m.entregue_em,
+      m.lido_em,
+      m.tentativas,
+      m.erro_codigo,
+      m.erro_mensagem,
+      m.criado_em
+    FROM whatsapp_mensagens m
+    LEFT JOIN profiles p ON p.id = m.comprador_id
+    LEFT JOIN marketing_contatos mc ON mc.id = m.contato_marketing_id
+    WHERE m.campanha_id = ${campanhaId}::uuid
+    ORDER BY m.proxima_tentativa_em ASC NULLS LAST, m.criado_em ASC
+  `);
+  return rowsOf(res) || [];
 }
 
 /**

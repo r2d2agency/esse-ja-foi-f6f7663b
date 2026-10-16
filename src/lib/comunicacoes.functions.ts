@@ -592,6 +592,22 @@ export const getCampanhaDetalhesFn = createServerFn({ method: "GET" })
     return db.getCampanhaDetalhes(id);
   });
 
+/**
+ * Fila de envios de uma campanha, para o detalhe por contato.
+ *
+ * O estado da mensagem vive em duas colunas: `estado_fila` é o ciclo do nosso
+ * motor (PENDENTE → RESERVADA → ENVIADA/FALHOU/IGNORADA) e `status` é o que a
+ * Meta devolve via webhook (ENVIADA/ENTREGUE/LIDA). O detalhe mostra as duas
+ * coisas, porque "ENVIADA" na fila não garante entrega — a Meta só confirma
+ * depois. O nome vem de `variaveis->>'contato.nome'` (onde o motor guarda o
+ * contato resolvido) com fallback para a tabela de perfis.
+ */
+export const getEnviosCampanhaFn = createServerFn({ method: "GET" })
+  .validator((id: string) => z.string().uuid().parse(id))
+  .handler(async ({ data: id }) => {
+    return db.listarEnviosCampanha(id);
+  });
+
 export const processarEnvioCampanhaFn = createServerFn({ method: "POST" })
   .validator((id: string) => z.string().uuid().parse(id))
   .handler(async ({ data: id }) => {

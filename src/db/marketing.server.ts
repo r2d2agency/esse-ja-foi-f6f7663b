@@ -40,7 +40,12 @@ export type MarketingFiltro = {
   somenteComCoordenadas?: boolean;
   /** 'verificado' | 'invalido' | 'nao_verificado' | 'erro' */
   whatsappStatus?: string;
-};
+  /**
+   * Ids de etiqueta para filtrar (OR): o contato precisa ter pelo menos uma
+   * delas. Campanhas usam a mesma lógica pelo lado da campanha.
+   */
+  tagIds?: string[];
+}
 
 export async function listarMarketingContatos(filtro: MarketingFiltro = {}) {
   const d = requireDb();
@@ -50,6 +55,8 @@ export async function listarMarketingContatos(filtro: MarketingFiltro = {}) {
   const status = filtro.status && filtro.status !== "todos" ? filtro.status : null;
   const whatsappStatus =
     filtro.whatsappStatus && filtro.whatsappStatus !== "todos" ? filtro.whatsappStatus : null;
+  const tagIds = Array.isArray(filtro.tagIds) ? filtro.tagIds.filter(Boolean) : [];
+  const comFiltroTag = tagIds.length > 0;
   // O termo só existe quando há busca. Sem isso virava a string "%null%" e a
   // query não achava ninguém — a lista aparecia vazia mesmo com a base cheia.
   const termo = busca ? `%${busca}%` : null;
@@ -67,6 +74,13 @@ export async function listarMarketingContatos(filtro: MarketingFiltro = {}) {
       AND (${tipo}::text IS NULL OR c.tipo = ${tipo}) AND (${status}::text IS NULL OR c.status = ${status})
       AND (${whatsappStatus}::text IS NULL OR c.whatsapp_status = ${whatsappStatus})
       AND (${filtro.somenteComCoordenadas !== true} OR (c.latitude IS NOT NULL AND c.longitude IS NOT NULL))
+      AND (
+        ${comFiltroTag} = false
+        OR EXISTS (
+          SELECT 1 FROM marketing_contato_tags ft
+          WHERE ft.contato_id = c.id AND ft.tag_id = ANY(${tagIds}::uuid[])
+        )
+      )
     GROUP BY c.id ORDER BY c.criado_em DESC`);
   return rowsOf(rows);
 }
@@ -472,6 +486,19 @@ export async function atribuirMarketingTag(contatoIds: string[], tagId: string) 
     await d.execute(
       sql`INSERT INTO marketing_contato_tags (contato_id, tag_id) VALUES (${id}::uuid, ${tagId}::uuid) ON CONFLICT DO NOTHING`,
     );
+}
+
+/**
+ * Tira uma etiqueta de um contato. O diálogo de edição precisa das duas mãos:
+ * `atribuirMarketingTag` só entra em massa, e sem esta função não havia como
+ * remover uma etiqueta já existente na tela de detalhe.
+ */
+export async function removerMarketingTag(contatoId: string, tagId: string) {
+  const d = requireDb();
+  await ensureMarketingSchema();
+  await d.execute(
+    sql`DELETE FROM marketing_contato_tags WHERE contato_id = ${contatoId}::uuid AND tag_id = ${tagId}::uuid`,
+  );
 }
 
 /**

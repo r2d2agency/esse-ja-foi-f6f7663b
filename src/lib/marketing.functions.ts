@@ -7,6 +7,7 @@ const filtroSchema = z.object({
   status: z.string().optional(),
   somenteComCoordenadas: z.boolean().optional(),
   whatsappStatus: z.string().optional(),
+  tagIds: z.array(z.string()).optional(),
 });
 
 /**
@@ -153,6 +154,21 @@ export const atribuirMarketingTagFn = createServerFn({ method: "POST" })
     try {
       const { atribuirMarketingTag } = await import("@/db/marketing.server");
       await atribuirMarketingTag(data.contatoIds, data.tagId);
+      return { ok: true as const };
+    } catch (e: any) {
+      return { ok: false as const, message: e.message };
+    }
+  });
+
+/** Mão inversa da anterior: tira uma etiqueta de um contato só. */
+export const removerMarketingTagFn = createServerFn({ method: "POST" })
+  .inputValidator((d) =>
+    z.object({ contatoId: z.string().uuid(), tagId: z.string().uuid() }).parse(d),
+  )
+  .handler(async ({ data }) => {
+    try {
+      const { removerMarketingTag } = await import("@/db/marketing.server");
+      await removerMarketingTag(data.contatoId, data.tagId);
       return { ok: true as const };
     } catch (e: any) {
       return { ok: false as const, message: e.message };

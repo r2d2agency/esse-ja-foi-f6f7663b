@@ -703,7 +703,10 @@ export async function popularFilaCampanha(
         p,
         contexto,
       );
-      await d.execute(sql`
+      // ON CONFLICT DO NOTHING não avisa quando ignora: sem o RETURNING o
+      // contador subia mesmo sem inserir e a campanha exibia destinatários que
+      // nunca entraram na fila.
+      const res = await d.execute(sql`
         INSERT INTO whatsapp_mensagens
           (campanha_id, comprador_id, contato_marketing_id, telefone, origem, estado_fila, variaveis)
         VALUES (
@@ -716,8 +719,9 @@ export async function popularFilaCampanha(
           ${JSON.stringify(variaveis)}::jsonb
         )
         ON CONFLICT (campanha_id, telefone) DO NOTHING
+        RETURNING id
       `);
-      inseridos++;
+      if (Array.isArray(res) && res.length > 0) inseridos++;
     } catch (e: any) {
       console.warn(`[disparo] não enfileirou ${p.telefone}: ${e?.message || e}`);
       ignorados++;
