@@ -270,6 +270,13 @@ export async function ensureComunicacoesSchema(silent = true) {
         ADD COLUMN IF NOT EXISTS ultimo_envio_em timestamptz;
     `);
 
+    // 6f. Mapeamento de variáveis do template ({{1}} -> veiculo.marca etc).
+    // Campanha de mensagem geral usa {} — o campo é obrigatório no INSERT.
+    await d.execute(sql`
+      ALTER TABLE whatsapp_campanhas
+        ADD COLUMN IF NOT EXISTS mapeamento_variaveis jsonb DEFAULT '{}'::jsonb;
+    `);
+
     // 6e. Canal de envio: por quem a mensagem sai.
     //   META    = template oficial pelo serviço da Meta (caminho original).
     //   UAZAPI  = conexão nova da Uazapi — a única rota que aceita grupo, já
