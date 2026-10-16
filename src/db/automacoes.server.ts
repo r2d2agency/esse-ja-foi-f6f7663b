@@ -82,32 +82,64 @@ export async function salvarAutomacao(data: any, usuarioId: string) {
     ? usuarioId
     : null;
 
+  // GRUPOS_UAZAPI não precisa de template Meta — o texto é montado no motor.
+  // Aceita template_id vazio sem quebrar o cast ::uuid.
+  const temTemplate =
+    typeof data.template_id === "string" && data.template_id.trim() ? true : false;
+
   if (data.id) {
-    await d.execute(sql`
-      UPDATE whatsapp_automacoes SET
-        nome = ${data.nome},
-        evento = ${data.evento},
-        publico = ${data.publico},
-        template_id = ${data.template_id}::uuid,
-        status = ${data.status},
-        config_envio = ${JSON.stringify(configEnvio)}::jsonb,
-        regras = ${JSON.stringify(regras)}::jsonb,
-        mapeamento_variaveis = ${JSON.stringify(mapeamento)}::jsonb,
-        atualizado_em = now()
-      WHERE id = ${data.id}::uuid
-    `);
+    if (temTemplate) {
+      await d.execute(sql`
+        UPDATE whatsapp_automacoes SET
+          nome = ${data.nome},
+          evento = ${data.evento},
+          publico = ${data.publico},
+          template_id = ${data.template_id}::uuid,
+          status = ${data.status},
+          config_envio = ${JSON.stringify(configEnvio)}::jsonb,
+          regras = ${JSON.stringify(regras)}::jsonb,
+          mapeamento_variaveis = ${JSON.stringify(mapeamento)}::jsonb,
+          atualizado_em = now()
+        WHERE id = ${data.id}::uuid
+      `);
+    } else {
+      await d.execute(sql`
+        UPDATE whatsapp_automacoes SET
+          nome = ${data.nome},
+          evento = ${data.evento},
+          publico = ${data.publico},
+          template_id = NULL,
+          status = ${data.status},
+          config_envio = ${JSON.stringify(configEnvio)}::jsonb,
+          regras = ${JSON.stringify(regras)}::jsonb,
+          mapeamento_variaveis = ${JSON.stringify(mapeamento)}::jsonb,
+          atualizado_em = now()
+        WHERE id = ${data.id}::uuid
+      `);
+    }
     return { id: data.id };
   } else {
-    const res = await d.execute(sql`
-      INSERT INTO whatsapp_automacoes (
-        nome, evento, publico, template_id, status, config_envio, regras, mapeamento_variaveis, criado_por
-      ) VALUES (
-        ${data.nome}, ${data.evento}, ${data.publico}, ${data.template_id}::uuid,
-        'RASCUNHO', ${JSON.stringify(configEnvio)}::jsonb,
-        ${JSON.stringify(regras)}::jsonb, ${JSON.stringify(mapeamento)}::jsonb,
-        ${userIdValido}::uuid
-      ) RETURNING id
-    `);
+    const res = temTemplate
+      ? await d.execute(sql`
+          INSERT INTO whatsapp_automacoes (
+            nome, evento, publico, template_id, status, config_envio, regras, mapeamento_variaveis, criado_por
+          ) VALUES (
+            ${data.nome}, ${data.evento}, ${data.publico}, ${data.template_id}::uuid,
+            'RASCUNHO', ${JSON.stringify(configEnvio)}::jsonb,
+            ${JSON.stringify(regras)}::jsonb, ${JSON.stringify(mapeamento)}::jsonb,
+            ${userIdValido}::uuid
+          ) RETURNING id
+        `)
+      : await d.execute(sql`
+          INSERT INTO whatsapp_automacoes (
+            nome, evento, publico, template_id, status, config_envio, regras, mapeamento_variaveis, criado_por
+          ) VALUES (
+            ${data.nome}, ${data.evento}, ${data.publico}, NULL,
+            'RASCUNHO', ${JSON.stringify(configEnvio)}::jsonb,
+            ${JSON.stringify(regras)}::jsonb, ${JSON.stringify(mapeamento)}::jsonb,
+            ${userIdValido}::uuid
+          ) RETURNING id
+        `);
     return rowsOf(res)[0];
   }
 }

@@ -18,13 +18,26 @@ export async function processarEventoSistema(evento: string, contexto: any) {
     const automacoes = await db.execute(sql`
       SELECT a.*, t.meta_name, t.idioma, t.conteudo as template_conteudo, t.status as template_meta_status
       FROM whatsapp_automacoes a
-      JOIN whatsapp_templates t ON t.id = a.template_id
+      LEFT JOIN whatsapp_templates t ON t.id = a.template_id
       WHERE a.evento = ${evento} AND a.status = 'ATIVA'
     `);
 
     const rows = rowsOf(automacoes) || [];
-    
+
     for (const auto of rows) {
+      // Ramo GRUPOS_UAZAPI: veículo publicado na vitrine vai para os grupos da
+      // Uazapi com texto + foto. A Meta não aceita template para @g.us, então
+      // o envio é enfileirado como uma campanha Uazapi (o motor já respeita a
+      // janela 08-18 e o intervalo).
+      if (auto.publico === "GRUPOS_UAZAPI") {
+        try {
+          await enviarParaGruposUazapi(auto, contexto);
+        } catch (e: any) {
+          console.error("[Automacao Motor] falha no ramo GRUPOS_UAZAPI:", e?.message || e);
+        }
+        continue;
+      }
+
       // Validação de template na Meta
       if (auto.template_meta_status !== 'APPROVED') {
         await db.execute(sql`UPDATE whatsapp_automacoes SET status = 'TEMPLATE_INDISPONIVEL' WHERE id = ${auto.id}::uuid`);
@@ -35,7 +48,7 @@ export async function processarEventoSistema(evento: string, contexto: any) {
       const destinatario = await identificarDestinatario(auto.publico, contexto);
       if (!destinatario || !destinatario.telefone || destinatario.whatsapp_status !== 'ATIVO') continue;
 
-      // 3. Verificar idempotência (Evitar spam e duplicidade)
+      // 3. Verificar idempotência (Evitar spam e duplicicidade)
       const identificador = `${auto.id}:${evento}:${destinatario.id}:${contexto.referencia_id || 'global'}`;
       const jaExiste = await db.execute(sql`
         SELECT 1 FROM whatsapp_automacoes_execucoes WHERE identificador_unico = ${identificador}
@@ -84,6 +97,58 @@ export async function processarEventoSistema(evento: string, contexto: any) {
   } catch (error) {
     console.error(`[Automacao Motor] Erro ao processar evento ${evento}:`, error);
   }
+}
+
+async function enviarParaGruposUazapi(auto: any, contexto: any) {
+  const { ensureComunicacoesSchema } = await import("./comunicacoes.server");
+  const { criarCampanhaDisparoGrupos } = await import("./disparo-motor.server");
+  await ensureComunicacoesSchema();
+
+  // Grupos vêm da regra da automação (regras.grupos_alvo = ["120363...@g.us"]).
+  const grupos: string[] = Array.isArray(auto.regras?.grupos_alvo) ? auto.regras.grupos_alvo : [];
+  if (!grupos.length) {
+    console.warn(`[Automacao Motor] automação ${auto.id} (GRUPOS_UAZAPI) sem grupos em regras.grupos_alvo — nada a fazer.`);
+    return;
+  }
+
+  // Monta a mensagem do veículo publicado (título, ano/km, link público, foto).
+  // `montarMensagemWhatsapp` devolve o texto com o link privado; para a vitrine
+  // usamos o link público /veiculos/{slug}.
+  const veiculoId = contexto.veiculo_id;
+  if (!veiculoId) throw new Error("VEICULO_PUBLICADO sem veiculo_id no contexto.");
+
+  const { montarMensagemWhatsapp } = await import("./publicacao.server");
+  const baseUrl = process.env.BASE_URL || process.env.VITE_BASE_URL || "";
+  const montado = await montarMensagemWhatsapp(veiculoId, baseUrl);
+
+  // Link público da vitrine (slug) substitui o link privado /v/{token}.
+  const slug = contexto.slug || null;
+  let texto = montado?.mensagem || "";
+  if (slug && baseUrl) {
+    texto = texto.replace(
+      /🔗 Veja as fotos e a ficha completa:.*$/m,
+      `🔗 Veja as fotos e a ficha completa: ${baseUrl}/veiculos/${slug}`,
+    );
+  }
+
+  // Foto de capa: enviada como legenda na Uazapi (o texto vai junto).
+  const foto = montado?.foto_capa || null;
+
+  await criarCampanhaDisparoGrupos({
+    nome: `${auto.nome} — ${veiculoId}`,
+    veiculo_id: veiculoId,
+    grupos_alvo: grupos,
+    texto,
+    foto,
+    janela_inicio: "08:00",
+    janela_fim: "18:00",
+    intervalo_minutos: 5,
+    enviar_agora: true,
+  });
+
+  await db.execute(sql`
+    UPDATE whatsapp_automacoes SET ultima_execucao = now() WHERE id = ${auto.id}::uuid
+  `);
 }
 
 async function identificarDestinatario(publico: string, contexto: any) {

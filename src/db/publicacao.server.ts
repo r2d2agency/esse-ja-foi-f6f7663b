@@ -172,7 +172,21 @@ export async function salvarCanalPublicacao(data: {
       atualizado_em = now()
   `);
 
-  await sincronizarVitrine(data.veiculo_id);
+  const vitrine = await sincronizarVitrine(data.veiculo_id);
+
+  // Veículo publicado na vitrine dispara a automação VEICULO_PUBLICADO (grupos
+  // da Uazapi) sem bloquear a tela: o disparo é enfileirado pelo motor.
+  if (data.canal === "VITRINE" && vitrine?.status === "PUBLICADO") {
+    try {
+      const { dispararEventoSistema } = await import("./automacoes.server");
+      await dispararEventoSistema("VEICULO_PUBLICADO", {
+        veiculo_id: data.veiculo_id,
+        ...(vitrine?.slug ? { slug: vitrine.slug } : {}),
+      });
+    } catch (e) {
+      console.error("[publicacao] dispararEventoSistema(VEICULO_PUBLICADO)", e);
+    }
+  }
 
   if (data.canal === "LEILAO" && !data.ativo) {
     try {
@@ -331,7 +345,7 @@ export async function sincronizarVitrine(veiculoId: string) {
     const ativos = canais.filter((c) => c.ativo);
 
     const aRes = await d.execute(
-      sql`SELECT id, status FROM anuncios_veiculo WHERE veiculo_id = ${veiculoId}::uuid LIMIT 1`,
+      sql`SELECT id, status, slug, publicado_em FROM anuncios_veiculo WHERE veiculo_id = ${veiculoId}::uuid LIMIT 1`,
     );
     const anuncio = rowsOf(aRes)[0];
 
@@ -363,7 +377,11 @@ export async function sincronizarVitrine(veiculoId: string) {
             atualizado_em = now()
         WHERE id = ${anuncio.id}::uuid
       `);
-      return;
+      return {
+        status: 'PUBLICADO' as const,
+        publicadoEmAntes: Boolean(anuncio.publicado_em),
+        slug: anuncio.slug,
+      };
     }
 
     const codigo = await getProximoCodigoAnuncio();
@@ -382,6 +400,11 @@ export async function sincronizarVitrine(veiculoId: string) {
         ${ativos[0]?.descricao || null}, ${localizacao}, 'PUBLICADO', now()
       )
     `);
+    return {
+      status: 'PUBLICADO' as const,
+      publicadoEmAntes: false,
+      slug,
+    };
   } catch (e: any) {
     console.error("[publicacao] sincronizarVitrine", e);
     throw new Error(

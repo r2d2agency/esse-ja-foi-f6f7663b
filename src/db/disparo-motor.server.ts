@@ -204,11 +204,16 @@ async function enviarComRetry(msg: any, campanha: any): Promise<ResultadoEnvio> 
   // também sai por aqui. O texto é o BODY do template com as variáveis
   // aplicadas; HEADER/BOTÕES da Meta não existem no WhatsApp normal.
   if ((campanha.canal_envio ?? "META") === "UAZAPI") {
-    const { enviarTextoUazapi } = await import("./marketing.server");
+    const { enviarTextoUazapi, enviarMidiaUazapi } = await import("./marketing.server");
+    // Texto pronto (automação de grupos) ou BODY do template com as variáveis.
+    const v = msg.variaveis ?? {};
     const corpo = String(
       campanha.template_conteudo?.find?.((c: any) => c.type === "BODY")?.text ?? "",
     );
-    const texto = corpo.replace(/\{\{(\d+)\}\}/g, (_, n) => msg.variaveis?.[String(n)] ?? "");
+    const texto = String(
+      v.texto ??
+        corpo.replace(/\{\{(\d+)\}\}/g, (_, n) => v?.[String(n)] ?? ""),
+    );
     if (!texto.trim()) {
       await d.execute(sql`
         UPDATE whatsapp_mensagens SET estado_fila = 'IGNORADA', status = 'FALHOU',
@@ -217,8 +222,12 @@ async function enviarComRetry(msg: any, campanha: any): Promise<ResultadoEnvio> 
       `);
       return { ok: false, permanente: true, numeroInexistente: false, mensagem: "Template sem corpo.", codigo: null };
     }
+    // Foto da capa: enviada com o texto como legenda (o grupo recebe os dois).
+    const foto = v.foto_capa || v.foto_url || null;
     try {
-      const r = await enviarTextoUazapi(msg.telefone, texto);
+      const r = foto
+        ? await enviarMidiaUazapi(msg.telefone, String(foto), texto)
+        : await enviarTextoUazapi(msg.telefone, texto);
       await d.execute(sql`
         UPDATE whatsapp_mensagens SET
           estado_fila = 'ENVIADA',
@@ -562,6 +571,65 @@ async function contextoVeiculo(veiculoId: string | null | undefined) {
  * público; aqui é o mesmo critério, mas a fila inteira é pesada demais para a
  * tela. Usa a mesma fonte (`resolverPublico`) e o mesmo mapeamento.
  */
+/**
+ * Cria uma campanha Uazapi para os grupos alvo com texto + foto (opcional).
+ * Usada pela automação VEICULO_PUBLICADO — o motor respeita a janela e o
+ * intervalo. `variaveis` carrega a foto para o ramo Uazapi de enviarComRetry.
+ */
+export async function criarCampanhaDisparoGrupos(opts: {
+  nome: string;
+  veiculo_id: string;
+  grupos_alvo: string[];
+  texto: string;
+  foto?: string | null;
+  janela_inicio?: string;
+  janela_fim?: string;
+  intervalo_minutos?: number;
+  enviar_agora?: boolean;
+}) {
+  const d = requireDb();
+  const { rowsOf } = await import("./comunicacoes.server");
+
+  const res = await d.execute(sql`
+    INSERT INTO whatsapp_campanhas (nome, veiculo_id, template_id, status, canal_envio, grupos_alvo, janela_inicio, janela_fim, intervalo_minutos)
+    VALUES (
+      ${opts.nome},
+      ${opts.veiculo_id}::uuid,
+      NULL,
+      ${opts.enviar_agora ? "AGUARDANDO" : "RASCUNHO"},
+      'UAZAPI',
+      ${JSON.stringify(opts.grupos_alvo)}::jsonb,
+      ${opts.janela_inicio || "08:00"},
+      ${opts.janela_fim || "18:00"},
+      ${opts.intervalo_minutos || 5}
+    )
+    RETURNING id
+  `);
+  const campanhaId = rowsOf(res)[0]?.id;
+  if (!campanhaId) throw new Error("Falha ao criar campanha de grupos.");
+
+  // Uma linha por grupo: origem GRUPO_UAZAPI, telefone = JID @g.us.
+  await d.execute(sql`
+    INSERT INTO whatsapp_mensagens (campanha_id, telefone, origem, estado_fila, variaveis)
+    SELECT
+      ${campanhaId}::uuid,
+      g.grupo,
+      'GRUPO_UAZAPI',
+      'PENDENTE',
+      ${JSON.stringify({ texto: opts.texto, foto_capa: opts.foto || null })}::jsonb
+    FROM unnest(${JSON.stringify(opts.grupos_alvo)}::text[]) AS g(grupo)
+    ON CONFLICT (campanha_id, telefone) DO NOTHING
+  `);
+
+  await d.execute(sql`
+    UPDATE whatsapp_campanhas SET total_destinatarios = (
+      SELECT count(*) FROM whatsapp_mensagens WHERE campanha_id = ${campanhaId}::uuid
+    ) WHERE id = ${campanhaId}::uuid
+  `);
+
+  return { campanhaId };
+}
+
 export async function exemploDestinatario(criterio: {
   veiculoId?: string | null;
   mapeamento?: Record<string, string>;
