@@ -461,6 +461,8 @@ function ComunicacoesPage() {
     status: "RASCUNHO",
     config_envio: { momento: "IMEDIATO" },
     mapeamento_variaveis: [],
+    // GRUPOS_UAZAPI: ids dos grupos ("120363...@g.us") escolhidos no wizard.
+    regras: { grupos_alvo: [] },
   });
 
   // Removido duplicado handleSalvarAutomacao e automacoes query aqui
@@ -3643,6 +3645,9 @@ function ComunicacoesPage() {
                           <SelectValue placeholder="Selecione o destinatário" />
                         </SelectTrigger>
                         <SelectContent>
+                          {novaAutomacao.evento === "VEICULO_PUBLICADO" && (
+                            <SelectItem value="GRUPOS_UAZAPI">Grupos WhatsApp</SelectItem>
+                          )}
                           <SelectItem value="VENDEDOR">Vendedor</SelectItem>
                           <SelectItem value="COMPRADOR_VENCEDOR">Comprador Vencedor</SelectItem>
                           <SelectItem value="COMPRADOR_PARTICIPANTE">
@@ -3654,7 +3659,81 @@ function ComunicacoesPage() {
                     </div>
                   )}
 
-                  {automacaoStep === 3 && (
+                  {automacaoStep === 3 && novaAutomacao.publico === "GRUPOS_UAZAPI" && (
+                    <div className="space-y-4">
+                      <Label>Quais grupos recebem o veículo publicado?</Label>
+                      {gruposUazapi.length === 0 && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={carregarGruposUazapi}
+                          disabled={carregandoGrupos}
+                        >
+                          {carregandoGrupos ? "Carregando..." : "Carregar grupos"}
+                        </Button>
+                      )}
+                      {erroGrupos && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400">{erroGrupos}</p>
+                      )}
+                      {gruposUazapi.length > 0 && (
+                        <div className="grid grid-cols-1 gap-2 max-h-56 overflow-y-auto pr-1">
+                          {gruposUazapi.map((g: any) => {
+                            const ativo = (novaAutomacao.regras?.grupos_alvo || []).includes(g.id);
+                            return (
+                              <label
+                                key={g.id}
+                                className={`flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-all ${
+                                  ativo
+                                    ? "border-teal-600 bg-white"
+                                    : "border-slate-200 bg-white hover:border-slate-400"
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="h-4 w-4 accent-teal-600"
+                                  checked={ativo}
+                                  onChange={() =>
+                                    setNovaAutomacao({
+                                      ...novaAutomacao,
+                                      regras: {
+                                        ...(novaAutomacao.regras || {}),
+                                        grupos_alvo: ativo
+                                          ? (novaAutomacao.regras?.grupos_alvo || []).filter(
+                                              (id: string) => id !== g.id,
+                                            )
+                                          : [...(novaAutomacao.regras?.grupos_alvo || []), g.id],
+                                      },
+                                    })
+                                  }
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-sm font-medium">{g.nome}</p>
+                                  <p className="truncate text-[10px] text-muted-foreground">{g.id}</p>
+                                </div>
+                                {typeof g.participantes === "number" && (
+                                  <span className="text-[10px] text-muted-foreground shrink-0">
+                                    {g.participantes} participantes
+                                  </span>
+                                )}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900">
+                        <p className="text-xs font-medium text-muted-foreground">Mensagem</p>
+                        <p className="text-xs text-muted-foreground">
+                          É montada automaticamente a partir do veículo publicado: nome, ano e km,
+                          localização e o link público da vitrine, com a foto de capa.
+                        </p>
+                        <Button variant="secondary" size="sm" onClick={() => setAutomacaoStep(4)}>
+                          Continuar
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {automacaoStep === 3 && novaAutomacao.publico !== "GRUPOS_UAZAPI" && (
                     <div className="space-y-4">
                       <Label>Escolha o Template</Label>
                       <div className="grid grid-cols-1 gap-3">

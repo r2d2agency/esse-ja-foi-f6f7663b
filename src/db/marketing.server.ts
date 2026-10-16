@@ -731,6 +731,9 @@ export async function listarGruposUazapi() {
     const dados: any = await res.json().catch(() => null);
     if (!dados) return { erro: `${rota} respondeu sem JSON utilizável.` };
     // A lista pode vir direto, em {groups: []}, {data: []} ou {response: []}.
+    // Algumas versões devolvem a lista em `chats` com os grupos como chaves do
+    // objeto ({ "120363...@g.us": {...} }), não como array — o Array.isArray
+    // deixava esses grupos invisíveis. Por isso as chaves também entram na lista.
     const bruta: any[] = Array.isArray(dados)
       ? dados
       : Array.isArray(dados?.groups)
@@ -740,7 +743,10 @@ export async function listarGruposUazapi() {
           : Array.isArray(dados?.response)
             ? dados.response
             : [];
-    const grupos = bruta
+    const deChats = Object.entries(dados?.chats ?? {})
+      .filter(([k]) => k.includes("@g.us"))
+      .map(([k, v]: [string, any]) => ({ ...(v ?? {}), id: k, jid: k, remoteJid: k }));
+    const grupos = [...bruta, ...deChats]
       .map((g: any) => ({
         id: normalizarIdGrupo(g),
         nome: String(
@@ -796,8 +802,10 @@ export async function listarGruposUazapi() {
   }
   if (achados.length) return achados;
 
-  // 2) Reserva para versões antigas: GET /group/all e GET /chats.
-  for (const rota of ["/group/all", "/chats"]) {
+  // 2) Reserva: a Uazapi muda a rota de listagem entre versões. POST /group/list
+  //    é a atual; as mais novas usam GET /list-chats, /group/fetch e /groups/list;
+  //    as antigas, /group/all e /chats. Qualquer 404 segue para a próxima.
+  for (const rota of ["/list-chats", "/groups/list", "/group/fetch", "/group/all", "/chats"]) {
     const ctrl = new AbortController();
     const esgotou = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
     try {
@@ -860,6 +868,58 @@ export async function enviarTextoUazapi(alvo: string, texto: string) {
         text: texto,
         // A Uazapi exige desfazer a marcação de "vizualizado" em alguns planos;
         // sem ler o texto cru de novo, manter o default é suficiente.
+      }),
+      signal: ctrl.signal,
+    });
+    const dados: any = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const detalhe = dados?.message || (await res.text().catch(() => ""));
+      const err = new Error(
+        res.status === 401 || res.status === 403
+          ? "Token recusado pela instância (HTTP 401). Confira em Marketing > Configurar."
+          : `Uazapi retornou HTTP ${res.status}: ${String(detalhe).slice(0, 200)}`,
+      ) as any;
+      err.permanente = res.status === 400 || res.status === 404;
+      throw err;
+    }
+    const msgId = dados?.id ?? dados?.messageId ?? dados?.key?.id ?? null;
+    return { ok: true as const, id: msgId ? String(msgId) : null };
+  } catch (e: any) {
+    if (e?.name === "AbortError") throw new Error("A instância não respondeu em 30s (timeout).");
+    throw e;
+  } finally {
+    clearTimeout(esgotou);
+  }
+}
+
+/**
+ * Envia imagem (ou documento) via POST /send/media da Uazapi com legenda opcional.
+ * `file` pode ser URL pública ou base64 — o motor de grupos passa a foto de capa
+ * (Storage público) e o texto montado como legenda.
+ */
+export async function enviarMidiaUazapi(alvo: string, file: string, texto?: string) {
+  const cfg = await getUazapiConfig();
+  const base = (cfg.uazapi_base_url || "").trim().replace(/\/+$/, "");
+  const token = (cfg.uazapi_token || "").trim();
+  if (!base || !token) throw new Error("Instância Uazapi não configurada.");
+  if (!file) throw new Error("Informe a imagem (URL ou base64) a enviar.");
+
+  const ctrl = new AbortController();
+  const esgotou = setTimeout(() => ctrl.abort(), 30000);
+  try {
+    const res = await fetch(`${base}/send/media`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        token,
+      },
+      body: JSON.stringify({
+        number: alvo,
+        type: "image",
+        file,
+        text: texto || "",
+        docName: "",
       }),
       signal: ctrl.signal,
     });

@@ -156,7 +156,9 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
     z
       .object({
         nome: z.string().min(1),
-        template_id: z.string().uuid(),
+        // Template é opcional: campanha de texto livre (ou de grupos Uazapi)
+        // não passa pela Meta e pode nascer sem template nenhum.
+        template_id: z.string().uuid().optional().or(z.literal("")).nullable(),
         veiculo_id: z.string().uuid().optional().nullable(),
         segmento_id: z.string().uuid().optional().nullable(),
         origem_publico: z.enum(["COMPRADORES", "IMPORTADOS", "AMBOS"]).default("AMBOS"),
@@ -191,29 +193,54 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
         const s = typeof v === "string" ? v.trim() : "";
         return s ? s : null;
       };
-      const criado = await dbc.execute(sql`
-        INSERT INTO whatsapp_campanhas (
-          nome, veiculo_id, template_id, segmento_id, origem_publico,
-          janela_inicio, janela_fim, intervalo_minutos, status, agendado_para, mapeamento_variaveis,
-          canal_envio, grupos_alvo
-        ) VALUES (
-          ${data.nome},
-          ${uuidOuNull(data.veiculo_id)},
-          ${data.template_id}::uuid,
-          ${uuidOuNull(data.segmento_id)},
-          ${data.origem_publico},
-          ${data.janela_inicio || null},
-          ${data.janela_fim || null},
-          ${data.intervalo_minutos},
-          ${data.enviar_agora ? "AGUARDANDO" : "RASCUNHO"},
-          ${data.agendado_para || null},
-          ${JSON.stringify(data.mapeamento_variaveis ?? {})}::jsonb,
-          ${data.canal_envio},
-          ${JSON.stringify(
-            (data.canal_envio === "UAZAPI" ? data.grupos_alvo : []) ?? [],
-          )}::jsonb
-        ) RETURNING id
-      `);
+      const templateId = uuidOuNull(data.template_id);
+      const criado = templateId
+        ? await dbc.execute(sql`
+            INSERT INTO whatsapp_campanhas (
+              nome, veiculo_id, template_id, segmento_id, origem_publico,
+              janela_inicio, janela_fim, intervalo_minutos, status, agendado_para, mapeamento_variaveis,
+              canal_envio, grupos_alvo
+            ) VALUES (
+              ${data.nome},
+              ${uuidOuNull(data.veiculo_id)},
+              ${templateId}::uuid,
+              ${uuidOuNull(data.segmento_id)},
+              ${data.origem_publico},
+              ${data.janela_inicio || null},
+              ${data.janela_fim || null},
+              ${data.intervalo_minutos},
+              ${data.enviar_agora ? "AGUARDANDO" : "RASCUNHO"},
+              ${data.agendado_para || null},
+              ${JSON.stringify(data.mapeamento_variaveis ?? {})}::jsonb,
+              ${data.canal_envio},
+              ${JSON.stringify(
+                (data.canal_envio === "UAZAPI" ? data.grupos_alvo : []) ?? [],
+              )}::jsonb
+            ) RETURNING id
+          `)
+        : await dbc.execute(sql`
+            INSERT INTO whatsapp_campanhas (
+              nome, veiculo_id, template_id, segmento_id, origem_publico,
+              janela_inicio, janela_fim, intervalo_minutos, status, agendado_para, mapeamento_variaveis,
+              canal_envio, grupos_alvo
+            ) VALUES (
+              ${data.nome},
+              ${uuidOuNull(data.veiculo_id)},
+              NULL,
+              ${uuidOuNull(data.segmento_id)},
+              ${data.origem_publico},
+              ${data.janela_inicio || null},
+              ${data.janela_fim || null},
+              ${data.intervalo_minutos},
+              ${data.enviar_agora ? "AGUARDANDO" : "RASCUNHO"},
+              ${data.agendado_para || null},
+              ${JSON.stringify(data.mapeamento_variaveis ?? {})}::jsonb,
+              ${data.canal_envio},
+              ${JSON.stringify(
+                (data.canal_envio === "UAZAPI" ? data.grupos_alvo : []) ?? [],
+              )}::jsonb
+            ) RETURNING id
+          `);
       const campanhaId = (criado as any[])[0].id;
 
       // Grupo é destino, não contato: a fila nasce com uma linha por grupo e
