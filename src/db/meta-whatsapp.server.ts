@@ -152,7 +152,11 @@ export function montarComponents(
         continue;
       }
 
-      const texto = String(comp.text || "").trim();
+      // O texto do HEADER pode vir em `comp.text` (formato do wizard) ou em
+      // `comp.parameters[0].text` (formato que a Meta devolve na sincronização).
+      // Sem ler os dois, o HEADER de texto salvo como Meta desaparece do envio
+      // e a Meta responde 132012 "Parameter format does not match".
+      const texto = String(comp.text ?? comp.parameters?.[0]?.text ?? "").trim();
       if (texto) saida.push({ type: "header", parameters: [{ type: "text", text: texto }] });
       continue;
     }
@@ -257,6 +261,54 @@ export class MetaWhatsAppService {
       SELECT * FROM whatsapp_config ORDER BY id LIMIT 1
     `);
     this.config = rowsOf(res)?.[0];
+
+    // Templates gravados antes da correção ficaram com o HEADER de texto no
+    // formato que a Meta devolve ({type:"header", parameters:[{type:"text",
+    // text:"..."}]}) em vez do formato do wizard ({type:"HEADER", text:"..."}).
+    // O montarComponents não reconhecia esse formato e o HEADER sumia do envio,
+    // gerando o erro 132012. Aqui normalizamos os componentes afetados de uma
+    // vez, sem precisar recriar os templates.
+    await this.normalizarTemplatesLegados();
+  }
+
+  /**
+   * Converte HEADERs salvos no formato da Meta (com `parameters`) de volta ao
+   * formato do wizard (com `text`), que é o que o `montarComponents` espera.
+   * Só mexe em HEADERs de texto — HEADERs de mídia permanecem intactos.
+   */
+  private async normalizarTemplatesLegados() {
+    try {
+      const res = await db!.execute(sql`
+        SELECT id, conteudo FROM whatsapp_templates
+        WHERE conteudo::text LIKE '%"header"%'
+      `);
+      for (const row of rowsOf(res) as any[]) {
+        const comps = componentesDoConteudo(row.conteudo);
+        const normalizados = comps.map((comp: any) => {
+          const ehHeaderTexto =
+            String(comp?.type || "").toUpperCase() === "HEADER" &&
+            !comp?.text &&
+            Array.isArray(comp?.parameters) &&
+            comp.parameters[0]?.type === "text" &&
+            comp.parameters[0]?.text;
+          if (!ehHeaderTexto) return comp;
+          return {
+            type: "HEADER",
+            text: comp.parameters[0].text,
+            ...(comp.format ? { format: comp.format } : {}),
+          };
+        });
+        if (JSON.stringify(comps) !== JSON.stringify(normalizados)) {
+          await db!.execute(sql`
+            UPDATE whatsapp_templates SET conteudo = ${JSON.stringify(normalizados)}::jsonb
+            WHERE id = ${row.id}::uuid
+          `);
+        }
+      }
+    } catch (e: any) {
+      // Não deve impedir o startup — falha aqui é melhor resolvida manualmente.
+      console.warn("[Meta] normalizarTemplatesLegados falhou:", e?.message || e);
+    }
   }
 
   private getGraphUrl(endpoint: string) {
