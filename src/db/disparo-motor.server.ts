@@ -157,15 +157,28 @@ function valoresDoTemplate(
   // Sem o veículo montado aqui, `veiculo.marca` resolvia para "" e a Meta
   // recusava a mensagem com "Preencha {{1}}…". O contexto reúne contato,
   // veículo e anunciante no mesmo formato que a automação usa.
+  // Quando não há veículo (comunicado), usar o nome do contato como fallback
+  // para variáveis de veículo, garantindo que nunca fiquem vazias.
+  const fallback = dest.nome ?? "";
   const ctx: Record<string, any> = {
     contato: {
       nome: dest.nome ?? "",
       email: dest.email ?? "",
       telefone: dest.telefone,
     },
-    veiculo: contexto?.veiculo ?? {},
-    anuncio: contexto?.anuncio ?? {},
-    vendedor: contexto?.vendedor ?? {},
+    veiculo: contexto?.veiculo ?? {
+      nome_completo: fallback,
+      marca: fallback,
+      modelo: fallback,
+      ano: "",
+      placa: "",
+      cor: "",
+      km: "",
+      valor: "",
+      descricao: "",
+    },
+    anuncio: contexto?.anuncio ?? { titulo: fallback, url: "" },
+    vendedor: contexto?.vendedor ?? { nome: "", telefone: "" },
   };
 
   // O mapeamento da campanha diz qual campo entra em qual {{n}}. Sem ele, os
