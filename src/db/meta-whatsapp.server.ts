@@ -94,8 +94,22 @@ function parametersPara(texto: string, valores: Record<string, string>, rotulo: 
  * Componente de um botão de URL com {{n}} no link, no formato que a API aceita
  * no envio: `type: "button"` (singular, minúsculo) com o botão achatado — não
  * um `BUTTONS` com array, que o schema da Meta rejeita com "Unexpected key".
+ *
+ * A Meta devolve o botão SEM a URL na listagem (só `text`). Nesse caso, o
+ * botão já está no formato de envio e deve ser passado como está — sem
+ * tentar extrair URL que não existe.
  */
 function componenteBotao(botao: any, posicao: number, valores: Record<string, string>): any | null {
+  // Formato da Meta: { type: "button", sub_type: "url", index, text }
+  // Não tem `url` nem `parameters` — a URL não é devolvida na listagem.
+  if (botao?.sub_type) {
+    return {
+      type: "button",
+      sub_type: botao.sub_type,
+      index: Number.isInteger(botao.index) ? botao.index : posicao,
+    };
+  }
+  // Formato do wizard: { type: "URL", url: "https://...{{7}}" }
   const url = String(botao?.url || "");
   if (!url) return null;
   const parameters = parametersPara(url, valores, `botão de link ${posicao + 1}`);
@@ -144,7 +158,12 @@ export function montarComponents(
     }
 
     if (tipo === "BODY") {
-      const parameters = parametersPara(comp.text || "", valores, "corpo do template");
+      // Formato do wizard: { type: "BODY", text: "Olá {{1}}!" }
+      // Formato da Meta:  { type: "body", parameters: [{type:"text", text:"Olá {{1}}!"}] }
+      // O text com {{n}} pode estar em comp.text (wizard) ou dentro de
+      // comp.parameters[0].text (Meta). Extrair de onde estiver.
+      const textoBody = comp.text ?? comp.parameters?.[0]?.text ?? "";
+      const parameters = parametersPara(textoBody, valores, "corpo do template");
       // Template sem {{n}} ainda tem BODY na Meta; sem este componente o envio
       // responde 132012 "Parameter format does not match". Texto vai vazio.
       saida.push({ type: "body", parameters });
@@ -157,6 +176,19 @@ export function montarComponents(
         const montado = componenteBotao(botao, i, valores);
         if (montado) saida.push(montado);
       });
+      continue;
+    }
+
+    // Formato da Meta: botões vêm como componentes individuais
+    // { type: "button", sub_type: "url", index: 0, text: "..." }
+    // O wizard grava BUTTONS com array; a Meta devolve button solto.
+    if (tipo === "BUTTON" && comp?.sub_type) {
+      saida.push({
+        type: "button",
+        sub_type: comp.sub_type,
+        index: Number.isInteger(comp.index) ? comp.index : 0,
+      });
+      continue;
     }
   }
 
@@ -165,7 +197,8 @@ export function montarComponents(
   // does not match format in the created template". O texto vai vazio.
   if (!saida.some((c) => String(c?.type || "").toUpperCase() === "BODY")) {
     const corpo = comps.find((c) => String(c?.type || "").toUpperCase() === "BODY");
-    saida.push({ type: "body", parameters: [{ type: "text", text: String(corpo?.text || "").trim() }] });
+    const textoCorpo = corpo?.text ?? corpo?.parameters?.[0]?.text ?? "";
+    saida.push({ type: "body", parameters: [{ type: "text", text: String(textoCorpo).trim() }] });
   }
 
   return saida;
@@ -392,11 +425,11 @@ export class MetaWhatsAppService {
       if (db)
         await db.execute(sql`
         INSERT INTO whatsapp_templates (
-          meta_id, 
-          nome_interno, 
-          meta_name, 
-          categoria, 
-          idioma, 
+          meta_id,
+          nome_interno,
+          meta_name,
+          categoria,
+          idioma,
           status,
           conteudo,
           motivo_recusa,
@@ -415,11 +448,23 @@ export class MetaWhatsAppService {
         )
         ON CONFLICT (meta_name) DO UPDATE SET
           status = EXCLUDED.status,
-          conteudo = EXCLUDED.conteudo,
+          -- NÃO sobrescrever conteudo: o wizard grava no formato de criação
+          -- (HEADER/BODY/FOOTER/BUTTONS maiúsculo, com buttons[] e format).
+          -- A Meta devolve o formato de envio (minúsculo, com parameters[] e
+          -- sem url). Sobrescrever quebra o montarComponents, que espera o
+          -- formato de criação — e a Meta responde 132012.
           -- O motivo da recusa só vale enquanto o status é REJECTED. Sem
           -- limpar, um template que foi rejeitado e depois reenviado continuaria
           -- exibindo a razão antiga na tela.
           motivo_recusa = ${t.status === "REJECTED" ? (t.reason ?? null) : null},
+          -- Preservar as colunas midia_* quando o template já existe: o ON CONFLICT
+          -- não as repõe, então um template com imagem perdia a referência à mídia
+          -- depois de sincronizado. Sem midia_id, o HEADER de mídia some no envio
+          -- e a Meta responde 132012.
+          midia_id = COALESCE(whatsapp_templates.midia_id, EXCLUDED.midia_id),
+          midia_tipo = COALESCE(whatsapp_templates.midia_tipo, EXCLUDED.midia_tipo),
+          midia_nome = COALESCE(whatsapp_templates.midia_nome, EXCLUDED.midia_nome),
+          midia_arquivo_id = COALESCE(whatsapp_templates.midia_arquivo_id, EXCLUDED.midia_arquivo_id),
           ultima_sincronizacao = now();
       `);
     }

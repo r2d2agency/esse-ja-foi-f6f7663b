@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { db } from "./index";
-import { metaService } from "./meta-whatsapp.server";
+import { metaService, montarComponents } from "./meta-whatsapp.server";
 
 // Variáveis disponíveis por contexto
 export const EVENT_VARIABLES: Record<string, string[]> = {
@@ -16,7 +16,8 @@ export async function processarEventoSistema(evento: string, contexto: any) {
   try {
     // 1. Buscar automações ativas para este evento
     const automacoes = await db.execute(sql`
-      SELECT a.*, t.meta_name, t.idioma, t.conteudo as template_conteudo, t.status as template_meta_status
+      SELECT a.*, t.meta_name, t.idioma, t.conteudo as template_conteudo, t.status as template_meta_status,
+        t.midia_id, t.midia_tipo, t.midia_nome
       FROM whatsapp_automacoes a
       LEFT JOIN whatsapp_templates t ON t.id = a.template_id
       WHERE a.evento = ${evento} AND a.status = 'ATIVA'
@@ -55,8 +56,12 @@ export async function processarEventoSistema(evento: string, contexto: any) {
       `);
       if (rowsOf(jaExiste).length > 0) continue;
 
-      // 4. Preencher variáveis (Mapeamento dinâmico)
-      const componentes = mapearVariaveis(auto.mapeamento_variaveis, contexto);
+      // 4. Preencher variáveis (Mapeamento dinâmico) e montar componentes
+      const valores = mapearVariaveis(auto.mapeamento_variaveis, contexto);
+      const midia = (auto as any).midia_id
+        ? { tipo: (auto as any).midia_tipo, mediaId: (auto as any).midia_id, nome: (auto as any).midia_nome }
+        : null;
+      const componentes = montarComponents(auto.template_conteudo, valores, midia);
 
       // 5. Criar registro de execução e enviar para a fila Meta
       const resExec = await db.execute(sql`
@@ -64,7 +69,7 @@ export async function processarEventoSistema(evento: string, contexto: any) {
         VALUES (${auto.id}::uuid, ${contexto.referencia_id || 'N/A'}, ${destinatario.id}::uuid, 'PENDENTE', ${identificador})
         RETURNING id
       `);
-      
+
       const execId = rowsOf(resExec)[0].id;
 
       try {
@@ -174,19 +179,15 @@ async function identificarDestinatario(publico: string, contexto: any) {
 }
 
 function mapearVariaveis(mapeamento: any[], contexto: any) {
-  if (!mapeamento || !Array.isArray(mapeamento)) return [];
-  
-  const bodyParams = mapeamento.map((m: any) => ({
-    type: "text",
-    text: resolveOrigem(m.origem, contexto)
-  }));
+  if (!mapeamento || !Array.isArray(mapeamento)) return {};
 
-  return [
-    {
-      type: "body",
-      parameters: bodyParams
-    }
-  ];
+  const valores: Record<string, string> = {};
+  for (const m of mapeamento) {
+    const chave = String(m.variavel || "").replace(/[{}]/g, "");
+    if (!chave) continue;
+    valores[chave] = resolveOrigem(m.origem, contexto);
+  }
+  return valores;
 }
 
 function resolveOrigem(origem: string, contexto: any) {

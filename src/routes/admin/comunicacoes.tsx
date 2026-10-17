@@ -178,14 +178,21 @@ export function contarVariaveisTemplate(template: any): number {
   const comps = componentesDoTemplate(template);
   let maximo = 0;
   for (const comp of comps) {
-    if (comp?.type === "BODY") {
-      maximo = Math.max(maximo, contarPlaceholders(comp.text || ""));
+    const tipo = String(comp?.type || "").toUpperCase();
+    if (tipo === "BODY") {
+      // Formato do wizard: { type: "BODY", text: "Olá {{1}}!" }
+      // Formato da Meta:  { type: "body", parameters: [{type:"text", text:"Olá {{1}}!"}] }
+      const texto = comp.text ?? comp.parameters?.[0]?.text ?? "";
+      maximo = Math.max(maximo, contarPlaceholders(texto));
     }
-    if (comp?.type === "BUTTONS" && Array.isArray(comp.buttons)) {
+    if (tipo === "BUTTONS" && Array.isArray(comp.buttons)) {
       for (const b of comp.buttons) {
         if (b?.type === "URL") maximo = Math.max(maximo, contarPlaceholders(b.url || ""));
       }
     }
+    // Formato da Meta: botões vêm como componentes individuais
+    // { type: "button", sub_type: "url", index: 0, text: "..." }
+    // A Meta não devolve a URL, então não há {{n}} para contar aqui.
   }
   return maximo;
 }
