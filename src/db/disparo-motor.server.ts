@@ -183,10 +183,13 @@ function valoresDoTemplate(
 
   // O mapeamento da campanha diz qual campo entra em qual {{n}}. Sem ele, os
   // valores saem vazios e a Meta rejeita a mensagem.
+  // Aceita a chave como "1" (formato que o wizard grava) ou "{{1}}" (formato
+  // que o motor sempre usou). Sem isso, o corpo saía vazio e a Meta respondia
+  // 132018 "There's an issue with the parameters in your template".
   const saida: Record<string, string> = {};
   for (const [variavel, campo] of Object.entries(mapeamento ?? {})) {
     const chave = String(variavel).replace(/[{}]/g, "");
-    if (!campo) continue;
+    if (!chave || !campo) continue;
     if (campo.startsWith("literal:")) {
       saida[chave] = campo.slice("literal:".length);
       continue;

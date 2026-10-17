@@ -97,8 +97,8 @@ function parametersPara(texto: string, valores: Record<string, string>, rotulo: 
  */
 function componenteBotao(botao: any, posicao: number, valores: Record<string, string>): any | null {
   const url = String(botao?.url || "");
+  if (!url) return null;
   const parameters = parametersPara(url, valores, `botão de link ${posicao + 1}`);
-  if (!parameters.length) return null;
   const indice = Number.isInteger(botao?.index) ? botao.index : posicao;
   return { type: "button", sub_type: "url", index: indice, parameters };
 }
@@ -145,7 +145,9 @@ export function montarComponents(
 
     if (tipo === "BODY") {
       const parameters = parametersPara(comp.text || "", valores, "corpo do template");
-      if (parameters.length) saida.push({ type: "body", parameters });
+      // Template sem {{n}} ainda tem BODY na Meta; sem este componente o envio
+      // responde 132012 "Parameter format does not match". Texto vai vazio.
+      saida.push({ type: "body", parameters });
       continue;
     }
 
