@@ -127,9 +127,40 @@ function componenteBotao(botao: any, posicao: number, valores: Record<string, st
  */
 function idMidiaNumerico(valor: unknown): number | null {
   const bruto = String(valor ?? "").trim();
+  // Alguns templates criados direto na Meta trazem o anexo como URL de CDN
+  // (`example.header_handle[0] = "https://scontent.whatsapp.net/..."`), não como
+  // id. URL não é referência válida para envio; devolve null para o chamador
+  // reenviar o binário.
   if (!/^\d+$/.test(bruto)) return null;
   const n = Number(bruto);
   return Number.isSafeInteger(n) ? n : null;
+}
+
+/**
+ * Sobe o binário do cabeçalho e devolve o `id` INTEIRO da Meta. Quando existe
+ * um `media_id` salvo no banco e ele é numérico, usa ele direto — sem upload
+ * desnecessário. O upload é o caminho de fallback para o `header_handle`
+ * alfanumérico/URL de templates criados direto na Meta e para o teste com
+ * anexo, que envia o binário em vez de um id.
+ */
+async function resolverIdMidia(params: {
+  mediaId?: string | null;
+  base64?: string | null;
+  nome?: string | null;
+  tipo?: string | null;
+}): Promise<number> {
+  const idSalvo = idMidiaNumerico(params.mediaId);
+  if (idSalvo != null) return idSalvo;
+  if (!params.base64) {
+    throw new Error(
+      "O anexo do cabeçalho não tem um ID válido para a Meta. Reenvie a imagem/PDF ao template e tente de novo.",
+    );
+  }
+  return metaService.subirMidiaParaId(
+    params.base64,
+    params.nome || "arquivo",
+    params.tipo || "image",
+  );
 }
 
 /**
@@ -166,39 +197,27 @@ export async function montarComponents(
       const formato = String(comp.format || "TEXT").toUpperCase();
 
       // HEADER de mídia sem `midia_id` salvo na linha: templates criados direto
-      // na Meta (fora do wizard) chegam pela sincronização com o id do anexo
-      // em `example.header_handle[0]`. Sem ler esse campo, o HEADER é omitido
-      // e a Meta responde 132012 "expected IMAGE, received UNKNOWN".
-      const midiaFallback =
-        anexo?.mediaId ??
-        String(comp.example?.header_handle?.[0] ?? "").trim() ??
-        "";
+      // na Meta (fora do wizard) chegam pela sincronização com o anexo em
+      // `example.header_handle[0]`. Sem ler esse campo, o HEADER é omitido e a
+      // Meta responde 132012 "expected IMAGE, received UNKNOWN". Esse campo pode
+      // vir como id numérico (raro) ou como URL de CDN — só o id serve.
+      const midiaFallback = String(comp.example?.header_handle?.[0] ?? "").trim();
+      const temAnexo = Boolean(anexo?.mediaId || anexo?.base64 || midiaFallback);
 
-      if (formato !== "TEXT" && midiaFallback) {
+      if (formato !== "TEXT" && temAnexo) {
         const tipoMidia = (anexo?.tipo === "document" || formato === "DOCUMENT")
           ? "document"
           : "image";
         // A Meta exige `image.id`/`document.id` como INTEIRO (ou null). O
         // `media_id` vem do banco como string e o `header_handle` da
-        // sincronização também — converte antes de montar o payload.
-        const idBruto = anexo?.mediaId ?? midiaFallback;
-        let idNumerico = idMidiaNumerico(idBruto);
-        if (idNumerico == null && anexo?.base64) {
-          // `header_handle` alfanumérico (template criado direto na Meta) não é
-          // referência válida: reenvia o binário e usa o id inteiro que a Meta
-          // devolver. Sem isso o envio sai com `id: null` e a Meta responde
-          // 132012 "expected IMAGE, received UNKNOWN".
-          idNumerico = await metaService.subirMidiaParaId(
-            anexo.base64,
-            anexo.nome || "arquivo",
-            anexo.tipo || "image",
-          );
-        }
-        if (idNumerico == null) {
-          throw new Error(
-            `O anexo do cabeçalho não tem um ID válido para a Meta. Reenvie a imagem/PDF ao template e tente de novo.`,
-          );
-        }
+        // sincronização também pode ser string (id ou URL) — resolve para
+        // inteiro aqui, reenviando o binário quando não há id válido.
+        const idNumerico = await resolverIdMidia({
+          mediaId: anexo?.mediaId ?? midiaFallback,
+          base64: anexo?.base64,
+          nome: anexo?.nome,
+          tipo: anexo?.tipo,
+        });
         const parameter: any = { type: tipoMidia, [tipoMidia]: { id: idNumerico } };
         if (tipoMidia === "document" && anexo?.nome) parameter.document.filename = anexo.nome;
         saida.push({ type: "header", parameters: [parameter] });
@@ -207,7 +226,7 @@ export async function montarComponents(
 
       // HEADER de mídia sem anexo nenhum: a Meta espera um componente `header`,
       // sem ele o envio responde 132012 "expected IMAGE, received UNKNOWN".
-      if (formato !== "TEXT" && !midiaFallback) {
+      if (formato !== "TEXT" && !temAnexo) {
         throw new Error(
           `O template tem um cabeçalho de ${formato.toLowerCase()}, mas nenhuma imagem ou PDF foi anexado. Adicione uma mídia ao template e tente de novo.`,
         );

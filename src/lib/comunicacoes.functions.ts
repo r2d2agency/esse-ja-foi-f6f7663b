@@ -691,11 +691,16 @@ export const enviarTesteFn = createServerFn({ method: "POST" })
       // usado: templates criados direto na Meta têm `header_handle` inválido
       // e o teste precisa de uma forma de enviar a imagem.
       const base64 = data.midia_base64 || undefined;
-      const midia = (template as any).midia_id || base64
+      const temAnexoNoTemplate = Boolean(
+        (template as any).midia_id || (template as any).midia_tipo,
+      );
+      const midia = temAnexoNoTemplate || base64
         ? {
-            tipo: (template as any).midia_tipo || data.midia_tipo,
+            // O binário do teste sobrepõe o `media_id` do template: o anexo salvo
+            // pode ser de outra imagem, e o `header_handle` da Meta pode ser URL.
+            tipo: (base64 ? data.midia_tipo : (template as any).midia_tipo) || "image",
             mediaId: (template as any).midia_id,
-            nome: (template as any).midia_nome || data.midia_nome,
+            nome: (base64 ? data.midia_nome : (template as any).midia_nome) || "arquivo",
             base64,
           }
         : null;
