@@ -144,12 +144,32 @@ export function montarComponents(
 
     if (tipo === "HEADER") {
       const formato = String(comp.format || "TEXT").toUpperCase();
-      if (anexo && formato !== "TEXT") {
-        const tipoMidia = anexo.tipo === "document" ? "document" : "image";
-        const parameter: any = { type: tipoMidia, [tipoMidia]: { id: anexo.mediaId } };
-        if (tipoMidia === "document" && anexo.nome) parameter.document.filename = anexo.nome;
+
+      // HEADER de mídia sem `midia_id` salvo na linha: templates criados direto
+      // na Meta (fora do wizard) chegam pela sincronização com o id do anexo
+      // em `example.header_handle[0]`. Sem ler esse campo, o HEADER é omitido
+      // e a Meta responde 132012 "expected IMAGE, received UNKNOWN".
+      const midiaFallback =
+        anexo?.mediaId ??
+        String(comp.example?.header_handle?.[0] ?? "").trim() ??
+        "";
+
+      if (formato !== "TEXT" && midiaFallback) {
+        const tipoMidia = (anexo?.tipo === "document" || formato === "DOCUMENT")
+          ? "document"
+          : "image";
+        const parameter: any = { type: tipoMidia, [tipoMidia]: { id: midiaFallback } };
+        if (tipoMidia === "document" && anexo?.nome) parameter.document.filename = anexo.nome;
         saida.push({ type: "header", parameters: [parameter] });
         continue;
+      }
+
+      // HEADER de mídia sem anexo nenhum: a Meta espera um componente `header`,
+      // sem ele o envio responde 132012 "expected IMAGE, received UNKNOWN".
+      if (formato !== "TEXT" && !midiaFallback) {
+        throw new Error(
+          `O template tem um cabeçalho de ${formato.toLowerCase()}, mas nenhuma imagem ou PDF foi anexado. Adicione uma mídia ao template e tente de novo.`,
+        );
       }
 
       // O texto do HEADER pode vir em `comp.text` (formato do wizard) ou em
