@@ -112,7 +112,7 @@ async function montarPayloadTemplate(payload: any) {
   const { montarComponents } = await import("@/db/meta-whatsapp.server");
   let componentes: any[];
   try {
-    componentes = montarComponents(template.conteudo, mapa);
+    componentes = await montarComponents(template.conteudo, mapa);
   } catch (e: any) {
     throw new Error(e?.message || "Preencha todas as variáveis do template.");
   }
@@ -424,7 +424,7 @@ export const iniciarConversaFn = createServerFn({ method: "POST" })
       const { montarComponents } = await import("@/db/meta-whatsapp.server");
       let componentes: any[];
       try {
-        componentes = montarComponents(template.conteudo, mapa);
+        componentes = await montarComponents(template.conteudo, mapa);
       } catch (e: any) {
         throw new Error(e?.message || "Preencha todas as variáveis do template.");
       }

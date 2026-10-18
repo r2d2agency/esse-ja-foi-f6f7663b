@@ -61,7 +61,7 @@ export async function processarEventoSistema(evento: string, contexto: any) {
       const midia = (auto as any).midia_id
         ? { tipo: (auto as any).midia_tipo, mediaId: (auto as any).midia_id, nome: (auto as any).midia_nome }
         : null;
-      const componentes = montarComponents(auto.template_conteudo, valores, midia);
+      const componentes = await montarComponents(auto.template_conteudo, valores, midia);
 
       // 5. Criar registro de execução e enviar para a fila Meta
       const resExec = await db.execute(sql`

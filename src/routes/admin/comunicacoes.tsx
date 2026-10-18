@@ -426,6 +426,15 @@ function ComunicacoesPage() {
   const [templateParaExcluir, setTemplateParaExcluir] = useState<any>(null);
   const [templateParaTeste, setTemplateParaTeste] = useState<any>(null);
   const [valoresTeste, setValoresTeste] = useState<string[]>([]);
+  // Anexo opcional do teste. Templates criados direto na Meta têm o
+  // `header_handle` alfanumérico, que a Meta não aceita como `image.id`; subir
+  // o binário na hora do teste resolve sem mexer no template.
+  const [midiaTeste, setMidiaTeste] = useState<{
+    base64: string;
+    nome: string;
+    tipo: string;
+    preview: string;
+  } | null>(null);
   const [buscaContato, setBuscaContato] = useState("");
   const [somenteElegiveis, setSomenteElegiveis] = useState(false);
   const [origemContatos, setOrigemContatos] = useState<"AMBOS" | "COMPRADORES" | "IMPORTADOS">(
@@ -845,6 +854,32 @@ function ComunicacoesPage() {
   // `valores` entra como parâmetro porque o botão da campanha já monta a lista na
   // hora do clique: depender do estado aqui lia o valor anterior ao set e o teste
   // saía com variável vazia.
+  const handleEscolherMidiaTeste = (file: File) => {
+    const tipo = file.type || "";
+    const ehImagem = tipo.startsWith("image/");
+    const ehPdf = tipo === "application/pdf";
+    if (!ehImagem && !ehPdf) {
+      toast.error("O cabeçalho aceita apenas imagem ou PDF.");
+      return;
+    }
+    if (file.size > 16 * 1024 * 1024) {
+      toast.error("O arquivo excede 16 MB (limite da Meta).");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const dataUrl = String(reader.result);
+      setMidiaTeste({
+        base64: dataUrl,
+        nome: file.name,
+        tipo: ehPdf ? "application/pdf" : tipo,
+        preview: ehImagem ? dataUrl : "",
+      });
+      toast.success(`${file.name} pronto para o teste.`);
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleEnviarTeste = async (valores: string[] = valoresTeste) => {
     const digitos = telefoneTeste.replace(/\D/g, "");
     if (digitos.length < 10 || digitos.length > 13) {
@@ -879,6 +914,11 @@ function ComunicacoesPage() {
           telefone: digitos,
           template_id: templateId,
           variaveis: valores,
+          // Anexo opcional: se o template tem HEADER de mídia sem id válido
+          // (criado direto na Meta), o binário é reenviado na hora do teste.
+          midia_base64: midiaTeste?.base64,
+          midia_nome: midiaTeste?.nome,
+          midia_tipo: midiaTeste?.tipo,
         },
       }),
       {
@@ -3216,6 +3256,7 @@ function ComunicacoesPage() {
                               // Values de outro template não servem: a ordem das
                               // variáveis pode ser diferente.
                               setValoresTeste([]);
+                              setMidiaTeste(null);
                             }}
                           >
                             <Send className="w-4 h-4" />
@@ -3238,7 +3279,15 @@ function ComunicacoesPage() {
             </div>
           </Card>
 
-          <Dialog open={!!templateParaTeste} onOpenChange={(v) => !v && setTemplateParaTeste(null)}>
+          <Dialog
+            open={!!templateParaTeste}
+            onOpenChange={(v) => {
+              if (!v) {
+                setTemplateParaTeste(null);
+                setMidiaTeste(null);
+              }
+            }}
+          >
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Testar template</DialogTitle>
@@ -3266,6 +3315,65 @@ function ComunicacoesPage() {
                   Só números. Ex: 55 + 11 + 9 + número.
                 </p>
               </div>
+              {templateParaTeste?.conteudo?.some(
+                (c: any) =>
+                  String(c.type || "").toUpperCase() === "HEADER" &&
+                  String(c.format || "TEXT").toUpperCase() !== "TEXT",
+              ) && (
+                <div className="space-y-2">
+                  <Label htmlFor="midia-teste">Imagem ou PDF do cabeçalho (opcional)</Label>
+                  <label className="block">
+                    <input
+                      id="midia-teste"
+                      type="file"
+                      accept="image/*,application/pdf"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleEscolherMidiaTeste(file);
+                        e.target.value = "";
+                      }}
+                    />
+                    <span className="inline-flex items-center gap-2 px-4 py-2 rounded-md border text-sm cursor-pointer hover:border-teal-500 transition-all">
+                      <Upload className="w-4 h-4" />
+                      {midiaTeste ? "Trocar anexo" : "Anexar imagem ou PDF"}
+                    </span>
+                  </label>
+                  {midiaTeste && (
+                    <div className="flex items-center gap-3 rounded-md border p-2">
+                      {midiaTeste.preview ? (
+                        <img
+                          src={midiaTeste.preview}
+                          alt="Prévia do anexo"
+                          className="h-12 w-12 rounded object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-12 w-12 items-center justify-center rounded bg-muted">
+                          <Upload className="h-5 w-5 text-muted-foreground" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="truncate text-sm font-medium">{midiaTeste.nome}</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {(midiaTeste.base64.length / 1024 / 1024).toFixed(1)} MB — vai no topo
+                          da mensagem
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setMidiaTeste(null)}
+                      >
+                        <Trash2 className="w-4 h-4" /> Remover
+                      </Button>
+                    </div>
+                  )}
+                  <p className="text-[11px] text-muted-foreground">
+                    Use quando o template veio da Meta com o cabeçalho sem imagem válida.
+                  </p>
+                </div>
+              )}
               <DialogFooter>
                 <Button variant="outline" onClick={() => setTemplateParaTeste(null)}>
                   Cancelar

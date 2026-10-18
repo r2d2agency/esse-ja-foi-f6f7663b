@@ -118,6 +118,21 @@ function componenteBotao(botao: any, posicao: number, valores: Record<string, st
 }
 
 /**
+ * O `image.id`/`document.id` que a Meta exige é INTEIRO (ou null). O `media_id`
+ * gravado no banco e o `example.header_handle[0]` da sincronização chegam como
+ * string, e a Meta rejeita string com
+ * "violated JSON schema constraint 'type' ... expected '[integer, null]'".
+ * Converte quando é numérico; devolve null quando não dá (id alfanumérico não
+ * é referência válida para envio).
+ */
+function idMidiaNumerico(valor: unknown): number | null {
+  const bruto = String(valor ?? "").trim();
+  if (!/^\d+$/.test(bruto)) return null;
+  const n = Number(bruto);
+  return Number.isSafeInteger(n) ? n : null;
+}
+
+/**
  * Monta os componentes de uma mensagem de template a partir do conteúdo gravado
  * e dos valores. A Meta exige um parameter para cada {{n}} do corpo — sem isso
  * a resposta é "template variable missing". Botões de URL com placeholder no
@@ -127,17 +142,22 @@ function componenteBotao(botao: any, posicao: number, valores: Record<string, st
  *
  * `midia` (opcional) é o anexo do cabeçalho: `{ tipo: "image"|"document",
  * mediaId, nome? }`. Sem ele o HEADER sai como texto puro.
+ *
+ * É async porque o `header_handle` que a Meta devolve para templates criados
+ * fora do wizard pode ser um id alfanumérico (não-inteiro) — a Meta rejeita o
+ * `image.id` com "violated JSON schema constraint 'type' ... expected
+ * '[integer, null]'". Nesse caso o chamador precisa subir o binário de novo.
  */
-export function montarComponents(
+export async function montarComponents(
   conteudo: any,
   valores: Record<string, string> = {},
-  midia: { tipo?: string; mediaId?: string; nome?: string } | null = null,
-): any[] {
+  midia: { tipo?: string; mediaId?: string; nome?: string; base64?: string } | null = null,
+): Promise<any[]> {
   const comps = componentesDoConteudo(conteudo);
   if (!comps.length) return [];
 
   const saida: any[] = [];
-  const anexo = midia?.mediaId ? midia : null;
+  const anexo = midia?.mediaId || midia?.base64 ? midia : null;
 
   for (const comp of comps) {
     const tipo = String(comp?.type || "").toUpperCase();
@@ -158,7 +178,28 @@ export function montarComponents(
         const tipoMidia = (anexo?.tipo === "document" || formato === "DOCUMENT")
           ? "document"
           : "image";
-        const parameter: any = { type: tipoMidia, [tipoMidia]: { id: midiaFallback } };
+        // A Meta exige `image.id`/`document.id` como INTEIRO (ou null). O
+        // `media_id` vem do banco como string e o `header_handle` da
+        // sincronização também — converte antes de montar o payload.
+        const idBruto = anexo?.mediaId ?? midiaFallback;
+        let idNumerico = idMidiaNumerico(idBruto);
+        if (idNumerico == null && anexo?.base64) {
+          // `header_handle` alfanumérico (template criado direto na Meta) não é
+          // referência válida: reenvia o binário e usa o id inteiro que a Meta
+          // devolver. Sem isso o envio sai com `id: null` e a Meta responde
+          // 132012 "expected IMAGE, received UNKNOWN".
+          idNumerico = await metaService.subirMidiaParaId(
+            anexo.base64,
+            anexo.nome || "arquivo",
+            anexo.tipo || "image",
+          );
+        }
+        if (idNumerico == null) {
+          throw new Error(
+            `O anexo do cabeçalho não tem um ID válido para a Meta. Reenvie a imagem/PDF ao template e tente de novo.`,
+          );
+        }
+        const parameter: any = { type: tipoMidia, [tipoMidia]: { id: idNumerico } };
         if (tipoMidia === "document" && anexo?.nome) parameter.document.filename = anexo.nome;
         saida.push({ type: "header", parameters: [parameter] });
         continue;
@@ -712,6 +753,26 @@ export class MetaWhatsAppService {
     });
 
     return { mediaId: parsed.id, tamanho: buffer.length };
+  }
+
+  /**
+   * Sobe um binário (base64 dataURL ou puro) para a Meta e devolve o `id`
+   * INTEIRO que os endpoints de mensagem esperam. O `media_id` gravado no banco
+   * é string; a Meta devolve inteiro. Templates criados direto na Meta podem
+   * trazer um `header_handle` alfanumérico, que não serve como referência —
+   * nesse caso o binário é reenviado e o id novo é o que entra no payload.
+   */
+  async subirMidiaParaId(
+    arquivoBase64: string,
+    nome: string,
+    tipo: string,
+  ): Promise<number> {
+    const { mediaId } = await this.uploadMedia(arquivoBase64, nome, tipo);
+    const id = idMidiaNumerico(mediaId);
+    if (id == null) {
+      throw new Error("A Meta devolveu um ID de mídia inesperado após o upload.");
+    }
+    return id;
   }
 
   private enviarMidia(tipo: "image" | "audio" | "document", to: string, mediaId: string, extras: Record<string, string>, operacao: string) {

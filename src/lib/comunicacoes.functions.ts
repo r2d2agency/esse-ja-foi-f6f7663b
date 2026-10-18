@@ -643,6 +643,12 @@ export const enviarTesteFn = createServerFn({ method: "POST" })
         telefone: z.string(),
         template_id: z.string().uuid(),
         variaveis: z.any(),
+        // Anexo opcional para o teste: templates criados direto na Meta têm o
+        // `header_handle` alfanumérico, que a Meta não aceita como `image.id`.
+        // Subir o binário na hora do teste resolve sem mexer no template.
+        midia_base64: z.string().optional(),
+        midia_nome: z.string().optional(),
+        midia_tipo: z.string().optional(),
       })
       .parse(data),
   )
@@ -681,17 +687,22 @@ export const enviarTesteFn = createServerFn({ method: "POST" })
       // does not match": ela conta o parâmetro do cabeçalho, nós não mandávamos.
       // O disparo da campanha já fazia isso (disparo-motor.server.ts); o teste
       // é que tinha esquecido.
-      const midia = (template as any).midia_id
+      // Mesmo sem `midia_id` no template, um `base64` enviado no teste deve ser
+      // usado: templates criados direto na Meta têm `header_handle` inválido
+      // e o teste precisa de uma forma de enviar a imagem.
+      const base64 = data.midia_base64 || undefined;
+      const midia = (template as any).midia_id || base64
         ? {
-            tipo: (template as any).midia_tipo,
+            tipo: (template as any).midia_tipo || data.midia_tipo,
             mediaId: (template as any).midia_id,
-            nome: (template as any).midia_nome,
+            nome: (template as any).midia_nome || data.midia_nome,
+            base64,
           }
         : null;
 
       let componentes: any[];
       try {
-        componentes = montarComponents(template.conteudo, mapa, midia);
+        componentes = await montarComponents(template.conteudo, mapa, midia);
       } catch (e: any) {
         // A mensagem de montarComponents fala em "mapeamento da campanha";
         // aqui o contexto é o teste avulso, então troca só o sujeito.
