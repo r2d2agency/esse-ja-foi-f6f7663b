@@ -122,6 +122,9 @@ function filtroProspects(c: CriterioPublico) {
 
   // `comprador_id IS NULL` é o que impede mandar convite para quem já se
   // cadastrou: quem já é comprador chega pela outra UNION.
+  // Quando uma tag está selecionada, a tag é a seleção — então inclui também
+  // contatos que já têm `comprador_id` (convertidos), pois a tag pode ter sido
+  // aplicada antes da conversão. Sem isso a fila nascia vazia.
   return sql`
     SELECT
       NULL::uuid AS comprador_id,
@@ -130,7 +133,7 @@ function filtroProspects(c: CriterioPublico) {
       m.telefone, m.email,
       m.cidade, m.uf
     FROM marketing_contatos m
-    WHERE m.comprador_id IS NULL
+    WHERE (${comTag} OR m.comprador_id IS NULL)
       AND m.status NOT IN ('descartado', 'convertido')
       AND btrim(coalesce(m.telefone, '')) <> ''
       ${
