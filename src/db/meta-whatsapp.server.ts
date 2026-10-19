@@ -304,11 +304,20 @@ export class MetaWhatsAppService {
    * Ordena os componentes na sequência que a Meta exige. `parameters` pertence
    * ao envio de mensagens, não ao cadastro do template; a API rejeita esse
    * campo no payload de criação com "Unexpected key parameters".
+   *
+   * `midiaId` é o `media_id` devolvido pelo upload do cabeçalho. A Meta exige um
+   * EXEMPLO do anexo no pedido de criação — `example.header_handle: [media_id]` —
+   * e recusa o template com o subcode 2388273 ("Modelos com o tipo de cabeçalho
+   * IMAGE precisam de um exemplo/modelo, mas não foi fornecido") quando ele
+   * falta. O `media_id` do `/media` da Meta é uma string; o `header_handle`
+   * aceita essa mesma string.
    */
-  private normalizarComponentes(components: any[] = []) {
+  private normalizarComponentes(components: any[] = [], midiaId?: string | null) {
     const ordenados = [...components].sort(
       (a, b) => (ORDEM_COMPONENTES[a?.type] ?? 99) - (ORDEM_COMPONENTES[b?.type] ?? 99),
     );
+
+    const id = String(midiaId || "").trim();
 
     // HEADER de mídia NÃO leva `parameters` no pedido de criação: a Meta
     // interpreta como template "sem mídia" e responde "invalid parameter".
@@ -322,7 +331,13 @@ export class MetaWhatsAppService {
         }
         if (c?.type === "HEADER" && String(c?.format || "").toUpperCase() !== "TEXT") {
           const { parameters, ...semParameters } = c;
-          return { ...semParameters, text: "" };
+          return {
+            ...semParameters,
+            text: "",
+            // O exemplo do anexo é obrigatório na criação. Sem ele a Meta
+            // recusa com 2388273.
+            ...(id ? { example: { header_handle: [id] } } : {}),
+          };
         }
         return c;
       })
@@ -621,7 +636,7 @@ export class MetaWhatsAppService {
       name: template.name,
       category: template.category,
       language: template.language || "pt_BR",
-      components: this.normalizarComponentes(template.components),
+      components: this.normalizarComponentes(template.components, template.midia_id),
     };
 
     const data = await this.fetchMeta(
