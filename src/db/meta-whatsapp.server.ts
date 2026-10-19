@@ -116,6 +116,7 @@ function componenteBotao(botao: any, posicao: number, valores: Record<string, st
   // Botão de URL estática (sem {{n}}) não leva componente algum no envio: a
   // Meta rejeita `parameters: []` com 132018 "Button does not require
   // parameters". Só manda componente quando há {{n}} na URL para preencher.
+  // (erro 132018 — o payload antigo mandava `"parameters": []` no botão)
   if (!maiorPlaceholder(url)) return null;
   const substitutos = parametersPara(url, valores, `botão de link ${posicao + 1}`);
   const urlResolvida = url.replace(/\{\{(\d+)\}\}/g, (_m, n) => {
