@@ -480,7 +480,9 @@ async function escalonarFila(
             AND proxima_tentativa_em IS NULL
         )
         UPDATE whatsapp_mensagens m
-        SET proxima_tentativa_em = to_timestamp(${ultimo / 1000} + (ord.pos * ${passoSeg})),
+        SET proxima_tentativa_em = to_timestamp(
+          ${ultimo / 1000}::double precision + (ord.pos::double precision * ${passoSeg}::double precision)
+        ),
             atualizado_em = now()
         FROM ord
         WHERE m.id = ord.id AND m.estado_fila = 'PENDENTE'
@@ -501,11 +503,13 @@ async function escalonarFila(
         AND estado_fila = 'PENDENTE'
         AND (
           proxima_tentativa_em IS NULL
-          OR proxima_tentativa_em < to_timestamp(${agoraSeg - passoSeg * 2000})
+          OR proxima_tentativa_em < to_timestamp(${agoraSeg - passoSeg * 2000}::double precision)
         )
     )
     UPDATE whatsapp_mensagens m
-    SET proxima_tentativa_em = to_timestamp(${inicio / 1000} + ((ord.pos - 1) * ${passoSeg})),
+    SET proxima_tentativa_em = to_timestamp(
+      ${inicio / 1000}::double precision + ((ord.pos - 1)::double precision * ${passoSeg}::double precision)
+    ),
         atualizado_em = now()
     FROM ord
     WHERE m.id = ord.id AND m.estado_fila = 'PENDENTE'
@@ -534,7 +538,9 @@ export async function reescalarFila(
       WHERE campanha_id = ${campanhaId}::uuid AND estado_fila = 'PENDENTE'
     )
     UPDATE whatsapp_mensagens m
-    SET proxima_tentativa_em = to_timestamp(${inicio} + ((ord.pos - 1) * ${passoSeg})),
+    SET proxima_tentativa_em = to_timestamp(
+      ${inicio}::double precision + ((ord.pos - 1)::double precision * ${passoSeg}::double precision)
+    ),
         atualizado_em = now()
     FROM ord
     WHERE m.id = ord.id AND m.estado_fila = 'PENDENTE'
