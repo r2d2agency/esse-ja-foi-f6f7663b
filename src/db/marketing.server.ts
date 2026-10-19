@@ -55,6 +55,9 @@ export async function listarMarketingContatos(filtro: MarketingFiltro = {}) {
   const status = filtro.status && filtro.status !== "todos" ? filtro.status : null;
   const whatsappStatus =
     filtro.whatsappStatus && filtro.whatsappStatus !== "todos" ? filtro.whatsappStatus : null;
+  // tagIds vazio ou ausente = sem filtro por tag. Sem essa checagem, a UI
+  // mandava [] e o EXISTS filtrava todos os contatos sem tag — importados
+  // sumiam da lista depois do commit a9ca9fc.
   const tagIds = Array.isArray(filtro.tagIds) ? filtro.tagIds.filter(Boolean) : [];
   const comFiltroTag = tagIds.length > 0;
   // O termo só existe quando há busca. Sem isso virava a string "%null%" e a
