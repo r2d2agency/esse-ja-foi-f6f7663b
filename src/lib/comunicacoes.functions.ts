@@ -213,7 +213,7 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
               ${data.janela_inicio || null},
               ${data.janela_fim || null},
               ${data.intervalo_minutos},
-              ${data.enviar_agora ? "AGUARDANDO" : "RASCUNHO"},
+              ${data.enviar_agora ? "AGUARDANDO" : data.agendado_para ? "AGENDADA" : "RASCUNHO"},
               ${data.agendado_para || null},
               ${JSON.stringify(data.mapeamento_variaveis ?? {})}::jsonb,
               ${data.canal_envio},
@@ -236,7 +236,7 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
               ${data.janela_inicio || null},
               ${data.janela_fim || null},
               ${data.intervalo_minutos},
-              ${data.enviar_agora ? "AGUARDANDO" : "RASCUNHO"},
+              ${data.enviar_agora ? "AGUARDANDO" : data.agendado_para ? "AGENDADA" : "RASCUNHO"},
               ${data.agendado_para || null},
               ${JSON.stringify(data.mapeamento_variaveis ?? {})}::jsonb,
               ${data.canal_envio},
@@ -345,6 +345,86 @@ export const processarDisparoAgoraFn = createServerFn({ method: "POST" }).handle
     return { ok: false, error: error?.message };
   }
 });
+
+/**
+ * "Disparar agora" numa campanha especifica: o pedido explicito do admin nao
+ * espera janela nem horario agendado. A campanha entra em PROCESSANDO na hora
+ * e a fila comeca a sair no ritmo definido (intervalo_minutos).
+ */
+export const dispararCampanhaAgoraFn = createServerFn({ method: "POST" })
+  .validator((data: any) => z.object({ id: z.string().uuid() }).parse(data))
+  .handler(async ({ data }) => {
+    try {
+      const { db: dbc } = await import("@/db/index");
+      const { processarDisparo } = await import("@/db/disparo-motor.server");
+      if (!dbc) throw new Error("Banco indisponivel.");
+
+      // Roteiro novo a partir de agora: o admin mandou sair, entao a fila
+      // precisa de horario proprio (a cada N minutos) a partir deste instante.
+      const camp = await dbc.execute(sql`
+        SELECT id, intervalo_minutos FROM whatsapp_campanhas WHERE id = ${data.id}::uuid
+      `);
+      const c: any = (camp as any[])[0];
+      if (!c) return { ok: false, error: "Campanha nao encontrada." };
+
+      const { reescalarFila } = await import("@/db/disparo-motor.server");
+      await reescalarFila(data.id, Number(c.intervalo_minutos ?? 5), new Date());
+
+      const resumo = await processarDisparo({ forcar: true, campanhaId: data.id });
+      return { ok: true, resumo };
+    } catch (error: any) {
+      return { ok: false, error: error?.message };
+    }
+  });
+
+/**
+ * "Agendar disparo": reagenda uma campanha existente. Grava o novo horario,
+ * volta a campanha para AGENDADA e reescala a fila - cada destinatario passa
+ * a ter horario proprio a partir do novo instante.
+ */
+export const agendarDisparoCampanhaFn = createServerFn({ method: "POST" })
+  .validator((data: any) =>
+    z
+      .object({
+        id: z.string().uuid(),
+        agendado_para: z.string().min(1),
+      })
+      .parse(data),
+  )
+  .handler(async ({ data }) => {
+    try {
+      const { db: dbc } = await import("@/db/index");
+      if (!dbc) throw new Error("Banco indisponivel.");
+
+      const quando = new Date(data.agendado_para);
+      if (Number.isNaN(quando.getTime())) {
+        return { ok: false, error: "Horario de agendamento invalido." };
+      }
+
+      const camp = await dbc.execute(sql`
+        SELECT id, intervalo_minutos FROM whatsapp_campanhas WHERE id = ${data.id}::uuid
+      `);
+      const c: any = (camp as any[])[0];
+      if (!c) return { ok: false, error: "Campanha nao encontrada." };
+
+      await dbc.execute(sql`
+        UPDATE whatsapp_campanhas
+        SET status = 'AGENDADA', agendado_para = ${quando.toISOString()}::timestamptz, atualizado_em = now()
+        WHERE id = ${data.id}::uuid
+      `);
+
+      const { reescalarFila } = await import("@/db/disparo-motor.server");
+      const roteirizadas = await reescalarFila(
+        data.id,
+        Number(c.intervalo_minutos ?? 5),
+        quando,
+      );
+
+      return { ok: true, roteirizadas, agendado_para: quando.toISOString() };
+    } catch (error: any) {
+      return { ok: false, error: error?.message };
+    }
+  });
 
 export const listarCampanhasFn = createServerFn({ method: "GET" }).handler(async () => {
   return db.listarCampanhas();

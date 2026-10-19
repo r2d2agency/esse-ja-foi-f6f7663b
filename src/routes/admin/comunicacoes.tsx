@@ -89,6 +89,8 @@ import {
   processarEnvioCampanhaFn,
   exemploDestinatarioFn,
   getEnviosCampanhaFn,
+  dispararCampanhaAgoraFn,
+  agendarDisparoCampanhaFn,
 } from "@/lib/comunicacoes.functions";
 import { listarMarketingTagsFn, listarGruposUazapiFn } from "@/lib/marketing.functions";
 import {
@@ -404,6 +406,8 @@ function ComunicacoesPage() {
   const getVeiculosAdmin = useServerFn(getVeiculosAdminFn);
   const processarEnvio = useServerFn(processarEnvioCampanhaFn);
   const getEnviosCampanha = useServerFn(getEnviosCampanhaFn);
+  const dispararCampanhaAgora = useServerFn(dispararCampanhaAgoraFn);
+  const agendarDisparoCampanha = useServerFn(agendarDisparoCampanhaFn);
   const getAutomacoes = useServerFn(listarAutomacoesFn);
   const salvarAutomacao = useServerFn(salvarAutomacaoFn);
   const getExecucoes = useServerFn(getExecucoesAutomacaoFn);
@@ -512,6 +516,9 @@ function ComunicacoesPage() {
   // Campanha aberta no detalhe de envios (contatos agendados, data e hora,
   // estado). A query em si vive abaixo, junto das outras.
   const [enviosCampanha, setEnviosCampanha] = useState<any>(null);
+  // Reagendamento de disparo: campanha alvo + data/hora escolhida.
+  const [agendarParaCampanha, setAgendarParaCampanha] = useState<any>(null);
+  const [agendarParaValor, setAgendarParaValor] = useState("");
   const [enviosCampabela, setEnviosCampabela] = useState<any[] | null>(null);
 
   // Canal de envio: Meta (template oficial) ou Uazapi (conexão nova — a única
@@ -804,6 +811,12 @@ function ComunicacoesPage() {
           // vazia e o motor marcava a campanha como concluída sem enviar nada.
           tag_ids: tagsSelecionadas,
           enviar_agora: enviarAgora,
+          // O datetime-local devolve hora local do navegador. Convertemos para
+          // ISO antes de mandar: se o servidor ler a string crua, o agendamento
+          // entra 3h antes (fuso do servidor) e a campanha dispara cedo.
+          agendado_para: novaCampanha.agendado_para
+            ? new Date(novaCampanha.agendado_para).toISOString()
+            : null,
           canal_envio: canalEnvio,
           grupos_alvo: canalEnvio === "UAZAPI" ? gruposAlvo : [],
         },
@@ -967,6 +980,58 @@ function ComunicacoesPage() {
       toast.success("Disparo processado.");
     } else {
       toast.error(res.error || "Erro ao processar o disparo.");
+    }
+  };
+
+  // "Disparar agora": o pedido do admin ignora a janela de trabalho e o
+  // horario agendado. A campanha entra em PROCESSANDO na hora e a fila comeca
+  // a sair no ritmo definido (a cada N minutos), com horario proprio por
+  // destinatario.
+  const handleDispararAgora = async (campanha: any) => {
+    try {
+      const res: any = await dispararCampanhaAgora({ data: { id: campanha.id } }).catch(
+        (e: any) => ({ ok: false, error: e?.message || String(e) }),
+      );
+      if (res?.ok === false) {
+        toast.error(res.error || "Erro ao disparar a campanha agora.");
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: ["wa-campanhas"] });
+      toast.success(`Disparo de "${campanha.nome}" iniciado.`);
+    } catch (err: any) {
+      toast.error(`Erro ao disparar: ${err.message}`);
+    }
+  };
+
+  // "Agendar disparo": reagenda a campanha e reescala a fila para o novo
+  // horario. A fila nasce como roteiro - cada destinatario com a hora em que sai.
+  const handleAgendarDisparo = async () => {
+    if (!agendarParaCampanha) return;
+    if (!agendarParaValor) {
+      toast.error("Escolha a data e a hora do disparo.");
+      return;
+    }
+    // O campo datetime-local devolve hora local do navegador (Brasilia). Sem
+    // converter, o servidor leria como UTC e o disparo sairia 3h antes.
+    const quando = new Date(agendarParaValor);
+    if (Number.isNaN(quando.getTime())) {
+      toast.error("Data e hora do disparo invalidas.");
+      return;
+    }
+    try {
+      const res: any = await agendarDisparoCampanha({
+        data: { id: agendarParaCampanha.id, agendado_para: quando.toISOString() },
+      }).catch((e: any) => ({ ok: false, error: e?.message || String(e) }));
+      if (res?.ok === false) {
+        toast.error(res.error || "Erro ao agendar o disparo.");
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: ["wa-campanhas"] });
+      setAgendarParaCampanha(null);
+      setAgendarParaValor("");
+      toast.success("Disparo agendado. A fila foi distribuida no novo ritmo.");
+    } catch (err: any) {
+      toast.error(`Erro ao agendar: ${err.message}`);
     }
   };
 
@@ -2335,7 +2400,22 @@ function ComunicacoesPage() {
                   <div className="flex gap-2">
                     {campanhaStep === 7 ? (
                       <>
-                        <Button variant="outline" onClick={() => handleSalvarCampanha(false)}>
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            // Agendar sem horário não tem sentido: a campanha
+                            // precisa de um instante para virar roteiro e
+                            // respeitar a janela de trabalho.
+                            if (!novaCampanha.agendado_para) {
+                              toast.error(
+                                "Escolha a data e a hora do disparo no passo de ritmo antes de agendar.",
+                              );
+                              setCampanhaStep(6);
+                              return;
+                            }
+                            handleSalvarCampanha(false);
+                          }}
+                        >
                           Agendar
                         </Button>
                         <Button
@@ -2492,11 +2572,33 @@ function ComunicacoesPage() {
                             )}
                             <Button
                               variant="ghost"
-                              size="icon"
-                              title="Disparar agora, sem esperar o próximo ciclo"
-                              onClick={() => handleProcessarAgora(campanha.id)}
+                              size="sm"
+                              title="Disparar agora, sem esperar a janela ou o proximo ciclo"
+                              disabled={
+                                campanha.status === "CONCLUIDA" ||
+                                campanha.status === "CANCELADA" ||
+                                campanha.status === "TEMPLATE_INDISPONIVEL"
+                              }
+                              onClick={() => handleDispararAgora(campanha)}
                             >
-                              <ChevronRight className="w-4 h-4" />
+                              <Zap className="w-3.5 h-3.5 mr-1" />
+                              Disparar agora
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              title="Agendar o disparo desta campanha"
+                              disabled={
+                                campanha.status === "CONCLUIDA" ||
+                                campanha.status === "TEMPLATE_INDISPONIVEL"
+                              }
+                              onClick={() => {
+                                setAgendarParaCampanha(campanha);
+                                setAgendarParaValor("");
+                              }}
+                            >
+                              <Clock className="w-3.5 h-3.5 mr-1" />
+                              Agendar
                             </Button>
                           </div>
                         </td>
@@ -2570,6 +2672,46 @@ function ComunicacoesPage() {
                   </div>
                 </CardContent>
               </Card>
+            )}
+
+            {/* Agendar o disparo de uma campanha que já existe. O novo horario
+                reescala a fila: cada destinatario passa a ter hora propria,
+                espacada pelo intervalo da campanha. */}
+            {agendarParaCampanha && (
+              <Dialog open onOpenChange={(v) => !v && setAgendarParaCampanha(null)}>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Agendar disparo</DialogTitle>
+                    <DialogDescription>
+                      {agendarParaCampanha.nome} — a fila sera redistribuida a partir do
+                      novo horario, a cada {agendarParaCampanha.intervalo_minutos ?? 5} min.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-2 py-2">
+                    <Label htmlFor="agendar-disparo-quando">Data e hora do disparo</Label>
+                    <Input
+                      id="agendar-disparo-quando"
+                      type="datetime-local"
+                      value={agendarParaValor}
+                      onChange={(e) => setAgendarParaValor(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Fora da janela de trabalho, o envio comeca na proxima abertura.
+                    </p>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setAgendarParaCampanha(null)}>
+                      Cancelar
+                    </Button>
+                    <Button
+                      className="bg-teal-600 font-bold hover:bg-teal-700"
+                      onClick={handleAgendarDisparo}
+                    >
+                      Agendar disparo
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             )}
           </div>
         </TabsContent>

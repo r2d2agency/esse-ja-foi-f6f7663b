@@ -37,12 +37,33 @@ function rowsOf(res: any): any[] {
   return [];
 }
 
-/** "08:00" → 8,aceito também null. */
+/**
+ * Fuso de referência da operação. A janela de trabalho ("das 8h às 18h") é
+ * sempre do horário de Brasília — avaliar no fuso do servidor (que em deploy
+ * costuma ser UTC) adiantava a janela em 3 horas e fazia a campanha "não
+ * disparar" dentro do próprio expediente.
+ */
+const FUSO_OPERACAO = "America/Sao_Paulo";
+
 function horaDe(valor: string | null | undefined): number | null {
   if (!valor) return null;
   const [h] = String(valor).split(":");
   const n = Number(h);
   return Number.isFinite(n) ? n : null;
+}
+
+/** Hora fracionária (ex.: 15.75 = 15h45) do instante no fuso da operação. */
+export function horaNaFuso(data: Date, fuso = FUSO_OPERACAO): number {
+  const partes = new Intl.DateTimeFormat("en-GB", {
+    timeZone: fuso,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(data);
+  const h = Number(partes.find((p) => p.type === "hour")?.value ?? "0");
+  const m = Number(partes.find((p) => p.type === "minute")?.value ?? "0");
+  const hh = h === 24 ? 0 : h;
+  return hh + m / 60;
 }
 
 /**
@@ -51,19 +72,35 @@ function horaDe(valor: string | null | undefined): number | null {
  */
 function dentroDaJanela(agora: Date, inicio: number | null, fim: number | null): boolean {
   if (inicio === null || fim === null) return true;
-  const h = agora.getHours() + agora.getMinutes() / 60;
+  const h = horaNaFuso(agora);
   if (inicio <= fim) return h >= inicio && h < fim;
   return h >= inicio || h < fim;
 }
 
-/** Primeiro instante de hoje dentro da janela — para adiar o que sobrou. */
-function proximaAbertura(inicio: number | null, fim: number | null): Date {
-  const agora = new Date();
-  if (inicio === null) return agora;
-  const alvo = new Date(agora);
-  alvo.setHours(Math.floor(inicio), Math.round((inicio % 1) * 60), 0, 0);
-  if (alvo <= agora) alvo.setDate(alvo.getDate() + 1);
-  return alvo;
+/**
+ * Próximo instante dentro da janela a partir de `base`. Brasília está em
+ * UTC-3 fixo (sem horário de verão desde 2019), então a diferença de relógio
+ * entre dois instantes é a diferença em horas.
+ */
+function proximaAbertura(
+  inicio: number | null,
+  fim: number | null,
+  base: Date = new Date(),
+): Date {
+  if (inicio === null || fim === null) return base;
+  if (dentroDaJanela(base, inicio, fim)) return base;
+  const h = horaNaFuso(base);
+  let horas: number;
+  if (inicio <= fim) {
+    // Janela normal: se ainda não abriu, faltam `inicio - h`; se já fechou,
+    // a próxima abertura é amanhã no mesmo horário.
+    horas = h < inicio ? inicio - h : 24 - h + inicio;
+  } else {
+    // Janela atravessando a meia-noite: fora dela só há o trecho entre o
+    // fim e o início, e a próxima abertura é hoje no `inicio`.
+    horas = inicio - h;
+  }
+  return new Date(base.getTime() + horas * 3600_000);
 }
 
 /**
@@ -97,7 +134,7 @@ async function reservarLote(campanhaId: string, workerId: string) {
       WHERE campanha_id = ${campanhaId}::uuid
         AND estado_fila = 'PENDENTE'
         AND (proxima_tentativa_em IS NULL OR proxima_tentativa_em <= now())
-      ORDER BY criado_em
+      ORDER BY COALESCE(proxima_tentativa_em, criado_em) ASC, criado_em ASC
       LIMIT ${LOTE}
       FOR UPDATE SKIP LOCKED
     )
@@ -392,14 +429,140 @@ async function atualizarContadores(campanhaId: string) {
   return c;
 }
 
-async function processarCampanha(campanha: any, workerId: string) {
+/**
+ * Escala a fila no tempo: cada destinatario ganha um horario proprio, espacado
+ * pelo `intervalo_minutos` da campanha. E o que transforma a fila em roteiro
+ * - "a cada 1 minuto" deixa de ser meta e passa a ser horario gravado, e o
+ * worker so reserva o que ja venceu o horario.
+ *
+ * A coluna `proxima_tentativa_em` guarda o roteiro; o backoff de falha reusa
+ * a mesma coluna, mas so em mensagens que ja sairam da fila (RESERVADA/FALHOU),
+ * entao os dois usos nao se atropelam.
+ *
+ * `base` e o instante do primeiro envio. Nulo = agora.
+ */
+async function escalonarFila(
+  campanhaId: string,
+  intervaloMin: number,
+  base?: Date | null,
+  opts: { reescalar?: boolean } = {},
+) {
+  const d = requireDb();
+  const passoSeg = Math.max(1, Number(intervaloMin) || 5) * 60;
+  const agora = new Date();
+  const agoraSeg = agora.getTime() / 1000;
+
+  const res = await d.execute(sql`
+    SELECT
+      count(*) FILTER (WHERE proxima_tentativa_em IS NOT NULL) AS roteirizadas,
+      min(proxima_tentativa_em) AS primeiro,
+      max(proxima_tentativa_em) AS ultimo
+    FROM whatsapp_mensagens
+    WHERE campanha_id = ${campanhaId}::uuid AND estado_fila = 'PENDENTE'
+  `);
+  const info = rowsOf(res)[0] ?? {};
+  const roteirizadas = Number(info.roteirizadas ?? 0);
+  const primeiro = info.primeiro ? new Date(info.primeiro).getTime() : null;
+  const ultimo = info.ultimo ? new Date(info.ultimo).getTime() : null;
+
+  // Roteiro ainda em dia: mantem os horarios e so encaixa os destinatarios
+  // novos (sem horario) no fim da trilha.
+  if (roteirizadas > 0 && primeiro !== null && !opts.reescalar) {
+    const atrasada = agora.getTime() - primeiro > passoSeg * 2000;
+    if (!atrasada) {
+      if (ultimo === null) return 0;
+      const res2 = await d.execute(sql`
+        WITH ord AS (
+          SELECT id, row_number() OVER (ORDER BY criado_em ASC, id ASC) AS pos
+          FROM whatsapp_mensagens
+          WHERE campanha_id = ${campanhaId}::uuid
+            AND estado_fila = 'PENDENTE'
+            AND proxima_tentativa_em IS NULL
+        )
+        UPDATE whatsapp_mensagens m
+        SET proxima_tentativa_em = to_timestamp(${ultimo / 1000} + (ord.pos * ${passoSeg})),
+            atualizado_em = now()
+        FROM ord
+        WHERE m.id = ord.id AND m.estado_fila = 'PENDENTE'
+        RETURNING m.id
+      `);
+      return rowsOf(res2).length;
+    }
+  }
+
+  // Sem roteiro, ou com roteiro atrasado (pausa longa, retomada): escala a
+  // partir de agora - senao tudo vence de uma vez quando a campanha volta.
+  const inicio = base ? base.getTime() : agora.getTime();
+  const res3 = await d.execute(sql`
+    WITH ord AS (
+      SELECT id, row_number() OVER (ORDER BY criado_em ASC, id ASC) AS pos
+      FROM whatsapp_mensagens
+      WHERE campanha_id = ${campanhaId}::uuid
+        AND estado_fila = 'PENDENTE'
+        AND (
+          proxima_tentativa_em IS NULL
+          OR proxima_tentativa_em < to_timestamp(${agoraSeg - passoSeg * 2000})
+        )
+    )
+    UPDATE whatsapp_mensagens m
+    SET proxima_tentativa_em = to_timestamp(${inicio / 1000} + ((ord.pos - 1) * ${passoSeg})),
+        atualizado_em = now()
+    FROM ord
+    WHERE m.id = ord.id AND m.estado_fila = 'PENDENTE'
+    RETURNING m.id
+  `);
+  return rowsOf(res3).length;
+}
+
+/**
+ * Reescala a fila inteira a partir de um instante — usado quando o admin
+ * reagenda a campanha: o roteiro antigo vira invalido e a fila precisa
+ * seguir o novo horario.
+ */
+export async function reescalarFila(
+  campanhaId: string,
+  intervaloMin: number,
+  base: Date,
+) {
+  const d = requireDb();
+  const passoSeg = Math.max(1, Number(intervaloMin) || 5) * 60;
+  const inicio = base.getTime() / 1000;
+  const res = await d.execute(sql`
+    WITH ord AS (
+      SELECT id, row_number() OVER (ORDER BY criado_em ASC, id ASC) AS pos
+      FROM whatsapp_mensagens
+      WHERE campanha_id = ${campanhaId}::uuid AND estado_fila = 'PENDENTE'
+    )
+    UPDATE whatsapp_mensagens m
+    SET proxima_tentativa_em = to_timestamp(${inicio} + ((ord.pos - 1) * ${passoSeg})),
+        atualizado_em = now()
+    FROM ord
+    WHERE m.id = ord.id AND m.estado_fila = 'PENDENTE'
+    RETURNING m.id
+  `);
+  return rowsOf(res).length;
+}
+
+/**
+ * Processa uma campanha.
+ *
+ * `forcar` é o "Disparar agora" da tela: ele ignora a janela de trabalho e o
+ * intervalo mínimo entre lotes — o pedido explícito do admin na hora. O resto
+ * do ritmo (intervalo por destinatário, fila) continua valendo.
+ */
+async function processarCampanha(
+  campanha: any,
+  workerId: string,
+  opts: { forcar?: boolean } = {},
+) {
   const d = requireDb();
   const agora = new Date();
+  const forcar = opts.forcar === true;
 
   const inicio = horaDe(campanha.janela_inicio);
   const fim = horaDe(campanha.janela_fim);
 
-  if (!dentroDaJanela(agora, inicio, fim)) {
+  if (!forcar && !dentroDaJanela(agora, inicio, fim)) {
     // Fora da janela: adia para a próxima abertura em vez de descartar, senão a
     // campanha perde os contatos que não couberam hoje.
     await d.execute(sql`
@@ -410,10 +573,15 @@ async function processarCampanha(campanha: any, workerId: string) {
   }
 
   const intervalo = Math.max(1, Number(campanha.intervalo_minutos ?? 5));
-  if (campanha.ultimo_envio_em) {
+  if (!forcar && campanha.ultimo_envio_em) {
     const desdeUltimo = (agora.getTime() - new Date(campanha.ultimo_envio_em).getTime()) / 60000;
     if (desdeUltimo < intervalo) return;
   }
+
+  // A fila materializada traz o horário de cada destinatário. Se ela ainda
+  // não foi escalonada (campanha antiga, fila criada antes do agendamento),
+  // escalona agora para que o ritmo passe a valer por mensagem.
+  await escalonarFila(campanha.id, intervalo, forcar ? agora : null);
 
   const lote = await reservarLote(campanha.id, workerId);
   if (!lote.length) {
@@ -450,7 +618,9 @@ async function processarCampanha(campanha: any, workerId: string) {
  * Uma passada do motor. Chamado pelo worker no servidor; seguro para rodar em
  * paralelo porque a reserva usa SKIP LOCKED.
  */
-export async function processarDisparo(opts: { apenasAgendadas?: boolean } = {}) {
+export async function processarDisparo(
+  opts: { apenasAgendadas?: boolean; forcar?: boolean; campanhaId?: string } = {},
+) {
   const d = requireDb();
 
   // O worker roda no boot, antes de qualquer request — e o migrateDb só roda em
@@ -464,12 +634,24 @@ export async function processarDisparo(opts: { apenasAgendadas?: boolean } = {})
 
   const workerId = `${process.pid}-${Date.now().toString(36)}`;
 
-  await d.execute(sql`
-    UPDATE whatsapp_campanhas
-    SET status = 'PROCESSANDO', iniciado_em = COALESCE(iniciado_em, now()), atualizado_em = now()
-    WHERE status IN ('AGENDADA', 'AGUARDANDO')
-      AND (agendado_para IS NULL OR agendado_para <= now())
-  `);
+  // "Disparar agora" (forcar): a campanha entra em PROCESSANDO na hora,
+  // ignorando o horario agendado e a janela de trabalho. E o pedido
+  // explicito do admin na tela - o motor so nao espera o proximo ciclo.
+  if (opts.forcar && opts.campanhaId) {
+    await d.execute(sql`
+      UPDATE whatsapp_campanhas
+      SET status = 'PROCESSANDO', iniciado_em = COALESCE(iniciado_em, now()), atualizado_em = now()
+      WHERE id = ${opts.campanhaId}::uuid
+        AND status NOT IN ('CANCELADA', 'CONCLUIDA', 'TEMPLATE_INDISPONIVEL')
+    `);
+  } else {
+    await d.execute(sql`
+      UPDATE whatsapp_campanhas
+      SET status = 'PROCESSANDO', iniciado_em = COALESCE(iniciado_em, now()), atualizado_em = now()
+      WHERE status IN ('AGENDADA', 'AGUARDANDO')
+        AND (agendado_para IS NULL OR agendado_para <= now())
+    `);
+  }
 
   const res = await d.execute(sql`
     SELECT c.*, t.meta_name, t.idioma, t.conteudo as template_conteudo, t.status as template_status,
@@ -518,7 +700,9 @@ export async function processarDisparo(opts: { apenasAgendadas?: boolean } = {})
       continue;
     }
     try {
-      await processarCampanha(campanha, workerId);
+      await processarCampanha(campanha, workerId, {
+        forcar: opts.forcar === true && campanha.id === opts.campanhaId,
+      });
     } catch (e: any) {
       console.error(`[disparo] falha na campanha ${campanha.id}:`, e?.message || e);
     }
@@ -756,6 +940,20 @@ export async function popularFilaCampanha(
     UPDATE whatsapp_campanhas SET total_destinatarios = ${inseridos}, atualizado_em = now()
     WHERE id = ${campanhaId}::uuid
   `);
+
+  // A fila nasce como roteiro, nao como lista solta: cada destinatario ganha
+  // o horario em que sai, espacado pelo intervalo da campanha. E o que permite
+  // a tela mostrar "quem sai as 15:46" e o worker segurar cada mensagem ate a
+  // hora dela.
+  if (inseridos > 0) {
+    const camp = await d.execute(sql`
+      SELECT agendado_para, intervalo_minutos FROM whatsapp_campanhas
+      WHERE id = ${campanhaId}::uuid
+    `);
+    const c = rowsOf(camp)[0] ?? {};
+    const base = c.agendado_para ? new Date(c.agendado_para) : new Date();
+    await reescalarFila(campanhaId, Number(c.intervalo_minutos ?? 5), base);
+  }
   if (inseridos === 0) {
     console.error(
       `[disparo] campanha ${campanhaId}: fila vazia (público=${publicos.length}, ignorados=${ignorados})` +
