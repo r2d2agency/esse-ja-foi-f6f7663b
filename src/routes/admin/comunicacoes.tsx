@@ -1085,7 +1085,16 @@ function ComunicacoesPage() {
     const reader = new FileReader();
     reader.onload = async () => {
       const dataUrl = String(reader.result);
-      setMidiaTemplate({ nome: file.name, tipo, tamanho: file.size, preview: ehImagem ? dataUrl : "" });
+      setMidiaTemplate({
+        nome: file.name,
+        // O estado guarda o tipo no formato da Meta ("image"/"document"), e não
+        // o MIME do arquivo. A tela compara com "document" para mostrar o
+        // ícone de PDF; com "application/pdf" o PDF caía no ramo da imagem e
+        // aparecia como imagem quebrada.
+        tipo: ehPdf ? "document" : "image",
+        tamanho: file.size,
+        preview: ehImagem ? dataUrl : "",
+      });
       toast.promise(
         (async () => {
           const res: any = await uploadMidia({ data: { arquivo: dataUrl, nome: file.name, tipo } });
@@ -2797,13 +2806,17 @@ function ComunicacoesPage() {
                     <Plus className="w-4 h-4 mr-2" /> Novo Template
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="max-w-2xl">
-                  <DialogHeader>
+                <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+                  <DialogHeader className="shrink-0">
                     <DialogTitle>Novo Template (Etapa {wizardStep}/7)</DialogTitle>
                     <DialogDescription>Crie um novo template aprovado pela Meta</DialogDescription>
                   </DialogHeader>
 
-                  <div className="py-4 space-y-4">
+                  {/* O conteúdo rola sozinho: o diálogo tem altura máxima e o
+                      rodapé fica fora da área de rolagem, senão um texto longo
+                      empurrava os botões para fora da tela, sem como chegar
+                      neles. */}
+                  <div className="py-4 space-y-4 overflow-y-auto flex-1 min-h-0 pr-1">
                     {wizardStep === 1 && (
                       <div className="space-y-4">
                         <div className="bg-amber-50 dark:bg-amber-900/10 p-4 rounded-lg border border-amber-100 dark:border-amber-900/50 flex gap-3">
@@ -2900,9 +2913,20 @@ function ComunicacoesPage() {
                               "border rounded-lg p-4 cursor-pointer hover:border-teal-500 transition-all",
                               midiaTemplate ? "bg-teal-50/50 border-teal-500" : "",
                             )}
-                            // Não avança o passo: escolher "Texto + Mídia" só
-                            // liga o campo de anexo, que aparece no passo 3.
-                            onClick={() => setWizardStep(3)}
+                            // "Texto + Mídia" precisa marcar o HEADER como mídia
+                            // ANTES de ir para o passo 3: o passo 3 decide entre
+                            // o campo de texto e o seletor de arquivo olhando o
+                            // `format` do HEADER. Sem isso, o HEADER continuava
+                            // como texto, o seletor de arquivo nunca aparecia e
+                            // a mídia saía como null.
+                            onClick={() => {
+                              const comps = newTemplate.components.filter(
+                                (c: any) => c.type !== "HEADER",
+                              );
+                              comps.unshift({ type: "HEADER", format: "IMAGE" });
+                              setNewTemplate({ ...newTemplate, components: comps });
+                              setWizardStep(3);
+                            }}
                           >
                             <h4 className="font-semibold flex items-center gap-2">
                               <Layout className="w-4 h-4" />
@@ -2927,23 +2951,54 @@ function ComunicacoesPage() {
                             String(header?.format || "TEXT").toUpperCase() !== "TEXT";
                           if (!headerEhMidia) {
                             return (
-                              <Input
-                                placeholder="Título em negrito no topo da mensagem"
-                                maxLength={60}
-                                // Sem `value`, o texto digitado some a cada re-render.
-                                // A ordem HEADER→BODY é garantida no envio, pelo
-                                // normalizarComponentes do meta-whatsapp.server.ts.
-                                value={header?.text || ""}
-                                onChange={(e) => {
-                                  const comps = newTemplate.components.filter(
-                                    (c: any) => c.type !== "HEADER",
-                                  );
-                                  if (e.target.value) {
-                                    comps.unshift({ type: "HEADER", text: e.target.value });
-                                  }
-                                  setNewTemplate({ ...newTemplate, components: comps });
-                                }}
-                              />
+                              <div className="space-y-3">
+                                <Input
+                                  placeholder="Título em negrito no topo da mensagem"
+                                  maxLength={60}
+                                  // Sem `value`, o texto digitado some a cada re-render.
+                                  // A ordem HEADER→BODY é garantida no envio, pelo
+                                  // normalizarComponentes do meta-whatsapp.server.ts.
+                                  value={header?.text || ""}
+                                  onChange={(e) => {
+                                    const comps = newTemplate.components.filter(
+                                      (c: any) => c.type !== "HEADER",
+                                    );
+                                    if (e.target.value) {
+                                      comps.unshift({ type: "HEADER", text: e.target.value });
+                                    }
+                                    setNewTemplate({ ...newTemplate, components: comps });
+                                  }}
+                                />
+                                {/* Atalho para a mesma escolha do passo 2: sem ele,
+                                    quem entra no passo 3 sem ter clicado em
+                                    "Texto + Mídia" não achava onde anexar a
+                                    imagem e a mídia saía como null. */}
+                                <label className="block">
+                                  <input
+                                    type="file"
+                                    accept="image/*,application/pdf"
+                                    className="hidden"
+                                    onChange={(e) => {
+                                      const file = e.target.files?.[0];
+                                      if (!file) return;
+                                      // Anexar é a mesma coisa que escolher
+                                      // "Texto + Mídia": o HEADER deixa de ser
+                                      // texto e passa a ser mídia.
+                                      const comps = newTemplate.components.filter(
+                                        (c: any) => c.type !== "HEADER",
+                                      );
+                                      comps.unshift({ type: "HEADER", format: "IMAGE" });
+                                      setNewTemplate({ ...newTemplate, components: comps });
+                                      handleEscolherMidiaTemplate(file);
+                                      e.target.value = "";
+                                    }}
+                                  />
+                                  <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border text-xs cursor-pointer hover:border-teal-500 transition-all">
+                                    <Upload className="w-3.5 h-3.5" />
+                                    Anexar imagem ou PDF no lugar do título
+                                  </span>
+                                </label>
+                              </div>
                             );
                           }
                           const arquivo = midiaTemplate;
@@ -3192,7 +3247,7 @@ function ComunicacoesPage() {
                     )}
                   </div>
 
-                  <DialogFooter>
+                  <DialogFooter className="shrink-0 border-t pt-4">
                     {wizardStep > 1 && (
                       <Button variant="outline" onClick={() => setWizardStep((s) => s - 1)}>
                         Voltar
