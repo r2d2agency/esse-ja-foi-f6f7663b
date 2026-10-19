@@ -89,6 +89,7 @@ import {
   processarEnvioCampanhaFn,
   exemploDestinatarioFn,
   getEnviosCampanhaFn,
+  getLogsCampanhaFn,
   dispararCampanhaAgoraFn,
   agendarDisparoCampanhaFn,
 } from "@/lib/comunicacoes.functions";
@@ -161,6 +162,13 @@ function varianteStatusEnvio(envio: any): any {
   if (["LIDA", "ENTREGUE", "ENVIADA"].includes(envio?.status)) return "success";
   if (["FALHOU", "REJEITADA"].includes(envio?.status)) return "destructive";
   return "warning";
+}
+/** Cor do evento no log da campanha: erro/bloqueio em vermelho, ok em verde. */
+function varianteAcaoLog(acao: string): any {
+  if (["ERRO", "BLOQUEADA"].includes(acao)) return "destructive";
+  if (["LOTE_ENVIADO", "CONCLUIDA", "DISPARO_FORCADO"].includes(acao)) return "success";
+  if (["FILA_VAZIA", "FORA_DA_JANELA", "AGUARDANDO_INTERVALO"].includes(acao)) return "warning";
+  return "secondary";
 }
 /** Quantas variáveis o corpo do template usa, na ordem {{1}}, {{2}}... */
 /** O conteúdo pode chegar como array de componentes (formato da Meta) ou como objeto com `components`. */
@@ -406,6 +414,7 @@ function ComunicacoesPage() {
   const getVeiculosAdmin = useServerFn(getVeiculosAdminFn);
   const processarEnvio = useServerFn(processarEnvioCampanhaFn);
   const getEnviosCampanha = useServerFn(getEnviosCampanhaFn);
+  const getLogsCampanha = useServerFn(getLogsCampanhaFn);
   const dispararCampanhaAgora = useServerFn(dispararCampanhaAgoraFn);
   const agendarDisparoCampanha = useServerFn(agendarDisparoCampanhaFn);
   const getAutomacoes = useServerFn(listarAutomacoesFn);
@@ -520,6 +529,7 @@ function ComunicacoesPage() {
   const [agendarParaCampanha, setAgendarParaCampanha] = useState<any>(null);
   const [agendarParaValor, setAgendarParaValor] = useState("");
   const [enviosCampabela, setEnviosCampabela] = useState<any[] | null>(null);
+  const [logsCampanha, setLogsCampanha] = useState<any[] | null>(null);
 
   // Canal de envio: Meta (template oficial) ou Uazapi (conexão nova — a única
   // rota que aceita grupos, já que a Meta não processa template para @g.us).
@@ -1041,10 +1051,13 @@ function ComunicacoesPage() {
   useEffect(() => {
     if (!enviosCampanha?.id) {
       setEnviosCampabela(null);
+      setLogsCampanha(null);
       return;
     }
     let ativo = true;
-    getEnviosCampanha(enviosCampanha.id)
+    // `useServerFn` chama a server fn direto no browser: por isso ela e POST
+    // (GET rodaria no cliente, sem DATABASE_URL, e voltaria vazia).
+    getEnviosCampanha({ data: enviosCampanha.id })
       .then((dados: any) => {
         if (!ativo) return;
         // O motor guarda o nome em `variaveis->>'contato.nome'`; a query já
@@ -1053,6 +1066,13 @@ function ComunicacoesPage() {
       })
       .catch(() => {
         if (ativo) setEnviosCampabela([]);
+      });
+    getLogsCampanha({ data: enviosCampanha.id })
+      .then((dados: any) => {
+        if (ativo) setLogsCampanha(dados ?? []);
+      })
+      .catch(() => {
+        if (ativo) setLogsCampanha([]);
       });
     return () => {
       ativo = false;
@@ -2667,8 +2687,48 @@ function ComunicacoesPage() {
                             </td>
                           </tr>
                         ))}
+                        {!enviosCampabela?.length && (
+                          <tr>
+                            <td
+                              colSpan={6}
+                              className="px-3 py-6 text-center text-muted-foreground"
+                            >
+                              Nenhum contato na fila desta campanha.
+                            </td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
+                  </div>
+
+                  {/* Log do motor: o que a campanha esta fazendo (ou por que
+                      nao esta). Sem isso a tela so mostrava "0 contato(s) na
+                      fila" e nao dava nenhuma pista do motivo. */}
+                  <div className="mt-4 border rounded-lg overflow-hidden">
+                    <div className="bg-slate-50 border-b px-3 py-2 text-xs font-medium text-muted-foreground">
+                      Log da campanha ({logsCampanha?.length ?? 0} evento(s))
+                    </div>
+                    <div className="max-h-72 overflow-y-auto divide-y">
+                      {(logsCampanha ?? []).map((log: any) => (
+                        <div key={log.id} className="px-3 py-2 text-xs flex gap-3">
+                          <span className="text-muted-foreground whitespace-nowrap">
+                            {new Date(log.criado_em).toLocaleString()}
+                          </span>
+                          <Badge
+                            variant={varianteAcaoLog(log.acao)}
+                            className="text-[10px] shrink-0"
+                          >
+                            {log.acao}
+                          </Badge>
+                          <span className="text-foreground">{log.detalhe || "—"}</span>
+                        </div>
+                      ))}
+                      {!logsCampanha?.length && (
+                        <div className="px-3 py-6 text-center text-muted-foreground">
+                          Nenhum evento registrado ainda.
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </CardContent>
               </Card>

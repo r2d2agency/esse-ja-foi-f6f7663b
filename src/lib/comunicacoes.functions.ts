@@ -247,6 +247,20 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
           `);
       const campanhaId = (criado as any[])[0].id;
 
+      const { registrarLogCampanha } = await import("../db/logs-campanha.server");
+      await registrarLogCampanha({
+        campanhaId,
+        acao: "CRIADA",
+        detalhe: `Campanha "${nomeCampanha}" criada com status ${data.enviar_agora ? "AGUARDANDO" : data.agendado_para ? "AGENDADA" : "RASCUNHO"}.`,
+        payload: {
+          canal_envio: data.canal_envio,
+          janela_inicio: data.janela_inicio,
+          janela_fim: data.janela_fim,
+          intervalo_minutos: data.intervalo_minutos,
+          agendado_para: data.agendado_para ?? null,
+        },
+      });
+
       // Grupo é destino, não contato: a fila nasce com uma linha por grupo e
       // o telefone é o próprio id do grupo — assim o worker não precisa de
       // um público resolvido para essa campanha.
@@ -419,6 +433,14 @@ export const agendarDisparoCampanhaFn = createServerFn({ method: "POST" })
         Number(c.intervalo_minutos ?? 5),
         quando,
       );
+
+      const { registrarLogCampanha } = await import("../db/logs-campanha.server");
+      await registrarLogCampanha({
+        campanhaId: data.id,
+        acao: "REAGENDADA",
+        detalhe: `Disparo reagendado para ${quando.toISOString()}. ${roteirizadas} mensagem(ns) reescalonada(s).`,
+        payload: { agendado_para: quando.toISOString(), roteirizadas },
+      });
 
       return { ok: true, roteirizadas, agendado_para: quando.toISOString() };
     } catch (error: any) {
@@ -682,10 +704,26 @@ export const getCampanhaDetalhesFn = createServerFn({ method: "GET" })
  * depois. O nome vem de `variaveis->>'contato.nome'` (onde o motor guarda o
  * contato resolvido) com fallback para a tabela de perfis.
  */
-export const getEnviosCampanhaFn = createServerFn({ method: "GET" })
+/**
+ * POST aqui é de propósito: TanStack Start executa `createServerFn` GET no
+ * navegador, onde `DATABASE_URL` não existe. Como `useServerFn` chama a função
+ * direto, uma fn GET que toca o banco sempre voltava vazio — por isso a lista
+ * de contatos da campanha nunca aparecia ("0 contato(s) na fila").
+ */
+export const getEnviosCampanhaFn = createServerFn({ method: "POST" })
   .validator((id: string) => z.string().uuid().parse(id))
   .handler(async ({ data: id }) => {
     return db.listarEnviosCampanha(id);
+  });
+
+/** Trilha de eventos do motor para uma campanha (log por campanha). */
+export const getLogsCampanhaFn = createServerFn({ method: "POST" })
+  .validator((id: string) => z.string().uuid().parse(id))
+  .handler(async ({ data: id }) => {
+    const { ensureComunicacoesSchema } = await import("../db/comunicacoes.server");
+    await ensureComunicacoesSchema();
+    const { listarLogsCampanha } = await import("../db/logs-campanha.server");
+    return listarLogsCampanha(id);
   });
 
 export const processarEnvioCampanhaFn = createServerFn({ method: "POST" })

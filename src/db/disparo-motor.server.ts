@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { db } from "./index";
 import { metaService, MetaApiError, montarComponents } from "./meta-whatsapp.server";
 import { resolverPublico, normalizarParaMeta, type CriterioPublico } from "./publico.server";
+import { registrarLogCampanha } from "./logs-campanha.server";
 
 /**
  * Motor de disparo em dripping.
@@ -575,13 +576,31 @@ async function processarCampanha(
       UPDATE whatsapp_campanhas SET status = 'AGUARDANDO', atualizado_em = now()
       WHERE id = ${campanha.id}::uuid
     `);
+    await registrarLogCampanha({
+      campanhaId: campanha.id,
+      acao: "FORA_DA_JANELA",
+      detalhe: `Fora da janela de trabalho (${horaDe(campanha.janela_inicio)}-${horaDe(campanha.janela_fim)}). Reagendado para a proxima abertura.`,
+      payload: {
+        janela_inicio: campanha.janela_inicio,
+        janela_fim: campanha.janela_fim,
+        agora: agora.toISOString(),
+      },
+    });
     return;
   }
 
   const intervalo = Math.max(1, Number(campanha.intervalo_minutos ?? 5));
   if (!forcar && campanha.ultimo_envio_em) {
     const desdeUltimo = (agora.getTime() - new Date(campanha.ultimo_envio_em).getTime()) / 60000;
-    if (desdeUltimo < intervalo) return;
+    if (desdeUltimo < intervalo) {
+      await registrarLogCampanha({
+        campanhaId: campanha.id,
+        acao: "AGUARDANDO_INTERVALO",
+        detalhe: `Aguardando o intervalo de ${intervalo} min entre lotes (ultimo envio ha ${Math.floor(desdeUltimo)} min).`,
+        payload: { intervalo_minutos: intervalo, desde_ultimo_min: Math.floor(desdeUltimo) },
+      });
+      return;
+    }
   }
 
   // A fila materializada traz o horário de cada destinatário. Se ela ainda
@@ -597,16 +616,35 @@ async function processarCampanha(
         UPDATE whatsapp_campanhas SET status = 'CONCLUIDA', concluido_em = now(), atualizado_em = now()
         WHERE id = ${campanha.id}::uuid
       `);
+      await registrarLogCampanha({
+        campanhaId: campanha.id,
+        acao: "CONCLUIDA",
+        detalhe: "Fila sem pendencias: campanha concluida.",
+        payload: c,
+      });
+    } else {
+      await registrarLogCampanha({
+        campanhaId: campanha.id,
+        acao: "FILA_VAZIA",
+        detalhe: `Nenhuma mensagem reservada nesta rodada (${c.restantes ?? 0} restante(s) na fila).`,
+        payload: c,
+      });
     }
     return;
   }
 
   let enviados = 0;
   let falhas = 0;
+  const erros: string[] = [];
   for (const msg of lote) {
     const r = await enviarComRetry(msg, campanha);
     if (r.ok) enviados++;
-    else falhas++;
+    else {
+      falhas++;
+      if (erros.length < 5) {
+        erros.push(`${msg.telefone}: ${r.mensagem || "erro desconhecido"}`);
+      }
+    }
   }
 
   await d.execute(sql`
@@ -618,6 +656,15 @@ async function processarCampanha(
     WHERE id = ${campanha.id}::uuid
   `);
   await atualizarContadores(campanha.id);
+
+  await registrarLogCampanha({
+    campanhaId: campanha.id,
+    acao: falhas > 0 ? "ERRO" : "LOTE_ENVIADO",
+    detalhe:
+      `Lote de ${lote.length} mensagens processado: ${enviados} enviado(s), ${falhas} falha(s).` +
+      (erros.length ? ` Erros: ${erros.join(" | ")}` : ""),
+    payload: { lote: lote.length, enviados, falhas, erros },
+  });
 }
 
 /**
@@ -650,6 +697,12 @@ export async function processarDisparo(
       WHERE id = ${opts.campanhaId}::uuid
         AND status NOT IN ('CANCELADA', 'CONCLUIDA', 'TEMPLATE_INDISPONIVEL')
     `);
+    await registrarLogCampanha({
+      campanhaId: opts.campanhaId,
+      acao: "DISPARO_FORCADO",
+      detalhe: "Disparo acionado manualmente (Disparar agora): janela e intervalo ignorados.",
+      payload: { campanhaId: opts.campanhaId },
+    });
   } else {
     await d.execute(sql`
       UPDATE whatsapp_campanhas
@@ -683,6 +736,12 @@ export async function processarDisparo(
       console.warn(
         `[disparo] campanha "${campanha.nome}" bloqueada: canal META sem template`,
       );
+      await registrarLogCampanha({
+        campanhaId: campanha.id,
+        acao: "BLOQUEADA",
+        detalhe: "Campanha no canal META sem template vinculado.",
+        payload: { canal_envio: campanha.canal_envio, template_id: campanha.template_id },
+      });
       resumo.bloqueadas++;
       continue;
     }
@@ -702,6 +761,12 @@ export async function processarDisparo(
       console.warn(
         `[disparo] campanha "${campanha.nome}" bloqueada: template em ${campanha.template_status}`,
       );
+      await registrarLogCampanha({
+        campanhaId: campanha.id,
+        acao: "BLOQUEADA",
+        detalhe: `Template em ${campanha.template_status}: a Meta so aceita template APPROVED.`,
+        payload: { template_status: campanha.template_status, template_id: campanha.template_id },
+      });
       resumo.bloqueadas++;
       continue;
     }
@@ -711,6 +776,12 @@ export async function processarDisparo(
       });
     } catch (e: any) {
       console.error(`[disparo] falha na campanha ${campanha.id}:`, e?.message || e);
+      await registrarLogCampanha({
+        campanhaId: campanha.id,
+        acao: "ERRO",
+        detalhe: `Erro no motor: ${String(e?.message || e).slice(0, 900)}`,
+        payload: { erro: String(e?.message || e).slice(0, 900) },
+      });
     }
   }
 
@@ -848,6 +919,13 @@ export async function criarCampanhaDisparoGrupos(opts: {
     ) WHERE id = ${campanhaId}::uuid
   `);
 
+  await registrarLogCampanha({
+    campanhaId,
+    acao: "CRIADA",
+    detalhe: `Campanha de grupos criada com ${opts.grupos_alvo.length} grupo(s) alvo.`,
+    payload: { grupos_alvo: opts.grupos_alvo, canal_envio: "UAZAPI" },
+  });
+
   return { campanhaId };
 }
 
@@ -966,6 +1044,21 @@ export async function popularFilaCampanha(
         (primeiroErro ? ` — primeiro erro: ${primeiroErro}` : ""),
     );
   }
+  await registrarLogCampanha({
+    campanhaId,
+    acao: inseridos > 0 ? "FILA_MONTADA" : "FILA_VAZIA",
+    detalhe:
+      inseridos > 0
+        ? `Fila montada com ${inseridos} destinatario(s) de ${publicos.length} elegivel(is).`
+        : `Fila vazia: nenhum dos ${publicos.length} elegivel(is) entrou (${ignorados} ignorado(s)).` +
+          (primeiroErro ? ` Primeiro erro: ${primeiroErro}` : ""),
+    payload: {
+      inseridos,
+      ignorados,
+      elegiveis: publicos.length,
+      erro: primeiroErro,
+    },
+  });
   return { inseridos, ignorados, total: publicos.length, erro: primeiroErro };
 }
 
