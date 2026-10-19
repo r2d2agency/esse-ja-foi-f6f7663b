@@ -112,9 +112,14 @@ function componenteBotao(botao: any, posicao: number, valores: Record<string, st
   // Formato do wizard: { type: "URL", url: "https://...{{7}}" }
   const url = String(botao?.url || "");
   if (!url) return null;
-  const parameters = parametersPara(url, valores, `botão de link ${posicao + 1}`);
   const indice = Number.isInteger(botao?.index) ? botao.index : posicao;
-  return { type: "button", sub_type: "url", index: indice, parameters };
+  // Botão de URL não leva `parameters` no envio: a Meta rejeita com
+  // "Button at index 0 of type Url does not require parameters" (132018).
+  // O placeholder {{n}} na URL é resolvido na hora de montar o link.
+  const urlResolvida = parametersPara(url, valores, `botão de link ${posicao + 1}`)
+    .map((p: any) => p?.text ?? "")
+    .join("");
+  return { type: "button", sub_type: "url", index: indice, url: urlResolvida };
 }
 
 /**
