@@ -179,7 +179,9 @@ function PreCadastroComprador() {
   return (
     <div className="min-h-screen bg-slate-50 px-6 py-10">
       <div className="mx-auto w-full max-w-2xl">
-        <LogoEsf height={30} className="justify-center" />
+        <div className="flex justify-center">
+          <LogoEsf height={56} />
+        </div>
 
         <div className="mt-6 text-center">
           <h1 className="text-3xl font-black tracking-tight text-slate-900">

@@ -23,7 +23,10 @@ export const listarMarketingContatosFn = createServerFn({ method: "POST" })
       const { listarMarketingContatos } = await import("@/db/marketing.server");
       return { ok: true as const, data: await listarMarketingContatos(data) };
     } catch (e: any) {
-      return { ok: false as const, message: e.message };
+      // Log no servidor: sem ele, a falha da query virava lista vazia na tela
+      // e ninguém sabia que o banco tinha recusado a consulta.
+      console.error("[marketing] Falha ao listar contatos:", e);
+      return { ok: false as const, message: e?.message || "Falha ao listar contatos." };
     }
   });
 

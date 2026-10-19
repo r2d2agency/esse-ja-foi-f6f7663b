@@ -14,7 +14,8 @@ import {
   User as UserIcon,
   CheckCircle2,
   Clock,
-  AlertTriangle
+  AlertTriangle,
+  Link2
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -89,12 +90,29 @@ function CompradoresPage() {
           <p className="text-slate-500 font-medium">Gestão de interessados, investidores e lojistas.</p>
         </div>
 
-        <Dialog open={preOpen} onOpenChange={setPreOpen}>
-          <DialogTrigger asChild>
-            <Button className="h-11 rounded-xl bg-teal-600 font-bold hover:bg-teal-700">
-              <UserPlus className="mr-2 h-4 w-4" /> Pré-cadastrar comprador
-            </Button>
-          </DialogTrigger>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            className="h-11 rounded-xl font-bold"
+            onClick={async () => {
+              const url = `${window.location.origin}/comprador/pre-cadastro`;
+              try {
+                await navigator.clipboard.writeText(url);
+                toast.success("Link de pré-cadastro copiado.");
+              } catch {
+                toast.error("Não foi possível copiar. O link é: " + url);
+              }
+            }}
+          >
+            <Link2 className="mr-2 h-4 w-4" /> Link pré-cadastro (copiar)
+          </Button>
+
+          <Dialog open={preOpen} onOpenChange={setPreOpen}>
+            <DialogTrigger asChild>
+              <Button className="h-11 rounded-xl bg-teal-600 font-bold hover:bg-teal-700">
+                <UserPlus className="mr-2 h-4 w-4" /> Pré-cadastrar comprador
+              </Button>
+            </DialogTrigger>
           <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
             <DialogHeader>
               <DialogTitle className="text-lg font-black uppercase">Pré-cadastro de comprador</DialogTitle>
@@ -120,6 +138,7 @@ function CompradoresPage() {
             </div>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       <div className="flex flex-col gap-4">
