@@ -317,7 +317,15 @@ async function enviarComRetry(msg: any, campanha: any): Promise<ResultadoEnvio> 
       const midia = campanha.midia_id
         ? { tipo: campanha.midia_tipo, mediaId: campanha.midia_id, nome: campanha.midia_nome }
         : null;
-      const componentes = montarComponents(campanha.template_conteudo, msg.variaveis ?? {}, midia);
+      // `montarComponents` e async: sem o `await` o payload ia para a Meta
+      // como `components: {}` (o Promise vira objeto no JSON.stringify) e ela
+      // respondia 132012 "Parameter format does not match format in the
+      // created template" — o mesmo template passava no teste, que tem await.
+      const componentes = await montarComponents(
+        campanha.template_conteudo,
+        msg.variaveis ?? {},
+        midia,
+      );
       const r = await metaService.enviarMensagem(
         normalizarParaMeta(msg.telefone),
         campanha.meta_name,
