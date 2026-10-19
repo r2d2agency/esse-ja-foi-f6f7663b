@@ -707,6 +707,10 @@ export async function popularFilaCampanha(
   const contexto = await contextoVeiculo((criterio as any).veiculoId);
   let inseridos = 0;
   let ignorados = 0;
+  // O motivo da primeira falha vai junto do retorno: sem isso a tela só
+  // dizia "nenhum contato entrou na fila" e o log do servidor ficava com um
+  // aviso genérico por linha.
+  let primeiroErro: string | null = null;
 
   for (const p of publicos) {
     try {
@@ -739,7 +743,11 @@ export async function popularFilaCampanha(
       `);
       if (Array.isArray(res) && res.length > 0) inseridos++;
     } catch (e: any) {
-      console.warn(`[disparo] não enfileirou ${p.telefone}: ${e?.message || e}`);
+      console.error(
+        `[disparo] não enfileirou ${p.telefone} (campanha ${campanhaId}):`,
+        e?.message || e,
+      );
+      if (!primeiroErro) primeiroErro = e?.message || String(e);
       ignorados++;
     }
   }
@@ -748,7 +756,13 @@ export async function popularFilaCampanha(
     UPDATE whatsapp_campanhas SET total_destinatarios = ${inseridos}, atualizado_em = now()
     WHERE id = ${campanhaId}::uuid
   `);
-  return { inseridos, ignorados, total: publicos.length };
+  if (inseridos === 0) {
+    console.error(
+      `[disparo] campanha ${campanhaId}: fila vazia (público=${publicos.length}, ignorados=${ignorados})` +
+        (primeiroErro ? ` — primeiro erro: ${primeiroErro}` : ""),
+    );
+  }
+  return { inseridos, ignorados, total: publicos.length, erro: primeiroErro };
 }
 
 export { proximaAbertura };

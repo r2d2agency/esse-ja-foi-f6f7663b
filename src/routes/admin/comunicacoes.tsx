@@ -818,9 +818,14 @@ function ComunicacoesPage() {
             const enviados = res.inseridos ?? 0;
             // A estimativa prometia contatos e a fila entrou vazia: avisar o
             // motivo evita a campanha nascer "concluída" sem ter enviado nada.
+            // O motivo técnico vem do servidor (`res.erro`) — sem ele a tela
+            // só dizia "confira a tag" mesmo quando o problema era outro.
             if (enviados === 0) {
               toast.warning(
-                "Nenhum contato entrou na fila. Confira se a tag tem prospects com telefone e que não estejam convertidos ou descartados."
+                res.erro
+                  ? `Nenhum contato entrou na fila. Motivo: ${res.erro}`
+                  : "Nenhum contato entrou na fila. Confira se a tag tem prospects com telefone e que não estejam convertidos ou descartados.",
+                { duration: 12000 }
               );
             }
             if (enviarAgora) {

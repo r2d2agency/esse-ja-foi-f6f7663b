@@ -224,6 +224,16 @@ export async function ensureComunicacoesSchema(silent = true) {
       sql`CREATE INDEX IF NOT EXISTS idx_wa_mensagens_status ON whatsapp_mensagens(status);`,
     );
 
+    // A coluna `variaveis` é a que o motor de disparo grava (INSERT em
+    // whatsapp_mensagens.variaveis) e que a tela de detalhe da campanha lê
+    // (`variaveis->'contato'->>'nome'`). Ela não existia: só havia `payload`,
+    // que ninguém escreve. O INSERT falhava com "column variaveis does not
+    // exist", o catch engolia o erro e a campanha ficava com fila vazia.
+    await d.execute(sql`
+      ALTER TABLE whatsapp_mensagens
+        ADD COLUMN IF NOT EXISTS variaveis jsonb DEFAULT '{}'::jsonb;
+    `);
+
     // 6b. Fila de disparo: o estado do worker em coluna separada do status de
     // entrega. O webhook da Meta grava 'DELIVERED'/'READ'/'FAILED' em `status`,
     // que antes era o mesmo campo da fila — os dois vocabulários se atropelavam.
