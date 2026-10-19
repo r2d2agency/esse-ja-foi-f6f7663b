@@ -65,6 +65,7 @@ import {
   Trash2,
   XCircle,
   Zap,
+  Link2,
 } from "lucide-react";
 import MapaContatos from "@/components/shared/MapaContatos";
 import {
@@ -155,6 +156,11 @@ function MarketingPage() {
       }),
   });
   const contatos = res?.data || [];
+  // A server fn devolve {ok:false, message} quando a query falha. Sem surfar
+  // isso, a tela mostrava "Nenhum contato na base" — como se o banco tivesse
+  // vazio — e ninguém entendia o que estava quebrado.
+  const erroLista =
+    res && res.ok === false ? res.message || "Falha ao carregar os contatos." : null;
 
   // A lista de etiquetas é um catálogo, não um resultado de filtro: fica em
   // chave própria para não refetch a cada digitação na busca.
@@ -560,6 +566,20 @@ function MarketingPage() {
               <Tag className="mr-2 h-4 w-4" /> Tag para {selecionados.length} selecionado(s)
             </Button>
           )}
+          <Button
+            variant="outline"
+            onClick={async () => {
+              const url = `${window.location.origin}/comprador/pre-cadastro`;
+              try {
+                await navigator.clipboard.writeText(url);
+                toast.success("Link da campanha copiado.");
+              } catch {
+                toast.error("Não foi possível copiar. O link é: " + url);
+              }
+            }}
+          >
+            <Link2 className="mr-2 h-4 w-4" /> Copiar link da campanha
+          </Button>
           <Button onClick={() => setImportOpen(true)}>
             <Upload className="mr-2 h-4 w-4" /> Importar lista
           </Button>
@@ -863,6 +883,17 @@ function MarketingPage() {
                 <TableRow>
                   <TableCell colSpan={10} className="text-center py-10">
                     <Loader2 className="h-6 w-6 animate-spin mx-auto text-slate-400" />
+                  </TableCell>
+                </TableRow>
+              ) : erroLista ? (
+                <TableRow>
+                  <TableCell colSpan={10} className="text-center py-10">
+                    <p className="font-semibold text-red-600">
+                      Não foi possível carregar os contatos.
+                    </p>
+                    <p className="text-xs text-slate-500 mt-1 break-words">
+                      {erroLista}
+                    </p>
                   </TableCell>
                 </TableRow>
               ) : contatos.length === 0 && importados.length > 0 ? (

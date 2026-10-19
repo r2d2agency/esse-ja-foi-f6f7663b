@@ -143,13 +143,17 @@ function LoginPage() {
 
           <div className="mt-6 text-center text-sm text-slate-500">
             <p>Ainda não possui conta?</p>
-            <div className="mt-2 flex justify-center gap-4">
+            <div className="mt-2 flex flex-wrap items-center justify-center gap-4">
               <Link to="/cadastro" className="font-semibold text-teal-700 underline-offset-4 hover:underline">
                 Vendedor
               </Link>
               <span className="text-slate-300">|</span>
               <Link to="/comprador/cadastro" className="font-semibold text-teal-700 underline-offset-4 hover:underline">
                 Comprador
+              </Link>
+              <span className="text-slate-300">|</span>
+              <Link to="/comprador/pre-cadastro" className="font-semibold text-teal-700 underline-offset-4 hover:underline">
+                Lojista da campanha
               </Link>
             </div>
           </div>

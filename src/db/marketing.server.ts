@@ -55,11 +55,24 @@ export async function listarMarketingContatos(filtro: MarketingFiltro = {}) {
   const status = filtro.status && filtro.status !== "todos" ? filtro.status : null;
   const whatsappStatus =
     filtro.whatsappStatus && filtro.whatsappStatus !== "todos" ? filtro.whatsappStatus : null;
-  // tagIds vazio ou ausente = sem filtro por tag. Sem essa checagem, a UI
-  // mandava [] e o EXISTS filtrava todos os contatos sem tag — importados
-  // sumiam da lista depois do commit a9ca9fc.
+  // tagIds vazio ou ausente = sem filtro por tag.
   const tagIds = Array.isArray(filtro.tagIds) ? filtro.tagIds.filter(Boolean) : [];
   const comFiltroTag = tagIds.length > 0;
+  // A cláusula de tag só entra montada quando existe tag. Enviar um array
+  // vazio para o Postgres (`ANY($1::uuid[])` com `{}`) faz o driver não
+  // conseguir inferir o tipo do parâmetro e a consulta inteira é rejeitada —
+  // a tela ficava vazia sem mostrar o erro. A mesma lista de contatos volta
+  // quando o filtro de tag é removido, o que confirma que os dados estão lá.
+  const clausulaTag = comFiltroTag
+    ? sql`AND EXISTS (
+        SELECT 1 FROM marketing_contato_tags ft
+        WHERE ft.contato_id = c.id
+          AND ft.tag_id IN (${sql.join(
+            tagIds.map((t) => sql`${t}::uuid`),
+            sql.raw(", "),
+          )})
+      )`
+    : sql``;
   // O termo só existe quando há busca. Sem isso virava a string "%null%" e a
   // query não achava ninguém — a lista aparecia vazia mesmo com a base cheia.
   const termo = busca ? `%${busca}%` : null;
@@ -77,13 +90,7 @@ export async function listarMarketingContatos(filtro: MarketingFiltro = {}) {
       AND (${tipo}::text IS NULL OR c.tipo = ${tipo}) AND (${status}::text IS NULL OR c.status = ${status})
       AND (${whatsappStatus}::text IS NULL OR c.whatsapp_status = ${whatsappStatus})
       AND (${filtro.somenteComCoordenadas !== true} OR (c.latitude IS NOT NULL AND c.longitude IS NOT NULL))
-      AND (
-        ${comFiltroTag} = false
-        OR EXISTS (
-          SELECT 1 FROM marketing_contato_tags ft
-          WHERE ft.contato_id = c.id AND ft.tag_id = ANY(${tagIds}::uuid[])
-        )
-      )
+      ${clausulaTag}
     GROUP BY c.id ORDER BY c.criado_em DESC`);
   return rowsOf(rows);
 }

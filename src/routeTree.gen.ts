@@ -54,6 +54,7 @@ import { Route as CompradorInteressesRouteImport } from './routes/comprador/inte
 import { Route as CompradorNegociacoesRouteImport } from './routes/comprador/negociacoes'
 import { Route as CompradorPerfilRouteImport } from './routes/comprador/perfil'
 import { Route as CompradorCadastroRouteImport } from './routes/comprador_.cadastro'
+import { Route as CompradorPreCadastroRouteImport } from './routes/comprador_.pre-cadastro'
 import { Route as VTokenRouteImport } from './routes/v.$token'
 import { Route as VeiculosIndexRouteImport } from './routes/veiculos.index'
 import { Route as VeiculosSlugRouteImport } from './routes/veiculos.$slug'
@@ -322,6 +323,11 @@ const CompradorCadastroRoute = CompradorCadastroRouteImport.update({
   path: '/comprador/cadastro',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CompradorPreCadastroRoute = CompradorPreCadastroRouteImport.update({
+  id: '/comprador_/pre-cadastro',
+  path: '/comprador/pre-cadastro',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const VTokenRoute = VTokenRouteImport.update({
   id: '/v/$token',
   path: '/v/$token',
@@ -582,6 +588,7 @@ export interface FileRoutesByFullPath {
   '/comprador/negociacoes': typeof CompradorNegociacoesRoute
   '/comprador/perfil': typeof CompradorPerfilRoute
   '/comprador/cadastro': typeof CompradorCadastroRoute
+  '/comprador/pre-cadastro': typeof CompradorPreCadastroRoute
   '/v/$token': typeof VTokenRoute
   '/veiculos/$slug': typeof VeiculosSlugRoute
   '/vendedor/boas-vindas': typeof VendedorBoasVindasRoute
@@ -666,6 +673,7 @@ export interface FileRoutesByTo {
   '/comprador/negociacoes': typeof CompradorNegociacoesRoute
   '/comprador/perfil': typeof CompradorPerfilRoute
   '/comprador/cadastro': typeof CompradorCadastroRoute
+  '/comprador/pre-cadastro': typeof CompradorPreCadastroRoute
   '/v/$token': typeof VTokenRoute
   '/veiculos/$slug': typeof VeiculosSlugRoute
   '/vendedor/boas-vindas': typeof VendedorBoasVindasRoute
@@ -756,6 +764,7 @@ export interface FileRoutesById {
   '/comprador/negociacoes': typeof CompradorNegociacoesRoute
   '/comprador/perfil': typeof CompradorPerfilRoute
   '/comprador_/cadastro': typeof CompradorCadastroRoute
+  '/comprador_/pre-cadastro': typeof CompradorPreCadastroRoute
   '/v/$token': typeof VTokenRoute
   '/veiculos/$slug': typeof VeiculosSlugRoute
   '/vendedor/boas-vindas': typeof VendedorBoasVindasRoute
@@ -847,6 +856,7 @@ export interface FileRouteTypes {
     | '/comprador/negociacoes'
     | '/comprador/perfil'
     | '/comprador/cadastro'
+    | '/comprador/pre-cadastro'
     | '/v/$token'
     | '/veiculos/$slug'
     | '/vendedor/boas-vindas'
@@ -931,6 +941,7 @@ export interface FileRouteTypes {
     | '/comprador/negociacoes'
     | '/comprador/perfil'
     | '/comprador/cadastro'
+    | '/comprador/pre-cadastro'
     | '/v/$token'
     | '/veiculos/$slug'
     | '/vendedor/boas-vindas'
@@ -1020,6 +1031,7 @@ export interface FileRouteTypes {
     | '/comprador/negociacoes'
     | '/comprador/perfil'
     | '/comprador_/cadastro'
+    | '/comprador_/pre-cadastro'
     | '/v/$token'
     | '/veiculos/$slug'
     | '/vendedor/boas-vindas'
@@ -1083,6 +1095,7 @@ export interface RootRouteChildren {
   VistoriadorRoute: typeof VistoriadorRouteWithChildren
   CTokenRoute: typeof CTokenRoute
   CompradorCadastroRoute: typeof CompradorCadastroRoute
+  CompradorPreCadastroRoute: typeof CompradorPreCadastroRoute
   VTokenRoute: typeof VTokenRoute
   ApiPublicUploadRoute: typeof ApiPublicUploadRoute
   ApiPublicArquivoIdRoute: typeof ApiPublicArquivoIdRoute
@@ -1406,6 +1419,13 @@ declare module '@tanstack/react-router' {
       path: '/comprador/cadastro'
       fullPath: '/comprador/cadastro'
       preLoaderRoute: typeof CompradorCadastroRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/comprador_/pre-cadastro': {
+      id: '/comprador_/pre-cadastro'
+      path: '/comprador/pre-cadastro'
+      fullPath: '/comprador/pre-cadastro'
+      preLoaderRoute: typeof CompradorPreCadastroRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/v/$token': {
@@ -1939,6 +1959,7 @@ const rootRouteChildren: RootRouteChildren = {
   VistoriadorRoute: VistoriadorRouteWithChildren,
   CTokenRoute: CTokenRoute,
   CompradorCadastroRoute: CompradorCadastroRoute,
+  CompradorPreCadastroRoute: CompradorPreCadastroRoute,
   VTokenRoute: VTokenRoute,
   ApiPublicUploadRoute: ApiPublicUploadRoute,
   ApiPublicArquivoIdRoute: ApiPublicArquivoIdRoute,
