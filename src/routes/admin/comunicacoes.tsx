@@ -189,6 +189,27 @@ function componentesDoTemplate(template: any): any[] {
 }
 
 /**
+ * Template com cabeçalho de mídia que ainda não tem binário local.
+ *
+ * A Meta devolve o HEADER de mídia como `example.header_handle` — uma URL —
+ * e nunca como `image.id`. Esse URL não serve como mídia no envio: o
+ * `montarComponents` precisa do `media_id` que a Meta emite no upload.
+ * Templates criados direto no WhatsApp Manager chegam assim, e sem o arquivo
+ * local o disparo morre com o erro 132012. O aviso aponta o problema antes
+ * que a campanha quebre.
+ */
+function precisaSubirCabecalho(template: any): boolean {
+  const comps = componentesDoTemplate(template);
+  const header = comps.find((c: any) => String(c?.type || "").toUpperCase() === "HEADER");
+  if (!header) return false;
+  const formato = String(header?.format || "").toUpperCase();
+  const ehMidia = ["IMAGE", "VIDEO", "DOCUMENT"].includes(formato);
+  if (!ehMidia) return false;
+  // Sem mídia local e sem `media_id` válido, o HEADER não pode ser montado.
+  return !template?.midia_arquivo_id && !template?.midia_id;
+}
+
+/**
  * Conta os placeholders {{n}} do corpo **e** das urls de botão: a numeração
  * corre nos dois, então um template com 6 variáveis no corpo e uma no link
  * precisa de 7 campos — contar só o corpo deixaria o do botão sem input.
@@ -2136,6 +2157,11 @@ function ComunicacoesPage() {
                                   {rotuloStatus(template?.status)}
                                 </Badge>
                               )}
+                              {aprovado && precisaSubirCabecalho(template) && (
+                                <p className="text-[10px] text-amber-700 mt-2">
+                                  Falta anexar o cabeçalho (imagem/PDF) deste template.
+                                </p>
+                              )}
                             </div>
                           );
                         })}
@@ -3777,7 +3803,15 @@ function ComunicacoesPage() {
                   )}
                   {listaTemplates.map((t: any) => (
                     <tr key={t.id} className="border-b">
-                      <td className="px-4 py-3">{t.nome_interno}</td>
+                      <td className="px-4 py-3">
+                        <div>{t.nome_interno}</div>
+                        {precisaSubirCabecalho(t) && (
+                          <p className="text-[10px] text-amber-700 mt-1 max-w-[240px]">
+                            Cabeçalho de imagem/PDF pendente: anexe o arquivo (ícone de clipe) para
+                            este template poder ser usado no disparo.
+                          </p>
+                        )}
+                      </td>
                       <td className="px-4 py-3">{t.categoria}</td>
                       <td className="px-4 py-3">
                         <Badge variant={varianteStatus(t.status)}>{rotuloStatus(t.status)}</Badge>
@@ -4595,6 +4629,11 @@ function ComunicacoesPage() {
                               <Badge variant={varianteStatus(t?.status)}>
                                 {rotuloStatus(t?.status)}
                               </Badge>
+                              {precisaSubirCabecalho(t) && (
+                                <p className="text-[10px] text-amber-700 mt-1">
+                                  Falta anexar o cabeçalho (imagem/PDF) deste template.
+                                </p>
+                              )}
                             </CardContent>
                           </Card>
                           );
