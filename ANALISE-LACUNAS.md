@@ -300,9 +300,15 @@ Cada request admin dispara um `fetch` a um endpoint local com payload do veícul
 (`src/db/leilao.server.ts:34-45`) tem `comprador_id`. A query sempre lança, e o `safe()`
 (`src/db/dashboard.server.ts:8-16`) engole o erro devolvendo `[]`.
 
-**Correção:** trocar por `b.comprador_id = ${compradorId}::uuid`.
+**Correção aplicada:** `JOIN profiles p ON p.id = b.comprador_id`, com
+`max(b.valor) FILTER (WHERE lower(p.email) = lower(${email}))` para o lance do próprio
+comprador e `max(b.valor)` para o maior lance do lote.
 **Risco:** baixo — a query nunca funcionou; a tela só passa a mostrar dados reais.
-**Atenção:** a feature pode nunca ter sido testada com dados; valide na vitrine.
+**Atenção:** `dashboardCompradorFn` / `meusLances` **não são consumidos por nenhuma rota
+hoje** (o `/admin` usa `admin-dashboard.server.ts`, que tem contadores próprios). A API foi
+corrigida mesmo assim, mas **falta um consumidor** no painel do comprador.
+
+
 
 ### A2. Indicador "leilões ativos" sempre 0
 > ✅ **Fechado (2026-10-20)** — `leiloesAbertos()` e `indicadoresAdmin()` agora filtram
@@ -314,7 +320,8 @@ Cada request admin dispara um `fetch` a um endpoint local com payload do veícul
 Conta `leiloes WHERE upper(status)='ABERTO'`, mas os status reais são
 `RASCUNHO / AGENDADO / ATIVO / PRORROGADO / ENCERRADO / PAUSADO / CANCELADO`.
 
-**Correção:** contar `status IN ('ATIVO','PRORROGADO')`.
+**Correção aplicada:** contar `status IN ('ATIVO','PRORROGADO')` — em
+`indicadoresAdmin()` **e** em `leiloesAbertos()`, que tinha o mesmo filtro errado.
 **Risco:** baixo — só o número passa a ser correto.
 
 ### A3. Contrato com data errada por fuso
