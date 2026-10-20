@@ -25,6 +25,12 @@ dist-ssr
 .env.*
 !.env.example
 
+# Arquivos de debug/inspeção local com credenciais
+.dbg/
+
+# Ambiente de debug local — carrega credenciais
+.dbg/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
