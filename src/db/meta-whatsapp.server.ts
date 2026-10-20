@@ -15,6 +15,75 @@ const ORDEM_COMPONENTES: Record<string, number> = {
 };
 
 /**
+ * Grava/atualiza o template da Meta usando `meta_name` como chave lógica.
+ *
+ * NÃO usa `ON CONFLICT (meta_name)`: essa sintaxe exige uma restrição UNIQUE
+ * na coluna, e bancos antigos (criados antes da coluna nascer com UNIQUE) não
+ * têm essa constraint — o `ON CONFLICT` estourava com "there is no unique or
+ * exclusion constraint matching the ON CONFLICT specification" e o template
+ * nunca era gravado. Aqui a atualização é feita por UPDATE + INSERT, que
+ * funciona com ou sem índice único.
+ *
+ * Regras de merge (iguais às do antigo ON CONFLICT):
+ * - `status` sempre vem da Meta (é a fonte da verdade).
+ * - `conteudo` NÃO é sobrescrito: o wizard grava no formato de criação
+ *   (HEADER/BODY/FOOTER/BUTTONS maiúsculo, com buttons[] e format) e a Meta
+ *   devolve o formato de envio (minúsculo, com parameters[]). Sobrescrever
+ *   quebra o montarComponents e a Meta responde 132012.
+ * - `midia_*` são preservadas quando já existem: sem `midia_id` o HEADER de
+ *   mídia some no envio.
+ */
+export async function upsertTemplateDaMeta(t: any, nome: string) {
+  const status = normalizarStatusTemplate(t?.status) || "PENDING";
+  const motivoRecusa = t?.status === "REJECTED" ? (t?.reason ?? null) : null;
+
+  if (!db) return;
+
+  const atualizado = await db.execute(sql`
+    UPDATE whatsapp_templates SET
+      status = ${status},
+      meta_id = COALESCE(${t?.id ?? null}, meta_id),
+      categoria = COALESCE(${t?.category ?? null}, categoria),
+      idioma = COALESCE(${t?.language ?? null}, idioma),
+      motivo_recusa = ${motivoRecusa},
+      midia_id = COALESCE(midia_id, ${t?.midia_id ?? null}),
+      midia_tipo = COALESCE(midia_tipo, ${t?.midia_tipo ?? null}),
+      midia_nome = COALESCE(midia_nome, ${t?.midia_nome ?? null}),
+      midia_arquivo_id = COALESCE(midia_arquivo_id, ${t?.midia_arquivo_id ?? null}),
+      ultima_sincronizacao = now()
+    WHERE meta_name = ${nome}
+    RETURNING id
+  `);
+
+  if ((rowsOf(atualizado) as any[]).length > 0) return;
+
+  await db.execute(sql`
+    INSERT INTO whatsapp_templates (
+      meta_id,
+      nome_interno,
+      meta_name,
+      categoria,
+      idioma,
+      status,
+      conteudo,
+      motivo_recusa,
+      ultima_sincronizacao
+    )
+    VALUES (
+      ${t?.id ?? null},
+      ${nome},
+      ${nome},
+      ${t?.category ?? null},
+      ${t?.language ?? null},
+      ${status},
+      ${JSON.stringify(t?.components ?? [])}::jsonb,
+      ${motivoRecusa},
+      now()
+    )
+  `);
+}
+
+/**
  * Erro da API da Meta preservando o `code`, que é o que separa "tente de novo
  * depois" de "esse contato nunca vai receber". Antes o código era descartado e o
  * motor de disparo só via a mensagem em inglês.
@@ -672,57 +741,7 @@ export class MetaWhatsAppService {
         continue;
       }
       try {
-        if (db)
-          await db.execute(sql`
-          INSERT INTO whatsapp_templates (
-            meta_id,
-            nome_interno,
-            meta_name,
-            categoria,
-            idioma,
-            status,
-            conteudo,
-            motivo_recusa,
-            ultima_sincronizacao
-          )
-          VALUES (
-            ${t.id ?? null},
-            ${nome},
-            ${nome},
-            ${t.category ?? null},
-            ${t.language ?? null},
-            ${normalizarStatusTemplate(t.status) || "PENDING"},
-            ${JSON.stringify(t.components ?? [])}::jsonb,
-            ${t.status === "REJECTED" ? (t.reason ?? null) : null},
-            now()
-          )
-          ON CONFLICT (meta_name) DO UPDATE SET
-            status = EXCLUDED.status,
-            -- O nome interno é o rótulo que o usuário deu ao template no wizard:
-            -- a Meta não conhece esse nome, então sobrescrevê-lo faria a tela
-            -- mostrar o meta_name no lugar do rótulo escolhido.
-            meta_id = COALESCE(EXCLUDED.meta_id, whatsapp_templates.meta_id),
-            categoria = COALESCE(EXCLUDED.categoria, whatsapp_templates.categoria),
-            idioma = COALESCE(EXCLUDED.idioma, whatsapp_templates.idioma),
-            -- NÃO sobrescrever conteudo: o wizard grava no formato de criação
-            -- (HEADER/BODY/FOOTER/BUTTONS maiúsculo, com buttons[] e format).
-            -- A Meta devolve o formato de envio (minúsculo, com parameters[] e
-            -- sem url). Sobrescrever quebra o montarComponents, que espera o
-            -- formato de criação — e a Meta responde 132012.
-            -- O motivo da recusa só vale enquanto o status é REJECTED. Sem
-            -- limpar, um template que foi rejeitado e depois reenviado continuaria
-            -- exibindo a razão antiga na tela.
-            motivo_recusa = ${t.status === "REJECTED" ? (t.reason ?? null) : null},
-            -- Preservar as colunas midia_* quando o template já existe: o ON CONFLICT
-            -- não as repõe, então um template com imagem perdia a referência à mídia
-            -- depois de sincronizado. Sem midia_id, o HEADER de mídia some no envio
-            -- e a Meta responde 132012.
-            midia_id = COALESCE(whatsapp_templates.midia_id, EXCLUDED.midia_id),
-            midia_tipo = COALESCE(whatsapp_templates.midia_tipo, EXCLUDED.midia_tipo),
-            midia_nome = COALESCE(whatsapp_templates.midia_nome, EXCLUDED.midia_nome),
-            midia_arquivo_id = COALESCE(whatsapp_templates.midia_arquivo_id, EXCLUDED.midia_arquivo_id),
-            ultima_sincronizacao = now();
-        `);
+        if (db) await upsertTemplateDaMeta(t, nome);
         salvos++;
       } catch (e: any) {
         console.warn(`[Meta] falha ao gravar o template "${nome}" na sincronização:`, e?.message || e);
@@ -756,40 +775,51 @@ export class MetaWhatsAppService {
     // template órfão do lado da Meta. Grava de qualquer forma: o nome
     // (`meta_name`) é a chave, e a sincronização preenche o `meta_id` depois.
     if (db) {
-      await db.execute(sql`
-        INSERT INTO whatsapp_templates (
-          meta_id,
-          nome_interno,
-          meta_name,
-          categoria,
-          idioma,
-          status,
-          conteudo,
-          midia_id,
-          midia_tipo,
-          midia_nome,
-          midia_arquivo_id,
-          ultima_sincronizacao
-        )
-        VALUES (
-          ${data?.id ?? null},
-          ${template.nome_interno || template.name},
-          ${template.name},
-          ${template.category},
-          ${template.language || "pt_BR"},
-          'PENDING',
-          ${JSON.stringify(template.components)}::jsonb,
-          ${template.midia_id ?? null},
-          ${template.midia_tipo ?? null},
-          ${template.midia_nome ?? null},
-          ${template.midia_arquivo_id ?? null},
-          now()
-        )
-        ON CONFLICT (meta_name) DO UPDATE SET
-          status = EXCLUDED.status,
-          meta_id = COALESCE(EXCLUDED.meta_id, whatsapp_templates.meta_id),
+      // Mesmo motivo da sincronização: `ON CONFLICT (meta_name)` exige
+      // restrição UNIQUE que bancos antigos não têm. UPDATE + INSERT funciona
+      // nos dois casos.
+      const nome = template.name;
+      const atualizado = await db.execute(sql`
+        UPDATE whatsapp_templates SET
+          status = 'PENDING',
+          meta_id = COALESCE(${data?.id ?? null}, meta_id),
           ultima_sincronizacao = now()
+        WHERE meta_name = ${nome}
+        RETURNING id
       `);
+
+      if ((rowsOf(atualizado) as any[]).length === 0) {
+        await db.execute(sql`
+          INSERT INTO whatsapp_templates (
+            meta_id,
+            nome_interno,
+            meta_name,
+            categoria,
+            idioma,
+            status,
+            conteudo,
+            midia_id,
+            midia_tipo,
+            midia_nome,
+            midia_arquivo_id,
+            ultima_sincronizacao
+          )
+          VALUES (
+            ${data?.id ?? null},
+            ${template.nome_interno || template.name},
+            ${template.name},
+            ${template.category},
+            ${template.language || "pt_BR"},
+            'PENDING',
+            ${JSON.stringify(template.components)}::jsonb,
+            ${template.midia_id ?? null},
+            ${template.midia_tipo ?? null},
+            ${template.midia_nome ?? null},
+            ${template.midia_arquivo_id ?? null},
+            now()
+          )
+        `);
+      }
     }
 
     return { ...data, ok: true, id: data?.id ?? null, nome: template.name };

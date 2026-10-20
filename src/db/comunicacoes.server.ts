@@ -163,17 +163,67 @@ export async function ensureComunicacoesSchema(silent = true) {
     // (que NÃO cria constraint) — e aí todo ON CONFLICT estoura com "there is
     // no unique or exclusion constraint matching the ON CONFLICT
     // specification". Deduplica primeiro e depois cria o índice idempotente.
-    await d.execute(sql`
-      DELETE FROM whatsapp_templates a
-      USING whatsapp_templates b
-      WHERE a.meta_name = b.meta_name
-        AND a.meta_name IS NOT NULL
-        AND a.id > b.id;
-    `);
-    await d.execute(sql`
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_whatsapp_templates_meta_name
-        ON whatsapp_templates (meta_name);
-    `);
+    //
+    // IMPORTANTE: esta limpeza NÃO pode derrubar o resto do esquema. A função
+    // relança qualquer erro, e `ensureComunicacoesSchema` é chamada por quase
+    // toda função de servidor do módulo WhatsApp (listar, sincronizar, enviar
+    // teste, logs, webhook) — um único DELETE bloqueado por chave estrangeira
+    // matava templates, logs e envio de teste de uma vez. Por isso cada passo
+    // vai isolado no seu próprio try/catch, e a dedupe respeita as referências
+    // de campanha e automação (reapontando para o registro sobrevivente em vez
+    // de apagar a linha e estourar a FK).
+    try {
+      await d.execute(sql`
+        DO $$
+        BEGIN
+          -- Campanhas: um template duplicado pode estar em uso por uma campanha.
+          -- Reaponta para o registro mais antigo antes de apagar o duplicado.
+          IF to_regclass('whatsapp_campanhas') IS NOT NULL THEN
+            UPDATE whatsapp_campanhas c
+            SET template_id = k.id
+            FROM whatsapp_templates dup
+            JOIN whatsapp_templates k
+              ON k.meta_name = dup.meta_name AND k.id < dup.id
+            WHERE c.template_id = dup.id;
+          END IF;
+
+          -- Automações: mesma situação (a tabela é criada depois, em outro
+          -- módulo, então o guard por to_regclass é obrigatório).
+          IF to_regclass('whatsapp_automacoes') IS NOT NULL THEN
+            UPDATE whatsapp_automacoes a
+            SET template_id = k.id
+            FROM whatsapp_templates dup
+            JOIN whatsapp_templates k
+              ON k.meta_name = dup.meta_name AND k.id < dup.id
+            WHERE a.template_id = dup.id;
+          END IF;
+        END $$;
+      `);
+      await d.execute(sql`
+        DELETE FROM whatsapp_templates a
+        USING whatsapp_templates b
+        WHERE a.meta_name = b.meta_name
+          AND a.meta_name IS NOT NULL
+          AND a.id > b.id;
+      `);
+    } catch (e) {
+      console.error(
+        "[comunicacoes.server] Falha ao deduplicar whatsapp_templates.meta_name:",
+        e,
+      );
+    }
+
+    try {
+      await d.execute(sql`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_whatsapp_templates_meta_name
+          ON whatsapp_templates (meta_name);
+      `);
+    } catch (e) {
+      console.error(
+        "[comunicacoes.server] Falha ao criar o índice único de meta_name:",
+        e,
+      );
+    }
 
     // 3. Segmentos (Listas de Compradores)
     await d.execute(sql`
