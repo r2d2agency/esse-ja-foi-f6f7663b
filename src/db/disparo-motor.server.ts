@@ -315,7 +315,16 @@ async function enviarComRetry(msg: any, campanha: any): Promise<ResultadoEnvio> 
       // mensagem — cada contato recebe a mesma mídia. Por isso ela é resolvida
       // aqui e passada junto com os componentes.
       const midia = campanha.midia_id
-        ? { tipo: campanha.midia_tipo, mediaId: campanha.midia_id, nome: campanha.midia_nome }
+        ? {
+            tipo: campanha.midia_tipo,
+            mediaId: campanha.midia_id,
+            nome: campanha.midia_nome,
+            // A cópia local do binário: o `media_id` da Meta chega alfanumérico
+            // (vence em 30 dias) e a Meta exige `image.id` INTEIRO. Sem esta
+            // cópia não há como refazer o upload e o HEADER de mídia mata o
+            // envio com "não tem um ID válido para a Meta".
+            arquivoId: campanha.midia_arquivo_id,
+          }
         : null;
       // `montarComponents` e async: sem o `await` o payload ia para a Meta
       // como `components: {}` (o Promise vira objeto no JSON.stringify) e ela
@@ -722,7 +731,7 @@ export async function processarDisparo(
 
   const res = await d.execute(sql`
     SELECT c.*, t.meta_name, t.idioma, t.conteudo as template_conteudo, t.status as template_status,
-      t.midia_id, t.midia_tipo, t.midia_nome
+      t.midia_id, t.midia_tipo, t.midia_nome, t.midia_arquivo_id
     FROM whatsapp_campanhas c
     LEFT JOIN whatsapp_templates t ON t.id = c.template_id
     WHERE c.status = 'PROCESSANDO'

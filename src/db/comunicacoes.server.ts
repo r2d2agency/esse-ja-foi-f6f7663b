@@ -477,6 +477,39 @@ export async function listarTemplates() {
   return rowsOf(res) || [];
 }
 
+/**
+ * Grava o anexo do cabeçalho em um template JÁ EXISTENTE. Templates criados
+ * direto no WhatsApp Manager chegam pela sincronização sem binário local
+ * (`midia_arquivo_id` nulo) e com o `header_handle` da Meta como URL — sem
+ * referência utilizável, o HEADER de mídia mata o envio com "não tem um ID
+ * válido para a Meta". Reanexar guarda o binário em `arquivos_upload` e
+ * devolve o caminho do disparo.
+ */
+export async function anexarMidiaTemplate(
+  templateId: string,
+  midia: {
+    midia_id: string;
+    midia_tipo: string;
+    midia_nome: string;
+    midia_arquivo_id: string;
+  },
+) {
+  const d = requireDb();
+  const res = await d.execute(sql`
+    UPDATE whatsapp_templates
+    SET midia_id = ${midia.midia_id},
+        midia_tipo = ${midia.midia_tipo},
+        midia_nome = ${midia.midia_nome},
+        midia_arquivo_id = ${midia.midia_arquivo_id}::uuid
+    WHERE id = ${templateId}::uuid
+    RETURNING id
+  `);
+  if ((rowsOf(res) as any[]).length === 0) {
+    throw new Error("Template não encontrado.");
+  }
+  return { ok: true };
+}
+
 export async function listarSegmentos() {
   const d = requireDb();
   const res = await d.execute(sql`SELECT * FROM whatsapp_segmentos ORDER BY nome`);

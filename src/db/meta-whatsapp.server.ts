@@ -146,6 +146,30 @@ function idMidiaNumerico(valor: unknown): number | null {
 }
 
 /**
+ * Baixa o anexo de um HEADER de template a partir da URL de CDN que a Meta
+ * devolve na sincronização (`example.header_handle[0]` quando o template foi
+ * criado direto no WhatsApp Manager). A URL costuma expirar rápido, então
+ * qualquer falha aqui não é motivo para quebrar o envio: devolve null e o
+ * chamador tenta a próxima fonte.
+ */
+async function baixarMidiaPorUrl(url: string): Promise<{ base64: string; nome: string; tipo: string } | null> {
+  try {
+    const resposta = await fetch(url);
+    if (!resposta.ok) return null;
+    const tipo = (resposta.headers.get("content-type") || "image/jpeg").split(";")[0].trim();
+    const buffer = Buffer.from(await resposta.arrayBuffer());
+    if (!buffer.length) return null;
+    return {
+      base64: buffer.toString("base64"),
+      nome: "capa",
+      tipo: tipo === "application/pdf" ? "document" : "image",
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Sobe o binário do cabeçalho e devolve o `id` INTEIRO da Meta. Quando existe
  * um `media_id` salvo no banco e ele é numérico, usa ele direto — sem upload
  * desnecessário. O upload é o caminho de fallback para o `header_handle`
@@ -157,18 +181,52 @@ async function resolverIdMidia(params: {
   base64?: string | null;
   nome?: string | null;
   tipo?: string | null;
+  arquivoId?: string | null;
+  urlMidia?: string | null;
 }): Promise<number> {
   const idSalvo = idMidiaNumerico(params.mediaId);
   if (idSalvo != null) return idSalvo;
-  if (!params.base64) {
+
+  // Sem id numérico, a saída é reenviar o binário para a Meta. A cópia local
+  // em `arquivos_upload` (`midia_arquivo_id`) existe exatamente para isso: o
+  // `media_id` da Meta expira em 30 dias e chega alfanumérico na
+  // sincronização, e sem o binário o HEADER de mídia não tem como ser
+  // montado — o envio morria com "não tem um ID válido para a Meta".
+  let base64 = params.base64 || null;
+  let nome = params.nome || null;
+  let tipo = params.tipo || null;
+
+  if (!base64 && params.arquivoId) {
+    const { obterArquivo } = await import("./arquivos.server");
+    const arquivo = await obterArquivo(params.arquivoId);
+    if (arquivo?.conteudo) {
+      base64 = arquivo.conteudo.toString("base64");
+      nome = nome || "arquivo";
+      tipo = tipo || arquivo.mimeType;
+    }
+  }
+
+  // Sem cópia local, tenta a última fonte: o `header_handle` da sincronização
+  // pode vir como URL de CDN ("https://scontent.whatsapp.net/..."). Baixar o
+  // arquivo e reenviar para a Meta devolve um id numérico utilizável.
+  if (!base64 && params.urlMidia) {
+    const baixado = await baixarMidiaPorUrl(params.urlMidia);
+    if (baixado) {
+      base64 = baixado.base64;
+      nome = nome || baixado.nome;
+      tipo = tipo || baixado.tipo;
+    }
+  }
+
+  if (!base64) {
     throw new Error(
       "O anexo do cabeçalho não tem um ID válido para a Meta. Reenvie a imagem/PDF ao template e tente de novo.",
     );
   }
   return metaService.subirMidiaParaId(
-    params.base64,
-    params.nome || "arquivo",
-    params.tipo || "image",
+    base64,
+    nome || "arquivo",
+    tipo || "image",
   );
 }
 
@@ -191,13 +249,19 @@ async function resolverIdMidia(params: {
 export async function montarComponents(
   conteudo: any,
   valores: Record<string, string> = {},
-  midia: { tipo?: string; mediaId?: string; nome?: string; base64?: string } | null = null,
+  midia: {
+    tipo?: string;
+    mediaId?: string;
+    nome?: string;
+    base64?: string;
+    arquivoId?: string;
+  } | null = null,
 ): Promise<any[]> {
   const comps = componentesDoConteudo(conteudo);
   if (!comps.length) return [];
 
   const saida: any[] = [];
-  const anexo = midia?.mediaId || midia?.base64 ? midia : null;
+  const anexo = midia?.mediaId || midia?.base64 || midia?.arquivoId ? midia : null;
 
   for (const comp of comps) {
     const tipo = String(comp?.type || "").toUpperCase();
@@ -226,6 +290,10 @@ export async function montarComponents(
           base64: anexo?.base64,
           nome: anexo?.nome,
           tipo: anexo?.tipo,
+          arquivoId: anexo?.arquivoId,
+          // O `header_handle` alfanumérico não serve como referência de envio;
+          // quando ele é URL de CDN, dá para baixar o binário e reenviar.
+          urlMidia: /^https?:\/\//i.test(midiaFallback) ? midiaFallback : null,
         });
         const parameter: any = { type: tipoMidia, [tipoMidia]: { id: idNumerico } };
         if (tipoMidia === "document" && anexo?.nome) parameter.document.filename = anexo.nome;

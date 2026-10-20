@@ -78,6 +78,7 @@ import {
   listarSegmentosComTotalFn,
   criarTemplateMetaFn,
   uploadMidiaTemplateFn,
+  anexarMidiaTemplateFn,
   excluirTemplateMetaFn,
   estimarPublicoFn,
   criarCampanhaFn,
@@ -115,6 +116,7 @@ import {
   LayoutTemplate,
   FileDown,
   Upload,
+  Paperclip,
 } from "lucide-react";
 
 export const Route = createFileRoute("/admin/comunicacoes")({
@@ -402,6 +404,7 @@ function ComunicacoesPage() {
   const listarSegmentosFn = useServerFn(listarSegmentosComTotalFn);
   const criarTemplate = useServerFn(criarTemplateMetaFn);
   const uploadMidia = useServerFn(uploadMidiaTemplateFn);
+  const anexarMidia = useServerFn(anexarMidiaTemplateFn);
   const estimarPublico = useServerFn(estimarPublicoFn);
   const criarCampanha = useServerFn(criarCampanhaFn);
   const criarCampanhaDisparo = useServerFn(criarCampanhaDisparoFn);
@@ -1201,6 +1204,53 @@ function ComunicacoesPage() {
         {
           loading: `Subindo ${file.name} para a Meta...`,
           success: (nome: string) => `${nome} anexado ao template.`,
+          error: (err: Error) => `Erro no anexo: ${err.message}`,
+        },
+      );
+    };
+    reader.readAsDataURL(file);
+  };
+
+  /**
+   * Reanexa a mídia do cabeçalho em um template que já existe. Templates
+   * sincronizados do WhatsApp Manager chegam sem binário local, e o
+   * `header_handle` da Meta é uma URL — nenhuma das duas serve como
+   * `image.id`, então o HEADER de mídia matava o envio do disparo.
+   */
+  const handleAnexarMidiaExistente = (template: any, file: File) => {
+    const tipo = file.type || "";
+    const ehImagem = tipo.startsWith("image/");
+    const ehPdf = tipo === "application/pdf";
+    if (!ehImagem && !ehPdf) {
+      toast.error("O cabeçalho aceita apenas imagem ou PDF.");
+      return;
+    }
+    if (file.size > 16 * 1024 * 1024) {
+      toast.error("O arquivo excede 16 MB (limite da Meta).");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const dataUrl = String(reader.result);
+      toast.promise(
+        (async () => {
+          const res: any = await anexarMidia({
+            data: {
+              template_id: template.id,
+              arquivo: dataUrl,
+              nome: file.name,
+              tipo,
+            },
+          });
+          if (!res?.ok) throw new Error(res?.error || "Falha ao anexar a mídia.");
+          // A lista de templates mostra o anexo salvo: recarrega para refletir.
+          queryClient.invalidateQueries({ queryKey: ["wa-templates"] });
+          return file.name;
+        })(),
+        {
+          loading: `Subindo ${file.name} para a Meta...`,
+          success: (nome: string) => `${nome} anexado. O disparo já vai com a imagem.`,
           error: (err: Error) => `Erro no anexo: ${err.message}`,
         },
       );
@@ -3507,6 +3557,25 @@ function ComunicacoesPage() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
+                          <label
+                            htmlFor={`anexar-midia-${t.id}`}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-md cursor-pointer text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                            title="Anexar imagem/PDF do cabeçalho a este template"
+                            aria-label={`Anexar mídia ao template ${t.nome_interno}`}
+                          >
+                            <Paperclip className="w-4 h-4" />
+                          </label>
+                          <input
+                            id={`anexar-midia-${t.id}`}
+                            type="file"
+                            accept="image/*,application/pdf"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) handleAnexarMidiaExistente(t, file);
+                              e.target.value = "";
+                            }}
+                          />
                           <Button
                             variant="ghost"
                             size="icon"

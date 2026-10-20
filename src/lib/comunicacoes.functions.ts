@@ -621,6 +621,52 @@ export const uploadMidiaTemplateFn = createServerFn({ method: "POST" })
     }
   });
 
+/**
+ * Reanexa a mídia do cabeçalho em um template que já existe. É a saída para
+ * templates sincronizados do WhatsApp Manager, que chegam sem binário local e
+ * com o `header_handle` da Meta como URL — nenhuma das duas serve como
+ * `image.id` no envio.
+ */
+export const anexarMidiaTemplateFn = createServerFn({ method: "POST" })
+  .validator((data: any) =>
+    z
+      .object({
+        template_id: z.string().uuid(),
+        arquivo: z.string().min(1),
+        nome: z.string().min(1),
+        tipo: z.string().min(1),
+      })
+      .parse(data),
+  )
+  .handler(async ({ data }) => {
+    try {
+      const tipoArquivo = String(data.tipo || "").toLowerCase();
+      const ehImagem = tipoArquivo.startsWith("image/");
+      const ehPdf = tipoArquivo === "application/pdf";
+      if (!ehImagem && !ehPdf) {
+        throw new Error("O cabeçalho aceita apenas imagem ou PDF.");
+      }
+
+      const { mediaId } = await metaService.uploadMedia(data.arquivo, data.nome, data.tipo);
+
+      const { salvarArquivo } = await import("../db/arquivos.server");
+      const buffer = Buffer.from(String(data.arquivo).replace(/^data:[^;]+;base64,/, ""), "base64");
+      const arquivoId = await salvarArquivo(buffer, data.tipo);
+
+      await db.anexarMidiaTemplate(data.template_id, {
+        midia_id: mediaId,
+        midia_tipo: ehPdf ? "document" : "image",
+        midia_nome: data.nome,
+        midia_arquivo_id: arquivoId,
+      });
+
+      return { ok: true };
+    } catch (error: any) {
+      console.error("[comunicacoes] falha ao reanexar mídia do template:", error);
+      return { ok: false, error: String(error?.message || error) };
+    }
+  });
+
 export const excluirTemplateMetaFn = createServerFn({ method: "POST" })
   .validator((data: any) => {
     const nome = String(data?.meta_name || "").trim();
@@ -820,6 +866,10 @@ export const enviarTesteFn = createServerFn({ method: "POST" })
             mediaId: (template as any).midia_id,
             nome: (base64 ? data.midia_nome : (template as any).midia_nome) || "arquivo",
             base64,
+            // Cópia local do anexo do template: com ela o teste consegue refazer
+            // o upload quando o `media_id` salvo não é numérico (a Meta exige
+            // `image.id` inteiro e o id da Meta é handle alfanumérico).
+            arquivoId: (template as any).midia_arquivo_id,
           }
         : null;
 
