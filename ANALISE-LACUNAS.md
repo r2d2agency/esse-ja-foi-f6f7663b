@@ -346,7 +346,9 @@ Conta `leiloes WHERE upper(status)='ABERTO'`, mas os status reais são
 
 `new Date().toISOString().slice(0,10)` é UTC → entre 21h e 24h (BRT) vira o dia seguinte.
 
-**Correção:** formatar com `timeZone: "America/Sao_Paulo"`.
+**Correção aplicada:** `hojeEmSaoPaulo()` de `src/lib/brasil.ts`. Os helpers novos
+(`FUSO_BR`, `hojeEmSaoPaulo()`, `hojeFormatadoEmSaoPaulo()`) ficam juntos no mesmo arquivo
+para não repetir a string do fuso em cada módulo.
 **Risco:** muito baixo — apenas rótulos de seed/demo e nome de campanha.
 
 ### A5. Fotos de entrega gravadas fora de transação
