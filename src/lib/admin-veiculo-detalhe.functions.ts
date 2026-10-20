@@ -23,13 +23,7 @@ export const getVeiculoDetalheAdminFn = createServerFn({ method: "GET" })
     await ensurePerfilSchema();
 
     const veiculoId = normalizarUuid(data.id);
-    // #region debug-point A:route-id
-    fetch("http://127.0.0.1:7777/event", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: "admin-vehicle-detail", runId: "pre-fix", hypothesisId: "A", location: "src/lib/admin-veiculo-detalhe.functions.ts:getVeiculoDetalheAdminFn:start", msg: "[DEBUG] admin vehicle detail request received", data: { rawId: data.id, normalizedId: veiculoId }, ts: Date.now() }) }).catch(() => {});
-    // #endregion
     if (!veiculoId) {
-      // #region debug-point A:invalid-id
-      fetch("http://127.0.0.1:7777/event", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: "admin-vehicle-detail", runId: "pre-fix", hypothesisId: "A", location: "src/lib/admin-veiculo-detalhe.functions.ts:getVeiculoDetalheAdminFn:invalid-id", msg: "[DEBUG] vehicle detail received invalid id", data: { rawId: data.id }, ts: Date.now() }) }).catch(() => {});
-      // #endregion
       return { ok: false as const, message: "ID do veículo inválido." };
     }
 
@@ -53,9 +47,6 @@ export const getVeiculoDetalheAdminFn = createServerFn({ method: "GET" })
       `);
 
       let veiculo = (rows as any).rows?.[0] || (rows as any)[0];
-      // #region debug-point B:detail-query
-      fetch("http://127.0.0.1:7777/event", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: "admin-vehicle-detail", runId: "pre-fix", hypothesisId: "B", location: "src/lib/admin-veiculo-detalhe.functions.ts:getVeiculoDetalheAdminFn:detail-query", msg: "[DEBUG] vehicle detail primary query finished", data: { veiculoId, found: !!veiculo, rowCount: Array.isArray((rows as any).rows) ? (rows as any).rows.length : Array.isArray(rows as any) ? (rows as any).length : null }, ts: Date.now() }) }).catch(() => {});
-      // #endregion
 
       if (!veiculo) {
         return { ok: false as const, message: `Veículo não encontrado (ID: ${veiculoId}).` };
@@ -70,9 +61,6 @@ export const getVeiculoDetalheAdminFn = createServerFn({ method: "GET" })
       const { calcularProgressoVeiculo, canReleaseForInspection } = await import("@/db/veiculos-compliance.server");
       const progresso = calcularProgressoVeiculo(veiculo);
       const validacao = canReleaseForInspection(veiculo);
-      // #region debug-point C:post-processing
-      fetch("http://127.0.0.1:7777/event", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: "admin-vehicle-detail", runId: "pre-fix", hypothesisId: "C", location: "src/lib/admin-veiculo-detalhe.functions.ts:getVeiculoDetalheAdminFn:post-processing", msg: "[DEBUG] vehicle detail post-processing completed", data: { veiculoId, logsCount: Array.isArray((logsRows as any).rows) ? (logsRows as any).rows.length : Array.isArray(logsRows as any) ? (logsRows as any).length : null, readyForInspection: !!validacao?.ready }, ts: Date.now() }) }).catch(() => {});
-      // #endregion
 
       return {
         ok: true as const,
@@ -82,9 +70,6 @@ export const getVeiculoDetalheAdminFn = createServerFn({ method: "GET" })
         historico: (logsRows as any).rows || logsRows
       };
     } catch (error: any) {
-      // #region debug-point D:server-error
-      fetch("http://127.0.0.1:7777/event", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: "admin-vehicle-detail", runId: "pre-fix", hypothesisId: "D", location: "src/lib/admin-veiculo-detalhe.functions.ts:getVeiculoDetalheAdminFn:catch", msg: "[DEBUG] vehicle detail server function threw", data: { veiculoId, errorMessage: error?.message ?? null, errorName: error?.name ?? null, errorStack: error?.stack ?? null }, ts: Date.now() }) }).catch(() => {});
-      // #endregion
       throw error;
     }
   });

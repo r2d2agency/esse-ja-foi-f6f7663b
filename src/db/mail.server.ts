@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "./index";
 import nodemailer from "nodemailer";
+import { randomInt } from "node:crypto";
 
 function requireDb() {
   if (!db) throw new Error("Banco de dados indisponível.");
@@ -134,7 +135,10 @@ export async function gerarEnviarOTP(email: string, type: 'LOGIN' | 'RECOVERY' |
   const d = requireDb();
   await ensureMailSchema(true);
 
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  // `Math.random` não é criptográfico: o estado interno é previsível, o que
+  // viabiliza adivinhar o código de um OTP por brute force sem travar.
+  // `crypto.randomInt` usa a CSPRNG do Node.
+  const code = randomInt(100000, 1000000).toString();
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutos
 
   try {
@@ -197,7 +201,10 @@ export async function enviarCodigoAcaoCriticaSuperadmins(descricaoAcao: string, 
     throw new Error("Nenhum superadmin ativo encontrado para receber o código de confirmação.");
   }
 
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  // `Math.random` não é criptográfico: o estado interno é previsível, o que
+  // viabiliza adivinhar o código de um OTP por brute force sem travar.
+  // `crypto.randomInt` usa a CSPRNG do Node.
+  const code = randomInt(100000, 1000000).toString();
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
   await d.execute(sql`

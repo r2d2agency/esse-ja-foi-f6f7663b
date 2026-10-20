@@ -13,6 +13,8 @@ export const getSystemLogsFn = createServerFn({ method: "GET" })
     if (!db) return { ok: false as const, message: "Banco de dados indisponível." };
     
     try {
+      const { adminOuOperacaoDaSessao } = await import("@/lib/sessao.server");
+      await adminOuOperacaoDaSessao();
       const termo = data.busca ? `%${data.busca.toLowerCase()}%` : null;
       
       const query = termo 
@@ -82,6 +84,8 @@ export const limparLogsFn = createServerFn({ method: "POST" })
   .handler(async () => {
     if (!db) return { ok: false as const, message: "Banco de dados indisponível." };
     try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
       await db.execute(sql`DELETE FROM logs`);
       return { ok: true as const };
     } catch (e: any) {

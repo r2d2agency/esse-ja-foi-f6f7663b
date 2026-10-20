@@ -60,6 +60,54 @@ export async function perfilDaSessao() {
 }
 
 /**
+ * Só passa se o cookie pertencer a um **admin ativo** — papel `admin`, sem
+ * exigir `protegido` (que é reservado ao superadmin).
+ *
+ * A tela de admin já esconde as rotas, mas o client não é autoridade: sem
+ * esta checagem **no servidor**, qualquer autenticado (vendedor, comprador)
+ * podia chamar a server fn pelo console e escrever ou excluir dado de admin.
+ * Por isso as server fns administrativas exigem este guard.
+ */
+export async function adminDaSessao() {
+  const user = await perfilDaSessao();
+  if (!user || !user.ativo || user.role !== "admin") {
+    throw new Error("Apenas um administrador pode realizar esta ação.");
+  }
+  return user as {
+    id: string;
+    nome: string;
+    email: string;
+    role: string;
+    ativo: boolean;
+    protegido: boolean;
+  };
+}
+
+/**
+ * Só passa se o cookie pertencer a um **admin ou a um operador ativo**.
+ *
+ * O login leva `admin` **e** `operacao` para `/admin`
+ * ([src/routes/login.tsx:75-78](src/routes/login.tsx#L75-L78)), então uma tela
+ * admin usada pela operação não pode exigir `role === 'admin'` — isso cortaria
+ * o acesso do operador. Este helper é o piso das funções de **backoffice**
+ * (ler logs, relatórios, marketing, checklists).
+ */
+export async function adminOuOperacaoDaSessao() {
+  const user = await perfilDaSessao();
+  if (!user || !user.ativo || (user.role !== "admin" && user.role !== "operacao")) {
+    throw new Error("Apenas a administração pode realizar esta ação.");
+  }
+  return user as {
+    id: string;
+    nome: string;
+    email: string;
+    role: string;
+    ativo: boolean;
+    protegido: boolean;
+  };
+}
+
+/**
  * Só passa se o cookie pertencer a um superadmin ativo e protegido.
  * Substitui `requireSuperAdmin(token)` nas ações críticas.
  */

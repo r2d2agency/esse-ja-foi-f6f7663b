@@ -13,6 +13,8 @@ export const getRelatoriosGeraisFn = createServerFn({ method: "GET" })
   .handler(async ({ data }) => {
 
     try {
+      const { adminOuOperacaoDaSessao } = await import("@/lib/sessao.server");
+      await adminOuOperacaoDaSessao();
       const res = await getRelatoriosGerais({
         dataInicio: data.dataInicio ?? null,
         dataFim: data.dataFim ?? null
@@ -30,6 +32,8 @@ export const getRelatoriosVendasFn = createServerFn({ method: "GET" })
   .handler(async ({ data }) => {
 
     try {
+      const { adminOuOperacaoDaSessao } = await import("@/lib/sessao.server");
+      await adminOuOperacaoDaSessao();
       const res = await getRelatoriosVendas({
         dataInicio: data.dataInicio ?? null,
         dataFim: data.dataFim ?? null
@@ -43,6 +47,8 @@ export const getRelatoriosVendasFn = createServerFn({ method: "GET" })
 
 export const getRelatorioComissoesFn = createServerFn({ method: "GET" }).handler(async () => {
   try {
+    const { adminOuOperacaoDaSessao } = await import("@/lib/sessao.server");
+    await adminOuOperacaoDaSessao();
     const m = await import("@/db/relatorios.server");
     return { ok: true as const, data: await m.getRelatorioComissoes() };
   } catch (e: any) {
@@ -52,6 +58,8 @@ export const getRelatorioComissoesFn = createServerFn({ method: "GET" }).handler
 
 export const getComissaoPadraoFn = createServerFn({ method: "GET" }).handler(async () => {
   try {
+    const { adminOuOperacaoDaSessao } = await import("@/lib/sessao.server");
+    await adminOuOperacaoDaSessao();
     const m = await import("@/db/relatorios.server");
     return { ok: true as const, percentual: await m.getComissaoPadrao() };
   } catch {
@@ -63,6 +71,8 @@ export const setComissaoPadraoFn = createServerFn({ method: "POST" })
   .validator((d: unknown) => z.object({ percentual: z.number().min(0).max(100) }).parse(d))
   .handler(async ({ data }) => {
     try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
       const m = await import("@/db/relatorios.server");
       await m.setComissaoPadrao(data.percentual);
       return { ok: true as const };

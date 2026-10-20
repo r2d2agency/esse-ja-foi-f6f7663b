@@ -17,6 +17,8 @@ export const listarVendedoresFn = createServerFn({ method: "GET" })
     const m = await import("@/db/admin.server");
     await m.ensureAdminTables();
     try {
+      const { adminOuOperacaoDaSessao } = await import("@/lib/sessao.server");
+      await adminOuOperacaoDaSessao();
       return { ok: true as const, data: await m.listarVendedoresPendentes(data?.status) };
     } catch (e: any) {
       return { ok: false as const, message: e.message };
@@ -28,6 +30,8 @@ export const listarCompradoresFn = createServerFn({ method: "GET" })
     const m = await import("@/db/admin.server");
     await m.ensureAdminTables();
     try {
+      const { adminOuOperacaoDaSessao } = await import("@/lib/sessao.server");
+      await adminOuOperacaoDaSessao();
       return { ok: true as const, data: await m.listarCompradores() };
     } catch (e: any) {
       return { ok: false as const, message: e.message };
@@ -52,6 +56,11 @@ export const listarUsuariosInternosFn = createServerFn({ method: "GET" })
       console.warn("[admin] falha ao garantir tabelas admin (seguindo para a listagem):", e?.message || e);
     }
     try {
+      // A guarda fica no `try` da listagem (e não no de `ensureAdminTables`,
+      // cujo `catch` só avisa): se caísse ali, a falha de permissão seria
+      // engolida e a listagem seguiria sem checagem nenhuma.
+      const { adminOuOperacaoDaSessao } = await import("@/lib/sessao.server");
+      await adminOuOperacaoDaSessao();
       return { ok: true as const, data: await m.listarUsuariosInternos(data?.role) };
     } catch (e: any) {
       return { ok: false as const, message: e.message };
@@ -62,6 +71,8 @@ export const checkSystemHealthFn = createServerFn({ method: "GET" })
   .handler(async () => {
     const m = await import("@/db/admin.server");
     try {
+      const { adminOuOperacaoDaSessao } = await import("@/lib/sessao.server");
+      await adminOuOperacaoDaSessao();
       return { ok: true as const, data: await m.checkSystemHealth() };
     } catch (e: any) {
       return { ok: false as const, message: e.message };
@@ -69,18 +80,24 @@ export const checkSystemHealthFn = createServerFn({ method: "GET" })
   });
 
 export const gerenciarUsuarioFn = createServerFn({ method: "POST" })
-  .validator((d: unknown) => z.object({ 
-    id: z.string().uuid().optional(), 
+  .validator((d: unknown) => z.object({
+    id: z.string().uuid().optional(),
     nome: z.string().optional(),
     email: z.string().email().optional(),
     whatsapp: z.string().optional(),
     role: z.enum(['admin', 'operacao', 'vistoriador', 'comprador', 'vendedor']).optional(),
     password: z.string().optional(),
-    ativo: z.boolean().optional() 
+    ativo: z.boolean().optional()
   }).parse(d))
   .handler(async ({ data }) => {
     const m = await import("@/db/admin.server");
     try {
+      // Guarda de servidor: a tela de admin esconder o botão não impede
+      // ninguém de chamar a server fn pelo console. Sem esta checagem, um
+      // `vendedor` autenticado criava conta `admin` com a senha que quisesse.
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
+
       if (data.id) {
         await m.alterarStatusUsuario(data.id, data.ativo ?? true);
         if (data.nome || data.email || data.role || data.password) {
@@ -110,6 +127,10 @@ export const excluirPerfilFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const m = await import("@/db/admin.server");
     try {
+      // Apagar vendedor/comprador é destrutivo e nunca teve guard: qualquer
+      // autenticado chamava a fn e apagava o perfil de terceiro.
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
       await m.excluirPerfil(data.id);
       return { ok: true as const };
     } catch (e: any) {
@@ -122,6 +143,8 @@ export const listarConfiguracoesFn = createServerFn({ method: "GET" })
     const m = await import("@/db/admin.server");
     await m.ensureAdminTables();
     try {
+      const { adminOuOperacaoDaSessao } = await import("@/lib/sessao.server");
+      await adminOuOperacaoDaSessao();
       return { ok: true as const, data: await m.listarConfiguracoes() };
     } catch (e: any) {
       return { ok: false as const, message: e.message };
@@ -134,6 +157,8 @@ export const salvarConfiguracaoFn = createServerFn({ method: "POST" })
     const m = await import("@/db/admin.server");
     await m.ensureAdminTables();
     try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
       await m.salvarConfiguracao(data.chave, data.valor);
       return { ok: true as const };
     } catch (e: any) {
@@ -145,6 +170,8 @@ export const listarDestinatariosNotificacaoFn = createServerFn({ method: "GET" }
   .handler(async () => {
     const m = await import("@/db/notificacoes-admin.server");
     try {
+      const { adminOuOperacaoDaSessao } = await import("@/lib/sessao.server");
+      await adminOuOperacaoDaSessao();
       return { ok: true as const, data: await m.listarDestinatariosNotificacao() };
     } catch (e: any) {
       return { ok: false as const, message: e.message };
@@ -163,6 +190,8 @@ export const salvarDestinatarioNotificacaoFn = createServerFn({ method: "POST" }
   .handler(async ({ data }) => {
     const m = await import("@/db/notificacoes-admin.server");
     try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
       return { ok: true as const, data: await m.salvarDestinatarioNotificacao(data) };
     } catch (e: any) {
       return { ok: false as const, message: e.message };
@@ -174,6 +203,8 @@ export const removerDestinatarioNotificacaoFn = createServerFn({ method: "POST" 
   .handler(async ({ data }) => {
     const m = await import("@/db/notificacoes-admin.server");
     try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
       await m.removerDestinatarioNotificacao(data.id);
       return { ok: true as const };
     } catch (e: any) {
@@ -186,6 +217,8 @@ export const enviarEmailTesteFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const m = await import("@/db/mail.server");
     try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
       await m.enviarEmailTeste(data.email);
       return { ok: true as const };
     } catch (e: any) {
@@ -197,6 +230,8 @@ export const enviarEmailTesteFn = createServerFn({ method: "POST" })
 export const listarRegrasDepreciacaoFn = createServerFn({ method: "GET" })
   .handler(async () => {
     try {
+      const { adminOuOperacaoDaSessao } = await import("@/lib/sessao.server");
+      await adminOuOperacaoDaSessao();
       const m = await import("@/db/admin.server");
       await m.ensureAdminTables();
       const d = requireDb();
@@ -234,6 +269,8 @@ export const salvarRegraDepreciacaoFn = createServerFn({ method: "POST" })
   }).parse(d))
   .handler(async ({ data }) => {
     try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
       const m = await import("@/db/admin.server");
       await m.ensureAdminTables();
       const d = requireDb();
@@ -267,6 +304,8 @@ export const duplicarRegraDepreciacaoFn = createServerFn({ method: "POST" })
   .validator((d) => z.object({ id: z.string() }).parse(d))
   .handler(async ({ data }) => {
     try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
       const m = await import("@/db/admin.server");
       await m.ensureAdminTables();
       const d = requireDb();

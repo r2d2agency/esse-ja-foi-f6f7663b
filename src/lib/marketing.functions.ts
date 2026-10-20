@@ -20,6 +20,8 @@ export const listarMarketingContatosFn = createServerFn({ method: "POST" })
   .inputValidator((d) => filtroSchema.parse(d))
   .handler(async ({ data }) => {
     try {
+      const { adminOuOperacaoDaSessao } = await import("@/lib/sessao.server");
+      await adminOuOperacaoDaSessao();
       const { listarMarketingContatos } = await import("@/db/marketing.server");
       return { ok: true as const, data: await listarMarketingContatos(data) };
     } catch (e: any) {
@@ -43,6 +45,8 @@ export const importarMarketingContatosFn = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
       const { importarMarketingContatos } = await import("@/db/marketing.server");
       const r = await importarMarketingContatos(
         data.contatos,
@@ -88,6 +92,8 @@ export const atualizarMarketingContatoFn = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ id: z.string().uuid(), dados: contatoEditavelSchema }).parse(d))
   .handler(async ({ data }) => {
     try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
       const { atualizarMarketingContato } = await import("@/db/marketing.server");
       return {
         ok: true as const,
@@ -102,6 +108,8 @@ export const excluirMarketingContatoFn = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data }) => {
     try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
       const { excluirMarketingContato } = await import("@/db/marketing.server");
       return { ok: true as const, data: await excluirMarketingContato(data.id) };
     } catch (e: any) {
@@ -115,6 +123,8 @@ export const excluirMarketingContatoFn = createServerFn({ method: "POST" })
  */
 export const removerContatosSemWhatsappFn = createServerFn({ method: "POST" }).handler(async () => {
   try {
+    const { adminDaSessao } = await import("@/lib/sessao.server");
+    await adminDaSessao();
     const { removerContatosSemWhatsapp } = await import("@/db/marketing.server");
     const r = await removerContatosSemWhatsapp();
     return { ok: true as const, data: r };
@@ -127,6 +137,8 @@ export const criarMarketingTagFn = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ nome: z.string().min(1), cor: z.string().optional() }).parse(d))
   .handler(async ({ data }) => {
     try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
       const { criarMarketingTag } = await import("@/db/marketing.server");
       return { ok: true as const, data: await criarMarketingTag(data.nome, data.cor) };
     } catch (e: any) {
@@ -142,6 +154,8 @@ export const criarMarketingTagFn = createServerFn({ method: "POST" })
  */
 export const listarMarketingTagsFn = createServerFn({ method: "POST" }).handler(async () => {
   try {
+    const { adminOuOperacaoDaSessao } = await import("@/lib/sessao.server");
+    await adminOuOperacaoDaSessao();
     const { listarMarketingTags } = await import("@/db/marketing.server");
     return { ok: true as const, data: await listarMarketingTags() };
   } catch (e: any) {
@@ -155,6 +169,8 @@ export const atribuirMarketingTagFn = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
       const { atribuirMarketingTag } = await import("@/db/marketing.server");
       await atribuirMarketingTag(data.contatoIds, data.tagId);
       return { ok: true as const };
@@ -170,6 +186,8 @@ export const removerMarketingTagFn = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
       const { removerMarketingTag } = await import("@/db/marketing.server");
       await removerMarketingTag(data.contatoId, data.tagId);
       return { ok: true as const };
@@ -184,6 +202,8 @@ export const converterContatoEmCompradorFn = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
       const { converterContatoEmComprador } = await import("@/db/marketing.server");
       return {
         ok: true as const,
@@ -198,6 +218,8 @@ export const geocodificarContatosFn = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ limite: z.number().int().min(1).max(50).optional() }).parse(d))
   .handler(async ({ data }) => {
     try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
       const { geocodificarContatosPendentes } = await import("@/db/marketing.server");
       return { ok: true as const, data: await geocodificarContatosPendentes(data.limite) };
     } catch (e: any) {
@@ -208,6 +230,8 @@ export const geocodificarContatosFn = createServerFn({ method: "POST" })
 /** Retorna a config Uazapi com o token mascarado (nunca exposto ao navegador). */
 export const getUazapiConfigFn = createServerFn({ method: "GET" }).handler(async () => {
   try {
+    const { adminOuOperacaoDaSessao } = await import("@/lib/sessao.server");
+    await adminOuOperacaoDaSessao();
     const { getUazapiConfig } = await import("@/db/marketing.server");
     const cfg = await getUazapiConfig();
     return {
@@ -233,6 +257,8 @@ export const salvarUazapiConfigFn = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
       const { getUazapiConfig, salvarUazapiConfig } = await import("@/db/marketing.server");
       // Preserva valores existentes quando o campo vem vazio ou mascarado
       const atual = await getUazapiConfig();
@@ -250,6 +276,8 @@ export const verificarWhatsappContatosFn = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ limite: z.number().int().min(1).max(250).optional() }).parse(d))
   .handler(async ({ data }) => {
     try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
       const { verificarWhatsappContatos } = await import("@/db/marketing.server");
       return { ok: true as const, data: await verificarWhatsappContatos(data.limite) };
     } catch (e: any) {
@@ -264,6 +292,8 @@ export const verificarWhatsappContatosFn = createServerFn({ method: "POST" })
  */
 export const listarGruposUazapiFn = createServerFn({ method: "POST" }).handler(async () => {
   try {
+    const { adminDaSessao } = await import("@/lib/sessao.server");
+    await adminDaSessao();
     const { listarGruposUazapi } = await import("@/db/marketing.server");
     return { ok: true as const, data: await listarGruposUazapi() };
   } catch (e: any) {
@@ -287,6 +317,8 @@ export const testarUazapiFn = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
       const { getUazapiConfig, validarConexaoUazapi } = await import("@/db/marketing.server");
       // Igual ao salvar: campo vazio/mascarado = mantém o que já está gravado.
       const atual = await getUazapiConfig();

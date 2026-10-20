@@ -30,6 +30,10 @@ Inventário de problemas reais encontrados no código, **classificados pelo risc
 > qualquer visitante.
 
 ### P0.1. Escalada de privilégio: qualquer autenticado pode se tornar admin
+> ✅ **Fechado (2026-10-20).** `gerenciarUsuarioFn` e `excluirPerfilFn` agora exigem
+> `adminDaSessao()` dentro do `try` — o erro vira `{ ok: false, message }`, o mesmo formato que
+> a tela já sabe mostrar. O `role`/`password` do corpo seguem aceitos, mas só um admin ativo
+> chega até lá.
 **Arquivo:** `src/lib/admin.functions.ts:71-105` (`gerenciarUsuarioFn`)
 
 O validator aceita `role` e `password` **do cliente** e o handler grava sem checar quem chama:
@@ -52,13 +56,30 @@ vindos do corpo — a senha de admin só pode ser trocada por outro admin, com a
 servidor. Mas testar o fluxo de "criar usuário interno" e "redefinir senha de usuário".
 
 ### P0.2. Funções administrativas sensíveis sem nenhuma checagem
+> 🟡 **Parcialmente fechado (2026-10-20).** Fechado o **subset "admin puro"** da Fase 0 —
+> 48 server fns em 6 arquivos (`admin`, `logs`, `relatorios`, `demo`, `admin-checklist`,
+> `marketing`), com dois níveis de guard:
+>
+> | Nível | Quem passa | Para quê |
+> |---|---|---|
+> | `adminOuOperacaoDaSessao()` | `admin` **ou** `operacao` ativos | leitura de backoffice (logs, relatórios, listagens, config Uazapi mascarada) |
+> | `adminDaSessao()` | só `admin` ativo | escrita/destruição (limpar logs, setar comissão, demo, checklist, marketing, config) |
+>
+> O nível `operacao` existe porque o login leva `admin` **e** `operacao` para `/admin`
+> ([src/routes/login.tsx:73-89](src/routes/login.tsx#L73-L89)) — um guard `role === 'admin'`
+> puro cortaria o operador da própria tela. Os helpers novos ficam em
+> [src/lib/sessao.server.ts](src/lib/sessao.server.ts). O guard é colocado **dentro** do `try`,
+> para a falha virar `{ ok: false, message }` — o formato que a tela já sabe mostrar.
+>
+> ⏳ **Ainda em aberto:** o resto dos 43 arquivos (compliance, financeiro, pagamentos, catálogo
+> etc.) — ver **B1**, que pede matriz de permissão por papel, não `role === 'admin'`.
 A varredura encontrou **43 arquivos** de `src/lib/*.functions.ts` sem checagem de role no
 servidor (o [07-convencoes.md §3](docs/07-convencoes.md) citava 5). As de maior dano:
 
 | Função | Arquivo:linha | O que permite |
 |---|---|---|
-| `excluirPerfilFn` | `src/lib/admin.functions.ts:108` | Apagar vendedor/comprador — **sem role e sem OTP** (o gate de OTP de `superadmin.functions.ts` cobre só as ações *forçadas*) |
-| `salvarConfiguracaoFn` | `src/lib/admin.functions.ts:131` | Gravar chave/valor arbitrário em `configuracoes_sistema` — inclusive segredos de integração |
+✅ | `excluirPerfilFn` | `src/lib/admin.functions.ts:108` | Apagar vendedor/comprador — **sem role e sem OTP** (o gate de OTP de `superadmin.functions.ts` cobre só as ações *forçadas*) |
+✅ | `salvarConfiguracaoFn` | `src/lib/admin.functions.ts:131` | Gravar chave/valor arbitrário em `configuracoes_sistema` — inclusive segredos de integração |
 | `atualizarComplianceFn` | `src/lib/admin-compliance.functions.ts:20` | Aprovar/reprovar compliance e forçar `cadastro_completo = true` |
 | `aprovarParaPublicacaoFn` | `src/lib/admin-veiculo-detalhe.functions.ts:174` | Publicar veículo **sem vistoria** — fraude de anúncio |
 | `aprovarVendedorComplianceFn`, `solicitarPendenciaComplianceFn`, `atualizarStatusDocumentoFn` | `src/lib/vendedores-compliance.functions.ts:72/87/46` | Aprovar/reprovar compliance de vendedor |
@@ -67,19 +88,21 @@ servidor (o [07-convencoes.md §3](docs/07-convencoes.md) citava 5). As de maior
 | `salvarDadosBancariosFn` | `src/lib/financeiro.functions.ts:41` | Gravar chave PIX/CPF de **outro** vendedor (IDOR de escrita) |
 | `confirmarPagamentoManualFn` | `src/lib/pagamentos.functions.ts:67` | Confirmar pagamento manualmente |
 | `getComprovanteFn` | `src/lib/pagamentos.functions.ts:58` | Ler comprovante de compra de terceiro — só exige `comprador_id` no corpo, sem checar posse |
-| `limparLogsFn` | `src/lib/logs.functions.ts:81` | `DELETE FROM logs` — apaga a trilha de auditoria |
-| `getSystemLogsFn` | `src/lib/logs.functions.ts:6` | Ler a trilha de auditoria |
-| `getRelatoriosGeraisFn`, `getRelatoriosVendasFn`, `getRelatorioComissoesFn`, `setComissaoPadraoFn` | `src/lib/relatorios.functions.ts:11/28/44/62` | Exportar faturamento/comissões e **alterar a margem** |
-| `converterContatoEmCompradorFn` | `src/lib/marketing.functions.ts:181` | Criar conta de comprador **com senha definida** |
-| `semearDemoFn`, `resetarChecklistDemoFn`, `criarLeilaoDemoFn` | `src/lib/demo.functions.ts:21/29/47` | Semear base demo e criar usuários com senha fixa — sem guard e sem checar que é ambiente demo |
-| `adminExcluirCategoriaFn`, `adminExcluirItemFn` | `src/lib/admin-checklist.functions.ts:47/102` | Apagar config de checklist |
-| `salvarUazapiConfigFn` | `src/lib/marketing.functions.ts:225` | Gravar o token do WhatsApp |
+✅ | `limparLogsFn` | `src/lib/logs.functions.ts:81` | `DELETE FROM logs` — apaga a trilha de auditoria |
+✅ | `getSystemLogsFn` | `src/lib/logs.functions.ts:6` | Ler a trilha de auditoria |
+✅ | `getRelatoriosGeraisFn`, `getRelatoriosVendasFn`, `getRelatorioComissoesFn`, `setComissaoPadraoFn` | `src/lib/relatorios.functions.ts:11/28/44/62` | Exportar faturamento/comissões e **alterar a margem** |
+✅ | `converterContatoEmCompradorFn` | `src/lib/marketing.functions.ts:181` | Criar conta de comprador **com senha definida** |
+✅ | `semearDemoFn`, `resetarChecklistDemoFn`, `criarLeilaoDemoFn` | `src/lib/demo.functions.ts:21/29/47` | Semear base demo e criar usuários com senha fixa — sem guard e sem checar que é ambiente demo |
+✅ | `adminExcluirCategoriaFn`, `adminExcluirItemFn` | `src/lib/admin-checklist.functions.ts:47/102` | Apagar config de checklist |
+✅ | `salvarUazapiConfigFn` | `src/lib/marketing.functions.ts:225` | Gravar o token do WhatsApp |
 
 **Correção:** `role === 'admin'` (mais `superadminDaSessao()` nas destrutivas) nestas funções.
 **Risco: baixo por função**, mas **alto em volume** — e o guia é: **não aplicar em bloco**.
 Ver **B1** para o ordem correto e para as funções que **não** podem receber esse guard.
 
 ### P0.3. `seedSuperAdmin` expõe o e-mail do admin — e força a criação da conta
+> ✅ **Fechado (2026-10-20).** A fn agora exige `adminDaSessao()` antes de criar a conta; sem
+> sessão de admin ela devolve `{ ok: false }` e o e-mail do superadmin não sai mais.
 **Arquivo:** `src/lib/auth.functions.ts:4-13`
 
 Server fn **pública** que chama `ensureSuperAdmin()` e devolve `{ email: SUPERADMIN_EMAIL }`.
@@ -180,6 +203,9 @@ de `/arquivo/$id`, e check de `Content-Length` antes do `formData()`.
 **Risco: médio** — testar o onboarding: CNH/CRLV em PDF, fotos em HEIC (hoje caem em `bin`).
 
 ### P0.10. `resetarSenhaFinalFn` aceita senha de 6 caracteres; OTP sem teto de tentativas
+> ✅ **Fechado na parte imediata (2026-10-20):** senha agora exige `min(10)` e o OTP é gerado com
+> `crypto.randomInt` (CSPRNG do Node) em vez de `Math.random`. ⏳ **Pendente:** o contador de
+> tentativas por OTP — exige migração, continua em **C9**.
 **Arquivos:** `src/lib/auth.functions.ts:128`, `src/db/mail.server.ts:14-22,137`
 
 - `z.string().min(6)` → subir para `min(10)`.
@@ -203,6 +229,9 @@ chamada dispara e-mail → a caixa sai do provedor e é marcada como spammer); e
 (pode virar loop de erro para o usuário legítimo).
 
 ### P0.12. Debug de produção: 5 `fetch` para `127.0.0.1:7777` com dados do veículo
+> ✅ **Fechado (2026-10-20).** Os 5 `fetch` de debug foram removidos de
+> `src/lib/admin-veiculo-detalhe.functions.ts`, junto com os 3 `useEffect` de depuração de
+> `src/routes/admin/veiculo.$id.tsx`. `grep -rn "127.0.0.1:7777" src/` não retorna nada.
 **Arquivo:** `src/lib/admin-veiculo-detalhe.functions.ts:27,31,57,74,86`
 
 Cada request admin dispara um `fetch` a um endpoint local com payload do veículo e stack trace
@@ -665,14 +694,18 @@ de erro.
 ## Ordem sugerida de ataque
 
 ### Fase 0 — agora (segurança, sem esperar)
-1. **P0.1** `gerenciarUsuarioFn` — escala de privilégio. Uma função, fecha o buraco mais grave.
-2. **P0.3** `seedSuperAdmin` — proteger ou remover.
-3. **P0.12** remover os 5 `fetch` de debug.
-4. **P0.5** `.gitignore` + `git rm --cached .env` (confirmar com o time antes).
-5. **P0.10** `min(10)` na senha + `crypto.randomInt` no OTP.
-6. **P0.2** (subset fácil de P0.2) — `limparLogsFn`, `getSystemLogsFn`, `getRelatorios*Fn`,
+> ✅ **Itens 1, 2, 3, 5 e 6 concluídos (2026-10-20).** O item 4 (P0.5) continua **pendente**:
+> depende de confirmação do time, porque `.env` versionado e repositório público significam
+> que a chave exposta precisa ser considerada queimada.
+1. ✅ **P0.1** `gerenciarUsuarioFn` — escala de privilégio. Uma função, fecha o buraco mais grave.
+2. ✅ **P0.3** `seedSuperAdmin` — proteger ou remover.
+3. ✅ **P0.12** remover os 5 `fetch` de debug.
+4. ⏳ **P0.5** `.gitignore` + `git rm --cached .env` (confirmar com o time antes).
+5. ✅ **P0.10** `min(10)` na senha + `crypto.randomInt` no OTP (contador de tentativas → C9).
+6. ✅ **P0.2** (subset fácil de P0.2) — `limparLogsFn`, `getSystemLogsFn`, `getRelatorios*Fn`,
    `setComissaoPadraoFn`, `demo.functions.ts`, `admin-checklist`, `marketing` — todas são
-   **admin puro**, sem usuário legítimo além do admin.
+   **admin puro**, sem usuário legítimo além do admin. Ampliado para 48 fns em 6 arquivos,
+   com dois níveis (`adminOuOperacaoDaSessao` para leitura, `adminDaSessao` para escrita).
 
 > ⚠️ **Antes da Fase 0**: confirmar no Easypanel se `SESSION_SECRET` está setada (P0.4) e se o
 > `app_secret` do WhatsApp está gravado (P0.7). Sem essa conferência, P0.4 e P0.7 derrubam o

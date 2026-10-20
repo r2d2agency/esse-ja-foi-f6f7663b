@@ -1,16 +1,29 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-export const seedSuperAdmin = createServerFn({ method: "POST" }).handler(async () => {
-  const { ensureSuperAdmin, SUPERADMIN_EMAIL } = await import("@/db/auth.server");
-  try {
-    await ensureSuperAdmin();
-    return { ok: true as const, email: SUPERADMIN_EMAIL };
-  } catch (error) {
-    console.error("Falha ao criar superadmin:", error);
-    return { ok: false as const, error: (error as Error).message };
-  }
-});
+/**
+ * Garante a conta do superadmin.
+ *
+ * Antes isso era uma server fn **pública**: qualquer visitante chamava e recebia
+ * de volta o e-mail do administrador — e ainda forçava a criação da conta.
+ * Agora só um admin já logado pode disparar, e o e-mail só é devolvido nesse
+ * caso. A criação da conta no boot continua em `db/index.ts`, que não depende
+ * desta fn.
+ */
+export const seedSuperAdmin = createServerFn({ method: "POST" })
+  .validator((d: unknown) => z.object({}).parse(d))
+  .handler(async () => {
+    const { ensureSuperAdmin, SUPERADMIN_EMAIL } = await import("@/db/auth.server");
+    try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
+      await ensureSuperAdmin();
+      return { ok: true as const, email: SUPERADMIN_EMAIL };
+    } catch (error) {
+      console.error("Falha ao criar superadmin:", error);
+      return { ok: false as const, error: (error as Error).message };
+    }
+  });
 
 export const loginWithPassword = createServerFn({ method: "POST" })
   .validator((data: any) => z.object({ 
@@ -125,7 +138,9 @@ export const resetarSenhaFinalFn = createServerFn({ method: "POST" })
   .validator((data: any) => z.object({ 
     email: z.string().email(), 
     code: z.string(), 
-    newPassword: z.string().min(6) 
+    // Piso de 10 caracteres: 6 permitia senhas de 1 caractere na prática
+    // ("a12345" passa em `min(6)` com brute force viável sobre o hash).
+    newPassword: z.string().min(10)
   }).parse(data))
   .handler(async ({ data }) => {
     const { db } = await import("@/db/index");

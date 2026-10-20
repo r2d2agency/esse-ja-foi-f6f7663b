@@ -21,6 +21,8 @@ export const adminCriarCategoriaFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { adminCriarCategoriaChecklist } = await import("@/db/vistorias.server");
     try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
       return await adminCriarCategoriaChecklist(data as any);
     } catch (err: any) {
       return { ok: false, message: err.message };
@@ -38,6 +40,8 @@ export const adminAtualizarCategoriaFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { adminAtualizarCategoriaChecklist } = await import("@/db/vistorias.server");
     try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
       return await adminAtualizarCategoriaChecklist(data as any);
     } catch (err: any) {
       return { ok: false, message: err.message };
@@ -49,6 +53,8 @@ export const adminExcluirCategoriaFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { adminExcluirCategoriaChecklist } = await import("@/db/vistorias.server");
     try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
       return await adminExcluirCategoriaChecklist(data.id);
     } catch (err: any) {
       return { ok: false, message: err.message };
@@ -70,6 +76,8 @@ export const adminCriarItemFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { adminCriarItemChecklist } = await import("@/db/vistorias.server");
     try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
       return await adminCriarItemChecklist(data as any);
     } catch (err: any) {
       return { ok: false, message: err.message };
@@ -93,6 +101,8 @@ export const adminAtualizarItemFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { adminAtualizarItemChecklist } = await import("@/db/vistorias.server");
     try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
       return await adminAtualizarItemChecklist(data as any);
     } catch (err: any) {
       return { ok: false, message: err.message };
@@ -104,6 +114,8 @@ export const adminExcluirItemFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { adminExcluirItemChecklist } = await import("@/db/vistorias.server");
     try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
       return await adminExcluirItemChecklist(data.id);
     } catch (err: any) {
       return { ok: false, message: err.message };
@@ -125,6 +137,8 @@ export const aplicarTemplateChecklistFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { aplicarTemplateChecklist } = await import("@/db/vistorias.server");
     try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
       return await aplicarTemplateChecklist(data.templateId);
     } catch (err: any) {
       return { ok: false as const, message: err.message };

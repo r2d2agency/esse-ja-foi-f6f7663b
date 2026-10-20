@@ -91,12 +91,33 @@ Esta é a área mais delicate do sistema. Entenda antes de mexer.
   `protegido`.
 - As 4 ações críticas exigem OTP.
 - `consulta-logs.functions.ts` valida `role === 'admin'` no servidor.
+- **Desde 2026-10-20** os arquivos de backoffice `admin.functions.ts`, `logs.functions.ts`,
+  `relatorios.functions.ts`, `demo.functions.ts`, `admin-checklist.functions.ts` e
+  `marketing.functions.ts` exigem guard de servidor em **todas** as server fns. São dois níveis:
+
+```ts
+// Leitura de backoffice: admin OU operador (ambos caem em /admin no login).
+const { adminOuOperacaoDaSessao } = await import("@/lib/sessao.server");
+await adminOuOperacaoDaSessao();
+
+// Escrita / ação destrutiva: só admin ativo.
+const { adminDaSessao } = await import("@/lib/sessao.server");
+await adminDaSessao();
+```
+
+O guard fica **dentro** do `try` do handler: a falha vira `{ ok: false, message }`, que é o
+formato que as telas já sabem exibir, em vez de uma exceção crua.
 
 ### O que NÃO é seguro
 
-> ⭐ **A maioria das server functions de `admin*.functions.ts`, `admin-veiculos.functions.ts`,
-> `relatorios.functions.ts`, `logs.functions.ts` e `marketing.functions.ts` NÃO validam o
-> role no servidor.** Elas confiam apenas no guard **client-side** do `AdminLayout`.
+> ⭐ **Ainda há server functions de backoffice sem guard de servidor** — em especial
+> `admin-compliance.functions.ts`, `vendedores-compliance.functions.ts`,
+> `admin-compradores.functions.ts`, `financeiro.functions.ts`, `pagamentos.functions.ts` e
+> `admin-veiculos.functions.ts`. Elas confiam apenas no guard **client-side** do `AdminLayout`.
+> As de maior risco: as de **dinheiro** (`autorizarRepasseFn`, `confirmarConclusaoRepasseFn`,
+> `salvarDadosBancariosFn`, `confirmarPagamentoManualFn`) e as de **compliance/publicação**
+> (`atualizarComplianceFn`, `aprovarParaPublicacaoFn`) — nenhuma delas aceita `adminId` do
+> corpo: devem vir da sessão.
 
 Os guards de rota (`AdminLayout.tsx:317`, `vendedor.tsx:32`, `comprador.tsx:30`) verificam
 **apenas se há sessão**, não o role. `vistoriador.tsx` **não tem guard nenhum**. As únicas duas
@@ -107,14 +128,10 @@ telas que checam role no client são `veiculos.index.tsx` e `veiculos.$slug.tsx`
 `listarVendedoresFn` direto no console **vai passar**. O cookie httpOnly impede forjar o role,
 mas não impede usar a função errada.
 
-**O que fazer:** ao tocar uma função admin, **adicione** a checagem:
-
-```ts
-const usuario = await perfilDaSessao();
-if (!usuario || usuario.role !== "admin") {
-  throw new Error("Apenas administradores podem executar esta ação.");
-}
-```
+**O que fazer:** ao tocar uma função admin, **adicione** a checagem — usando os helpers de
+[src/lib/sessao.server.ts](src/lib/sessao.server.ts) (`adminDaSessao` ou
+`adminOuOperacaoDaSessao`), **não** `perfilDaSessao()` com comparação manual de role: o helper
+centraliza a regra e já devolve a mensagem certa.
 
 Não é opcional — é o que fecha o buraco.
 

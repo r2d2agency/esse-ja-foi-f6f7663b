@@ -156,35 +156,10 @@ function DetalheVeiculoAdminPage() {
   const consultarDesvalorizacaoFipe = useServerFn(consultarDesvalorizacaoFipeFn);
   const listarConsultasFipe = useServerFn(listarConsultasVeiculoFn);
 
-  const canReportDebug =
-    typeof window !== "undefined" &&
-    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
-
   const { data: res, error, isLoading, refetch } = useQuery({
     queryKey: ["admin-veiculo-detalhe", id],
     queryFn: () => getDetalhe({ data: { id } })
   });
-
-  useEffect(() => {
-    if (!canReportDebug) return;
-    // #region debug-point A:route-param
-    fetch("http://127.0.0.1:7777/event", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: "admin-vehicle-detail", runId: "pre-fix", hypothesisId: "A", location: "src/routes/admin/veiculo.$id.tsx:useEffect:param", msg: "[DEBUG] admin vehicle detail page mounted", data: { id }, ts: Date.now() }) }).catch(() => {});
-    // #endregion
-  }, [canReportDebug, id]);
-
-  useEffect(() => {
-    if (!canReportDebug || !error) return;
-    // #region debug-point D:query-error
-    fetch("http://127.0.0.1:7777/event", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: "admin-vehicle-detail", runId: "pre-fix", hypothesisId: "D", location: "src/routes/admin/veiculo.$id.tsx:useEffect:error", msg: "[DEBUG] admin vehicle detail query failed in route", data: { id, errorMessage: (error as any)?.message ?? null, errorName: (error as any)?.name ?? null }, ts: Date.now() }) }).catch(() => {});
-    // #endregion
-  }, [canReportDebug, error, id]);
-
-  useEffect(() => {
-    if (!canReportDebug || !res || res.ok || res.data) return;
-    // #region debug-point C:failed-response
-    fetch("http://127.0.0.1:7777/event", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: "admin-vehicle-detail", runId: "pre-fix", hypothesisId: "C", location: "src/routes/admin/veiculo.$id.tsx:useEffect:failed-response", msg: "[DEBUG] admin vehicle detail returned failed payload", data: { id, message: res.message ?? null }, ts: Date.now() }) }).catch(() => {});
-    // #endregion
-  }, [canReportDebug, res, id]);
 
   // Retoma sozinho o polling se a página for reaberta com uma consulta FIPE ainda em
   // processamento no provedor (ex.: o analista saiu e voltou antes do resultado chegar) —
