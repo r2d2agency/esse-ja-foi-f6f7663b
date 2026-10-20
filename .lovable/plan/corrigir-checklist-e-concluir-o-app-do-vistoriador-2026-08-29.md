@@ -31,7 +31,7 @@ Fazer as categorias e itens do checklist persistirem e aparecerem no admin e na 
    - Testar no navegador os fluxos públicos disponíveis e a responsividade mobile/desktop.
 
 ## Detalhes técnicos
-- Manter React/TanStack Start, PostgreSQL customizado e funções de servidor existentes; sem Lovable Cloud para dados.
+- Manter React/TanStack Start, PostgreSQL customizado e funções de servidor existentes; sem nuvem do editor para dados.
 - Usar `America/Sao_Paulo` nas consultas de data e métricas.
 - Não criar dados falsos: telas vazias devem refletir a agenda real do banco.
 - Nenhuma mudança nos módulos de leilão, vendedor ou comprador.
