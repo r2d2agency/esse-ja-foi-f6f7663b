@@ -1,9 +1,38 @@
 import { sql } from "drizzle-orm";
 import { db } from "./index";
+import { randomBytes } from "node:crypto";
 
 export const SUPERADMIN_EMAIL = "tnicodemos@gmail.com";
-const SUPERADMIN_PASSWORD = "@N3tw0rk$";
 const SUPERADMIN_NAME = "Super Admin";
+
+/**
+ * Senha inicial do superadmin.
+ *
+ * Antes era uma constante no código-fonte — ou seja, **publicada no repositório
+ * público**: qualquer pessoa podia entrar como administrador. A senha agora
+ * vem do ambiente (`SUPERADMIN_PASSWORD`); se ela não existir, o sistema gera
+ * uma senha aleatória **na hora** e a imprime **uma única vez** no log do
+ * servidor. Assim a conta nunca nasce com uma credencial conhecida por todos,
+ * e o bootstrap continua funcionando sem nenhuma variável configurada.
+ *
+ * Contas que já existem **mantêm** a senha atual (o `COALESCE` abaixo nunca
+ * sobrescreve um `senha_hash` gravado) — trocar isso aqui derrubaria o acesso
+ * de quem já está usando o sistema.
+ */
+function senhaInicialDoSuperadmin(): { senha: string; efemera: boolean } {
+  const doAmbiente = process.env["SUPERADMIN_PASSWORD"];
+  if (doAmbiente && doAmbiente.trim().length >= 8) {
+    return { senha: doAmbiente, efemera: false };
+  }
+  return { senha: `EJf-${randomBytes(12).toString("base64url")}`, efemera: true };
+}
+
+/**
+ * Chave da configuração interna onde o segredo de sessão fica persistido.
+ * Não é uma "configuração" de negócio: nunca aparece na listagem do admin
+ * (o valor é mascarado) e nunca é lida pelo cliente.
+ */
+const CHAVE_SEGREDO_SESSAO = "segredo_sessao";
 
 const enc = new TextEncoder();
 
@@ -290,22 +319,50 @@ export async function ensureSuperAdmin(silent = true) {
       FOR EACH ROW EXECUTE FUNCTION protege_superadmin();
     `);
 
-    const senha = await hashPassword(SUPERADMIN_PASSWORD);
+    // A senha inicial só é gerada quando a conta **ainda não existe** — nas
+    // chamadas seguintes (o login chama `ensureSuperAdmin()` toda vez) a
+    // conta já está lá e nada muda.
+    const jaExiste: any = await db.execute(sql`
+      SELECT id, senha_hash FROM profiles WHERE lower(email) = lower(${SUPERADMIN_EMAIL}) LIMIT 1
+    `);
+    const existente = Array.isArray(jaExiste) ? jaExiste[0] : jaExiste?.rows?.[0];
+
+    let senhaGerada: { senha: string; efemera: boolean } | null = null;
+    let senhaHash: string;
+    if (existente?.senha_hash) {
+      // Conta já tem senha: preservada (trocar aqui derrubaria o acesso de
+      // quem já usa o sistema).
+      senhaHash = existente.senha_hash;
+    } else {
+      senhaGerada = senhaInicialDoSuperadmin();
+      senhaHash = await hashPassword(senhaGerada.senha);
+    }
+
     const cadastroModule = await import("./cadastro.server");
     const ensureCadastroSchema = cadastroModule.ensureCadastroSchema;
-    
+
     await ensureCadastroSchema(silent);
     await ensureAdminTables(silent);
 
     await db.execute(sql`
       INSERT INTO profiles (nome, email, role, ativo, protegido, senha_hash, cpf, cep, endereco, cidade, uf)
-      VALUES (${SUPERADMIN_NAME}, ${SUPERADMIN_EMAIL}, 'admin'::text::app_role, true, true, ${senha}, '00000000000', '00000000', 'Endereço Admin', 'Cidade', 'UF')
+      VALUES (${SUPERADMIN_NAME}, ${SUPERADMIN_EMAIL}, 'admin'::text::app_role, true, true, ${senhaHash}, '00000000000', '00000000', 'Endereço Admin', 'Cidade', 'UF')
       ON CONFLICT (email) DO UPDATE
         SET protegido = true,
             role = 'admin'::text::app_role,
             ativo = true,
             senha_hash = COALESCE(profiles.senha_hash, EXCLUDED.senha_hash);
     `);
+
+    if (senhaGerada?.efemera) {
+      // Senha aleatória de bootstrap: aparece **uma vez** no log do servidor.
+      // Sem `SUPERADMIN_PASSWORD` no ambiente não existe outra forma de
+      // recuperá-la — quem precisar redefinir usa a tela de recuperação de
+      // senha (que grava um hash novo e invalida esta).
+      console.warn(
+        `[auth.server] SUPERADMIN_PASSWORD não definida no ambiente. Senha inicial gerada para ${SUPERADMIN_EMAIL}: ${senhaGerada.senha} — guarde agora, ela não será exibida de novo.`,
+      );
+    }
 
     if (!silent && process.env['NODE_ENV'] === 'development') console.log("✅ Superadmin garantido:", SUPERADMIN_EMAIL);
   } catch (err) {
@@ -401,8 +458,78 @@ export async function listarSuperadmins() {
   return (Array.isArray(res) ? res : res?.rows) || [];
 }
 
+/**
+ * Segredo usado para assinar o cookie de sessão (HMAC-SHA256).
+ *
+ * Antes o fallback era uma string fixa publicada no repositório: com ela,
+ * qualquer pessoa forjava `ejf_sessao` com o `sub` de um admin e o sistema
+ * aceitava a sessão sem erro, log ou aviso.
+ *
+ * A ordem de resolução é:
+ *  1. `SESSION_SECRET` do ambiente, se existir e tiver comprimento útil;
+ *  2. o segredo já persistido em `configuracoes_sistema` (chave
+ *     `segredo_sessao`);
+ *  3. um segredo novo, forte, gerado pelo CSPRNG e **persistido** no banco.
+ *
+ * O passo 3 é o que fecha o buraco sem exigir configuração de ambiente: em
+ * vez de um segredo público no código, o sistema tem um segredo aleatório
+ * por instalação, guardado fora do repositório. A gravação é feita com
+ * `ON CONFLICT DO NOTHING` + releitura para que duas requisições simultâneas
+ * não gerem dois segredos diferentes (o segundo invalidaria as sessões do
+ * primeiro).
+ */
+let segredoSessaoCache: string | null = null;
+
+async function segredoSessao(): Promise<string> {
+  const doAmbiente = process.env["SESSION_SECRET"]?.trim();
+  if (doAmbiente && doAmbiente.length >= 16) return doAmbiente;
+
+  if (!db) throw new Error("Banco de dados indisponível.");
+  if (segredoSessaoCache) return segredoSessaoCache;
+
+  const ler = async (): Promise<string | null> => {
+    const res: any = await db!.execute(
+      sql`SELECT valor FROM configuracoes_sistema WHERE chave = ${CHAVE_SEGREDO_SESSAO} LIMIT 1`,
+    );
+    const linha = Array.isArray(res) ? res[0] : res?.rows?.[0];
+    const valor = linha?.valor;
+    return valor && String(valor).length >= 32 ? String(valor) : null;
+  };
+
+  try {
+    const existente = await ler();
+    if (existente) {
+      segredoSessaoCache = existente;
+      return existente;
+    }
+  } catch (e: any) {
+    console.error("[auth.server] Falha ao ler o segredo de sessão do banco:", e?.message || e);
+  }
+
+  const novo = randomBytes(32).toString("hex");
+  try {
+    await db!.execute(sql`
+      INSERT INTO configuracoes_sistema (chave, valor, descricao, atualizado_em)
+      VALUES (${CHAVE_SEGREDO_SESSAO}, ${novo}, 'Segredo HMAC das sessões (interno)', now())
+      ON CONFLICT (chave) DO NOTHING
+    `);
+  } catch (e: any) {
+    console.error("[auth.server] Falha ao gravar o segredo de sessão:", e?.message || e);
+  }
+
+  // Releitura: se outra requisição gravou o seu antes, o dela é o válido.
+  const final = (await ler().catch(() => null)) ?? novo;
+  segredoSessaoCache = final;
+  if (!doAmbiente) {
+    console.warn(
+      "[auth.server] SESSION_SECRET não está definida no ambiente: usando o segredo persistido no banco.",
+    );
+  }
+  return final;
+}
+
 export async function issueToken(userId: string) {
-  const secret = process.env["SESSION_SECRET"] ?? "esse-ja-foi-dev-secret";
+  const secret = await segredoSessao();
   const payload = btoa(JSON.stringify({ sub: userId, exp: Date.now() + 1000 * 60 * 60 * 12 }));
   const key = await crypto.subtle.importKey(
     "raw",
@@ -421,7 +548,7 @@ export async function verifyToken(token?: string | null): Promise<string | null>
   try {
     const [payload, sig] = token.split(".");
     if (!payload || !sig) return null;
-    const secret = process.env["SESSION_SECRET"] ?? "esse-ja-foi-dev-secret";
+    const secret = await segredoSessao();
     const key = await crypto.subtle.importKey(
       "raw",
       enc.encode(secret),

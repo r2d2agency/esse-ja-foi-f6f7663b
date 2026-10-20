@@ -225,6 +225,43 @@ trecho acima.
 Detalhe importante: as **4 ações críticas que exigem OTP** não cobrem o caminho normal de
 exclusão — `excluirPerfilFn` (`src/lib/admin.functions.ts:108`) **não tem role nem OTP**.
 
+### N. O segredo de sessão não vem do ambiente
+
+**Desde 2026-10-20** o HMAC do cookie `ejf_sessao` é resolvido em três degraus
+([src/db/auth.server.ts](src/db/auth.server.ts)):
+
+1. `SESSION_SECRET` do ambiente, se existir e tiver ≥ 16 caracteres;
+2. senão, o valor da chave `segredo_sessao` em `configuracoes_sistema`;
+3. senão, um segredo novo (`randomBytes(32)`) gravado com `ON CONFLICT DO NOTHING` e re-lido.
+
+**Por que:** o deploy (Easypanel) não tem env vars setadas, e "sem `SESSION_SECRET` → derrubar
+o boot" derrubaria o site. O que **não** pode voltar é um segredo **fixo no código** — ele
+publicava o token de admin forjável para qualquer um.
+
+Armadilhas:
+
+- A chave `segredo_sessao` **não** está no allowlist `CHAVES_CONFIG_PUBLICAS`, então o valor
+  nunca chega ao navegador — **não a adicione** a essa lista.
+- **Trocar o valor** de `segredo_sessao` invalida todas as sessões (todo mundo desloga).
+- `SUPERADMIN_PASSWORD` é **opcional**: sem ela, `ensureSuperAdmin()` preserva a senha
+  existente ou, em conta nova, gera uma senha aleatória **impressa uma única vez no log do
+  servidor**. A senha **não** é rotacionada por deploy.
+
+### O. O webhook do WhatsApp é falha-fechada
+
+**Desde 2026-10-20** o webhook da Meta ([src/routes/api/public/webhooks/whatsapp.ts](src/routes/api/public/webhooks/whatsapp.ts))
+**recusa (401)** quando a assinatura não pode ser conferida:
+
+- `app_secret` ausente → 401 (salvo `WEBHOOK_ASSINATURA_OPCIONAL=true`);
+- `app_secret` presente, assinatura divergente **ou header ausente** → 401;
+- todo 401 **grava linha** na tabela de log da Meta (antes só ia para o `console`, e a tela de
+  log parecia nunca ter sido chamada).
+
+**O que você precisa fazer:** gravar o **App Secret da Meta** em
+`Admin > Comunicações > Configurações`. Sem isso, **toda** mensagem recebida é rejeitada.
+`WEBHOOK_ASSINATURA_OPCIONAL=true` existe só como ponte — é o estado inseguro que a correção
+fechou.
+
 ---
 
 ## 5. Verificação antes de commitar

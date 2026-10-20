@@ -112,38 +112,64 @@ Qualquer visitante descobre o e-mail do administrador e pode forçar a criação
 **Risco:** baixo — verificar se alguma tela depende dele.
 
 ### P0.4. Segredo de sessão e credencial de admin fixos no código
-**Arquivos:** `src/db/auth.server.ts:4-5` (credencial fixa do superadmin) e
-`src/db/auth.server.ts:405,424` (`SESSION_SECRET` com fallback)
+> ✅ **Fechado (2026-10-20).** Adaptado para funcionar **sem** nenhuma variável de ambiente
+> setada no Easypanel (env vars de produção não existem neste deploy).
+**Arquivos:** `src/db/auth.server.ts` (segredo de sessão + senha inicial do superadmin)
+
+O problema original:
 
 ```ts
-const secret = process.env["SESSION_SECRET"] ?? "esse-ja-foi-dev-secret";
+const secret = process.env["SESSION_SECRET"] ?? "<segredo-fixo-publicado-no-repo>";
 ```
 
-Se `SESSION_SECRET` não estiver setada no Easypanel, o sistema **funciona normalmente** com um
-segredo público no repositório — e o payload do cookie é só base64, não criptografado. Qualquer
-um forja `ejf_sessao` com `sub` = UUID de um admin. É **falha aberta**: sem erro, sem log, sem
-aviso no boot.
+Com `SESSION_SECRET` ausente, o sistema **funcionava normalmente** com um segredo público no
+repositório — e o payload do cookie é só base64, não criptografado. Qualquer um forjava
+`ejf_sessao` com `sub` = UUID de um admin. Era **falha aberta**: sem erro, sem log, sem aviso.
+A credencial fixa do superadmin, usada por `ensureSuperAdmin()` (chamada **a cada login**),
+também estava no código-fonte do repo público.
 
-A credencial fixa do superadmin é usada por `ensureSuperAdmin()`, chamada **a cada login**:
-se a conta não tem `senha_hash`, ela é criada com essa senha.
+**Correção aplicada — resolução em três degraus (env → banco → gerado):**
 
-**Correção:** mover a credencial para env e, em produção, **sem `SESSION_SECRET` → derrubar o
-boot** em vez de fazer fallback.
-**Risco: ALTO na execução** — se a variável não estiver setada no Easypanel, o deploy quebra.
-**Verificar a variável no painel antes de aplicar.** Para a credencial do superadmin, conferir
-o estado da conta em produção antes de trocar o default (o gatilho `trg_protege_superadmin`
-protege contra exclusão/rebaixamento, mas não contra troca de senha).
+1. `SESSION_SECRET` do ambiente, se existir e tiver comprimento útil (≥ 16);
+2. senão, o segredo **persistido no banco**, em `configuracoes_sistema` na chave
+   `segredo_sessao` (fora do allowlist `CHAVES_CONFIG_PUBLICAS`, então nunca chega ao
+   navegador);
+3. senão, um segredo novo gerado com `randomBytes(32)`, gravado com
+   `ON CONFLICT (chave) DO NOTHING` e **re-lido** — assim, em duas requisições simultâneas,
+   a que perder a corrida adota o segredo da outra em vez de invalidar as sessões dela.
+
+O fallback público saiu do código: um segredo por instalação, fora do repo. Uma vez persistido,
+trocar o valor da linha `segredo_sessao` invalida todas as sessões (todo mundo desloga) — isso é
+esperado.
+
+**Senha do superadmin:** a constante fixa saiu do código. `ensureSuperAdmin()` agora:
+- se a conta **já tem** `senha_hash`, **preserva** (o `COALESCE` do `ON CONFLICT` continua
+  como segunda linha de defesa);
+- se é conta nova, usa `SUPERADMIN_PASSWORD` do ambiente quando existir (≥ 8 caracteres), ou
+  gera uma senha aleatória (`EJf-…`) **impressa uma única vez no log do servidor**;
+- **não rotaciona** senha existente — trocar a senha do admin em produção por conta própria.
+
+**Risco resolvido:** deploy não quebra por falta de variável de ambiente. O que **precisa** ser
+feito uma vez, manualmente: se a conta do superadmin em produção ainda tem a senha antiga
+(publicada), trocá-la pelo caminho normal do painel — a correção do código **não** faz isso.
 
 ### P0.5. `.env` versionado no git e `.gitignore` sem regra para `.env`
+> ✅ **Fechado (2026-10-20).**
 **Arquivo:** `.gitignore`
 
-O `.gitignore` **não tem** entrada `.env`, e `git ls-files` confirma que `.env` e
-`.dbg/admin-vehicle-detail.env` estão **trackados**. O `.env` commitado carrega o projeto
+O `.gitignore` **não tinha** entrada `.env`, e `git ls-files` confirmava que `.env` e
+`.dbg/admin-vehicle-detail.env` estavam **trackados**. O `.env` commitado carregava o projeto
 Supabase e a `publishable_key`.
 
-**Correção:** adicionar `.env*` (com `!.env.example`) ao `.gitignore` e `git rm --cached .env`.
-**Risco: baixo** — o `.dockerignore` já exclui `.env`, então o container não é afetado. Mas
-**confirmar com o time** que o deploy não lê esse arquivo do repositório antes de remover.
+**Correção aplicada:** `.env`, `.env.*` (com `!.env.example`) entraram no `.gitignore`, e
+`git rm --cached .env .dbg/admin-vehicle-detail.env` tirou os dois do índice (os arquivos
+continuam no disco — só saem do versionamento). O `.dockerignore` já excluía `.env`, então o
+container não é afetado.
+
+**⚠️ Pendência de rotação:** a `publishable_key` do Supabase que estava no `.env` continua no
+**histórico do git** — removê-lo do índice não apaga o passado. A chave deve ser considerada
+**queimada** e rotacionada no painel do Supabase; o `REVOKE` do `anon` do **P0.6** fecha o
+resto do estrago.
 
 ### P0.6. `GRANT` de leitura para `anon` em `otp_codes` e `profiles`
 **Arquivos:** `src/db/mail.server.ts:30`, `src/db/auth.server.ts:141`, `src/db/perfil.server.ts:62`
@@ -162,15 +188,31 @@ Um visitor com a chave pública poderia ler os **códigos OTP válidos**.
 `auth-attacher.ts`; rodar o `REVOKE` e testar essas duas telas.
 
 ### P0.7. Webhook do WhatsApp **aceita** requisição quando falta o `app_secret`
-**Arquivo:** `src/routes/api/public/webhooks/whatsapp.ts:192-204`
+> ✅ **Fechado (2026-10-20), com saída de emergência explícita.**
+**Arquivo:** `src/routes/api/public/webhooks/whatsapp.ts`
 
-O HMAC é validado corretamente quando o `appSecret` existe. Mas se ele **não** estiver
-gravado, a validação é ignorada com um log de aviso e a requisição é processada — **falha
-aberta**. A configuração é gravável pela tela `Admin > Configurações`.
+O HMAC era validado corretamente quando o `appSecret` existia. Mas se ele **não** estivesse
+gravado, a validação era ignorada com um log de aviso e a requisição era processada — **falha
+aberta**: qualquer POST escrevia conversas e disparava ações.
 
-**Correção:** sem `appSecret` → **401**.
-**Risco: ALTO na execução** — se o `app_secret` não estiver gravado em produção, **toda**
-notificação da Meta passa a ser rejeitada e as conversas param. **Verificar a config antes.**
+**Correção aplicada — agora falha fechada por padrão:**
+
+- `app_secret` **ausente** → **401** ("Missing app secret"), salvo se
+  `WEBHOOK_ASSINATURA_OPCIONAL=true` estiver setado no ambiente (saída de emergência para o
+  intervalo entre configurar o App Secret e o deploy);
+- `app_secret` presente mas **assinatura divergente ou header ausente** → **401**. Antes, o
+  header ausente caía num `else` que só logava aviso e **processava o evento** mesmo;
+- `timingSafeEqual` é chamado **só depois** de comparar os comprimentos — ele lança exceção
+  quando os buffers têm tamanhos diferentes, então uma assinatura truncada derrubava o
+  handler com um erro 500 em vez de um 401 limpo;
+- **todo** 401 agora grava linha na tabela de log da Meta. Era esse o motivo da "tela de log
+  vazia": o 401 era devolvido com `console.error` e **nada** no banco.
+
+**⚠️ Ação manual obrigatória antes do deploy:** gravar o **App Secret da Meta** em
+`Admin > Comunicações > Configurações` (campo `whatsapp_config.app_secret`). Sem isso, **toda**
+mensagem recebida da Meta passa a ser rejeitada com 401 e as conversas param. Alternativa
+temporária: `WEBHOOK_ASSINATURA_OPCIONAL=true` no Easypanel — que é exatamente o estado
+inseguro que o item queria fechar, então use só como ponte.
 
 ### P0.8. IDOR: qualquer arquivo é servido a qualquer visitante
 **Arquivo:** `src/routes/api/public/arquivo.$id.ts:6-35`
@@ -340,7 +382,7 @@ ou mock em dev seria rejeitado).
 ### A12. `SESSION_SECRET` com fallback público
 **Arquivos:** `src/lib/sessao.server.ts`, `src/db/auth.server.ts:405,424`
 
-`process.env["SESSION_SECRET"] ?? "esse-ja-foi-dev-secret"` nos dois lados (emitir e verificar).
+`process.env["SESSION_SECRET"] ?? "<segredo-fixo-publicado-no-repo>"` nos dois lados (emitir e verificar).
 Um deploy sem a variável usa um segredo **público no repositório** — o token de sessão passa a
 ser forjável.
 
@@ -694,45 +736,49 @@ de erro.
 ## Ordem sugerida de ataque
 
 ### Fase 0 — agora (segurança, sem esperar)
-> ✅ **Itens 1, 2, 3, 5 e 6 concluídos (2026-10-20).** O item 4 (P0.5) continua **pendente**:
-> depende de confirmação do time, porque `.env` versionado e repositório público significam
-> que a chave exposta precisa ser considerada queimada.
+> ✅ **Itens 1, 2, 3, 4, 5 e 6 concluídos (2026-10-20).**
 1. ✅ **P0.1** `gerenciarUsuarioFn` — escala de privilégio. Uma função, fecha o buraco mais grave.
 2. ✅ **P0.3** `seedSuperAdmin` — proteger ou remover.
 3. ✅ **P0.12** remover os 5 `fetch` de debug.
-4. ⏳ **P0.5** `.gitignore` + `git rm --cached .env` (confirmar com o time antes).
+4. ✅ **P0.5** `.gitignore` + `git rm --cached .env` e `.dbg/admin-vehicle-detail.env`.
 5. ✅ **P0.10** `min(10)` na senha + `crypto.randomInt` no OTP (contador de tentativas → C9).
 6. ✅ **P0.2** (subset fácil de P0.2) — `limparLogsFn`, `getSystemLogsFn`, `getRelatorios*Fn`,
    `setComissaoPadraoFn`, `demo.functions.ts`, `admin-checklist`, `marketing` — todas são
    **admin puro**, sem usuário legítimo além do admin. Ampliado para 48 fns em 6 arquivos,
    com dois níveis (`adminOuOperacaoDaSessao` para leitura, `adminDaSessao` para escrita).
+7. ✅ **P0.4** segredo de sessão e credencial do superadmin — resolvidos **sem** depender de
+   variável de ambiente (env → banco → CSPRNG), porque o deploy não tem env vars setadas.
+8. ✅ **P0.7** webhook do WhatsApp — falha fechada por padrão, com `WEBHOOK_ASSINATURA_OPCIONAL`
+   como única saída de emergência.
 
-> ⚠️ **Antes da Fase 0**: confirmar no Easypanel se `SESSION_SECRET` está setada (P0.4) e se o
-> `app_secret` do WhatsApp está gravado (P0.7). Sem essa conferência, P0.4 e P0.7 derrubam o
-> site em produção.
+> ⚠️ **Ação manual pendente (não bloqueia o deploy, mas precisa ser feita):**
+> - **P0.7**: gravar o **App Secret da Meta** em `Admin > Comunicações > Configurações`. Sem
+>   isso, toda mensagem recebida da Meta é rejeitada com 401 (e o log da Meta mostra o motivo).
+> - **P0.4**: se a conta do superadmin em produção ainda usa a senha antiga (que estava
+>   publicada no repo), **trocá-la pelo painel** — a correção não rotaciona senha existente.
+> - **P0.5**: rotacionar a `publishable_key` do Supabase, que ficou no histórico do git.
 
 ### Fase 1 — correções locais seguras (qualidade, sem risco)
-7. **A1, A2** (dashboard mostra números reais — 30 min, valida a leitura)
-8. **A3, A4** (fuso)
-9. **B2** (ledger duplicado — financeiro)
-10. **B3** (tentativas do código de entrega)
-11. **A5, A6, A8** (higiene de queries)
-12. **A9, A13, A11** (erros engolidos, vazamento, `sql.raw`)
+9. **A1, A2** (dashboard mostra números reais — 30 min, valida a leitura)
+10. **A3, A4** (fuso)
+11. **B2** (ledger duplicado — financeiro)
+12. **B3** (tentativas do código de entrega)
+13. **A5, A6, A8** (higiene de queries)
+14. **A9, A13, A11** (erros engolidos, vazamento, `sql.raw`)
 
 ### Fase 2 — autorização (o trabalho mais caro)
-13. **B1 por módulo**, começando por compradores/financeiro/compliance — com matriz de
+15. **B1 por módulo**, começando por compradores/financeiro/compliance — com matriz de
     permissão, não `role === 'admin'`. Respeitar **B1.a** (funções de posse).
-14. **P0.6** revogar `anon` em `otp_codes`/`profiles` — testar `vendedor.financeiro.tsx` e
+16. **P0.6** revogar `anon` em `otp_codes`/`profiles` — testar `vendedor.financeiro.tsx` e
     `auth-attacher.ts`.
-15. **B4, B6, B7** (races pontuais)
+17. **B4, B6, B7** (races pontuais)
 
 ### Fase 3 — robustez e hardening
-16. **B8–B11** (com paginação real junto)
-17. **P0.7** webhook do WhatsApp: sem `app_secret` → 401 (após confirmar a config)
-18. **P0.9** allowlist de MIME + `nosniff` + `Content-Disposition`
-19. **P0.11** throttle em memória no login/reset
-20. **C6** headers simples (sem CSP ainda) + `USER` no Docker
-21. **C13, C14** validação de env no boot + healthcheck (após conferir as variáveis)
+18. **B8–B11** (com paginação real junto)
+19. **P0.9** allowlist de MIME + `nosniff` + `Content-Disposition`
+20. **P0.11** throttle em memória no login/reset
+21. **C6** headers simples (sem CSP ainda) + `USER` no Docker
+22. **C13, C14** validação de env no boot + healthcheck (após conferir as variáveis)
 
 ### Fase 4 — mudança de contrato (planejar à parte)
 22. **C8, C9, C10** (posse dos arquivos, tentativas de OTP, rate limit distribuído)

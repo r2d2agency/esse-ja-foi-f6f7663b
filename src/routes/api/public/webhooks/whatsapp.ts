@@ -157,14 +157,19 @@ export const Route = createFileRoute("/api/public/webhooks/whatsapp")({
           const eventType = change?.field ?? null;
 
           // --- Validação da assinatura HMAC ---
-          if (appSecret && signature) {
+          if (appSecret) {
             const expectedSignature =
               "sha256=" + createHmac("sha256", appSecret).update(bodyText).digest("hex");
 
-            if (
-              !signature ||
-              !timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature))
-            ) {
+            // `timingSafeEqual` lança exceção quando os buffers têm tamanhos
+            // diferentes — sem esta checagem, uma assinatura truncada derrubava
+            // o handler com um erro em vez de um 401 limpo.
+            const conferida =
+              Boolean(signature) &&
+              signature!.length === expectedSignature.length &&
+              timingSafeEqual(Buffer.from(signature!), Buffer.from(expectedSignature));
+
+            if (!conferida) {
               // Aqui estava o buraco que escondia a causa: o 401 era devolvido
               // com um console.error e nenhuma linha no banco, então a tela de
               // log parecia nunca ter sido chamada. O 401 continua (a Meta
@@ -177,10 +182,11 @@ export const Route = createFileRoute("/api/public/webhooks/whatsapp")({
                 endpoint: eventType,
                 httpStatus: 401,
                 status: "ERRO",
-                resumo:
-                  "Assinatura inválida: o x-hub-signature-256 não confere com o app_secret gravado na configuração. Confira se o App Secret da Meta é o mesmo salvo em Comunicações > Configurações.",
+                resumo: signature
+                  ? "Assinatura inválida: o x-hub-signature-256 não confere com o app_secret gravado na configuração. Confira se o App Secret da Meta é o mesmo salvo em Comunicações > Configurações."
+                  : "Assinatura ausente: a Meta não enviou o header x-hub-signature-256, então a identidade do remetente não pôde ser confirmada.",
                 payload: {
-                  assinaturaRecebida: signature.slice(0, 14) + "…",
+                  assinaturaRecebida: signature ? signature.slice(0, 14) + "…" : null,
                   assinaturaEsperada: expectedSignature.slice(0, 14) + "…",
                   bodyBytes: bodyText.length,
                   eventType,
@@ -189,27 +195,47 @@ export const Route = createFileRoute("/api/public/webhooks/whatsapp")({
               });
               return new Response("Invalid signature", { status: 401 });
             }
-          } else if (!appSecret) {
-            // Sem app_secret a validação é simplesmente ignorada — o webhook
-            // fica aberto. Estava acontecendo sem aviso nenhum.
-            await registrarLogMeta({
-              direcao: "ENTRADA",
-              operacao: "WEBHOOK",
-              httpStatus: 200,
-              status: "ERRO",
-              resumo:
-                "ATENÇÃO: nenhum app_secret configurado — a validação de assinatura foi ignorada e o webhook está sem verificação.",
-              payload: { eventType },
-              duracaoMs: Date.now() - inicio,
-            });
           } else {
+            // Sem `app_secret` não há como conferir a assinatura: o HMAC é a
+            // única prova de que quem mandou é a Meta. Aceitar o evento assim
+            // deixa um endpoint público que grava conversas e dispara ações a
+            // partir de qualquer POST — falha aberta.
+            //
+            // A saída de emergência (`WEBHOOK_ASSINATURA_OPCIONAL=true`) existe
+            // só para o intervalo entre configurar o App Secret e o deploy
+            // desta correção; sem ela, o padrão é recusar.
+            const assinaturaOpcional =
+              process.env["WEBHOOK_ASSINATURA_OPCIONAL"] === "true";
+
+            if (!assinaturaOpcional) {
+              console.error(
+                "[WhatsApp Webhook] Nenhum app_secret configurado — requisição recusada.",
+              );
+              await registrarLogMeta({
+                direcao: "ENTRADA",
+                operacao: "WEBHOOK",
+                wabaId,
+                endpoint: eventType,
+                httpStatus: 401,
+                status: "ERRO",
+                resumo:
+                  "Nenhum app_secret configurado — a assinatura não pode ser conferida, então o evento foi recusado. Cadastre o App Secret da Meta em Comunicações > Configurações.",
+                payload: {
+                  eventType,
+                  assinaturaPresente: Boolean(signature),
+                },
+                duracaoMs: Date.now() - inicio,
+              });
+              return new Response("Missing app secret", { status: 401 });
+            }
+
             await registrarLogMeta({
               direcao: "ENTRADA",
               operacao: "WEBHOOK",
               httpStatus: 200,
               status: "ERRO",
               resumo:
-                "ATENÇÃO: a Meta enviou o evento sem o header x-hub-signature-256, então a identidade não pode ser confirmada.",
+                "ATENÇÃO: nenhum app_secret configurado — a validação de assinatura foi ignorada porque WEBHOOK_ASSINATURA_OPCIONAL=true.",
               payload: { eventType },
               duracaoMs: Date.now() - inicio,
             });
