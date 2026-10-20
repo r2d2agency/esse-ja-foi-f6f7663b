@@ -314,16 +314,23 @@ async function enviarComRetry(msg: any, campanha: any): Promise<ResultadoEnvio> 
       // O anexo (imagem/PDF do cabeçalho) mora na linha do template, não na
       // mensagem — cada contato recebe a mesma mídia. Por isso ela é resolvida
       // aqui e passada junto com os componentes.
-      const midia = campanha.midia_id
+      //
+      // A campanha tem prioridade: quando o usuário escolhe uma imagem no
+      // wizard, ela vale; sem escolha, cai na imagem do template. (A SELECT do
+      // motor traz as colunas da campanha e as do template com prefixo `t_`.)
+      const midiaId = campanha.midia_id || campanha.t_midia_id;
+      const midia = midiaId
         ? {
-            tipo: campanha.midia_tipo,
-            mediaId: campanha.midia_id,
-            nome: campanha.midia_nome,
+            tipo: campanha.midia_id ? campanha.midia_tipo : campanha.t_midia_tipo,
+            mediaId: midiaId,
+            nome: campanha.midia_id ? campanha.midia_nome : campanha.t_midia_nome,
             // A cópia local do binário: o `media_id` da Meta chega alfanumérico
             // (vence em 30 dias) e a Meta exige `image.id` INTEIRO. Sem esta
             // cópia não há como refazer o upload e o HEADER de mídia mata o
             // envio com "não tem um ID válido para a Meta".
-            arquivoId: campanha.midia_arquivo_id,
+            arquivoId: campanha.midia_id
+              ? campanha.midia_arquivo_id
+              : campanha.t_midia_arquivo_id,
           }
         : null;
       // `montarComponents` e async: sem o `await` o payload ia para a Meta
@@ -731,7 +738,11 @@ export async function processarDisparo(
 
   const res = await d.execute(sql`
     SELECT c.*, t.meta_name, t.idioma, t.conteudo as template_conteudo, t.status as template_status,
-      t.midia_id, t.midia_tipo, t.midia_nome, t.midia_arquivo_id
+      -- A mídia do template vem com prefixo: c.* já traz as colunas midia_* da
+      -- campanha e, sem o alias, o t.midia_id sobrescreveria a imagem
+      -- escolhida para a campanha.
+      t.midia_id as t_midia_id, t.midia_tipo as t_midia_tipo,
+      t.midia_nome as t_midia_nome, t.midia_arquivo_id as t_midia_arquivo_id
     FROM whatsapp_campanhas c
     LEFT JOIN whatsapp_templates t ON t.id = c.template_id
     WHERE c.status = 'PROCESSANDO'

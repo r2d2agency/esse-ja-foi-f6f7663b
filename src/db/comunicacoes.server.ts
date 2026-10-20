@@ -298,6 +298,19 @@ export async function ensureComunicacoesSchema(silent = true) {
         ADD COLUMN IF NOT EXISTS grupos_alvo jsonb DEFAULT '[]'::jsonb;
     `);
 
+    // 6g. Imagem do cabeçalho da campanha.
+    // O template é que carrega a mídia por padrão, mas a campanha precisa
+    // poder trocar a imagem sem alterar o template aprovado (a Meta não deixa
+    // editar um template já aprovado). Guardamos a referência aqui e o motor
+    // prefere a da campanha, caindo na do template quando vazia.
+    await d.execute(sql`
+      ALTER TABLE whatsapp_campanhas
+        ADD COLUMN IF NOT EXISTS midia_id text,
+        ADD COLUMN IF NOT EXISTS midia_tipo text,
+        ADD COLUMN IF NOT EXISTS midia_nome text,
+        ADD COLUMN IF NOT EXISTS midia_arquivo_id uuid;
+    `);
+
     // 6d. Lote importado: guarda de onde veio cada contato, para a tela mostrar
     // qual lista foi carregada e quando.
     await d.execute(sql`
@@ -759,7 +772,28 @@ export async function processarEnvioCampanha(campanhaId: string) {
     WHERE id = ${campanhaId}::uuid AND status IN ('RASCUNHO', 'AGENDADA')
   `);
   const { processarDisparo } = await import("./disparo-motor.server");
-  return await processarDisparo();
+  await processarDisparo();
+
+  // O resumo do motor é global (todas as campanhas em processamento). Para a
+  // tela poder falar a verdade sobre *esta* campanha, o contador vem do
+  // próprio banco: quantos contactos saíram, quantos falharam e quantos ainda
+  // estão na fila.
+  const cont = await d.execute(sql`
+    SELECT
+      count(*) FILTER (WHERE estado_fila = 'ENVIADA') AS enviados,
+      count(*) FILTER (WHERE estado_fila = 'FALHOU') AS falhas,
+      count(*) FILTER (WHERE estado_fila = 'IGNORADA') AS ignoradas,
+      count(*) FILTER (WHERE estado_fila = 'PENDENTE') AS pendentes
+    FROM whatsapp_mensagens
+    WHERE campanha_id = ${campanhaId}::uuid
+  `);
+  const c = rowsOf(cont)[0] ?? {};
+  return {
+    enviados: Number(c.enviados ?? 0),
+    falhas: Number(c.falhas ?? 0),
+    ignoradas: Number(c.ignoradas ?? 0),
+    pendentes: Number(c.pendentes ?? 0),
+  };
 }
 
 // O driver postgres-js devolve as linhas como array (sem .rows).

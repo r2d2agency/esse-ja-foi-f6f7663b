@@ -59,6 +59,7 @@ import {
   Check,
   Car,
   Megaphone,
+  ImageIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -148,22 +149,29 @@ function varianteStatus(status: string): any {
  * Rótulo e aparência do detalhe de envios, a partir do `estado_fila` do
  * motor e do `status` que a Meta devolve via webhook.
  */
+/**
+ * "Enviada" é o instante em que a Meta **aceitou** a mensagem, não em que ela
+ * chegou. Chamar isso de "Concluído" fazia a tela mentir: a campanha
+ * aparecia verde e o contato recebia nada. Agora os estados que o webhook
+ * devolve (entregue/lida) são os únicos que contam como concluído.
+ */
 function rotuloStatusEnvio(envio: any) {
-  if (["FALHOU"].includes(envio?.estado_fila)) return "Erro";
-  if (["ENVIADA"].includes(envio?.estado_fila)) return "Concluído";
-  if (["IGNORADA"].includes(envio?.estado_fila)) return "Ignorado";
-  if (["LIDA", "ENTREGUE", "ENVIADA"].includes(envio?.status)) return "Concluído";
-  if (["FALHOU", "REJEITADA"].includes(envio?.status)) return "Erro";
-  return "Agendado";
+  if (envio?.estado_fila === "FALHOU") return "Erro";
+  if (envio?.estado_fila === "IGNORADA") return "Ignorado";
+  if (envio?.status === "LIDA") return "Lida";
+  if (envio?.status === "ENTREGUE") return "Entregue";
+  if (envio?.estado_fila === "ENVIADA" || envio?.status === "ENVIADA") return "Enviada";
+  if (envio?.status === "FALHOU" || envio?.status === "REJEITADA") return "Erro";
+  return "Agendada";
 }
 
 function varianteStatusEnvio(envio: any): any {
-  if (["FALHOU"].includes(envio?.estado_fila)) return "destructive";
-  if (["ENVIADA"].includes(envio?.estado_fila)) return "success";
-  if (["IGNORADA"].includes(envio?.estado_fila)) return "secondary";
-  if (["LIDA", "ENTREGUE", "ENVIADA"].includes(envio?.status)) return "success";
-  if (["FALHOU", "REJEITADA"].includes(envio?.status)) return "destructive";
-  return "warning";
+  if (envio?.estado_fila === "FALHOU") return "destructive";
+  if (envio?.estado_fila === "IGNORADA") return "secondary";
+  if (envio?.status === "LIDA" || envio?.status === "ENTREGUE") return "success";
+  if (envio?.estado_fila === "ENVIADA" || envio?.status === "ENVIADA") return "warning";
+  if (envio?.status === "FALHOU" || envio?.status === "REJEITADA") return "destructive";
+  return "secondary";
 }
 /** Cor do evento no log da campanha: erro/bloqueio em vermelho, ok em verde. */
 function varianteAcaoLog(acao: string): any {
@@ -476,6 +484,13 @@ function ComunicacoesPage() {
     tamanho: number;
     preview: string;
   } | null>(null);
+  // Imagem escolhida na campanha (não no template). Vale acima da imagem do
+  // template no disparo.
+  const [midiaCampanha, setMidiaCampanha] = useState<{
+    nome: string;
+    tipo: string;
+    preview: string;
+  } | null>(null);
 
   // Wizard Campanha State
   const [isCampanhaWizardOpen, setIsCampanhaWizardOpen] = useState(false);
@@ -495,6 +510,12 @@ function ComunicacoesPage() {
     },
     mapeamento_variaveis: {},
     agendado_para: null,
+    // Imagem do cabeçalho da campanha. A Meta não deixa editar a imagem de
+    // um template já aprovado, então a troca de imagem acontece na campanha.
+    midia_id: null,
+    midia_tipo: null,
+    midia_nome: null,
+    midia_arquivo_id: null,
     // Ritmo de envio: janela de trabalho e intervalo entre mensagens. O padrão
     // 08h–18h a cada 5 min é conservative — a Meta começa a limitar bem antes
     // de 80 msg/s, e qualidade baixa custa caro de recuperar.
@@ -791,6 +812,16 @@ function ComunicacoesPage() {
     setGruposAlvo([]);
     setGruposUazapi([]);
     setErroGrupos(null);
+    // A imagem escolhida na campanha é por campanha: se sobrasse, a próxima
+    // nasceria com a imagem da anterior sem ninguém pedir.
+    setMidiaCampanha(null);
+    setNovaCampanha((atual: any) => ({
+      ...atual,
+      midia_id: null,
+      midia_tipo: null,
+      midia_nome: null,
+      midia_arquivo_id: null,
+    }));
   };
 
   const handleAbrirCampanha = () => {
@@ -800,6 +831,14 @@ function ComunicacoesPage() {
     setGruposAlvo([]);
     setGruposUazapi([]);
     setErroGrupos(null);
+    setMidiaCampanha(null);
+    setNovaCampanha((atual: any) => ({
+      ...atual,
+      midia_id: null,
+      midia_tipo: null,
+      midia_nome: null,
+      midia_arquivo_id: null,
+    }));
     setIsCampanhaWizardOpen(true);
   };
 
@@ -876,7 +915,29 @@ function ComunicacoesPage() {
         toast.error(res.error || "Falha ao processar o envio da campanha.");
         return;
       }
-      toast.success("Envio concluído!");
+      // O toast precisa refletir o que de fato aconteceu. "Enviado" (a Meta
+      // aceitou) nao e "entregue" (o contato recebeu) — e ainda pode haver
+      // falhas na fila. Sem isto a tela anunciava sucesso com campanha quebrada.
+      const r = res?.resultado ?? {};
+      const enviados = Number(r.enviados ?? 0);
+      const falhas = Number(r.falhas ?? 0);
+      const ignoradas = Number(r.ignoradas ?? 0);
+      const pendentes = Number(r.pendentes ?? 0);
+      if (enviados === 0 && falhas === 0 && pendentes === 0) {
+        toast.info("Nenhuma mensagem foi enviada nesta rodada.");
+        return;
+      }
+      const partes = [`${enviados} enviada(s)`];
+      if (falhas) partes.push(`${falhas} falha(s)`);
+      if (ignoradas) partes.push(`${ignoradas} ignorada(s)`);
+      if (pendentes) partes.push(`${pendentes} ainda na fila`);
+      if (falhas > 0) {
+        toast.error(`Envio parcial: ${partes.join(", ")}.`);
+      } else {
+        toast.success(`Envio processado: ${partes.join(", ")}.`);
+      }
+      queryClient.invalidateQueries({ queryKey: ["wa-campanhas"] });
+      queryClient.invalidateQueries({ queryKey: ["wa-campanhas-detalhe"] });
     } catch (err: any) {
       toast.error(`Erro no processamento: ${err.message}`);
     }
@@ -1251,6 +1312,57 @@ function ComunicacoesPage() {
         {
           loading: `Subindo ${file.name} para a Meta...`,
           success: (nome: string) => `${nome} anexado. O disparo já vai com a imagem.`,
+          error: (err: Error) => `Erro no anexo: ${err.message}`,
+        },
+      );
+    };
+    reader.readAsDataURL(file);
+  };
+
+  /**
+   * Imagem do cabeçalho da campanha. A Meta não deixa editar a imagem de um
+   * template já aprovado, então a troca de imagem acontece na própria
+   * campanha: o arquivo sobe para a Meta e a cópia local fica guardada, como
+   * no template — sem ela o `media_id` (que vence em 30 dias) não dá para
+   * refazer o upload.
+   */
+  const handleEscolherMidiaCampanha = (file: File) => {
+    const tipo = file.type || "";
+    const ehImagem = tipo.startsWith("image/");
+    const ehPdf = tipo === "application/pdf";
+    if (!ehImagem && !ehPdf) {
+      toast.error("O cabeçalho aceita apenas imagem ou PDF.");
+      return;
+    }
+    if (file.size > 16 * 1024 * 1024) {
+      toast.error("O arquivo excede 16 MB (limite da Meta).");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const dataUrl = String(reader.result);
+      setMidiaCampanha({
+        nome: file.name,
+        tipo: ehPdf ? "document" : "image",
+        preview: ehImagem ? dataUrl : "",
+      });
+      toast.promise(
+        (async () => {
+          const res: any = await uploadMidia({ data: { arquivo: dataUrl, nome: file.name, tipo } });
+          if (!res?.ok) throw new Error(res?.error || "Falha no upload da imagem.");
+          setNovaCampanha((atual: any) => ({
+            ...atual,
+            midia_id: res.midia_id,
+            midia_tipo: res.midia_tipo,
+            midia_nome: res.midia_nome,
+            midia_arquivo_id: res.midia_arquivo_id,
+          }));
+          return res.midia_nome as string;
+        })(),
+        {
+          loading: `Subindo ${file.name} para a Meta...`,
+          success: (nome: string) => `${nome} anexada à campanha.`,
           error: (err: Error) => `Erro no anexo: ${err.message}`,
         },
       );
@@ -1981,6 +2093,76 @@ function ComunicacoesPage() {
                             </div>
                           ))}
                       </div>
+
+                      {/* Imagem do cabeçalho da campanha. A Meta não deixa
+                          trocar a imagem de um template já aprovado, então a
+                          escolha aqui é o que permite a campanha ir com a
+                          imagem que o usuário quer. */}
+                      <div className="space-y-2 border-t pt-4">
+                        <Label className="text-sm">Imagem do cabeçalho (opcional)</Label>
+                        {midiaCampanha ? (
+                          <div className="flex items-center gap-3">
+                            {midiaCampanha.preview ? (
+                              <img
+                                src={midiaCampanha.preview}
+                                alt="Imagem escolhida"
+                                className="h-16 w-16 rounded-lg object-cover border"
+                              />
+                            ) : (
+                              <div className="h-16 w-16 rounded-lg border flex items-center justify-center text-[10px] text-muted-foreground">
+                                PDF
+                              </div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">{midiaCampanha.nome}</p>
+                              <p className="text-[11px] text-muted-foreground">
+                                Esta imagem vai no cabeçalho da campanha.
+                              </p>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setMidiaCampanha(null);
+                                setNovaCampanha((atual: any) => ({
+                                  ...atual,
+                                  midia_id: null,
+                                  midia_tipo: null,
+                                  midia_nome: null,
+                                  midia_arquivo_id: null,
+                                }));
+                              }}
+                            >
+                              Remover
+                            </Button>
+                          </div>
+                        ) : (
+                          <>
+                            <label
+                              htmlFor="midia-campanha"
+                              className="flex items-center justify-center gap-2 rounded-lg border border-dashed p-4 cursor-pointer hover:border-teal-500 text-xs text-muted-foreground"
+                            >
+                              <ImageIcon className="w-4 h-4" />
+                              Clique para escolher uma imagem (até 16 MB)
+                            </label>
+                            <input
+                              id="midia-campanha"
+                              type="file"
+                              accept="image/*,application/pdf"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) handleEscolherMidiaCampanha(file);
+                                e.target.value = "";
+                              }}
+                            />
+                            <p className="text-[11px] text-muted-foreground">
+                              Sem esta opção, a campanha usa a imagem do template escolhido.
+                            </p>
+                          </>
+                        )}
+                      </div>
                     </div>
                   )}
 
@@ -2556,6 +2738,9 @@ function ComunicacoesPage() {
                         Enviados
                       </th>
                       <th className="px-4 py-3 text-right font-medium text-muted-foreground">
+                        Entregues
+                      </th>
+                      <th className="px-4 py-3 text-right font-medium text-muted-foreground">
                         Lidos
                       </th>
                       <th className="px-4 py-3 text-right font-medium text-muted-foreground">
@@ -2601,6 +2786,9 @@ function ComunicacoesPage() {
                         </td>
                         <td className="px-4 py-3 text-right font-mono text-blue-600">
                           {campanha.total_enviados}
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono text-green-600">
+                          {campanha.total_entregues ?? 0}
                         </td>
                         <td className="px-4 py-3 text-right font-mono text-purple-600">
                           {campanha.total_lidos}
@@ -3646,11 +3834,12 @@ function ComunicacoesPage() {
                   Só números. Ex: 55 + 11 + 9 + número.
                 </p>
               </div>
-              {templateParaTeste?.conteudo?.some(
-                (c: any) =>
-                  String(c.type || "").toUpperCase() === "HEADER" &&
-                  String(c.format || "TEXT").toUpperCase() !== "TEXT",
-              ) && (
+              {/* O anexo aparece SEMPRE. Antes ele só existia quando o
+                  template já tinha HEADER de mídia — que é exatamente o caso
+                  em que ele é desnecessário (a imagem do template já vai). O
+                  usuário precisa poder subir a imagem de qualquer jeito, e
+                  o servidor decide se usa a do template ou a enviada aqui. */}
+              {(() => (
                 <div className="space-y-2">
                   <Label htmlFor="midia-teste">Imagem ou PDF do cabeçalho (opcional)</Label>
                   <label className="block">
@@ -3701,10 +3890,11 @@ function ComunicacoesPage() {
                     </div>
                   )}
                   <p className="text-[11px] text-muted-foreground">
-                    Use quando o template veio da Meta com o cabeçalho sem imagem válida.
+                    Use quando o template veio da Meta com o cabeçalho sem imagem válida, ou
+                    quando quiser ver como fica com a sua imagem.
                   </p>
                 </div>
-              )}
+              ))()}
               <DialogFooter>
                 <Button variant="outline" onClick={() => setTemplateParaTeste(null)}>
                   Cancelar

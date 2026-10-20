@@ -174,6 +174,14 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
         // a única rota que aceita grupos). Grupos só fazem sentido na UAZAPI.
         canal_envio: z.enum(["META", "UAZAPI"]).default("META"),
         grupos_alvo: z.array(z.string()).optional(),
+        // Imagem do cabeçalho escolhida no wizard da campanha. A Meta não
+        // permite editar um template já aprovado, então a troca de imagem
+        // acontece aqui: a campanha carrega a sua mídia e o motor a prefere
+        // sobre a do template.
+        midia_id: z.string().optional().nullable(),
+        midia_tipo: z.string().optional().nullable(),
+        midia_nome: z.string().optional().nullable(),
+        midia_arquivo_id: z.string().uuid().optional().nullable(),
       })
       .parse(data),
   )
@@ -203,7 +211,7 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
             INSERT INTO whatsapp_campanhas (
               nome, veiculo_id, template_id, segmento_id, origem_publico,
               janela_inicio, janela_fim, intervalo_minutos, status, agendado_para, mapeamento_variaveis,
-              canal_envio, grupos_alvo
+              canal_envio, grupos_alvo, midia_id, midia_tipo, midia_nome, midia_arquivo_id
             ) VALUES (
               ${nomeCampanha},
               ${uuidOuNull(data.veiculo_id)},
@@ -219,7 +227,11 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
               ${data.canal_envio},
               ${JSON.stringify(
                 (data.canal_envio === "UAZAPI" ? data.grupos_alvo : []) ?? [],
-              )}::jsonb
+              )}::jsonb,
+              ${data.midia_id || null},
+              ${data.midia_tipo || null},
+              ${data.midia_nome || null},
+              ${data.midia_arquivo_id || null}
             ) RETURNING id
           `)
         : await dbc.execute(sql`
