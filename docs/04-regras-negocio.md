@@ -231,9 +231,12 @@ obrigatório e o template tem que estar aprovado.
 - Vencida: `gerarNovaCobrancaFn` ou `prorrogarPrazoPagamentoFn` reabrem a cobrança.
 - `expirarCobrancasFn` marca `EXPIRADO` nas vencidas.
 
-> ⚠️ O único provedor de PIX registrado hoje é `interno-homologacao`
-> (`src/db/provedores/pix.server.ts`). `getProvider()` **sempre** devolve esse. Para
-> produção é preciso plugar o provedor real e configurar a confirmação manual.
+> 📌 **Provedor de PIX — escopo futuro, já previsto.** Hoje o único provedor registrado é
+> `interno-homologacao` (`src/db/provedores/pix.server.ts`) e `getProvider()` **sempre** devolve
+> ele. A camada de provedor já está isolada atrás de `getProvider()`, então plugar o provedor
+> real depois é um trabalho contido — não exige mexer no fluxo de pagamento. No formato atual, a
+> confirmação é **manual** (`confirmarPagamentoManualFn` ou webhook), e isso é o comportamento
+> esperado até o plug do provedor real.
 
 ---
 

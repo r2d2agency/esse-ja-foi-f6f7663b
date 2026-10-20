@@ -192,8 +192,10 @@ ou de publicação.
 ### Cobrança ao comprador
 
 - `src/db/provedores/pix.server.ts` — camada de provedor com `getProvider()`.
-- ⚠️ **Hoje só existe `interno-homologacao`.** `getProvider()` **sempre** devolve esse
-  provedor. Ele **nunca confirma sozinho**.
+- 📌 **Provedor real é implementação futura.** Hoje existe só `interno-homologacao`, e
+  `getProvider()` **sempre** devolve ele. Ele **nunca confirma sozinho** — a confirmação é
+  manual (admin) ou via webhook. A interface do provedor já está isolada em `pix.server.ts`,
+  então a troca é contida.
 - `verificarPagamentoFn` só **consulta** o provedor. A confirmação vem do webhook
   (`POST /api/public/webhooks/pagamentos`, valida `x-pix-signature` / `PIX_WEBHOOK_SECRET`) ou
   de `confirmarPagamentoManualFn`.
@@ -206,8 +208,9 @@ ou de publicação.
 - Repasse é autorizado e confirmado **manualmente** pelo admin, com lock pessimista
   (`SELECT ... FOR UPDATE`).
 
-> Para produção é obrigatório plugar o provedor PIX real e configurar o caminho de
-> confirmação. Do jeito que está, todo pagamento depende de confirmação manual.
+> **Escopo futuro:** plugar o provedor PIX real e configurar o caminho automático de
+> confirmação. No formato atual, todo pagamento depende de confirmação manual — que é o
+> comportamento previsto enquanto o provedor real não entra.
 
 ---
 

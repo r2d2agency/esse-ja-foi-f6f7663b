@@ -34,7 +34,7 @@ Lead (campanha WhatsApp / anúncio / indicação)
    │                                   │
    │                                   └─→ Publicação (vitrine + anúncio + link WhatsApp)
    │                                            │
-   │                                            └─→ Leilão (lances de compradores PJ)
+   │                                            └─→ Sala de lances (ofertas de compradores PJ)
    │                                                     │
    │                                                     └─→ Negociação → Pagamento PIX
    │                                                              │
@@ -50,7 +50,7 @@ Lead (campanha WhatsApp / anúncio / indicação)
 
 ## Os 5 fatos que você precisa saber antes de mexer em qualquer coisa
 
-1. **O banco não é o `schema/index.ts`.** O schema real é criado por ~40 funções
+1. **O banco não é o `schema/index.ts`.** O schema real é criado por ~25 funções
    `ensure*Schema()` que rodam `CREATE TABLE IF NOT EXISTS` em SQL puro. Se você adicionar uma
    coluna, ela vai num `ensure*Schema()` — não no Drizzle. Detalhes em
    [05-modelo-dados.md](05-modelo-dados.md).

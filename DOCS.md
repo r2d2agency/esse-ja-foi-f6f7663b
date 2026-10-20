@@ -213,6 +213,8 @@ o documento fica para o admin decidir manualmente).
 
 ## 8. Backlog conhecido
 
+- [ ] Implementar o provedor de PIX real (hoje roda com o provedor de homologação; a
+      confirmação do pagamento é manual até lá).
 - [ ] Unificar as duas telas de análise pós-vistoria (ver nota na seção 4.2).
 - [ ] Storage de objetos real para fotos (hoje em base64 no banco).
 - [ ] Gerador de PDF para o laudo técnico final.

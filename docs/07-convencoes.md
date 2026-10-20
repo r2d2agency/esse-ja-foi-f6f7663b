@@ -141,11 +141,15 @@ Não tire conclusões de schema a partir desse arquivo.
 Não dá para rodar `drizzle-kit generate`/`migrate` a partir do projeto. As 5 migrações em
 `drizzle/` são fixas.
 
-### D. Provedor PIX de homologação
+### D. Provedor PIX de homologação (por enquanto, de propósito)
 
-`getProvider()` sempre devolve `interno-homologacao`. **Nunca confirma sozinho.** Em
-produção, todo pagamento depende de `confirmarPagamentoManualFn` ou do webhook. Ligar o
-provedor real é trabalho pendente.
+`getProvider()` sempre devolve `interno-homologacao`. **Nunca confirma sozinho.** Todo
+pagamento depende de `confirmarPagamentoManualFn` ou do webhook.
+
+**Não é defeito — é escopo futuro.** O provedor real ainda vai ser implementado. A troca é
+contida porque tudo passa por `getProvider()`. Se alguém "consertar" isso chamando a
+confirmação dentro de `verificarPagamentoFn`, quebra a idempotência — a confirmação é sempre
+do webhook ou manual.
 
 ### E. `estado_fila` ≠ `status` no WhatsApp
 
