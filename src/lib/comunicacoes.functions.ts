@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm";
 import * as db from "../db/comunicacoes.server";
 import { metaService, montarComponents } from "../db/meta-whatsapp.server";
 import { normalizarStatusTemplate, templateAprovado } from "../db/whatsapp-status";
+import { hojeEmSaoPaulo } from "./brasil";
 
 export const getWhatsappConfigFn = createServerFn({ method: "GET" }).handler(async () => {
   const config = await db.getWhatsappConfig();
@@ -206,7 +207,7 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
       // O wizard deixa o nome em branco quando o usuário só escolhe público e
       // template. Nome é NOT NULL na tabela e o validador exige min(1), então
       // sem isso o envio volta como "too_small" no path ["nome"].
-      const nomeCampanha = String(data.nome || "").trim() || `Campanha ${new Date().toISOString().slice(0, 10)}`;
+      const nomeCampanha = String(data.nome || "").trim() || `Campanha ${hojeEmSaoPaulo()}`;
       const criado = templateId
         ? await dbc.execute(sql`
             INSERT INTO whatsapp_campanhas (

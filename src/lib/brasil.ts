@@ -109,3 +109,31 @@ export function formatCurrency(value: number | string | null | undefined) {
     currency: "BRL",
   }).format(val);
 }
+
+/**
+ * Fuso operacional do negócio. O container roda em **UTC**, então qualquer
+ * "hoje" calculado com `toISOString()` ou `toLocaleDateString()` sem fuso
+ * vira o dia seguinte entre 21h e 24h de Brasília.
+ */
+export const FUSO_BR = "America/Sao_Paulo";
+
+/** Data de hoje em São Paulo no formato `aaaa-mm-dd` (pronto para o Postgres). */
+export function hojeEmSaoPaulo(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: FUSO_BR,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+/** Data de hoje em São Paulo no formato `dd/mm/aaaa` (tela e documentos). */
+export function hojeFormatadoEmSaoPaulo(): string {
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: FUSO_BR,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+

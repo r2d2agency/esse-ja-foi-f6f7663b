@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "./index";
 import { RegraNegocioError } from "./cadastro.server";
+import { hojeFormatadoEmSaoPaulo } from "@/lib/brasil";
 
 function requireDb() {
   if (!db) throw new RegraNegocioError("Banco de dados indisponível.", 503);
@@ -376,7 +377,7 @@ export async function gerarContrato(input: {
     .replaceAll("{{endereco_vendedor}}", enderecoResumido(perfil))
     .replaceAll("{{email_vendedor}}", perfil.email ?? "")
     .replaceAll("{{telefone_vendedor}}", perfil.whatsapp ?? "")
-    .replaceAll("{{data_contrato}}", new Date().toLocaleDateString("pt-BR"))
+    .replaceAll("{{data_contrato}}", hojeFormatadoEmSaoPaulo())
     .replaceAll("{{identificador_vendedor}}", perfil.id);
 
   const criado = rows(

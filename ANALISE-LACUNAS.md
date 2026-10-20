@@ -287,7 +287,14 @@ Cada request admin dispara um `fetch` a um endpoint local com payload do veícul
 ## A — Correções locais seguras
 
 ### A1. Dashboard do comprador sempre mostra "0 lances"
-**Arquivo:** `src/db/dashboard.server.ts:111-126`
+> ✅ **Fechado (2026-10-20)** — `meusLances` reescrito com `JOIN profiles ON p.id = b.comprador_id`
+> (a coluna `comprador_email` nunca existiu) e filtro por `lower(p.email) = lower(...)`.
+> O `safe()` continua devolvendo `[]` em falha, mas a query agora é válida.
+> **Observação:** `dashboardCompradorFn`/`meusLances` não são consumidos por nenhuma rota
+> hoje — a correção deixa a API correta, mas a tela do comprador ainda não consome esse
+> módulo (o `/admin` usa `admin-dashboard.server.ts`).
+
+**Arquivo:** `src/db/dashboard.server.ts:111-136`
 
 `meusLances` consulta `lances.comprador_email`, coluna que **não existe** — o schema real
 (`src/db/leilao.server.ts:34-45`) tem `comprador_id`. A query sempre lança, e o `safe()`
@@ -298,7 +305,11 @@ Cada request admin dispara um `fetch` a um endpoint local com payload do veícul
 **Atenção:** a feature pode nunca ter sido testada com dados; valide na vitrine.
 
 ### A2. Indicador "leilões ativos" sempre 0
-**Arquivo:** `src/db/dashboard.server.ts:41`
+> ✅ **Fechado (2026-10-20)** — `leiloesAbertos()` e `indicadoresAdmin()` agora filtram
+> `status IN ('ATIVO','PRORROGADO')`. Grep em `src/` confirmou que não sobrou nenhuma
+> referência ao status inexistente `'ABERTO'`.
+
+**Arquivo:** `src/db/dashboard.server.ts:41,105`
 
 Conta `leiloes WHERE upper(status)='ABERTO'`, mas os status reais são
 `RASCUNHO / AGENDADO / ATIVO / PRORROGADO / ENCERRADO / PAUSADO / CANCELADO`.
@@ -307,6 +318,9 @@ Conta `leiloes WHERE upper(status)='ABERTO'`, mas os status reais são
 **Risco:** baixo — só o número passa a ser correto.
 
 ### A3. Contrato com data errada por fuso
+> ✅ **Fechado (2026-10-20)** — passou a usar `hojeFormatadoEmSaoPaulo()`
+> (`src/lib/brasil.ts`), helper novo que fixa `timeZone: "America/Sao_Paulo"`.
+
 **Arquivo:** `src/db/contratos.server.ts:379`
 
 `new Date().toLocaleDateString("pt-BR")` usa o fuso do processo (UTC no deploy), não
@@ -316,6 +330,11 @@ Conta `leiloes WHERE upper(status)='ABERTO'`, mas os status reais são
 **Risco:** baixo — afeta **só contratos novos**; o `conteudo` já persistido fica congelado.
 
 ### A4. Datas em UTC em rótulos e nomes
+> ✅ **Fechado (2026-10-20)** — `hoje()` em `demo.server.ts` e o nome padrão de campanha em
+> `comunicacoes.functions.ts` passaram a usar `hojeEmSaoPaulo()` (`src/lib/brasil.ts`).
+> Os três helpers (`FUSO_BR`, `hojeEmSaoPaulo`, `hojeFormatadoEmSaoPaulo`) são o ponto
+> único de fuso do projeto.
+
 **Arquivos:** `src/db/demo.server.ts:98`, `src/lib/comunicacoes.functions.ts:208`
 
 `new Date().toISOString().slice(0,10)` é UTC → entre 21h e 24h (BRT) vira o dia seguinte.
@@ -759,8 +778,8 @@ de erro.
 > - **P0.5**: rotacionar a `publishable_key` do Supabase, que ficou no histórico do git.
 
 ### Fase 1 — correções locais seguras (qualidade, sem risco)
-9. **A1, A2** (dashboard mostra números reais — 30 min, valida a leitura)
-10. **A3, A4** (fuso)
+9. ✅ **A1, A2** (dashboard mostra números reais — 30 min, valida a leitura)
+10. ✅ **A3, A4** (fuso)
 11. **B2** (ledger duplicado — financeiro)
 12. **B3** (tentativas do código de entrega)
 13. **A5, A6, A8** (higiene de queries)

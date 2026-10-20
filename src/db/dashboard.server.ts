@@ -38,7 +38,7 @@ export async function indicadoresAdmin() {
         (SELECT count(*) FROM vistorias WHERE data_vistoria = CURRENT_DATE) AS vistorias_hoje,
         (SELECT count(*) FROM veiculos WHERE upper(status) = 'VENDIDO') AS vendidos,
         (SELECT count(*) FROM profiles WHERE role = 'comprador') AS clientes,
-        (SELECT count(*) FROM leiloes WHERE upper(status) = 'ABERTO') AS leiloes_ativos
+        (SELECT count(*) FROM leiloes WHERE upper(status) IN ('ATIVO','PRORROGADO')) AS leiloes_ativos
     `)) as unknown as Array<Record<string, string>>;
     const r = rows[0] ?? {};
     return {
@@ -102,7 +102,7 @@ export async function leiloesAbertos() {
              v.placa, v.marca, v.modelo,
              (SELECT max(valor) FROM lances b WHERE b.leilao_id = l.id) AS maior_lance
       FROM leiloes l JOIN veiculos v ON v.id = l.veiculo_id
-      WHERE upper(l.status) = 'ABERTO'
+      WHERE upper(l.status) IN ('ATIVO','PRORROGADO')
       ORDER BY l.fim_em ASC LIMIT 50;
     `)) as unknown as Array<Row>;
   }, [] as Array<Row>);
@@ -111,14 +111,24 @@ export async function leiloesAbertos() {
 export async function meusLances(email: string) {
   return safe(async () => {
     await ensureLeilaoSchema();
+    // A coluna de dono do lance é `lances.comprador_id` (uuid → profiles.id).
+    // Não existe `lances.comprador_email`: a query anterior usava essa coluna
+    // inexistente, o PostgreSQL recusava, e o `safe()` engolia o erro devolvendo
+    // `[]` — por isso a tela mostrava sempre "0 lances".
     return (await db!.execute(sql`
       SELECT l.id AS leilao_id, v.placa, v.marca, v.modelo, l.status,
-             max(b.valor) FILTER (WHERE lower(b.comprador_email) = lower(${email})) AS meu_lance,
+             max(b.valor) FILTER (WHERE lower(p.email) = lower(${email})) AS meu_lance,
              max(b.valor) AS lance_atual
       FROM lances b
       JOIN leiloes l ON l.id = b.leilao_id
       JOIN veiculos v ON v.id = l.veiculo_id
-      WHERE l.id IN (SELECT leilao_id FROM lances WHERE lower(comprador_email) = lower(${email}))
+      JOIN profiles p ON p.id = b.comprador_id
+      WHERE l.id IN (
+        SELECT b2.leilao_id
+        FROM lances b2
+        JOIN profiles p2 ON p2.id = b2.comprador_id
+        WHERE lower(p2.email) = lower(${email})
+      )
       GROUP BY l.id, v.placa, v.marca, v.modelo, l.status
       ORDER BY l.fim_em ASC LIMIT 50;
     `)) as unknown as Array<Row>;

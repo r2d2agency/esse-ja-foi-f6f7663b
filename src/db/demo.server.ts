@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "./index";
 import { hashPassword } from "./auth.server";
+import { hojeEmSaoPaulo } from "@/lib/brasil";
 
 function requireDb() {
   if (!db) throw new Error("Banco de dados indisponível.");
@@ -95,7 +96,9 @@ async function ensureSchemas() {
 }
 
 function hoje() {
-  return new Date().toISOString().slice(0, 10);
+  // O container roda em UTC: `toISOString()` virava o dia seguinte entre 21h e
+  // 24h de Brasília e semeava a data de amanhã.
+  return hojeEmSaoPaulo();
 }
 
 /**
