@@ -1,5 +1,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "./index";
+import { lerWhatsappConfig } from "./whatsapp-config.server";
+import { normalizarStatusTemplate } from "./whatsapp-status";
 
 const DEFAULT_GRAPH_VERSION = "v20.0";
 
@@ -426,13 +428,14 @@ export class MetaWhatsAppService {
 
   async init() {
     if (!db) return;
-    // Mesmo critério do updateWhatsappConfig (menor id): se a leitura e a escrita
-    // escolherem linhas diferentes, salvar funciona mas a validação diz que o
-    // Phone Number ID não está configurado. Vide comunicacoes.server.ts.
-    const res = await db.execute(sql`
-      SELECT * FROM whatsapp_config ORDER BY id LIMIT 1
-    `);
-    this.config = rowsOf(res)?.[0];
+    // A configuração é lida pelo MESMO caminho que a tela usa (deduplica as
+    // linhas duplicadas e devolve a de menor id). Antes este `init()` lia a
+    // linha de menor id sem deduplicar, enquanto `getWhatsappConfig()` lia
+    // `ORDER BY atualizado_em, id` — linhas diferentes. Com uma duplicata de
+    // id menor e `waba_id` vazio, TODA chamada à Meta falhava com "WABA ID não
+    // configurado." — o que quebrava a sincronização de templates e a criação
+    // de template na Meta ao mesmo tempo.
+    this.config = await lerWhatsappConfig();
 
     // Templates gravados antes da correção ficaram com o HEADER de texto no
     // formato que a Meta devolve ({type:"header", parameters:[{type:"text",
@@ -630,7 +633,21 @@ export class MetaWhatsAppService {
     return phoneData;
   }
 
-  async sincronizarTemplates() {
+  /**
+   * Sincroniza os templates da Meta para o banco local.
+   *
+   * A gravação é isolada por template: um template que falha (conteúdo que o
+   * Postgres recusa, status inesperado, etc.) não pode abortar o laço — antes
+   * isso acontecia, e os templates seguintes da lista nunca chegavam ao banco.
+   * O retorno diz quantos foram lidos da Meta, quantos foram gravados e quais
+   * falharam, para que a tela não anuncie "N templates sincronizados" quando
+   * nada foi salvo.
+   */
+  async sincronizarTemplates(): Promise<{
+    lidos: number;
+    salvos: number;
+    falhas: { nome: string; erro: string }[];
+  }> {
     await this.init();
     if (!this.config?.waba_id) throw new Error("WABA ID não configurado.");
 
@@ -645,55 +662,75 @@ export class MetaWhatsAppService {
       url = data.paging?.next ? String(data.paging.next) : undefined;
     }
 
+    const falhas: { nome: string; erro: string }[] = [];
+    let salvos = 0;
+
     for (const t of templates) {
-      if (db)
-        await db.execute(sql`
-        INSERT INTO whatsapp_templates (
-          meta_id,
-          nome_interno,
-          meta_name,
-          categoria,
-          idioma,
-          status,
-          conteudo,
-          motivo_recusa,
-          ultima_sincronizacao
-        )
-        VALUES (
-          ${t.id},
-          ${t.name},
-          ${t.name},
-          ${t.category},
-          ${t.language},
-          ${t.status},
-          ${JSON.stringify(t.components)}::jsonb,
-          ${t.status === "REJECTED" ? (t.reason ?? null) : null},
-          now()
-        )
-        ON CONFLICT (meta_name) DO UPDATE SET
-          status = EXCLUDED.status,
-          -- NÃO sobrescrever conteudo: o wizard grava no formato de criação
-          -- (HEADER/BODY/FOOTER/BUTTONS maiúsculo, com buttons[] e format).
-          -- A Meta devolve o formato de envio (minúsculo, com parameters[] e
-          -- sem url). Sobrescrever quebra o montarComponents, que espera o
-          -- formato de criação — e a Meta responde 132012.
-          -- O motivo da recusa só vale enquanto o status é REJECTED. Sem
-          -- limpar, um template que foi rejeitado e depois reenviado continuaria
-          -- exibindo a razão antiga na tela.
-          motivo_recusa = ${t.status === "REJECTED" ? (t.reason ?? null) : null},
-          -- Preservar as colunas midia_* quando o template já existe: o ON CONFLICT
-          -- não as repõe, então um template com imagem perdia a referência à mídia
-          -- depois de sincronizado. Sem midia_id, o HEADER de mídia some no envio
-          -- e a Meta responde 132012.
-          midia_id = COALESCE(whatsapp_templates.midia_id, EXCLUDED.midia_id),
-          midia_tipo = COALESCE(whatsapp_templates.midia_tipo, EXCLUDED.midia_tipo),
-          midia_nome = COALESCE(whatsapp_templates.midia_nome, EXCLUDED.midia_nome),
-          midia_arquivo_id = COALESCE(whatsapp_templates.midia_arquivo_id, EXCLUDED.midia_arquivo_id),
-          ultima_sincronizacao = now();
-      `);
+      const nome = String(t?.name || "");
+      if (!nome) {
+        falhas.push({ nome: "(sem nome)", erro: "A Meta devolveu um template sem `name`." });
+        continue;
+      }
+      try {
+        if (db)
+          await db.execute(sql`
+          INSERT INTO whatsapp_templates (
+            meta_id,
+            nome_interno,
+            meta_name,
+            categoria,
+            idioma,
+            status,
+            conteudo,
+            motivo_recusa,
+            ultima_sincronizacao
+          )
+          VALUES (
+            ${t.id ?? null},
+            ${nome},
+            ${nome},
+            ${t.category ?? null},
+            ${t.language ?? null},
+            ${normalizarStatusTemplate(t.status) || "PENDING"},
+            ${JSON.stringify(t.components ?? [])}::jsonb,
+            ${t.status === "REJECTED" ? (t.reason ?? null) : null},
+            now()
+          )
+          ON CONFLICT (meta_name) DO UPDATE SET
+            status = EXCLUDED.status,
+            -- O nome interno é o rótulo que o usuário deu ao template no wizard:
+            -- a Meta não conhece esse nome, então sobrescrevê-lo faria a tela
+            -- mostrar o meta_name no lugar do rótulo escolhido.
+            meta_id = COALESCE(EXCLUDED.meta_id, whatsapp_templates.meta_id),
+            categoria = COALESCE(EXCLUDED.categoria, whatsapp_templates.categoria),
+            idioma = COALESCE(EXCLUDED.idioma, whatsapp_templates.idioma),
+            -- NÃO sobrescrever conteudo: o wizard grava no formato de criação
+            -- (HEADER/BODY/FOOTER/BUTTONS maiúsculo, com buttons[] e format).
+            -- A Meta devolve o formato de envio (minúsculo, com parameters[] e
+            -- sem url). Sobrescrever quebra o montarComponents, que espera o
+            -- formato de criação — e a Meta responde 132012.
+            -- O motivo da recusa só vale enquanto o status é REJECTED. Sem
+            -- limpar, um template que foi rejeitado e depois reenviado continuaria
+            -- exibindo a razão antiga na tela.
+            motivo_recusa = ${t.status === "REJECTED" ? (t.reason ?? null) : null},
+            -- Preservar as colunas midia_* quando o template já existe: o ON CONFLICT
+            -- não as repõe, então um template com imagem perdia a referência à mídia
+            -- depois de sincronizado. Sem midia_id, o HEADER de mídia some no envio
+            -- e a Meta responde 132012.
+            midia_id = COALESCE(whatsapp_templates.midia_id, EXCLUDED.midia_id),
+            midia_tipo = COALESCE(whatsapp_templates.midia_tipo, EXCLUDED.midia_tipo),
+            midia_nome = COALESCE(whatsapp_templates.midia_nome, EXCLUDED.midia_nome),
+            midia_arquivo_id = COALESCE(whatsapp_templates.midia_arquivo_id, EXCLUDED.midia_arquivo_id),
+            ultima_sincronizacao = now();
+        `);
+        salvos++;
+      } catch (e: any) {
+        console.warn(`[Meta] falha ao gravar o template "${nome}" na sincronização:`, e?.message || e);
+        falhas.push({ nome, erro: String(e?.message || e).slice(0, 300) });
+      }
     }
 
-    return templates.length;
+    return { lidos: templates.length, salvos, falhas };
   }
 
   async criarTemplate(template: any) {
@@ -713,7 +750,12 @@ export class MetaWhatsAppService {
       "CRIAR_TEMPLATE",
     );
 
-    if (db && data.id) {
+    // A Meta devolve o `id` do template criado. Se a resposta vier sem `id`
+    // (o Graph API nem sempre o inclui), o template JÁ EXISTE na Meta — e não
+    // gravá-lo localmente deixaria o usuário sem nenhuma pista na tela, com o
+    // template órfão do lado da Meta. Grava de qualquer forma: o nome
+    // (`meta_name`) é a chave, e a sincronização preenche o `meta_id` depois.
+    if (db) {
       await db.execute(sql`
         INSERT INTO whatsapp_templates (
           meta_id,
@@ -730,7 +772,7 @@ export class MetaWhatsAppService {
           ultima_sincronizacao
         )
         VALUES (
-          ${data.id},
+          ${data?.id ?? null},
           ${template.nome_interno || template.name},
           ${template.name},
           ${template.category},
@@ -743,10 +785,14 @@ export class MetaWhatsAppService {
           ${template.midia_arquivo_id ?? null},
           now()
         )
+        ON CONFLICT (meta_name) DO UPDATE SET
+          status = EXCLUDED.status,
+          meta_id = COALESCE(EXCLUDED.meta_id, whatsapp_templates.meta_id),
+          ultima_sincronizacao = now()
       `);
     }
 
-    return data;
+    return { ...data, ok: true, id: data?.id ?? null, nome: template.name };
   }
 
   /**

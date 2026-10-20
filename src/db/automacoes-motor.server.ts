@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "./index";
 import { metaService, montarComponents } from "./meta-whatsapp.server";
+import { templateAprovado } from "./whatsapp-status";
 
 // Variáveis disponíveis por contexto
 export const EVENT_VARIABLES: Record<string, string[]> = {
@@ -40,7 +41,7 @@ export async function processarEventoSistema(evento: string, contexto: any) {
       }
 
       // Validação de template na Meta
-      if (auto.template_meta_status !== 'APPROVED') {
+      if (!templateAprovado(auto.template_meta_status)) {
         await db.execute(sql`UPDATE whatsapp_automacoes SET status = 'TEMPLATE_INDISPONIVEL' WHERE id = ${auto.id}::uuid`);
         continue;
       }

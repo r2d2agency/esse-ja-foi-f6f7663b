@@ -1,6 +1,10 @@
 import { sql, eq, and } from "drizzle-orm";
 import { db } from "./index";
 import { metaService } from "./meta-whatsapp.server";
+import {
+  curarConfigDuplicada,
+  lerWhatsappConfig,
+} from "./whatsapp-config.server";
 import { processarMensagemRecebida } from "./conversas.server";
 
 function requireDb() {
@@ -90,7 +94,7 @@ export async function ensureComunicacoesSchema(silent = true) {
         categoria text, -- MARKETING, UTILITY, AUTHENTICATION
         idioma text DEFAULT 'pt_BR',
         conteudo jsonb, -- Estrutura do template (cabeçalho, corpo, botões)
-        status text DEFAULT 'PENDENTE', -- APROVADO, REJEITADO, PENDENTE, PAUSADO
+        status text DEFAULT 'PENDING', -- APPROVED, PENDING, REJECTED, PAUSED (vocabulário da Meta)
         tipo_midia text, -- TEXT, IMAGE, VIDEO, DOCUMENT
         meta_id text,
         ultima_sincronizacao timestamptz DEFAULT now(),
@@ -105,7 +109,7 @@ export async function ensureComunicacoesSchema(silent = true) {
         ADD COLUMN IF NOT EXISTS categoria text,
         ADD COLUMN IF NOT EXISTS idioma text DEFAULT 'pt_BR',
         ADD COLUMN IF NOT EXISTS conteudo jsonb,
-        ADD COLUMN IF NOT EXISTS status text DEFAULT 'PENDENTE',
+        ADD COLUMN IF NOT EXISTS status text DEFAULT 'PENDING',
         ADD COLUMN IF NOT EXISTS motivo_recusa text,
         ADD COLUMN IF NOT EXISTS tipo_midia text,
         ADD COLUMN IF NOT EXISTS meta_id text,
@@ -122,6 +126,34 @@ export async function ensureComunicacoesSchema(silent = true) {
         ADD COLUMN IF NOT EXISTS midia_tipo text,
         ADD COLUMN IF NOT EXISTS midia_nome text,
         ADD COLUMN IF NOT EXISTS midia_arquivo_id uuid;
+    `);
+
+    // Migração de dados do status do template. A coluna foi criada com o
+    // default em português ('PENDENTE'), mas todo o sistema compara com o
+    // vocabulário da Meta ('APPROVED', 'PENDING', 'REJECTED'). Um template
+    // criado pelo wizard ficava travado em 'PENDENTE': invisível no seletor de
+    // template da campanha e com a campanha bloqueada como
+    // TEMPLATE_INDISPONIVEL, mesmo já aprovado na Meta. O `ALTER ... ADD
+    // COLUMN IF NOT EXISTS` acima não muda default nem dados de tabela
+    // existente — por isso a normalização é um UPDATE explícito.
+    await d.execute(sql`
+      UPDATE whatsapp_templates SET status = CASE UPPER(TRIM(COALESCE(status, '')))
+        WHEN 'APROVADO' THEN 'APPROVED'
+        WHEN 'PENDENTE' THEN 'PENDING'
+        WHEN 'REJEITADO' THEN 'REJECTED'
+        WHEN 'PAUSADO' THEN 'PAUSED'
+        WHEN 'APAGADO' THEN 'DELETED'
+        ELSE status
+      END
+      WHERE status IS NOT NULL
+        AND status <> ''
+        AND UPPER(TRIM(status)) IN ('APROVADO','PENDENTE','REJEITADO','PAUSADO','APAGADO');
+    `);
+
+    // O default antigo também precisa mudar: `ADD COLUMN IF NOT EXISTS` não
+    // altera o default de uma coluna que já existe.
+    await d.execute(sql`
+      ALTER TABLE whatsapp_templates ALTER COLUMN status SET DEFAULT 'PENDING';
     `);
 
     // 3. Segmentos (Listas de Compradores)
@@ -387,58 +419,18 @@ export async function ensureComunicacoesSchema(silent = true) {
 
 // Functions to be implemented
 export async function getWhatsappConfig() {
-  const d = requireDb();
   // A inicialização do servidor pode ocorrer depois da primeira chamada server-side.
   // Garanta a tabela antes da leitura para não falhar com "relation does not exist".
   await ensureComunicacoesSchema();
-  await curarConfigDuplicada(d);
-  const res = await d.execute(sql`
-    SELECT * FROM whatsapp_config
-    ORDER BY atualizado_em, id LIMIT 1
-  `);
-  return rowsOf(res)?.[0] || null;
+  return await lerWhatsappConfig();
 }
 
 /**
- * A tabela é conceitualmente de linha única, mas os INSERT ... WHERE NOT EXISTS
- * não são atômicos: duas requisições simultâneas (a tela dispara várias queries
- * em paralelo) passam as duas pelo NOT EXISTS e criam duas linhas. Depois disso,
- * salvar e ler caem em linhas diferentes e a configuração parece não persistir.
- *
- * Mantém a linha de menor id (a que o UPDATE já alvo) e absorve dela qualquer
- * valor preenchido que exista nas duplicadas, para não perder a configuração
- * que o usuário já havia salvo.
+ * A deduplicação e a leitura da linha de configuração foram movidas para
+ * `whatsapp-config.server.ts`: o serviço da Meta (`metaService.init()`) precisa
+ * ler EXATAMENTE a mesma linha que a tela lê, senão salvar funciona mas a
+ * Meta responde "WABA ID não configurado".
  */
-async function curarConfigDuplicada(d: any) {
-  try {
-    await d.execute(sql`
-      DO $$
-      DECLARE
-        alvo uuid;
-        col text;
-      BEGIN
-        SELECT id INTO alvo FROM whatsapp_config ORDER BY id LIMIT 1;
-        IF alvo IS NULL THEN RETURN; END IF;
-
-        FOREACH col IN ARRAY ARRAY[
-          'waba_id', 'phone_number_id', 'business_id', 'phone_number', 'app_id',
-          'app_secret', 'access_token', 'graph_api_version', 'webhook_verify_token', 'status'
-        ] LOOP
-          EXECUTE format(
-            'UPDATE whatsapp_config SET %I = COALESCE(%I, (SELECT %I FROM whatsapp_config WHERE %I IS NOT NULL AND id <> $1 LIMIT 1)) WHERE id = $1',
-            col, col, col, col
-          ) USING alvo;
-        END LOOP;
-
-        DELETE FROM whatsapp_config WHERE id <> alvo;
-      END $$;
-    `);
-  } catch (e) {
-    if (process.env["NODE_ENV"] === "development")
-      console.error("[comunicacoes.server] Falha ao deduplicar whatsapp_config:", e);
-  }
-}
-
 export async function updateWhatsappConfig(config: any) {
   const d = requireDb();
   await ensureComunicacoesSchema();

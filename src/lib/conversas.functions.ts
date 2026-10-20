@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import * as db from "../db/conversas.server";
+import { templateAprovado } from "../db/whatsapp-status";
 
 /**
  * Cookie de sessão -> atendente. Quando falha, registra uma linha antes de
@@ -99,7 +100,7 @@ async function montarPayloadTemplate(payload: any) {
     ? lista.find((t: any) => t.id === payload.template_id)
     : lista.find((t: any) => t.meta_name === payload.template_name);
   if (!template) throw new Error("Template não encontrado");
-  if (template.status && template.status !== "APPROVED") {
+  if (template.status && !templateAprovado(template.status)) {
     throw new Error(`O template "${template.nome_interno}" não está aprovado na Meta.`);
   }
 

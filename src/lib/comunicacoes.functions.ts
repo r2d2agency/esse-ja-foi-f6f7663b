@@ -3,6 +3,7 @@ import { z } from "zod";
 import { sql } from "drizzle-orm";
 import * as db from "../db/comunicacoes.server";
 import { metaService, montarComponents } from "../db/meta-whatsapp.server";
+import { normalizarStatusTemplate, templateAprovado } from "../db/whatsapp-status";
 
 export const getWhatsappConfigFn = createServerFn({ method: "GET" }).handler(async () => {
   const config = await db.getWhatsappConfig();
@@ -478,8 +479,8 @@ export const testarConexaoFn = createServerFn({ method: "POST" }).handler(async 
 
 export const sincronizarTemplatesFn = createServerFn({ method: "POST" }).handler(async () => {
   try {
-    const count = await metaService.sincronizarTemplates();
-    return { ok: true, count };
+    const resultado = await metaService.sincronizarTemplates();
+    return { ok: true, ...resultado, count: resultado.salvos };
   } catch (error: any) {
     return { ok: false, error: error.message };
   }
@@ -833,11 +834,11 @@ export const enviarTesteFn = createServerFn({ method: "POST" })
       const template = (await db.listarTemplates()).find((t: any) => t.id === data.template_id);
       if (!template) throw new Error("Template não encontrado");
 
-      if (template.status !== "APPROVED") {
+      if (!templateAprovado(template.status)) {
         const rotulo =
-          template.status === "PENDING"
+          normalizarStatusTemplate(template.status) === "PENDING"
             ? "ainda está em análise"
-            : template.status === "REJECTED"
+            : normalizarStatusTemplate(template.status) === "REJECTED"
               ? "foi rejeitado"
               : template.status || "não está aprovado";
         throw new Error(

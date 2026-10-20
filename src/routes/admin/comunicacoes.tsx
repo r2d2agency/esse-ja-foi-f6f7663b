@@ -97,6 +97,11 @@ import {
 } from "@/lib/comunicacoes.functions";
 import { listarMarketingTagsFn, listarGruposUazapiFn } from "@/lib/marketing.functions";
 import {
+  normalizarStatusTemplate,
+  rotuloStatusTemplate,
+  templateAprovado,
+} from "@/db/whatsapp-status";
+import {
   listarAutomacoesFn,
   salvarAutomacaoFn,
   getExecucoesAutomacaoFn,
@@ -125,23 +130,17 @@ export const Route = createFileRoute("/admin/comunicacoes")({
 });
 
 // A Meta devolve o status cru. Traduzir evita ler "PENDING" e não saber se o
-// template foi aprovado, recusado ou ainda está em análise.
-const ROTULO_STATUS: Record<string, string> = {
-  APPROVED: "Aprovado",
-  PENDING: "Em análise",
-  REJECTED: "Rejeitado",
-  PAUSED: "Pausado",
-  DELETED: "Apagado na Meta",
-};
-
+// template foi aprovado, recusado ou ainda está em análise. O vocabulário é o
+// da Meta; o banco pode ter o valor em português (ver whatsapp-status.ts).
 function rotuloStatus(status: string) {
-  return ROTULO_STATUS[status] || status || "—";
+  return rotuloStatusTemplate(status) || status || "—";
 }
 
 function varianteStatus(status: string): any {
-  if (status === "APPROVED") return "success";
-  if (status === "PENDING") return "warning";
-  if (status === "REJECTED") return "destructive";
+  const normalizado = normalizarStatusTemplate(status);
+  if (normalizado === "APPROVED") return "success";
+  if (normalizado === "PENDING") return "warning";
+  if (normalizado === "REJECTED") return "destructive";
   return "secondary";
 }
 
@@ -643,8 +642,8 @@ function ComunicacoesPage() {
   // não protege o `.find`, então isso garante que é array de verdade.
   const listaTemplates = Array.isArray(templates)
     ? templates
-    : Array.isArray(templates?.data)
-      ? templates.data
+    : Array.isArray((templates as any)?.data)
+      ? (templates as any).data
       : [];
   const templateCampanha = listaTemplates.find((t: any) => t.id === novaCampanha.template_id);
   const totalVariaveis = contarVariaveisTemplate(templateCampanha);
@@ -708,7 +707,7 @@ function ComunicacoesPage() {
   });
   const exemplo = Array.isArray(exemploDestinatarioRes)
     ? exemploDestinatarioRes[0]
-    : exemploDestinatarioRes?.data ?? exemploDestinatarioRes ?? null;
+    : ((exemploDestinatarioRes as any)?.data ?? exemploDestinatarioRes ?? null);
 
   // A contagem com etiqueta tem que vir do servidor com a tag no critério:
   // `estimarPublico` ignora tag, então sem esta consulta a tela mostrava o
@@ -1203,7 +1202,24 @@ function ComunicacoesPage() {
       success: (res: any) => {
         if (res.ok) {
           queryClient.invalidateQueries({ queryKey: ["wa-templates"] });
-          return `${res.count} templates sincronizados!`;
+          // A contagem é o que foi REALMENTE gravado, não o que a Meta
+          // devolveu: um template que falha ao salvar não pode entrar na
+          // conta, senão a tela anuncia uma sincronização que não aconteceu.
+          const salvos = Number(res.salvos ?? res.count ?? 0);
+          const lidos = Number(res.lidos ?? salvos);
+          const falhas = Array.isArray(res.falhas) ? res.falhas : [];
+          if (falhas.length) {
+            toast.warning(
+              `${salvos} de ${lidos} templates sincronizados. ${falhas.length} falharam: ${falhas
+                .map((f: any) => f?.nome)
+                .slice(0, 3)
+                .join(", ")}${falhas.length > 3 ? "…" : ""}`,
+            );
+          }
+          if (salvos === 0 && lidos === 0) {
+            return "Nenhum template encontrado na Meta.";
+          }
+          return `${salvos} template${salvos === 1 ? "" : "s"} sincronizado${salvos === 1 ? "" : "s"}!`;
         }
         throw new Error(res.error);
       },
@@ -2064,7 +2080,7 @@ function ComunicacoesPage() {
                       <Label className="text-lg">Escolher Template</Label>
                       <div className="grid grid-cols-2 gap-3 max-h-80 overflow-y-auto pr-2">
                         {listaTemplates
-                          .filter((t: any) => t?.status === "APPROVED")
+                          .filter((t: any) => templateAprovado(t?.status))
                           .map((template: any) => (
                             <div
                               key={template.id}

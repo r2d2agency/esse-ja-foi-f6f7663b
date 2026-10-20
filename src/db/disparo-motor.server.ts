@@ -3,6 +3,7 @@ import { db } from "./index";
 import { metaService, MetaApiError, montarComponents } from "./meta-whatsapp.server";
 import { resolverPublico, normalizarParaMeta, type CriterioPublico } from "./publico.server";
 import { registrarLogCampanha } from "./logs-campanha.server";
+import { templateAprovado } from "./whatsapp-status";
 
 /**
  * Motor de disparo em dripping.
@@ -780,7 +781,7 @@ export async function processarDisparo(
     if (
       (campanha.canal_envio ?? "META") === "META" &&
       campanha.template_status &&
-      campanha.template_status !== "APPROVED"
+      !templateAprovado(campanha.template_status)
     ) {
       await d.execute(sql`
         UPDATE whatsapp_campanhas SET status = 'TEMPLATE_INDESPONIVEL', atualizado_em = now()
@@ -817,7 +818,8 @@ export async function processarDisparo(
   await d.execute(sql`
     UPDATE whatsapp_campanhas c SET status = 'AGUARDANDO', atualizado_em = now()
     FROM whatsapp_templates t
-    WHERE c.template_id = t.id AND c.status = 'TEMPLATE_INDESPONIVEL' AND t.status = 'APPROVED'
+    WHERE c.template_id = t.id AND c.status = 'TEMPLATE_INDESPONIVEL'
+      AND UPPER(TRIM(COALESCE(t.status, ''))) IN ('APPROVED', 'APROVADO', 'APROVADA')
   `);
 
   if (resumo.campanhas) {
