@@ -306,10 +306,28 @@ export async function confirmarConclusaoRepasse(repasseId: string, params: { id_
   const d = requireDb();
 
   return await d.transaction(async (tx) => {
+    // B2: o ledger é o caminho crítico do financeiro. Uma segunda chamada
+    // (duplo clique, retry do webhook, reenvio da tela) duplicaria
+    // `SAIDA_REPASSE` e `RETENCAO_COMISSAO`, inflando a comissão reconhecida.
+    //
+    // A ordem importa: primeiro travamos a linha do repasse (`FOR UPDATE`), o que
+    // serializa chamadas concorrentes do mesmo repasse; só então conferimos o
+    // ledger. Checar o ledger antes do lock deixaria duas chamadas simultâneas
+    // passarem pelo teste e duplicarem o lançamento.
     const res = await tx.execute(sql`SELECT * FROM repasses WHERE id = ${repasseId}::uuid FOR UPDATE`);
     const r = rowsOf(res)?.[0];
     if (!r) throw new Error("Repasse não encontrado.");
-    
+
+    const jaLancado = await tx.execute(sql`
+      SELECT 1 FROM financeiro_ledger
+      WHERE negociacao_id = ${r.negociacao_id}::uuid AND tipo = 'SAIDA_REPASSE'
+      LIMIT 1
+    `);
+    if (rowsOf(jaLancado).length > 0 || r.status === 'CONCLUIDO') {
+      // Já lançado: idempotente, sem exceção — a tela já mostra sucesso.
+      return { ok: true, jaConcluido: true };
+    }
+
     // 1. Atualizar repasse
     await tx.execute(sql`
       UPDATE repasses SET 

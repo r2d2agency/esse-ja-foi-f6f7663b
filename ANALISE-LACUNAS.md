@@ -477,6 +477,8 @@ transforma uma correção de segurança em uma queda do sistema.
 ### B2. `confirmarConclusaoRepasse` duplica o razão financeiro
 **Arquivo:** `src/db/financeiro.server.ts:305-360`
 
+> ✅ **Fechado (2026-10-20)** — `confirmarConclusaoRepasse` agora é idempotente.
+
 Tem `FOR UPDATE`, mas **não checa o status** antes de inserir em `financeiro_ledger`
 (tabela sem UNIQUE, `src/db/financeiro.server.ts:63-76`). Uma segunda chamada (duplo clique,
 retry, webhook) duplica a `SAIDA_REPASSE` e a `RETENCAO_COMISSAO`.
@@ -485,6 +487,15 @@ retry, webhook) duplica a `SAIDA_REPASSE` e a `RETENCAO_COMISSAO`.
 **Risco: MÉDIO no financeiro.** Sugestão: retornar `{ ok: true, jaConcluido: true }` em vez de
 lançar erro, para não quebrar telas que hoje mostram sucesso. Checar `financeiro_ledger`
 **antes** de `repasses`.
+
+**Correção aplicada:** dentro da transação, a linha do repasse é travada com `FOR UPDATE`
+**antes** de qualquer leitura do ledger — a ordem importa, porque checar o ledger antes do
+lock deixaria duas chamadas simultâneas passarem pelo teste e duplicarem o lançamento. Com o
+lock, chamadas concorrentes do mesmo repasse ficam serializadas. Em seguida, se já existe um
+lançamento `SAIDA_REPASSE` para a negociação **ou** o repasse já está `CONCLUIDO`, a função
+retorna `{ ok: true, jaConcluido: true }` sem lançar exceção — a tela em
+`src/routes/admin/pagamento.$id.tsx` continua mostrando sucesso. Nenhum `INSERT` duplicado em
+`financeiro_ledger`.
 
 ### B3. `validarCodigo` — contador de tentativas sem lock
 **Arquivo:** `src/db/entregas.server.ts:409-439`
@@ -789,7 +800,7 @@ de erro.
 ### Fase 1 — correções locais seguras (qualidade, sem risco)
 9. ✅ **A1, A2** (dashboard mostra números reais — 30 min, valida a leitura)
 10. ✅ **A3, A4** (fuso)
-11. **B2** (ledger duplicado — financeiro)
+11. ✅ **B2** (ledger duplicado — financeiro)
 12. **B3** (tentativas do código de entrega)
 13. **A5, A6, A8** (higiene de queries)
 14. **A9, A13, A11** (erros engolidos, vazamento, `sql.raw`)
