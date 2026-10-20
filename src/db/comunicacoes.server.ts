@@ -12,6 +12,25 @@ function requireDb() {
   return db;
 }
 
+/**
+ * Executa um passo do esquema sem derrubar o resto.
+ *
+ * `ensureComunicacoesSchema` é chamada por quase toda função de servidor do
+ * módulo WhatsApp (listar templates, sincronizar, enviar teste, logs, webhook,
+ * motor de disparo). Um único comando que estoure — uma linha duplicada num
+ * índice único, uma coluna que alguém mudou fora do sistema — abortava a
+ * função inteira (o `catch` externo relança) e derrubava **tudo de uma vez**:
+ * templates, logs, teste e disparo. Cada passo crítico passa por aqui: a
+ * falha fica registrada no log do servidor e o restante do esquema continua.
+ */
+async function passoOpcional(rotulo: string, fn: () => Promise<unknown>) {
+  try {
+    await fn();
+  } catch (e) {
+    console.error(`[comunicacoes.server] Falha ao garantir ${rotulo}:`, e);
+  }
+}
+
 export async function ensureComunicacoesSchema(silent = true) {
   const d = requireDb();
   if (!silent && process.env["NODE_ENV"] === "development")
@@ -136,7 +155,8 @@ export async function ensureComunicacoesSchema(silent = true) {
     // TEMPLATE_INDISPONIVEL, mesmo já aprovado na Meta. O `ALTER ... ADD
     // COLUMN IF NOT EXISTS` acima não muda default nem dados de tabela
     // existente — por isso a normalização é um UPDATE explícito.
-    await d.execute(sql`
+    await passoOpcional("a migração de status dos templates", () =>
+      d.execute(sql`
       UPDATE whatsapp_templates SET status = CASE UPPER(TRIM(COALESCE(status, '')))
         WHEN 'APROVADO' THEN 'APPROVED'
         WHEN 'PENDENTE' THEN 'PENDING'
@@ -148,13 +168,16 @@ export async function ensureComunicacoesSchema(silent = true) {
       WHERE status IS NOT NULL
         AND status <> ''
         AND UPPER(TRIM(status)) IN ('APROVADO','PENDENTE','REJEITADO','PAUSADO','APAGADO');
-    `);
+    `),
+    );
 
     // O default antigo também precisa mudar: `ADD COLUMN IF NOT EXISTS` não
     // altera o default de uma coluna que já existe.
-    await d.execute(sql`
+    await passoOpcional("o default de status dos templates", () =>
+      d.execute(sql`
       ALTER TABLE whatsapp_templates ALTER COLUMN status SET DEFAULT 'PENDING';
-    `);
+    `),
+    );
 
     // O `ON CONFLICT (meta_name)` usado na sincronização e na criação de
     // template da Meta exige uma restrição UNIQUE em `meta_name`. A coluna
@@ -330,15 +353,18 @@ export async function ensureComunicacoesSchema(silent = true) {
     // (`variaveis->'contato'->>'nome'`). Ela não existia: só havia `payload`,
     // que ninguém escreve. O INSERT falhava com "column variaveis does not
     // exist", o catch engolia o erro e a campanha ficava com fila vazia.
-    await d.execute(sql`
+    await passoOpcional("a coluna variaveis das mensagens", () =>
+      d.execute(sql`
       ALTER TABLE whatsapp_mensagens
         ADD COLUMN IF NOT EXISTS variaveis jsonb DEFAULT '{}'::jsonb;
-    `);
+    `),
+    );
 
     // 6b. Fila de disparo: o estado do worker em coluna separada do status de
     // entrega. O webhook da Meta grava 'DELIVERED'/'READ'/'FAILED' em `status`,
     // que antes era o mesmo campo da fila — os dois vocabulários se atropelavam.
-    await d.execute(sql`
+    await passoOpcional("as colunas da fila de disparo", () =>
+      d.execute(sql`
       ALTER TABLE whatsapp_mensagens
         ADD COLUMN IF NOT EXISTS estado_fila text DEFAULT 'PENDENTE',
         ADD COLUMN IF NOT EXISTS reservada_em timestamptz,
@@ -347,31 +373,76 @@ export async function ensureComunicacoesSchema(silent = true) {
         ADD COLUMN IF NOT EXISTS proxima_tentativa_em timestamptz,
         ADD COLUMN IF NOT EXISTS origem text,
         ADD COLUMN IF NOT EXISTS contato_marketing_id uuid;
-    `);
+    `),
+    );
 
     // Conversão única do que já existia. `enviado_em` preenchido é o sinal mais
     // confiável de que a mensagem saiu: `status` pode ter sido sobrescrito pelo
     // webhook para DELIVERED/READ, apagando o vestígio de NA_FILA.
-    await d.execute(sql`
+    await passoOpcional("a conversão da fila para ENVIADA", () =>
+      d.execute(sql`
       UPDATE whatsapp_mensagens SET estado_fila = 'ENVIADA'
       WHERE estado_fila = 'PENDENTE' AND enviado_em IS NOT NULL;
-    `);
+    `),
+    );
 
     // O worker só enxerga mensagens prontas, e a ordem é por campanha + retry.
-    await d.execute(sql`
+    await passoOpcional("o índice da fila de disparo", () =>
+      d.execute(sql`
       CREATE INDEX IF NOT EXISTS idx_wa_mensagens_fila
       ON whatsapp_mensagens (campanha_id, proxima_tentativa_em)
       WHERE estado_fila = 'PENDENTE';
-    `);
+    `),
+    );
+
     // Segunda barreira contra envio duplicado: o mesmo telefone não entra duas
     // vezes na mesma campanha.
-    await d.execute(sql`
+    //
+    // Este índice NÃO era opcional: os INSERT da fila (`popularFilaCampanha` e
+    // `criarCampanhaGrupos`) usam `ON CONFLICT (campanha_id, telefone)`, e o
+    // Postgres recusa a cláusula com "there is no unique or exclusion
+    // constraint matching the ON CONFLICT specification" quando a restrição
+    // não existe. Sem o índice, a fila nasce vazia e nada é disparado.
+    //
+    // Pior: a criação do índice falhava com "could not create unique index ...
+    // duplicate key value" sempre que existissem duas mensagens do mesmo
+    // telefone na mesma campanha — e essa criação NÃO era isolada, então
+    // abortava o esquema inteiro, derrubando templates, logs, teste e disparo
+    // de uma vez. Por isso: (1) deduplica antes, (2) isola a criação.
+    await passoOpcional("a deduplicação de (campanha_id, telefone)", () =>
+      d.execute(sql`
+        DELETE FROM whatsapp_mensagens m
+        WHERE m.id IN (
+          SELECT id FROM (
+            SELECT id,
+              row_number() OVER (
+                PARTITION BY campanha_id, telefone
+                ORDER BY
+                  -- mantém a linha mais avançada: a que já saiu da fila
+                  CASE WHEN estado_fila IS DISTINCT FROM 'PENDENTE' THEN 0 ELSE 1 END,
+                  -- entre as equivalentes, a mais antiga (a fila é ordenada por
+                  -- horário de saída, então a antiga já está no roteiro)
+                  criado_em ASC NULLS LAST,
+                  id ASC
+              ) AS rn
+            FROM whatsapp_mensagens
+            -- campanha_id IS NULL é o histórico de conversa, não fila de
+            -- campanha: nunca entra na deduplicação.
+            WHERE campanha_id IS NOT NULL
+          ) t WHERE t.rn > 1
+        );
+      `),
+    );
+    await passoOpcional("o índice único de (campanha_id, telefone)", () =>
+      d.execute(sql`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_wa_mensagens_telefone
       ON whatsapp_mensagens (campanha_id, telefone);
-    `);
+    `),
+    );
 
     // 6c. Janela de trabalho e ritmo de envio por campanha.
-    await d.execute(sql`
+    await passoOpcional("as colunas de janela e ritmo da campanha", () =>
+      d.execute(sql`
       ALTER TABLE whatsapp_campanhas
         ADD COLUMN IF NOT EXISTS janela_inicio time,
         ADD COLUMN IF NOT EXISTS janela_fim time,
@@ -379,42 +450,50 @@ export async function ensureComunicacoesSchema(silent = true) {
         ADD COLUMN IF NOT EXISTS segmento_id uuid REFERENCES whatsapp_segmentos(id) ON DELETE SET NULL,
         ADD COLUMN IF NOT EXISTS origem_publico text DEFAULT 'AMBOS',
         ADD COLUMN IF NOT EXISTS ultimo_envio_em timestamptz;
-    `);
+    `),
+    );
 
     // 6f. Mapeamento de variáveis do template ({{1}} -> veiculo.marca etc).
     // Campanha de mensagem geral usa {} — o campo é obrigatório no INSERT.
-    await d.execute(sql`
+    await passoOpcional("o mapeamento de variáveis da campanha", () =>
+      d.execute(sql`
       ALTER TABLE whatsapp_campanhas
         ADD COLUMN IF NOT EXISTS mapeamento_variaveis jsonb DEFAULT '{}'::jsonb;
-    `);
+    `),
+    );
 
     // 6e. Canal de envio: por quem a mensagem sai.
     //   META    = template oficial pelo serviço da Meta (caminho original).
     //   UAZAPI  = conexão nova da Uazapi — a única rota que aceita grupo, já
     //            que a Meta não processa template enviado para @g.us.
     // `grupos_alvo` só existe para UAZAPI: são os ids "120363...@g.us".
-    await d.execute(sql`
+    await passoOpcional("as colunas de canal de envio da campanha", () =>
+      d.execute(sql`
       ALTER TABLE whatsapp_campanhas
         ADD COLUMN IF NOT EXISTS canal_envio text DEFAULT 'META',
         ADD COLUMN IF NOT EXISTS grupos_alvo jsonb DEFAULT '[]'::jsonb;
-    `);
+    `),
+    );
 
     // 6g. Imagem do cabeçalho da campanha.
     // O template é que carrega a mídia por padrão, mas a campanha precisa
     // poder trocar a imagem sem alterar o template aprovado (a Meta não deixa
     // editar um template já aprovado). Guardamos a referência aqui e o motor
     // prefere a da campanha, caindo na do template quando vazia.
-    await d.execute(sql`
+    await passoOpcional("as colunas de midia da campanha", () =>
+      d.execute(sql`
       ALTER TABLE whatsapp_campanhas
         ADD COLUMN IF NOT EXISTS midia_id text,
         ADD COLUMN IF NOT EXISTS midia_tipo text,
         ADD COLUMN IF NOT EXISTS midia_nome text,
         ADD COLUMN IF NOT EXISTS midia_arquivo_id uuid;
-    `);
+    `),
+    );
 
     // 6d. Lote importado: guarda de onde veio cada contato, para a tela mostrar
     // qual lista foi carregada e quando.
-    await d.execute(sql`
+    await passoOpcional("a tabela de lotes de contato", () =>
+      d.execute(sql`
       CREATE TABLE IF NOT EXISTS whatsapp_contato_lotes (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         nome text NOT NULL,
@@ -425,10 +504,12 @@ export async function ensureComunicacoesSchema(silent = true) {
         criado_por uuid REFERENCES profiles(id),
         criado_em timestamptz DEFAULT now()
       );
-    `);
+    `),
+    );
 
     // 7. Logs de Auditoria
-    await d.execute(sql`
+    await passoOpcional("a tabela de logs de auditoria", () =>
+      d.execute(sql`
       CREATE TABLE IF NOT EXISTS whatsapp_logs (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         campanha_id uuid REFERENCES whatsapp_campanhas(id) ON DELETE SET NULL,
@@ -439,12 +520,15 @@ export async function ensureComunicacoesSchema(silent = true) {
         payload jsonb,
         criado_em timestamptz DEFAULT now()
       );
-    `);
+    `),
+    );
 
-    await d.execute(sql`
+    await passoOpcional("a coluna de acao dos logs", () =>
+      d.execute(sql`
       ALTER TABLE whatsapp_logs
         ADD COLUMN IF NOT EXISTS acao text;
-    `);
+    `),
+    );
 
     // 8. Atualizar profiles com preferências e elegibilidade
     const profileCols: Array<[string, string]> = [

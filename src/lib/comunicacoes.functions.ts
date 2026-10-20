@@ -291,7 +291,7 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
           FROM unnest(${JSON.stringify(
             (data.grupos_alvo as string[]) ?? [],
           )}::text[]) AS g(grupo)
-          ON CONFLICT (campanha_id, telefone) DO NOTHING
+          ON CONFLICT DO NOTHING
         `);
         await dbc.execute(sql`
           UPDATE whatsapp_campanhas SET total_destinatarios = ${(data.grupos_alvo ?? []).length},

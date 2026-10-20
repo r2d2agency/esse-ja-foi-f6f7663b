@@ -940,7 +940,7 @@ export async function criarCampanhaDisparoGrupos(opts: {
       'PENDENTE',
       ${JSON.stringify({ texto: opts.texto, foto_capa: opts.foto || null })}::jsonb
     FROM unnest(${JSON.stringify(opts.grupos_alvo)}::text[]) AS g(grupo)
-    ON CONFLICT (campanha_id, telefone) DO NOTHING
+    ON CONFLICT DO NOTHING
   `);
 
   await d.execute(sql`
@@ -1024,6 +1024,15 @@ export async function popularFilaCampanha(
       // ON CONFLICT DO NOTHING não avisa quando ignora: sem o RETURNING o
       // contador subia mesmo sem inserir e a campanha exibia destinatários que
       // nunca entraram na fila.
+      //
+      // O alvo do conflito é omitido de propósito. `ON CONFLICT (campanha_id,
+      // telefone)` exige que exista um índice ÚNICO com exatamente essas
+      // colunas; se ele não existir (e a criação dele é uma etapa opcional do
+      // esquema, que pode falhar sem derrubar o resto), o Postgres recusa o
+      // INSERT com "there is no unique or exclusion constraint matching the
+      // ON CONFLICT specification" e a fila nasce vazia — a campanha fica
+      // pronta, o contador zera e nada é disparado. Sem alvo, o Postgres ignora
+      // qualquer violação de unicidade que existir e insere normalmente.
       const res = await d.execute(sql`
         INSERT INTO whatsapp_mensagens
           (campanha_id, comprador_id, contato_marketing_id, telefone, origem, estado_fila, variaveis)
@@ -1036,7 +1045,7 @@ export async function popularFilaCampanha(
           'PENDENTE',
           ${JSON.stringify(variaveis)}::jsonb
         )
-        ON CONFLICT (campanha_id, telefone) DO NOTHING
+        ON CONFLICT DO NOTHING
         RETURNING id
       `);
       if (Array.isArray(res) && res.length > 0) inseridos++;
