@@ -1219,6 +1219,11 @@ function ComunicacoesPage() {
           if (salvos === 0 && lidos === 0) {
             return "Nenhum template encontrado na Meta.";
           }
+          // "Sincronizado" sem ressalva quando nada foi gravado é mentira: a
+          // Meta devolveu templates e nenhum entrou no banco.
+          if (salvos === 0) {
+            return `A Meta devolveu ${lidos} template${lidos === 1 ? "" : "s"}, mas nenhum foi gravado.`;
+          }
           return `${salvos} template${salvos === 1 ? "" : "s"} sincronizado${salvos === 1 ? "" : "s"}!`;
         }
         throw new Error(res.error);
@@ -2078,18 +2083,38 @@ function ComunicacoesPage() {
                   {campanhaStep === 4 && (
                     <div className="space-y-4">
                       <Label className="text-lg">Escolher Template</Label>
+                      {/* Template em análise NÃO pode ser usado: a Meta só
+                          aceita APPROVED no disparo. Mas esconder o que está
+                          pendente faz o usuário achar que a sincronização
+                          falhou — então ele aparece, desabilitado, com o
+                          motivo. */}
+                      {listaTemplates.filter((t: any) => !templateAprovado(t?.status)).length > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          Templates em análise ou rejeitados não podem ser usados em campanhas
+                          até a aprovação da Meta.
+                        </p>
+                      )}
                       <div className="grid grid-cols-2 gap-3 max-h-80 overflow-y-auto pr-2">
-                        {listaTemplates
-                          .filter((t: any) => templateAprovado(t?.status))
-                          .map((template: any) => (
+                        {listaTemplates.map((template: any) => {
+                          const aprovado = templateAprovado(template?.status);
+                          return (
                             <div
                               key={template.id}
                               onClick={() => {
+                                if (!aprovado) return;
                                 setNovaCampanha({ ...novaCampanha, template_id: template.id });
                                 setCampanhaStep(5);
                               }}
+                              title={
+                                aprovado
+                                  ? template.meta_name
+                                  : `${template.meta_name} — ${rotuloStatus(template?.status)}`
+                              }
                               className={cn(
-                                "p-3 border rounded-lg cursor-pointer hover:border-teal-500 transition-all",
+                                "p-3 border rounded-lg transition-all",
+                                aprovado
+                                  ? "cursor-pointer hover:border-teal-500"
+                                  : "cursor-not-allowed opacity-60 bg-slate-50",
                                 novaCampanha.template_id === template.id
                                   ? "border-teal-600 bg-teal-50"
                                   : "border-slate-100",
@@ -2106,8 +2131,14 @@ function ComunicacoesPage() {
                               <p className="text-xs font-medium line-clamp-2">
                                 {template.conteudo?.find((c: any) => c.type === "BODY")?.text}
                               </p>
+                              {!aprovado && (
+                                <Badge variant={varianteStatus(template?.status)} className="text-[8px] mt-2">
+                                  {rotuloStatus(template?.status)}
+                                </Badge>
+                              )}
                             </div>
-                          ))}
+                          );
+                        })}
                       </div>
 
                       {/* Imagem do cabeçalho da campanha. A Meta não deixa
@@ -4531,16 +4562,22 @@ function ComunicacoesPage() {
                     <div className="space-y-4">
                       <Label>Escolha o Template</Label>
                       <div className="grid grid-cols-1 gap-3">
-                        {listaTemplates.map((t: any) => (
+                        {listaTemplates.map((t: any) => {
+                          const aprovado = templateAprovado(t?.status);
+                          return (
                           <Card
                             key={t.id}
                             className={cn(
-                              "cursor-pointer border-2 hover:border-teal-500 transition-all",
+                              "border-2 transition-all",
+                              aprovado
+                                ? "cursor-pointer hover:border-teal-500"
+                                : "cursor-not-allowed opacity-60",
                               novaAutomacao.template_id === t.id
                                 ? "border-teal-600 bg-teal-50"
                                 : "border-slate-200",
                             )}
                             onClick={() => {
+                              if (!aprovado) return;
                               setNovaAutomacao({ ...novaAutomacao, template_id: t.id });
                               setAutomacaoStep(4);
                             }}
@@ -4555,15 +4592,13 @@ function ComunicacoesPage() {
                                   </p>
                                 </div>
                               </div>
-                              <Badge
-                                variant={t.status === "APPROVED" ? "default" : "secondary"}
-                                className={cn(t.status === "APPROVED" ? "bg-green-500" : "")}
-                              >
-                                {t.status}
+                              <Badge variant={varianteStatus(t?.status)}>
+                                {rotuloStatus(t?.status)}
                               </Badge>
                             </CardContent>
                           </Card>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}

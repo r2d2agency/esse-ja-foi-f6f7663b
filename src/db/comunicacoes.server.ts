@@ -156,6 +156,25 @@ export async function ensureComunicacoesSchema(silent = true) {
       ALTER TABLE whatsapp_templates ALTER COLUMN status SET DEFAULT 'PENDING';
     `);
 
+    // O `ON CONFLICT (meta_name)` usado na sincronização e na criação de
+    // template da Meta exige uma restrição UNIQUE em `meta_name`. A coluna
+    // nasceu com `UNIQUE NOT NULL` na criação da tabela, mas bancos criados
+    // antes disso recebem só o `ADD COLUMN IF NOT EXISTS meta_name text`
+    // (que NÃO cria constraint) — e aí todo ON CONFLICT estoura com "there is
+    // no unique or exclusion constraint matching the ON CONFLICT
+    // specification". Deduplica primeiro e depois cria o índice idempotente.
+    await d.execute(sql`
+      DELETE FROM whatsapp_templates a
+      USING whatsapp_templates b
+      WHERE a.meta_name = b.meta_name
+        AND a.meta_name IS NOT NULL
+        AND a.id > b.id;
+    `);
+    await d.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_whatsapp_templates_meta_name
+        ON whatsapp_templates (meta_name);
+    `);
+
     // 3. Segmentos (Listas de Compradores)
     await d.execute(sql`
       CREATE TABLE IF NOT EXISTS whatsapp_segmentos (
