@@ -198,13 +198,12 @@ salvamento errado** sem mexer no banco. É intencional (retomar cadastro sem per
 (multipart overhead), então 10 MB de arquivo viram ~13 MB de corpo. O limite de **10 MB
 (`MAX_BYTES`)** existe e é checado — não o remova sem considerar o memory limit do container.
 
-### M. Autorização: 43 arquivos, não 5
+### M. Autorização: a lista de arquivos é maior do que parece
 
-A lista curta de arquivos sem checagem de role não é completa — a varredura encontrou **43
-arquivos** de server functions sem verificação de role no servidor. Trate a lista do
-[08-lacunas.md](08-lacunas.md) (P0.2) como a fonte da verdade, e não só `admin*.functions.ts`,
-`admin-veiculos.functions.ts`, `relatorios.functions.ts`, `logs.functions.ts` e
-`marketing.functions.ts`.
+A varredura encontrou **43 arquivos** de server functions sem verificação de role no
+servidor — não só `admin*.functions.ts`, `admin-veiculos.functions.ts`,
+`relatorios.functions.ts`, `logs.functions.ts` e `marketing.functions.ts`, como sugere o
+trecho acima.
 
 Detalhe importante: as **4 ações críticas que exigem OTP** não cobrem o caminho normal de
 exclusão — `excluirPerfilFn` (`src/lib/admin.functions.ts:108`) **não tem role nem OTP**.

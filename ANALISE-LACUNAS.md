@@ -1,6 +1,11 @@
-# 08 — Lacunas corrigíveis sem quebrar o sistema
+# Análise de lacunas — trabalho interno (NÃO faz parte da documentação oficial)
 
-**Status:** Análise técnica • **Data:** 2026-10-20
+**Status:** Rascunho de trabalho • **Data:** 2026-10-20
+
+> ⚠️ **Documento interno, fora da entrega ao cliente.** Não está indexado em
+> [docs/README.md](docs/README.md) e não deve ser referenciado na documentação publicada.
+> Serve de fila de trabalho: à medida que cada item for corrigido, ele sai daqui e a
+> documentação oficial é atualizada com o estado final.
 
 Inventário de problemas reais encontrados no código, **classificados pelo risco de correção**:
 
@@ -11,7 +16,7 @@ Inventário de problemas reais encontrados no código, **classificados pelo risc
 | **B — Correções que exigem cuidado** | Toca telas/fluxos ou dado já gravado. Precisa de teste manual do fluxo. |
 | **C — Exigem migração ou mudança de contrato** | Mudança de schema, de API ou de formato. Precisa de plano de deploy. |
 
-> A regra do projeto ([07-convencoes.md §3](07-convencoes.md)) é: **não mexer** nos caminhos de
+> A regra do projeto ([07-convencoes.md §3](docs/07-convencoes.md)) é: **não mexer** nos caminhos de
 > escrita já protegidos (`registrarLance`, repasse com `FOR UPDATE`, motor de dripping com
 > `SKIP LOCKED`). Eles estão corretos.
 
@@ -48,7 +53,7 @@ servidor. Mas testar o fluxo de "criar usuário interno" e "redefinir senha de u
 
 ### P0.2. Funções administrativas sensíveis sem nenhuma checagem
 A varredura encontrou **43 arquivos** de `src/lib/*.functions.ts` sem checagem de role no
-servidor (o [07-convencoes.md §3](07-convencoes.md) citava 5). As de maior dano:
+servidor (o [07-convencoes.md §3](docs/07-convencoes.md) citava 5). As de maior dano:
 
 | Função | Arquivo:linha | O que permite |
 |---|---|---|
@@ -433,7 +438,7 @@ perfil lido.
 
 **Correção:** `SELECT ... FOR UPDATE` no `profiles` e reavaliar pendências dentro da tx.
 **Risco: MÉDIO** — `etapa_cadastro` usa `GREATEST` (monotônico) de propósito
-([07-convencoes.md armadilha K](07-convencoes.md)). **Não rebaixe a etapa** sem decisão de
+([07-convencoes.md armadilha K](docs/07-convencoes.md)). **Não rebaixe a etapa** sem decisão de
 produto: muda a aba do wizard.
 
 ### B8. Listas administrativas sem `LIMIT`
@@ -481,7 +486,7 @@ Endpoint sem sessão que grava `bytea` no Postgres, limite 10 MB por arquivo.
 
 > **Correção de uma informação errada:** este endpoint **não** recebe base64 — usa
 > `multipart/form-data` (`request.formData()` + `file.arrayBuffer()`). O
-> [07-convencoes.md §4-L](07-convencoes.md) está errado nesse ponto e precisa ser corrigido.
+> [07-convencoes.md §4-L](docs/07-convencoes.md) está errado nesse ponto e precisa ser corrigido.
 > O corpo ainda cresce ~33% por causa do multipart, mas o `MAX_BYTES` de 10 MB **existe** e é
 > checado (`:3` e `:29`).
 
@@ -573,7 +578,7 @@ produção). O ponto único por onde toda resposta SSR passa é o `requestMiddle
 
 **O CSP é o item perigoso** — pode bloquear o GTM/GA/Meta Pixel, os tiles do Leaflet/OSM, os
 scripts inline de hydration do Vite e o worker do PWA do vistoriador
-([06-integracoes.md §10](06-integracoes.md)). Comece **sem CSP**, ou em `report-only`.
+([06-integracoes.md §10](docs/06-integracoes.md)). Comece **sem CSP**, ou em `report-only`.
 
 `USER node` no Dockerfile: o processo só lê `/app/.output`, mas `chown` é obrigatório se
 algum fluxo gravar em `/app`.
@@ -626,7 +631,7 @@ continuar funcionando — `role === 'admin'` estrito cortaria o papel.
 ### C12. Ativar RLS em `lances` e `leiloes`
 **Arquivo:** `src/db/leilao.server.ts:52,54`
 
-A RLS está **desligada** explicitamente. O [docs/README.md](README.md) justifica isso pela
+A RLS está **desligada** explicitamente. O [docs/README.md](docs/README.md) justifica isso pela
 sessão própria (autorização 100% na aplicação). Reverter isso é **decisão de arquitetura**,
 não correção — só faz sentido depois de C11.
 
@@ -704,4 +709,4 @@ de erro.
 
 ---
 
-**Voltar ao [índice](README.md)**
+**Fila de trabalho interna — corrigir item a item e atualizar a documentação oficial ao final.**
