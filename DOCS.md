@@ -1,10 +1,15 @@
 # Documentação: Esse Já Foi
 
 Plataforma de compra e venda de veículos usados: cadastro de vendedores/veículos, vistoria
-técnica mobile-first, análise pós-vistoria, motor de depreciação, publicação (vitrine, leilão,
+técnica mobile-first, análise pós-vistoria, motor de depreciação, publicação (vitrine, sala de lances,
 anúncio, WhatsApp), negociação, pagamento e entrega — do lead até a venda concluída.
 
-**Status:** Beta Operacional • **Última revisão:** 2026-09-07
+**Status:** Beta Operacional • **Última revisão:** 2026-10-20
+
+> 📚 **A documentação técnica completa está em [`docs/`](docs/README.md)** — 7 capítulos:
+> arquitetura, módulos e telas, inventário de funções, regras de negócio, modelo de dados,
+> integrações e convenções. Este arquivo é a **visão de negócio** (o que o sistema faz, para
+> quem não programa). Comece por [docs/README.md](docs/README.md).
 
 ---
 
@@ -14,19 +19,21 @@ anúncio, WhatsApp), negociação, pagamento e entrega — do lead até a venda 
 - **Banco de dados:** PostgreSQL via Drizzle ORM (`src/db`), com `ensure*Schema()` idempotentes
   em cada módulo `*.server.ts` (criam/alteram tabelas na primeira chamada — não há migrations
   clássicas)
-- **Autenticação:** Supabase Auth (JWT no header `Authorization: Bearer`), sessão do cliente em
-  Zustand persistido (`localStorage`, chave `auth-storage`)
+- **Autenticação:** sessão **própria** — token HMAC-SHA256 de 12h em cookie httpOnly
+  `ejf_sessao` (`src/lib/sessao.server.ts`). **Não é Supabase Auth** e não há token no
+  `localStorage`. O Supabase é usado só como cliente auxiliar.
 - **Estilização:** Tailwind CSS v4 + shadcn/ui (Radix)
 - **IA:** OpenAI (modelos com visão, ex. `gpt-4o`) para validação de documentos e detecção de
   placa nas fotos do veículo
 - **Integrações externas:** Company Conferi (consulta veicular), WhatsApp Cloud API / Meta
-  (campanhas e link privado), SMTP (e-mail transacional)
+  (campanhas e link privado), Uazapi (texto livre e grupos), SMTP (e-mail transacional),
+  PIX (cobrança e repasse), FIPE (depreciação)
 - **Deployment:** Docker multi-stage (Easypanel)
 - **Localização:** PT-BR, BRL, America/Sao_Paulo
 
-Fotos hoje são armazenadas como `data:` URL (base64) direto nas colunas do banco — não há
-storage de objetos (S3/Supabase Storage) configurado ainda (`src/routes/api/public/upload.ts`
-documenta isso como simulação).
+Fotos e documentos são armazenados **dentro do Postgres** (`arquivos_upload.conteudo`, tipo
+`bytea`) — não há storage de objetos (S3/Supabase Storage) configurado ainda. O upload passa por
+`POST /api/public/upload`, que recebe base64, com limite de 10 MB por arquivo.
 
 ## 2. Papéis de usuário (RBAC)
 
@@ -50,7 +57,7 @@ Vendedor se cadastra ──► Compliance do vendedor (docs + IA) ──► Cada
    ──► Agendar vistoria (unidade/data/horário) ──► Execução da vistoria (app do vistoriador, laudo)
    ──► Análise pós-vistoria (checklist + fotos + proposta de valor) ──► Vendedor aceita
    ──► Criar Anúncio (fotos processadas com IA: placa coberta pela logo) ──► Canais de Publicação
-       (Vitrine / Leilão / Anúncio / WhatsApp) ──► Leilão encerra com lance válido
+       (Vitrine / Lance / Anúncio / WhatsApp) ──► a sala de lances encerra com lance válido
    ──► Negociação (pagamento do comprador) ──► Entrega (retirada/entrega + código de confirmação)
    ──► Repasse ao vendedor (Pagamentos) ──► Venda concluída
 ```
@@ -123,10 +130,10 @@ aplica uma marca d'água padrão quando não encontra placa); o admin pode ajust
 logo manualmente em cada foto antes de publicar. Só a versão processada é salva e usada
 publicamente — a foto original com a placa nunca é exposta.
 
-**Canais de Publicação** (dentro da ficha do veículo) — quatro canais independentes (Leilão,
+**Canais de Publicação** (dentro da ficha do veículo) — quatro canais independentes (Lance,
 Anúncio, Vitrine, WhatsApp), cada um com título/descrição/fotos próprios (as fotos passam pelo
 mesmo processamento de logo). Ativar o canal **Vitrine** é o que publica o veículo na listagem
-pública; ativar o **Leilão** cria/agenda o leilão; o **WhatsApp** gera um link privado com token
+da vitrine (que exige login de comprador); ativar o canal **Lance** cria/agenda a sala de lances; o **WhatsApp** gera um link privado com token
 (o veículo não aparece na vitrine por esse canal).
 
 **Campanhas** (`/admin/comunicacoes`) — disparo em massa via WhatsApp Cloud API (credenciais
@@ -134,7 +141,7 @@ próprias dessa tela, não ficam em Configurações): wizard de veículo → pú
 aprovado pela Meta → variáveis → prévia → teste → agendar/enviar. Também reúne Automações,
 Segmentos, Templates e Logs de envio.
 
-**Leilões** (`/admin/leiloes`) — só compradores PJ com compliance aprovado dão lances; lance
+**Lances** (`/admin/leiloes`) — só compradores PJ com compliance aprovado dão lances; lance
 precisa superar o atual + incremento mínimo; lance dentro da janela anti-sniping prorroga o
 fim automaticamente. Ao encerrar: sem lances → `ENCERRADO_SEM_OFERTAS`; abaixo do mínimo
 acordado → `ENCERRADO_SEM_MINIMO`; senão, cria a Negociação com o vencedor automaticamente.
@@ -167,7 +174,7 @@ plataforma (percentual padrão), Consulta veicular / Company Conferi (URL, usuá
 de conexão em homologação), Termos de adesão (vendedor e comprador, versionados).
 
 **Ambiente Demo** (`/admin/demo`) — cria vendedor/comprador/veículo/vistoriador de teste,
-refaz checklist, aprova e libera divulgação, abre leilão de 24h — útil para treinar a equipe sem
+refaz checklist, aprova e libera divulgação, abre uma sala de lances de 24h — útil para treinar a equipe sem
 usar dados reais.
 
 **Logs** (`/admin/logs`) — auditoria (data, entidade, ação, usuário) com busca e paginação.
