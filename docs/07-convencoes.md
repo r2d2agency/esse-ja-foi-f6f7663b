@@ -191,11 +191,23 @@ entrega).
 Usa `GREATEST`. Não dá para "voltar" uma etapa por bug — mas também **não dá para corrigir um
 salvamento errado** sem mexer no banco. É intencional (retomar cadastro sem perder progresso).
 
-### L. `elapsed` de upload por base64
+### L. `elapsed` de upload por multipart
 
-`/api/public/upload` recebe base64 no body. O corpo do request cresce ~33% além do arquivo.
-Para 10 MB, são ~13 MB de JSON. Não aumente o limite sem considerar o memory limit do
-container.
+`/api/public/upload` **não** recebe base64 — usa `multipart/form-data`
+(`request.formData()` + `file.arrayBuffer()`). O corpo do request cresce ~33% além do arquivo
+(multipart overhead), então 10 MB de arquivo viram ~13 MB de corpo. O limite de **10 MB
+(`MAX_BYTES`)** existe e é checado — não o remova sem considerar o memory limit do container.
+
+### M. Autorização: 43 arquivos, não 5
+
+A lista curta de arquivos sem checagem de role não é completa — a varredura encontrou **43
+arquivos** de server functions sem verificação de role no servidor. Trate a lista do
+[08-lacunas.md](08-lacunas.md) (P0.2) como a fonte da verdade, e não só `admin*.functions.ts`,
+`admin-veiculos.functions.ts`, `relatorios.functions.ts`, `logs.functions.ts` e
+`marketing.functions.ts`.
+
+Detalhe importante: as **4 ações críticas que exigem OTP** não cobrem o caminho normal de
+exclusão — `excluirPerfilFn` (`src/lib/admin.functions.ts:108`) **não tem role nem OTP**.
 
 ---
 

@@ -14,6 +14,7 @@ vá para o documento específico do módulo que você vai mexer.
 | [05-modelo-dados.md](05-modelo-dados.md) | As ~90 tabelas, o que cada uma guarda e como se relacionam |
 | [06-integracoes.md](06-integracoes.md) | Meta, Uazapi, Supabase, OpenAI, Conferi, PIX, SMTP, FIPE |
 | [07-convencoes.md](07-convencoes.md) | Padrões de código, como adicionar algo novo, armadilhas conhecidas |
+| [08-lacunas.md](08-lacunas.md) | **Lacunas conhecidas**, classificadas por risco de correção (seguras / com cuidado / com migração) |
 
 **Status:** Beta Operacional • **Última revisão:** 2026-10-20
 

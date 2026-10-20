@@ -33,7 +33,7 @@ anúncio, WhatsApp), negociação, pagamento e entrega — do lead até a venda 
 
 Fotos e documentos são armazenados **dentro do Postgres** (`arquivos_upload.conteudo`, tipo
 `bytea`) — não há storage de objetos (S3/Supabase Storage) configurado ainda. O upload passa por
-`POST /api/public/upload`, que recebe base64, com limite de 10 MB por arquivo.
+`POST /api/public/upload`, que recebe `multipart/form-data`, com limite de 10 MB por arquivo.
 
 ## 2. Papéis de usuário (RBAC)
 
@@ -216,7 +216,7 @@ o documento fica para o admin decidir manualmente).
 - [ ] Implementar o provedor de PIX real (hoje roda com o provedor de homologação; a
       confirmação do pagamento é manual até lá).
 - [ ] Unificar as duas telas de análise pós-vistoria (ver nota na seção 4.2).
-- [ ] Storage de objetos real para fotos (hoje em base64 no banco).
+- [ ] Storage de objetos real para fotos (hoje o binário fica no Postgres, em `bytea`).
 - [ ] Gerador de PDF para o laudo técnico final.
 - [ ] "Enviar recuperação de senha" em Usuários Internos (hoje só mostra aviso).
 - [ ] Abas Veículos/Leilões/Financeiro/Operacional em Relatórios.
