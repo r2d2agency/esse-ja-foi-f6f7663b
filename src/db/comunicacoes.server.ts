@@ -231,12 +231,18 @@ export async function ensureComunicacoesSchema(silent = true) {
         BEGIN
           -- Campanhas: um template duplicado pode estar em uso por uma campanha.
           -- Reaponta para o registro mais antigo antes de apagar o duplicado.
+          -- A comparação ignora caixa e espaços nas pontas: a Meta devolve o
+          -- nome em minúsculas e o wizard grava o que o usuário digitou — as
+          -- duas linhas do MESMO template chegam com grafias diferentes.
           IF to_regclass('whatsapp_campanhas') IS NOT NULL THEN
             UPDATE whatsapp_campanhas c
             SET template_id = k.id
             FROM whatsapp_templates dup
             JOIN whatsapp_templates k
-              ON k.meta_name = dup.meta_name AND k.id < dup.id
+              ON k.id = (
+                SELECT MIN(x.id) FROM whatsapp_templates x
+                WHERE lower(trim(x.meta_name)) = lower(trim(dup.meta_name))
+              )
             WHERE c.template_id = dup.id;
           END IF;
 
@@ -247,15 +253,47 @@ export async function ensureComunicacoesSchema(silent = true) {
             SET template_id = k.id
             FROM whatsapp_templates dup
             JOIN whatsapp_templates k
-              ON k.meta_name = dup.meta_name AND k.id < dup.id
+              ON k.id = (
+                SELECT MIN(x.id) FROM whatsapp_templates x
+                WHERE lower(trim(x.meta_name)) = lower(trim(dup.meta_name))
+              )
             WHERE a.template_id = dup.id;
           END IF;
         END $$;
       `);
+
+      // O estado mais recente do template precisa ir para a linha que
+      // SOBREVIVE à deduplicação. Sem isto, a linha antiga (criada pelo
+      // wizard, com status PENDING) vencia a linha recém-sincronizada
+      // (APPROVED na Meta) e o template aprovado sumia da tela — era
+      // exatamente o que a sincronização devolvia sem mostrar os templates.
+      await d.execute(sql`
+        UPDATE whatsapp_templates k
+        SET status = COALESCE(s.status, k.status),
+            meta_id = COALESCE(s.meta_id, k.meta_id),
+            categoria = COALESCE(s.categoria, k.categoria),
+            idioma = COALESCE(s.idioma, k.idioma),
+            motivo_recusa = s.motivo_recusa,
+            ultima_sincronizacao = COALESCE(s.ultima_sincronizacao, k.ultima_sincronizacao)
+        FROM (
+          SELECT DISTINCT ON (lower(trim(meta_name)))
+            lower(trim(meta_name)) AS chave,
+            status, meta_id, categoria, idioma, motivo_recusa, ultima_sincronizacao
+          FROM whatsapp_templates
+          WHERE meta_name IS NOT NULL
+          ORDER BY lower(trim(meta_name)), ultima_sincronizacao DESC NULLS LAST, id DESC
+        ) s
+        WHERE lower(trim(k.meta_name)) = s.chave
+          AND k.id = (
+            SELECT MIN(x.id) FROM whatsapp_templates x
+            WHERE lower(trim(x.meta_name)) = s.chave
+          )
+      `);
+
       await d.execute(sql`
         DELETE FROM whatsapp_templates a
         USING whatsapp_templates b
-        WHERE a.meta_name = b.meta_name
+        WHERE lower(trim(a.meta_name)) = lower(trim(b.meta_name))
           AND a.meta_name IS NOT NULL
           AND a.id > b.id;
       `);

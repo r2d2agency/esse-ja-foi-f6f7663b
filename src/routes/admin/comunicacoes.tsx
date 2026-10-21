@@ -1280,7 +1280,20 @@ function ComunicacoesPage() {
           if (salvos === 0) {
             return `A Meta devolveu ${lidos} template${lidos === 1 ? "" : "s"}, mas nenhum foi gravado.`;
           }
-          return `${salvos} template${salvos === 1 ? "" : "s"} sincronizado${salvos === 1 ? "" : "s"}!`;
+          // O que a Meta mandou, por status. Sem isso a tela só dizia
+          // "sincronizado" e não havia como perceber que a Meta tinha 3
+          // aprovados e o sistema mostrava menos — a divergência aparecia
+          // como "não sincronizou", sem número nenhum para conferir.
+          const resumoStatus =
+            res.porStatus && typeof res.porStatus === "object"
+              ? Object.entries(res.porStatus)
+                  .map(([status, total]) => `${rotuloStatus(status)}: ${total}`)
+                  .join(" · ")
+              : "";
+          return (
+            `${salvos} template${salvos === 1 ? "" : "s"} sincronizado${salvos === 1 ? "" : "s"}!` +
+            (resumoStatus ? ` (${resumoStatus})` : "")
+          );
         }
         throw new Error(res.error);
       },

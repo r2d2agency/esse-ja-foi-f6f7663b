@@ -814,23 +814,47 @@ export async function processarDisparo(
   // A campanha do "Disparar agora" tem prioridade: com o LIMIT 20, uma fila de
   // 20 campanhas antigas em PROCESSANDO empurrava a forçada para fora da
   // lista e ela nunca era processada.
-  const prioridade = opts.campanhaId
-    ? sql`(c.id = ${opts.campanhaId}::uuid) DESC`
-    : sql`FALSE DESC`;
+  // O Postgres só aceita chave de ordenação numérica: um booleano (constante
+  // ou expressão) no ORDER BY derruba a query com
+  // "non-integer constant in ORDER BY [SQLSTATE 42601]". A prioridade é
+  // portanto um inteiro — 0 para a campanha forçada, 1 para as demais.
+  // Sem campanha forçada, a ordenação é só por `criado_em`. Usar o literal
+  // `1` ali seria um erro silencioso: `ORDER BY 1` ordena pela PRIMEIRA
+  // coluna do SELECT (o id da campanha), não por uma constante.
+  const ordenacao = opts.campanhaId
+    ? sql`CASE WHEN c.id = ${opts.campanhaId}::uuid THEN 0 ELSE 1 END, c.criado_em`
+    : sql`c.criado_em`;
 
-  const res = await d.execute(sql`
-    SELECT c.*, t.meta_name, t.idioma, t.conteudo as template_conteudo, t.status as template_status,
-      -- A mídia do template vem com prefixo: c.* já traz as colunas midia_* da
-      -- campanha e, sem o alias, o t.midia_id sobrescreveria a imagem
-      -- escolhida para a campanha.
-      t.midia_id as t_midia_id, t.midia_tipo as t_midia_tipo,
-      t.midia_nome as t_midia_nome, t.midia_arquivo_id as t_midia_arquivo_id
-    FROM whatsapp_campanhas c
-    LEFT JOIN whatsapp_templates t ON t.id = c.template_id
-    WHERE c.status = 'PROCESSANDO'
-    ORDER BY ${prioridade}, c.criado_em
-    LIMIT 20
-  `);
+  let res: any;
+  try {
+    res = await d.execute(sql`
+      SELECT c.*, t.meta_name, t.idioma, t.conteudo as template_conteudo, t.status as template_status,
+        -- A mídia do template vem com prefixo: c.* já traz as colunas midia_* da
+        -- campanha e, sem o alias, o t.midia_id sobrescreveria a imagem
+        -- escolhida para a campanha.
+        t.midia_id as t_midia_id, t.midia_tipo as t_midia_tipo,
+        t.midia_nome as t_midia_nome, t.midia_arquivo_id as t_midia_arquivo_id
+      FROM whatsapp_campanhas c
+      LEFT JOIN whatsapp_templates t ON t.id = c.template_id
+      WHERE c.status = 'PROCESSANDO'
+      ORDER BY ${ordenacao}
+      LIMIT 20
+    `);
+  } catch (e: any) {
+    // A falha na seleção da fila acontece antes do loop das campanhas: sem
+    // este registro ela não deixava rastro nenhum e o "Disparar agora" só
+    // devolvia um erro genérico na tela. O log vai para a campanha forçada
+    // (é a que o usuário acabou de acionar) e para a trilha global.
+    const detalhe = `Falha ao selecionar as campanhas para processamento: ${mensagemErroPostgres(e).slice(0, 900)}`;
+    console.error("[disparo] falha ao listar campanhas para processar:", mensagemErroPostgres(e));
+    await registrarLogCampanha({
+      campanhaId: opts.campanhaId ?? null,
+      acao: "ERRO",
+      detalhe,
+      payload: { erro: mensagemErroPostgres(e).slice(0, 900), etapa: "SELECAO_FILA" },
+    });
+    throw e;
+  }
   const campanhas = rowsOf(res);
   const resumo = { campanhas: campanhas.length, enviados: 0, falhas: 0, bloqueadas: 0 };
 

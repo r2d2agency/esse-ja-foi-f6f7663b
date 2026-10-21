@@ -204,6 +204,10 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
       .parse(data),
   )
   .handler(async ({ data }) => {
+    // Precisa sobreviver ao try/catch: quando o INSERT funciona mas a montagem
+    // da fila falha, é a campanha já criada que tem que receber o log do
+    // erro — sem esse id fora do try a falha ficava sem rastro.
+    let campanhaIdCriada: string | null = null;
     try {
       const { db: dbc } = await import("@/db/index");
       const { ensureComunicacoesSchema } = await import("@/db/comunicacoes.server");
@@ -276,6 +280,7 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
             ) RETURNING id
           `);
       const campanhaId = (criado as any[])[0].id;
+      campanhaIdCriada = campanhaId;
 
       const { registrarLogCampanha } = await import("../db/logs-campanha.server");
       await registrarLogCampanha({
@@ -339,7 +344,22 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
 
       return { ok: true, id: campanhaId, ...fila };
     } catch (error: any) {
-      return { ok: false, error: mensagemErroPostgres(error) || "Erro ao criar campanha." };
+      // A campanha é o lugar onde o erro tem que aparecer: sem esta gravação a
+      // tela mostrava "Erro ao criar campanha" e o histórico da campanha
+      // ficava vazio, sem nenhuma pista do que quebrou.
+      const detalhe = mensagemErroPostgres(error) || "Erro ao criar campanha.";
+      try {
+        const { registrarLogCampanha } = await import("../db/logs-campanha.server");
+        await registrarLogCampanha({
+          campanhaId: campanhaIdCriada,
+          acao: "ERRO",
+          detalhe: `Falha ao criar a campanha: ${detalhe.slice(0, 900)}`,
+          payload: { erro: detalhe.slice(0, 900), etapa: "CRIACAO_CAMPANHA" },
+        });
+      } catch (e) {
+        console.error("[campanha] falha ao registrar log de erro:", e);
+      }
+      return { ok: false, error: detalhe };
     }
   });
 

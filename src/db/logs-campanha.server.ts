@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { db } from "./index";
+import { mensagemErroPostgres } from "./erro-postgres";
 
 /**
  * Trilha de eventos por campanha.
@@ -87,7 +88,7 @@ export async function registrarLogCampanha(params: {
     `);
     return true;
   } catch (erro: any) {
-    console.error("[logs-campanha] falha ao registrar evento:", erro?.message || erro);
+    console.error("[logs-campanha] falha ao registrar evento:", mensagemErroPostgres(erro));
     bufferMemoria.unshift(evento);
     if (bufferMemoria.length > LIMITE_BUFFER) bufferMemoria.length = LIMITE_BUFFER;
     return false;
@@ -109,7 +110,7 @@ export async function listarLogsCampanha(campanhaId: string, limite = 200) {
     `);
     doBanco = rowsOf(res);
   } catch (erro: any) {
-    console.error("[logs-campanha] falha ao listar os eventos:", erro?.message || erro);
+    console.error("[logs-campanha] falha ao listar os eventos:", mensagemErroPostgres(erro));
   }
   const daMemoria = bufferMemoria.filter((e) => e.campanha_id === campanhaId);
   return [...daMemoria, ...doBanco].slice(0, limite);
@@ -138,7 +139,7 @@ export async function listarLogsDisparo(limite = 300) {
     `);
     doBanco = rowsOf(res);
   } catch (erro: any) {
-    console.error("[logs-campanha] falha ao listar o log de disparo:", erro?.message || erro);
+    console.error("[logs-campanha] falha ao listar o log de disparo:", mensagemErroPostgres(erro));
   }
   // Os eventos que falharam no insert entram na frente da lista: são os mais
   // recentes e são justamente os que a tabela perdeu.

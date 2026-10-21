@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import { db } from "./index";
 import { lerWhatsappConfig } from "./whatsapp-config.server";
 import { normalizarStatusTemplate } from "./whatsapp-status";
-import { mensagemErroPostgres } from "./erro-postgres";
+import { extrairErroPostgres, mensagemErroPostgres } from "./erro-postgres";
 
 const DEFAULT_GRAPH_VERSION = "v20.0";
 
@@ -40,8 +40,17 @@ export async function upsertTemplateDaMeta(t: any, nome: string) {
 
   if (!db) return;
 
+  // A Meta e o banco local divergem com frequência em caixa e espaços no nome
+  // do template. A comparação EXATA (`meta_name = nome`) não encontra a linha
+  // nesse caso, e o INSERT que vem depois estourava com 23505 (violação de
+  // unicidade) — o template simplesmente não entrava no banco, e o admin
+  // viajava "sincronizado" sem o template aparecer. Comparar sem caixa e sem
+  // espaços nas pontas resolve os dois casos de uma vez.
+  const chave = String(nome ?? "").trim();
+
   const atualizado = await db.execute(sql`
     UPDATE whatsapp_templates SET
+      nome_interno = COALESCE(NULLIF(TRIM(nome_interno), ''), ${chave}),
       status = ${status},
       meta_id = COALESCE(${t?.id ?? null}, meta_id),
       categoria = COALESCE(${t?.category ?? null}, categoria),
@@ -52,36 +61,71 @@ export async function upsertTemplateDaMeta(t: any, nome: string) {
       midia_nome = COALESCE(midia_nome, ${t?.midia_nome ?? null}),
       midia_arquivo_id = COALESCE(midia_arquivo_id, ${t?.midia_arquivo_id ?? null}),
       ultima_sincronizacao = now()
-    WHERE meta_name = ${nome}
-    RETURNING id
+    WHERE lower(trim(meta_name)) = lower(${chave})
+    RETURNING id, idioma
   `);
 
-  if ((rowsOf(atualizado) as any[]).length > 0) return;
+  const linha = (rowsOf(atualizado) as any[])[0];
+  if (linha) {
+    // A tabela local guarda UM registro por nome, mas a Meta permite o mesmo
+    // nome em idiomas diferentes. Quando o idioma que chegou é outro, o status
+    // gravado é o desse idioma — avisar no log evita a conclusão errada de que
+    // a sincronização trouxe "o template errado".
+    const idiomaLocal = String(linha.idioma ?? "").trim().toLowerCase();
+    const idiomaMeta = String(t?.language ?? "").trim().toLowerCase();
+    if (idiomaLocal && idiomaMeta && idiomaLocal !== idiomaMeta) {
+      console.warn(
+        `[Meta] o template "${chave}" já existia no idioma ${idiomaLocal} e chegou ` +
+          `${idiomaMeta} da Meta; como a chave local é o nome, vale o status do ${idiomaMeta}.`,
+      );
+    }
+    return;
+  }
 
-  await db.execute(sql`
-    INSERT INTO whatsapp_templates (
-      meta_id,
-      nome_interno,
-      meta_name,
-      categoria,
-      idioma,
-      status,
-      conteudo,
-      motivo_recusa,
-      ultima_sincronizacao
-    )
-    VALUES (
-      ${t?.id ?? null},
-      ${nome},
-      ${nome},
-      ${t?.category ?? null},
-      ${t?.language ?? null},
-      ${status},
-      ${JSON.stringify(t?.components ?? [])}::jsonb,
-      ${motivoRecusa},
-      now()
-    )
-  `);
+  try {
+    await db.execute(sql`
+      INSERT INTO whatsapp_templates (
+        meta_id,
+        nome_interno,
+        meta_name,
+        categoria,
+        idioma,
+        status,
+        conteudo,
+        motivo_recusa,
+        ultima_sincronizacao
+      )
+      VALUES (
+        ${t?.id ?? null},
+        ${chave},
+        ${chave},
+        ${t?.category ?? null},
+        ${t?.language ?? null},
+        ${status},
+        ${JSON.stringify(t?.components ?? [])}::jsonb,
+        ${motivoRecusa},
+        now()
+      )
+    `);
+  } catch (e: any) {
+    // Corrida entre dois lugares gravando o mesmo template (o `INSERT` acima e
+    // uma linha que já existia com a grafia exata) estoura com 23505. Em vez
+    // de contar o template como falha — e ele nunca apareceria na tela —,
+    // o UPDATE deFallback grava o status da Meta na linha que já existe.
+    if (extrairErroPostgres(e).code !== "23505") throw e;
+    const recuperado = await db.execute(sql`
+      UPDATE whatsapp_templates SET
+        status = ${status},
+        meta_id = COALESCE(${t?.id ?? null}, meta_id),
+        categoria = COALESCE(${t?.category ?? null}, categoria),
+        idioma = COALESCE(${t?.language ?? null}, idioma),
+        motivo_recusa = ${motivoRecusa},
+        ultima_sincronizacao = now()
+      WHERE lower(trim(meta_name)) = lower(${chave})
+      RETURNING id
+    `);
+    if ((rowsOf(recuperado) as any[]).length === 0) throw e;
+  }
 }
 
 /**
@@ -722,9 +766,14 @@ export class MetaWhatsAppService {
     lidos: number;
     salvos: number;
     falhas: { nome: string; erro: string }[];
+    porStatus: Record<string, number>;
   }> {
     await this.init();
     if (!this.config?.waba_id) throw new Error("WABA ID não configurado.");
+    // Sem banco, todo template "sincronizava" e nada era gravado — a contagem
+    // de salvos mentia. Falhar cedo é o único jeito de a tela não anunciar
+    // sucesso sobre um gravação que não aconteceu.
+    if (!db) throw new Error("Banco de dados indisponível.");
 
     const templates: any[] = [];
     // A Meta devolve ~25 por página e o resto vem em paging.next. Ler só a
@@ -739,6 +788,11 @@ export class MetaWhatsAppService {
 
     const falhas: { nome: string; erro: string }[] = [];
     let salvos = 0;
+    // Quantos vieram em cada status. A tela só dizia "sincronizado", então um
+    // template APPROVED que continuava aparecendo como "Em análise" no sistema
+    // não tinha explicação nenhuma. Com a contagem por status, a diferença
+    // entre a Meta e a tela fica visível na própria mensagem.
+    const porStatus: Record<string, number> = {};
 
     for (const t of templates) {
       const nome = String(t?.name || "");
@@ -746,8 +800,23 @@ export class MetaWhatsAppService {
         falhas.push({ nome: "(sem nome)", erro: "A Meta devolveu um template sem `name`." });
         continue;
       }
+      const statusMeta = normalizarStatusTemplate(t?.status);
+      if (!statusMeta) {
+        // Gravar sem status deixaria o template em PENDING (default da coluna)
+        // — exatamente o sintoma de "está aprovado na Meta e o sistema não
+        // mostra". Melhor recusar a linha e dizer o motivo do que gravar um
+        // estado errado que ninguém consegue explicar depois.
+        falhas.push({
+          nome,
+          erro: `A Meta não devolveu o status deste template (recebido: ${JSON.stringify(
+            t?.status ?? null,
+          )}).`,
+        });
+        continue;
+      }
+      porStatus[statusMeta] = (porStatus[statusMeta] ?? 0) + 1;
       try {
-        if (db) await upsertTemplateDaMeta(t, nome);
+        await upsertTemplateDaMeta(t, nome);
         salvos++;
       } catch (e: any) {
         // Esta mensagem vai direto para o relatório de sincronização que o
@@ -758,7 +827,14 @@ export class MetaWhatsAppService {
       }
     }
 
-    return { lidos: templates.length, salvos, falhas };
+    console.info(
+      `[Meta] sincronização de templates: ${templates.length} lidos, ${salvos} gravados ` +
+        `(${Object.entries(porStatus)
+          .map(([s, n]) => `${s}: ${n}`)
+          .join(", ")}), ${falhas.length} falharam.`,
+    );
+
+    return { lidos: templates.length, salvos, falhas, porStatus };
   }
 
   async criarTemplate(template: any) {
