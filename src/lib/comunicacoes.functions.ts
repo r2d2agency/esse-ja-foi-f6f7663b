@@ -5,6 +5,7 @@ import * as db from "../db/comunicacoes.server";
 import { metaService, montarComponents } from "../db/meta-whatsapp.server";
 import { normalizarStatusTemplate, templateAprovado } from "../db/whatsapp-status";
 import { normalizarParaMeta } from "../db/publico.server";
+import { mensagemErroPostgres } from "../db/erro-postgres";
 import { hojeEmSaoPaulo } from "./brasil";
 
 export const getWhatsappConfigFn = createServerFn({ method: "GET" }).handler(async () => {
@@ -77,12 +78,21 @@ export const updateWhatsappConfigFn = createServerFn({ method: "POST" })
       return await db.updateWhatsappConfig(updateData);
     } catch (error: any) {
       console.error("[WhatsApp] Erro ao salvar configuração:", error);
-      return { ok: false, error: error?.message || "Erro ao salvar configuração." };
+      return { ok: false, error: mensagemErroPostgres(error) || "Erro ao salvar configuração." };
     }
   });
 
 export const listarTemplatesFn = createServerFn({ method: "GET" }).handler(async () => {
-  return db.listarTemplates();
+  try {
+    return await db.listarTemplates();
+  } catch (error: any) {
+    // Sem isto, a tela recebia a mensagem crua do Drizzle ("Failed query:
+    // SELECT ... params: ..."), que não diz nada do motivo. A causa real
+    // (SQLSTATE, coluna que falta) vive no `.cause`.
+    const motivo = mensagemErroPostgres(error);
+    console.error("[WhatsApp] Erro ao listar templates:", motivo);
+    throw new Error(motivo);
+  }
 });
 
 export const listarSegmentosFn = createServerFn({ method: "GET" }).handler(async () => {
@@ -329,7 +339,7 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
 
       return { ok: true, id: campanhaId, ...fila };
     } catch (error: any) {
-      return { ok: false, error: error?.message || "Erro ao criar campanha." };
+      return { ok: false, error: mensagemErroPostgres(error) || "Erro ao criar campanha." };
     }
   });
 
@@ -367,7 +377,7 @@ export const alterarStatusCampanhaFn = createServerFn({ method: "POST" })
       `);
       return { ok: true };
     } catch (error: any) {
-      return { ok: false, error: error?.message };
+      return { ok: false, error: mensagemErroPostgres(error) };
     }
   });
 
@@ -376,7 +386,7 @@ export const processarDisparoAgoraFn = createServerFn({ method: "POST" }).handle
     const { processarDisparo } = await import("@/db/disparo-motor.server");
     return { ok: true, resumo: await processarDisparo() };
   } catch (error: any) {
-    return { ok: false, error: error?.message };
+    return { ok: false, error: mensagemErroPostgres(error) };
   }
 });
 
@@ -411,7 +421,7 @@ export const dispararCampanhaAgoraFn = createServerFn({ method: "POST" })
       if (resumo?.erro) return { ok: false, error: resumo.erro, resumo };
       return { ok: true, resumo };
     } catch (error: any) {
-      return { ok: false, error: error?.message };
+      return { ok: false, error: mensagemErroPostgres(error) };
     }
   });
 
@@ -468,7 +478,7 @@ export const agendarDisparoCampanhaFn = createServerFn({ method: "POST" })
 
       return { ok: true, roteirizadas, agendado_para: quando.toISOString() };
     } catch (error: any) {
-      return { ok: false, error: error?.message };
+      return { ok: false, error: mensagemErroPostgres(error) };
     }
   });
 
@@ -484,7 +494,7 @@ export const testarConexaoFn = createServerFn({ method: "POST" }).handler(async 
   try {
     return await metaService.testarConexao();
   } catch (error: any) {
-    return { ok: false, error: error.message };
+    return { ok: false, error: mensagemErroPostgres(error) };
   }
 });
 
@@ -493,7 +503,7 @@ export const sincronizarTemplatesFn = createServerFn({ method: "POST" }).handler
     const resultado = await metaService.sincronizarTemplates();
     return { ok: true, ...resultado, count: resultado.salvos };
   } catch (error: any) {
-    return { ok: false, error: error.message };
+    return { ok: false, error: mensagemErroPostgres(error) };
   }
 });
 
@@ -502,7 +512,7 @@ export const buscarDadosAutomaticosFn = createServerFn({ method: "POST" }).handl
     const data = await metaService.buscarDadosAutomaticos();
     return { ok: true, data };
   } catch (error: any) {
-    return { ok: false, error: error.message };
+    return { ok: false, error: mensagemErroPostgres(error) };
   }
 });
 
@@ -521,7 +531,7 @@ export const gerarNovoVerifyTokenFn = createServerFn({ method: "POST" }).handler
     return { ok: true, token: newToken };
   } catch (error: any) {
     console.error("[WhatsApp] Erro ao gerar Verify Token:", error);
-    return { ok: false, error: error?.message || "Erro ao salvar o Verify Token." };
+    return { ok: false, error: mensagemErroPostgres(error) || "Erro ao salvar o Verify Token." };
   }
 });
 
@@ -593,7 +603,7 @@ export const criarTemplateMetaFn = createServerFn({ method: "POST" })
       }
       return await metaService.criarTemplate(data);
     } catch (error: any) {
-      return { ok: false, error: error.message };
+      return { ok: false, error: mensagemErroPostgres(error) };
     }
   });
 
@@ -641,7 +651,7 @@ export const uploadMidiaTemplateFn = createServerFn({ method: "POST" })
       };
     } catch (error: any) {
       console.error("[comunicacoes] falha ao subir mídia do template:", error);
-      return { ok: false, error: String(error?.message || error) };
+      return { ok: false, error: mensagemErroPostgres(error) };
     }
   });
 
@@ -687,7 +697,7 @@ export const anexarMidiaTemplateFn = createServerFn({ method: "POST" })
       return { ok: true };
     } catch (error: any) {
       console.error("[comunicacoes] falha ao reanexar mídia do template:", error);
-      return { ok: false, error: String(error?.message || error) };
+      return { ok: false, error: mensagemErroPostgres(error) };
     }
   });
 
@@ -709,7 +719,7 @@ export const excluirTemplateMetaFn = createServerFn({ method: "POST" })
       }
       return { ok: true, removidoNaMeta: !naMeta.jaEstavaNaMeta };
     } catch (error: any) {
-      return { ok: false, error: error.message };
+      return { ok: false, error: mensagemErroPostgres(error) };
     }
   });
 
@@ -833,12 +843,12 @@ export const processarEnvioCampanhaFn = createServerFn({ method: "POST" })
           httpStatus: 500,
           status: "ERRO",
           resumo: "Falha ao processar o envio da campanha.",
-          payload: { campanhaId: id, erro: String(error?.message || error).slice(0, 1000) },
+          payload: { campanhaId: id, erro: mensagemErroPostgres(error).slice(0, 1000) },
         });
       } catch (e) {
         console.error("[comunicacoes] falha ao registrar erro da campanha:", e);
       }
-      return { ok: false, error: String(error?.message || error) };
+      return { ok: false, error: mensagemErroPostgres(error) };
     }
   });
 
@@ -982,12 +992,12 @@ export const enviarTesteFn = createServerFn({ method: "POST" })
         await registrarLogCampanha({
           campanhaId: null,
           acao: "ERRO",
-          detalhe: `Falha no teste de template: ${String(error?.message || error).slice(0, 1500)}`,
+          detalhe: `Falha no teste de template: ${mensagemErroPostgres(error).slice(0, 1500)}`,
           payload: { telefone: data.telefone, template_id: data.template_id },
         });
       } catch {
         // Falha ao registrar a falha: não pode mascarar o erro original.
       }
-      return { ok: false, error: error.message };
+      return { ok: false, error: mensagemErroPostgres(error) };
     }
   });

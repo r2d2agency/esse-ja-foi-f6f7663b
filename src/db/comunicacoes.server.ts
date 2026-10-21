@@ -6,6 +6,7 @@ import {
   lerWhatsappConfig,
 } from "./whatsapp-config.server";
 import { processarMensagemRecebida } from "./conversas.server";
+import { mensagemErroPostgres } from "./erro-postgres";
 
 function requireDb() {
   if (!db) throw new Error("Banco de dados indisponível.");
@@ -27,7 +28,12 @@ async function passoOpcional(rotulo: string, fn: () => Promise<unknown>) {
   try {
     await fn();
   } catch (e) {
-    console.error(`[comunicacoes.server] Falha ao garantir ${rotulo}:`, e);
+    // `e.message` do Drizzle é "Failed query: SELECT ... params: ..." — não diz
+    // NADA do motivo. A causa real (SQLSTATE, coluna que falta, tipo que não
+    // bate) está no `.cause`, e é ela que precisa aparecer no log.
+    console.error(
+      `[comunicacoes.server] Falha ao garantir ${rotulo}: ${mensagemErroPostgres(e)}`,
+    );
   }
 }
 
@@ -232,7 +238,7 @@ export async function ensureComunicacoesSchema(silent = true) {
     } catch (e) {
       console.error(
         "[comunicacoes.server] Falha ao deduplicar whatsapp_templates.meta_name:",
-        e,
+        mensagemErroPostgres(e),
       );
     }
 
@@ -242,9 +248,11 @@ export async function ensureComunicacoesSchema(silent = true) {
           ON whatsapp_templates (meta_name);
       `);
     } catch (e) {
+      // Este passo é justamente o que falha com 23505 quando sobrou duplicata:
+      // o motivo (violação de unicidade) precisa aparecer.
       console.error(
         "[comunicacoes.server] Falha ao criar o índice único de meta_name:",
-        e,
+        mensagemErroPostgres(e),
       );
     }
 
@@ -558,14 +566,20 @@ export async function ensureComunicacoesSchema(silent = true) {
         );
       } catch (e) {
         if (process.env["NODE_ENV"] === "development")
-          console.error(`Erro ao adicionar coluna ${name} em profiles:`, e);
+          console.error(
+            `Erro ao adicionar coluna ${name} em profiles:`,
+            mensagemErroPostgres(e),
+          );
       }
     }
 
     if (!silent && process.env["NODE_ENV"] === "development")
       console.log("[comunicacoes.server] Tabelas OK.");
   } catch (err) {
-    console.error("[comunicacoes.server] Erro ao garantir tabelas:", err);
+    console.error(
+      "[comunicacoes.server] Erro ao garantir tabelas:",
+      mensagemErroPostgres(err),
+    );
     throw err;
   }
 }

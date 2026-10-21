@@ -3,6 +3,7 @@ import { db } from "./index";
 import { metaService, MetaApiError, montarComponents } from "./meta-whatsapp.server";
 import { resolverPublico, normalizarParaMeta, type CriterioPublico } from "./publico.server";
 import { registrarLogCampanha } from "./logs-campanha.server";
+import { mensagemErroPostgres } from "./erro-postgres";
 import {
   templateAprovado,
   STATUS_CAMPANHA_TEMPLATE_INDISPONIVEL,
@@ -305,11 +306,11 @@ async function enviarComRetry(msg: any, campanha: any): Promise<ResultadoEnvio> 
           estado_fila = 'FALHOU',
           status = 'FALHOU',
           tentativas = ${tentativa + 1},
-          erro_mensagem = ${String(e?.message ?? e).slice(0, 500)},
+          erro_mensagem = ${mensagemErroPostgres(e).slice(0, 500)},
           atualizado_em = now()
         WHERE id = ${msg.id}::uuid
       `);
-      return { ok: false, permanente, numeroInexistente: false, mensagem: String(e?.message ?? e), codigo: null };
+      return { ok: false, permanente, numeroInexistente: false, mensagem: mensagemErroPostgres(e), codigo: null };
     }
   }
 
@@ -377,12 +378,12 @@ async function enviarComRetry(msg: any, campanha: any): Promise<ResultadoEnvio> 
           tentativas = ${tentativa},
           proxima_tentativa_em = now() + (${espera} / 1000 || ' seconds')::interval,
           erro_codigo = ${e instanceof MetaApiError ? String(e.code ?? "") : null},
-          erro_mensagem = ${String(e?.message ?? e).slice(0, 500)},
+          erro_mensagem = ${mensagemErroPostgres(e).slice(0, 500)},
           atualizado_em = now()
         WHERE id = ${msg.id}::uuid
       `);
       console.warn(
-        `[disparo] retry ${tentativa}/${MAX_TENTATIVAS} para ${msg.telefone}: ${e?.message}`,
+        `[disparo] retry ${tentativa}/${MAX_TENTATIVAS} para ${msg.telefone}: ${mensagemErroPostgres(e)}`,
       );
       // Espera real entre tentativas: backoff só no banco não impede o loop
       // de reenviar no mesmo tick, que é o que estoura o rate limit.
@@ -394,9 +395,14 @@ async function enviarComRetry(msg: any, campanha: any): Promise<ResultadoEnvio> 
   const permanente = e instanceof MetaApiError ? !e.transitorio : false;
   const numeroInexistente = e instanceof MetaApiError ? e.numeroInexistente : false;
 
+  // A causa real (quando a falha veio do Postgres) só existe no `.cause` do
+  // erro embrulhado pelo Drizzle — `e.message` continuaria sendo
+  // "Failed query: SELECT ... params: ...".
+  const detalhe = mensagemErroPostgres(e);
+
   // Mensagem sem mapeamento preenchido não é erro da Meta: é configuração.
   // Ficar em FALHOU faria a tela sugerir "tentar de novo", que nunca resolve.
-  const estado = /Preencha \{\{\d+\}\}/.test(String(e?.message ?? "")) ? "IGNORADA" : "FALHOU";
+  const estado = /Preencha \{\{\d+\}\}/.test(detalhe) ? "IGNORADA" : "FALHOU";
 
   await d.execute(sql`
     UPDATE whatsapp_mensagens SET
@@ -404,7 +410,7 @@ async function enviarComRetry(msg: any, campanha: any): Promise<ResultadoEnvio> 
       status = 'FALHOU',
       tentativas = ${tentativa},
       erro_codigo = ${e instanceof MetaApiError ? String(e.code ?? "") : null},
-      erro_mensagem = ${String(e?.message ?? e).slice(0, 500)},
+      erro_mensagem = ${detalhe.slice(0, 500)},
       atualizado_em = now()
     WHERE id = ${msg.id}::uuid
   `);
@@ -428,7 +434,7 @@ async function enviarComRetry(msg: any, campanha: any): Promise<ResultadoEnvio> 
     ok: false,
     permanente,
     numeroInexistente,
-    mensagem: String(e?.message ?? e),
+    mensagem: detalhe,
     codigo: e instanceof MetaApiError ? String(e.code ?? "") : null,
   };
 }
@@ -717,11 +723,11 @@ export async function processarDisparo(
   try {
     await ensureComunicacoesSchema();
   } catch (e: any) {
-    console.error("[disparo] falha ao garantir o schema de comunicacoes:", e?.message || e);
+    console.error("[disparo] falha ao garantir o schema de comunicacoes:", mensagemErroPostgres(e));
     await registrarLogCampanha({
       campanhaId: opts.campanhaId ?? null,
       acao: "ERRO",
-      detalhe: `Schema de comunicacoes nao garantido: ${String(e?.message || e).slice(0, 900)}`,
+      detalhe: `Schema de comunicacoes nao garantido: ${mensagemErroPostgres(e).slice(0, 900)}`,
       payload: { etapa: "ensureComunicacoesSchema" },
     });
   }
@@ -729,11 +735,11 @@ export async function processarDisparo(
   try {
     await ensureMarketingSchema();
   } catch (e: any) {
-    console.error("[disparo] falha ao garantir o schema de marketing:", e?.message || e);
+    console.error("[disparo] falha ao garantir o schema de marketing:", mensagemErroPostgres(e));
     await registrarLogCampanha({
       campanhaId: opts.campanhaId ?? null,
       acao: "ERRO",
-      detalhe: `Schema de marketing nao garantido: ${String(e?.message || e).slice(0, 900)}`,
+      detalhe: `Schema de marketing nao garantido: ${mensagemErroPostgres(e).slice(0, 900)}`,
       payload: { etapa: "ensureMarketingSchema" },
     });
   }
@@ -879,12 +885,12 @@ export async function processarDisparo(
         forcar: opts.forcar === true && campanha.id === opts.campanhaId,
       });
     } catch (e: any) {
-      console.error(`[disparo] falha na campanha ${campanha.id}:`, e?.message || e);
+      console.error(`[disparo] falha na campanha ${campanha.id}:`, mensagemErroPostgres(e));
       await registrarLogCampanha({
         campanhaId: campanha.id,
         acao: "ERRO",
-        detalhe: `Erro no motor: ${String(e?.message || e).slice(0, 900)}`,
-        payload: { erro: String(e?.message || e).slice(0, 900) },
+        detalhe: `Erro no motor: ${mensagemErroPostgres(e).slice(0, 900)}`,
+        payload: { erro: mensagemErroPostgres(e).slice(0, 900) },
       });
     }
   }
@@ -1138,9 +1144,9 @@ export async function popularFilaCampanha(
     } catch (e: any) {
       console.error(
         `[disparo] não enfileirou ${p.telefone} (campanha ${campanhaId}):`,
-        e?.message || e,
+        mensagemErroPostgres(e),
       );
-      if (!primeiroErro) primeiroErro = e?.message || String(e);
+      if (!primeiroErro) primeiroErro = mensagemErroPostgres(e);
       ignorados++;
     }
   }

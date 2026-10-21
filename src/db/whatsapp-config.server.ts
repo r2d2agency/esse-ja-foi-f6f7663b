@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { db } from "./index";
+import { mensagemErroPostgres } from "./erro-postgres";
 
 /**
  * Leitura única da configuração do WhatsApp.
@@ -65,8 +66,13 @@ export async function curarConfigDuplicada(d: any) {
       END $$;
     `);
   } catch (e) {
+    // A causa real (SQLSTATE) vem do `.cause` do erro do Drizzle — `e.message`
+    // é só "Failed query: ...".
     if (process.env["NODE_ENV"] === "development")
-      console.error("[whatsapp-config] Falha ao deduplicar whatsapp_config:", e);
+      console.error(
+        "[whatsapp-config] Falha ao deduplicar whatsapp_config:",
+        mensagemErroPostgres(e),
+      );
   }
 }
 

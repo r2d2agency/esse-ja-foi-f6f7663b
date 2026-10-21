@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { db } from "./index";
 import { lerWhatsappConfig } from "./whatsapp-config.server";
 import { normalizarStatusTemplate } from "./whatsapp-status";
+import { mensagemErroPostgres } from "./erro-postgres";
 
 const DEFAULT_GRAPH_VERSION = "v20.0";
 
@@ -551,7 +552,9 @@ export class MetaWhatsAppService {
       }
     } catch (e: any) {
       // Não deve impedir o startup — falha aqui é melhor resolvida manualmente.
-      console.warn("[Meta] normalizarTemplatesLegados falhou:", e?.message || e);
+      // `mensagemErroPostgres` desembrulha o erro do Drizzle: o `.cause` tem o
+      // SQLSTATE e a coluna real, que `e.message` nunca mostra.
+      console.warn("[Meta] normalizarTemplatesLegados falhou:", mensagemErroPostgres(e));
     }
   }
 
@@ -683,12 +686,15 @@ export class MetaWhatsAppService {
 
       return { ok: true, data };
     } catch (error: any) {
+      // O que o admin lê na tela de conexão precisa ser a causa real — o
+      // `error.message` do Drizzle é só "Failed query: SELECT ...".
+      const motivo = mensagemErroPostgres(error);
       if (db)
         await db.execute(sql`
-        UPDATE whatsapp_config SET 
-          status = 'ERRO', 
+        UPDATE whatsapp_config SET
+          status = 'ERRO',
           ultimo_teste = now(),
-          detalhes_erro = ${error.message}
+          detalhes_erro = ${motivo}
         WHERE id = ${this.config.id}
       `);
       throw error;
@@ -744,8 +750,11 @@ export class MetaWhatsAppService {
         if (db) await upsertTemplateDaMeta(t, nome);
         salvos++;
       } catch (e: any) {
-        console.warn(`[Meta] falha ao gravar o template "${nome}" na sincronização:`, e?.message || e);
-        falhas.push({ nome, erro: String(e?.message || e).slice(0, 300) });
+        // Esta mensagem vai direto para o relatório de sincronização que o
+        // admin lê na tela — precisa ser a causa real, não "Failed query: ...".
+        const motivo = mensagemErroPostgres(e);
+        console.warn(`[Meta] falha ao gravar o template "${nome}" na sincronização:`, motivo);
+        falhas.push({ nome, erro: motivo.slice(0, 300) });
       }
     }
 
@@ -846,7 +855,7 @@ export class MetaWhatsAppService {
       );
       return { ok: true, jaEstavaNaMeta: false };
     } catch (e: any) {
-      const msg = String(e?.message || "");
+      const msg = mensagemErroPostgres(e);
       const naoExisteNaMeta =
         /does not exist|not found|unsupported delete|Unknown path components/i.test(msg);
       if (!naoExisteNaMeta) throw e;

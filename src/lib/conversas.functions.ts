@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import * as db from "../db/conversas.server";
 import { templateAprovado } from "../db/whatsapp-status";
+import { mensagemErroPostgres } from "../db/erro-postgres";
 
 /**
  * Cookie de sessão -> atendente. Quando falha, registra uma linha antes de
@@ -166,13 +167,13 @@ export const enviarMensagemAtendenteFn = createServerFn({ method: "POST" })
             conversaId: data.conversaId,
             tipo: data.payload?.tipo ?? null,
             template: (data.payload as any)?.template_name ?? null,
-            erro: String(error?.message || error).slice(0, 1000),
+            erro: mensagemErroPostgres(error).slice(0, 1000),
           },
         });
       } catch (e) {
         console.error("[conversas] falha ao registrar erro de envio:", e);
       }
-      return { ok: false, error: String(error?.message || error) };
+      return { ok: false, error: mensagemErroPostgres(error) };
     }
   });
 
@@ -228,13 +229,13 @@ export const uploadMidiaWhatsAppFn = createServerFn({ method: "POST" })
           payload: {
             nome: data.nome ?? null,
             tipo: data.tipo ?? null,
-            erro: String(error?.message || error).slice(0, 1000),
+            erro: mensagemErroPostgres(error).slice(0, 1000),
           },
         });
       } catch (e) {
         console.error("[conversas] falha ao registrar erro de upload:", e);
       }
-      return { ok: false, error: String(error?.message || error) };
+      return { ok: false, error: mensagemErroPostgres(error) };
     }
   });
 
@@ -278,12 +279,12 @@ function comTratamento<T>(handler: () => Promise<T>): Promise<
           httpStatus: 500,
           status: "ERRO",
           resumo: "Operação da central de conversas falhou.",
-          payload: { erro: String(error?.message || error).slice(0, 1000) },
+          payload: { erro: mensagemErroPostgres(error).slice(0, 1000) },
         });
       } catch (e) {
         console.error("[conversas] falha ao registrar erro da operação:", e);
       }
-      return { ok: false, error: String(error?.message || error) };
+      return { ok: false, error: mensagemErroPostgres(error) };
     }
   })();
 }
