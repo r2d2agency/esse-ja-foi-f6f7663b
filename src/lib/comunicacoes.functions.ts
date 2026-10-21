@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm";
 import * as db from "../db/comunicacoes.server";
 import { metaService, montarComponents } from "../db/meta-whatsapp.server";
 import { normalizarStatusTemplate, templateAprovado } from "../db/whatsapp-status";
+import { normalizarParaMeta } from "../db/publico.server";
 import { hojeEmSaoPaulo } from "./brasil";
 
 export const getWhatsappConfigFn = createServerFn({ method: "GET" }).handler(async () => {
@@ -854,8 +855,26 @@ export const enviarTesteFn = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     try {
+      // O schema precisa estar garantido antes de qualquer coisa: sem as
+      // tabelas, `listarTemplates` estoura e o teste falha sem deixar
+      // registro — era um dos motivos de "o teste não gera log".
+      await db.ensureComunicacoesSchema();
+
       const template = (await db.listarTemplates()).find((t: any) => t.id === data.template_id);
       if (!template) throw new Error("Template não encontrado");
+
+      // O telefone tem que estar no formato internacional. A tela aceita
+      // "11999999999" (10 ou 11 dígitos) e o motor normaliza antes de enviar
+      // (`normalizarParaMeta`), mas o teste mandava os dígitos crus: a Meta
+      // recebia "11999999999" como número nacional, aceitava a requisição
+      // (200) e a mensagem não chegava a lugar nenhum. Aqui a normalização é
+      // a mesma do motor — um número de 10/11 dígitos vira "55" + dígitos.
+      const telefone = normalizarParaMeta(data.telefone);
+      if (telefone.length < 12) {
+        throw new Error(
+          "Informe o telefone com DDD e código do país. Ex: 5511999999999",
+        );
+      }
 
       if (!templateAprovado(template.status)) {
         const rotulo =
@@ -921,14 +940,49 @@ export const enviarTesteFn = createServerFn({ method: "POST" })
         );
       }
 
-      return await metaService.enviarMensagem(
-        data.telefone,
+      const resposta: any = await metaService.enviarMensagem(
+        telefone,
         template.meta_name,
         template.idioma || "pt_BR",
         componentes,
         "ENVIAR_TESTE",
       );
+
+      // O teste de template também entra na trilha. Antes ele só aparecia no
+      // log de webhook (que registra a chamada à Meta), e o admin olhando o
+      // "Log de disparo (motor)" — a aba que responde "o que o sistema fez
+      // com a minha mensagem?" — não via nada. Aqui fica registrado quem
+      // testou, para qual número, com qual template e com qual id da Meta.
+      const { registrarLogCampanha } = await import("../db/logs-campanha.server");
+      await registrarLogCampanha({
+        campanhaId: null,
+        acao: "ENVIO_TESTE",
+        detalhe:
+          `Teste do template "${template.nome_interno}" enviado para ${telefone}.` +
+          (resposta?.messages?.[0]?.id ? ` Id da Meta: ${resposta.messages[0].id}.` : ""),
+        payload: {
+          template: template.nome_interno,
+          meta_name: template.meta_name,
+          telefone,
+          meta_message_id: resposta?.messages?.[0]?.id ?? null,
+        },
+      });
+
+      return resposta;
     } catch (error: any) {
+      // A falha do teste também precisa ficar registrada: "não gerou log" era
+      // metade do sintoma reportado.
+      try {
+        const { registrarLogCampanha } = await import("../db/logs-campanha.server");
+        await registrarLogCampanha({
+          campanhaId: null,
+          acao: "ERRO",
+          detalhe: `Falha no teste de template: ${String(error?.message || error).slice(0, 1500)}`,
+          payload: { telefone: data.telefone, template_id: data.template_id },
+        });
+      } catch {
+        // Falha ao registrar a falha: não pode mascarar o erro original.
+      }
       return { ok: false, error: error.message };
     }
   });

@@ -335,7 +335,7 @@ function varianteStatusCampanha(status: string): any {
 /** Cor do evento na trilha do motor de disparo. */
 function varianteAcaoDisparo(acao: string): any {
   if (acao === "ERRO" || acao === "BLOQUEADA") return "destructive";
-  if (acao === "LOTE_ENVIADO" || acao === "CONCLUIDA") return "success";
+  if (acao === "LOTE_ENVIADO" || acao === "CONCLUIDA" || acao === "ENVIO_TESTE") return "success";
   if (acao === "DISPARO_FORCADO" || acao === "PROMOCAO_STATUS") return "warning";
   return "secondary";
 }
@@ -1059,7 +1059,14 @@ function ComunicacoesPage() {
         success: (res: any) => {
           if (res && res.ok === false) throw new Error(res.error || "Erro ao enviar teste");
           setTemplateParaTeste(null);
-          return "Teste enviado! Responda pelo WhatsApp comum para ver a resposta na Central de Conversas.";
+          // A Meta devolve 200 mesmo para números que não existem, então o
+          // "enviado com sucesso" sem o id da mensagem não prova nada. O id
+          // é o que permite conferir na Central de Conversas se a mensagem
+          // de fato saiu.
+          const id = res?.messages?.[0]?.id;
+          return id
+            ? `Teste enviado! Id da Meta: ${id}. Confira na Central de Conversas se chegou.`
+            : "Teste enviado! Confira na Central de Conversas se a mensagem chegou.";
         },
         error: (err) => `Erro: ${err.message}`,
       },
@@ -4068,7 +4075,7 @@ function ComunicacoesPage() {
               <CardTitle>Log de disparo (motor)</CardTitle>
               <CardDescription>
                 Cada passo do motor de envio: fila montada, bloqueio por template,
-                janela de trabalho, lotes enviados e erros.
+                janela de trabalho, lotes enviados, testes de template e erros.
               </CardDescription>
             </CardHeader>
             <CardContent>
