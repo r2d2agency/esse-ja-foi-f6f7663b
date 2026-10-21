@@ -598,12 +598,16 @@ async function processarCampanha(
   const fim = horaDe(campanha.janela_fim);
 
   if (!forcar && !dentroDaJanela(agora, inicio, fim)) {
-    // Fora da janela: adia para a próxima abertura em vez de descartar, senão a
-    // campanha perde os contatos que não couberam hoje.
-    await d.execute(sql`
-      UPDATE whatsapp_campanhas SET status = 'AGUARDANDO', atualizado_em = now()
-      WHERE id = ${campanha.id}::uuid
-    `);
+    // Fora da janela: a campanha fica parada, mas o status NÃO muda.
+    //
+    // Antes esta chamada gravava status = 'AGUARDANDO'. A campanha voltava a
+    // 'PROCESSANDO' na promoção do tick seguinte e caía aqui de novo — mas se
+    // ela tivesse `agendado_para` no futuro, a promoção exigia
+    // `agendado_para <= now()` e nunca mais trazia a campanha de volta: o
+    // gotejamento morria ali. Como a primeira mensagem só saía pelo "Disparar
+    // agora" (que ignora a janela), o efeito era exatamente "envia a primeira
+    // e para". Manter PROCESSANDO preserva a fila e deixa o motor retomar
+    // sozinho na próxima abertura.
     await registrarLogCampanha({
       campanhaId: campanha.id,
       acao: "FORA_DA_JANELA",
@@ -618,18 +622,16 @@ async function processarCampanha(
   }
 
   const intervalo = Math.max(1, Number(campanha.intervalo_minutos ?? 5));
-  if (!forcar && campanha.ultimo_envio_em) {
-    const desdeUltimo = (agora.getTime() - new Date(campanha.ultimo_envio_em).getTime()) / 60000;
-    if (desdeUltimo < intervalo) {
-      await registrarLogCampanha({
-        campanhaId: campanha.id,
-        acao: "AGUARDANDO_INTERVALO",
-        detalhe: `Aguardando o intervalo de ${intervalo} min entre lotes (ultimo envio ha ${Math.floor(desdeUltimo)} min).`,
-        payload: { intervalo_minutos: intervalo, desde_ultimo_min: Math.floor(desdeUltimo) },
-      });
-      return;
-    }
-  }
+
+  // O ritmo é definido pelo ROTEIRO da fila (`proxima_tentativa_em` de cada
+  // mensagem), não por um intervalo de campanha. Os dois mecanismos coexistiam
+  // desde o commit que introduziu o drip, e o de campanha sempre atrasava o
+  // de mensagem em um ciclo inteiro do worker — o tick de 60 s caía alguns
+  // milissegundos antes do minuto completo e a mensagem nunca era reservada.
+  //
+  // `escalonarFila` (logo abaixo) garante que toda mensagem PENDENTE tem
+  // horário próprio; por isso o portão de campanha é redundante e só
+  // bloqueava. A espera agora é a fila: quem vence o horário é reservado.
 
   // A fila materializada traz o horário de cada destinatário. Se ela ainda
   // não foi escalonada (campanha antiga, fila criada antes do agendamento),
@@ -783,11 +785,23 @@ export async function processarDisparo(
       payload: { campanhaId: opts.campanhaId },
     });
   } else {
+    // Promoção das campanhas que devem entrar na fila.
+    //
+    // O `agendado_para` só vale para a campanha que AINDA NÃO COMEÇOU. Uma
+    // campanha que já enviou a primeira mensagem tem o roteiro em curso: se o
+    // `agendado_para` estivesse no futuro (ou se a campanha tivesse sido
+    // empurrada para AGUARDANDO por algum motivo), a condição
+    // `agendado_para <= now()` impedia a promoção para sempre e o gotejamento
+    // morria depois da primeira mensagem — que era o sintoma reportado.
     await d.execute(sql`
       UPDATE whatsapp_campanhas
       SET status = 'PROCESSANDO', iniciado_em = COALESCE(iniciado_em, now()), atualizado_em = now()
-      WHERE status IN ('AGENDADA', 'AGUARDANDO')
-        AND (agendado_para IS NULL OR agendado_para <= now())
+      WHERE status IN ('AGUARDADA', 'AGUARDANDO', 'AGENDADA')
+        AND (
+          iniciado_em IS NOT NULL
+          OR agendado_para IS NULL
+          OR agendado_para <= now()
+        )
     `);
   }
 

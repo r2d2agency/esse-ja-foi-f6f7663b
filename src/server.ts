@@ -129,6 +129,11 @@ if (!globalThis.__disparoInterval) {
 
   // A primeira passada espera 30s: no boot o banco e o schema podem ainda estar
   // subindo, e um tick imediato só produziria ruído no log.
+  //
+  // O guarda acima evita worker duplicado: em produção quem arma o intervalo
+  // é o plugin Nitro (`plugins/disparo-worker.ts`), que roda no boot do
+  // processo — este bloco de `src/server.ts` só entra em cena no dev, onde o
+  // plugin ainda não subiu.
   setTimeout(async () => {
     try {
       const { processarDisparo } = await import("./db/disparo-motor.server");
