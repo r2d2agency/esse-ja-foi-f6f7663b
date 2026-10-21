@@ -3,7 +3,10 @@ import { db } from "./index";
 import { metaService, MetaApiError, montarComponents } from "./meta-whatsapp.server";
 import { resolverPublico, normalizarParaMeta, type CriterioPublico } from "./publico.server";
 import { registrarLogCampanha } from "./logs-campanha.server";
-import { templateAprovado } from "./whatsapp-status";
+import {
+  templateAprovado,
+  STATUS_CAMPANHA_TEMPLATE_INDISPONIVEL,
+} from "./whatsapp-status";
 
 /**
  * Motor de disparo em dripping.
@@ -703,10 +706,35 @@ export async function processarDisparo(
 
   // O worker roda no boot, antes de qualquer request — e o migrateDb só roda em
   // request. Sem garantir o schema aqui, o primeiro tick quebraria.
+  //
+  // A garantia do schema não pode derrubar a passada: antes, uma falha aqui
+  // abortava o motor inteiro ANTES de qualquer log, e o admin só via um
+  // console.error do servidor. Agora a falha é registrada na trilha da
+  // campanha e a passada continua.
   const { ensureComunicacoesSchema } = await import("./comunicacoes.server");
-  await ensureComunicacoesSchema();
+  try {
+    await ensureComunicacoesSchema();
+  } catch (e: any) {
+    console.error("[disparo] falha ao garantir o schema de comunicacoes:", e?.message || e);
+    await registrarLogCampanha({
+      campanhaId: opts.campanhaId ?? null,
+      acao: "ERRO",
+      detalhe: `Schema de comunicacoes nao garantido: ${String(e?.message || e).slice(0, 900)}`,
+      payload: { etapa: "ensureComunicacoesSchema" },
+    });
+  }
   const { ensureMarketingSchema } = await import("./marketing.server");
-  await ensureMarketingSchema();
+  try {
+    await ensureMarketingSchema();
+  } catch (e: any) {
+    console.error("[disparo] falha ao garantir o schema de marketing:", e?.message || e);
+    await registrarLogCampanha({
+      campanhaId: opts.campanhaId ?? null,
+      acao: "ERRO",
+      detalhe: `Schema de marketing nao garantido: ${String(e?.message || e).slice(0, 900)}`,
+      payload: { etapa: "ensureMarketingSchema" },
+    });
+  }
 
   await recuperarDisparosInterrompidos();
 
@@ -716,12 +744,38 @@ export async function processarDisparo(
   // ignorando o horario agendado e a janela de trabalho. E o pedido
   // explicito do admin na tela - o motor so nao espera o proximo ciclo.
   if (opts.forcar && opts.campanhaId) {
-    await d.execute(sql`
+    // A lista de status excluídos aceita as duas grafias: campanhas gravadas
+    // antes da correção (TEMPLATE_INDESPONIVEL) não podem ficar travadas.
+    const upd = await d.execute(sql`
       UPDATE whatsapp_campanhas
       SET status = 'PROCESSANDO', iniciado_em = COALESCE(iniciado_em, now()), atualizado_em = now()
       WHERE id = ${opts.campanhaId}::uuid
-        AND status NOT IN ('CANCELADA', 'CONCLUIDA', 'TEMPLATE_INDISPONIVEL')
+        AND status NOT IN ('CANCELADA', 'CONCLUIDA', 'TEMPLATE_INDISPONIVEL', 'TEMPLATE_INDESPONIVEL')
+      RETURNING id
     `);
+    const campanhaAtualizada = rowsOf(upd)[0];
+    if (!campanhaAtualizada) {
+      // O UPDATE não bateu: campanha cancelada, concluída ou bloqueada. Sem
+      // este registro o admin clicava em "Disparar agora" e não via nada.
+      const atual = rowsOf(
+        await d.execute(sql`
+          SELECT status FROM whatsapp_campanhas WHERE id = ${opts.campanhaId}::uuid
+        `),
+      )[0];
+      await registrarLogCampanha({
+        campanhaId: opts.campanhaId,
+        acao: "ERRO",
+        detalhe: `Disparo manual ignorado: campanha em status "${atual?.status ?? "DESCONHECIDO"}".`,
+        payload: { status: atual?.status ?? null },
+      });
+      return {
+        campanhas: 0,
+        enviados: 0,
+        falhas: 0,
+        bloqueadas: 0,
+        erro: `Campanha em status "${atual?.status ?? "DESCONHECIDO"}" — não pode ser disparada.`,
+      };
+    }
     await registrarLogCampanha({
       campanhaId: opts.campanhaId,
       acao: "DISPARO_FORCADO",
@@ -737,6 +791,13 @@ export async function processarDisparo(
     `);
   }
 
+  // A campanha do "Disparar agora" tem prioridade: com o LIMIT 20, uma fila de
+  // 20 campanhas antigas em PROCESSANDO empurrava a forçada para fora da
+  // lista e ela nunca era processada.
+  const prioridade = opts.campanhaId
+    ? sql`(c.id = ${opts.campanhaId}::uuid) DESC`
+    : sql`FALSE DESC`;
+
   const res = await d.execute(sql`
     SELECT c.*, t.meta_name, t.idioma, t.conteudo as template_conteudo, t.status as template_status,
       -- A mídia do template vem com prefixo: c.* já traz as colunas midia_* da
@@ -747,7 +808,7 @@ export async function processarDisparo(
     FROM whatsapp_campanhas c
     LEFT JOIN whatsapp_templates t ON t.id = c.template_id
     WHERE c.status = 'PROCESSANDO'
-    ORDER BY c.criado_em
+    ORDER BY ${prioridade}, c.criado_em
     LIMIT 20
   `);
   const campanhas = rowsOf(res);
@@ -759,7 +820,7 @@ export async function processarDisparo(
     // de texto livre), então aqui a tratamos como indisponível.
     if ((campanha.canal_envio ?? "META") === "META" && !campanha.template_id) {
       await d.execute(sql`
-        UPDATE whatsapp_campanhas SET status = 'TEMPLATE_INDESPONIVEL', atualizado_em = now()
+        UPDATE whatsapp_campanhas SET status = ${STATUS_CAMPANHA_TEMPLATE_INDISPONIVEL}, atualizado_em = now()
         WHERE id = ${campanha.id}::uuid
       `);
       console.warn(
@@ -784,7 +845,7 @@ export async function processarDisparo(
       !templateAprovado(campanha.template_status)
     ) {
       await d.execute(sql`
-        UPDATE whatsapp_campanhas SET status = 'TEMPLATE_INDESPONIVEL', atualizado_em = now()
+        UPDATE whatsapp_campanhas SET status = ${STATUS_CAMPANHA_TEMPLATE_INDISPONIVEL}, atualizado_em = now()
         WHERE id = ${campanha.id}::uuid
       `);
       console.warn(
@@ -815,12 +876,23 @@ export async function processarDisparo(
   }
 
   // Campaign whose template became approved later needs to be unblocked.
-  await d.execute(sql`
+  // Aceita as duas grafias do status: a antiga (sem o "N") pode estar gravada
+  // em campanhas criadas antes da correção.
+  const desbloqueadas = await d.execute(sql`
     UPDATE whatsapp_campanhas c SET status = 'AGUARDANDO', atualizado_em = now()
     FROM whatsapp_templates t
-    WHERE c.template_id = t.id AND c.status = 'TEMPLATE_INDESPONIVEL'
+    WHERE c.template_id = t.id AND c.status IN ('TEMPLATE_INDISPONIVEL', 'TEMPLATE_INDESPONIVEL')
       AND UPPER(TRIM(COALESCE(t.status, ''))) IN ('APPROVED', 'APROVADO', 'APROVADA')
+    RETURNING c.id
   `);
+  for (const c of rowsOf(desbloqueadas)) {
+    await registrarLogCampanha({
+      campanhaId: c.id,
+      acao: "PROMOCAO_STATUS",
+      detalhe: "Template aprovado: campanha liberada para voltar a fila.",
+      payload: { novo_status: "AGUARDANDO" },
+    });
+  }
 
   if (resumo.campanhas) {
     const cont = await d.execute(sql`

@@ -49,6 +49,26 @@ export function templateAprovado(status: unknown): boolean {
   return normalizarStatusTemplate(status) === STATUS_APPROVED;
 }
 
+/**
+ * Status de campanha "aguardando template".
+ *
+ * O motor gravava `TEMPLATE_INDESPONIVEL` (sem o "N") enquanto todo o resto do
+ * sistema — a tela, o webhook, o desbloqueio automático — lia
+ * `TEMPLATE_INDISPONIVEL`. Resultado: a campanha bloqueada não era reconhecida
+ * por nenhum consumidor, o desbloqueio automático nunca disparava e o botão
+ * "Disparar agora" continuava habilitado numa campanha que jamais ia sair.
+ *
+ * A grafia correta é a da constante abaixo; a variante quebrada segue aceita
+ * na leitura para que campanhas já gravadas com ela sejam reconhecidas.
+ */
+export const STATUS_CAMPANHA_TEMPLATE_INDISPONIVEL = "TEMPLATE_INDISPONIVEL";
+
+/** A campanha está bloqueada esperando o template ser aprovado? */
+export function campanhaTemplateIndisponivel(status: unknown): boolean {
+  const s = String(status ?? "").trim().toUpperCase();
+  return s === "TEMPLATE_INDISPONIVEL" || s === "TEMPLATE_INDESPONIVEL";
+}
+
 /** Rótulo curto para a tela, no vocabulário da Meta. */
 export function rotuloStatusTemplate(status: unknown): string {
   switch (normalizarStatusTemplate(status)) {

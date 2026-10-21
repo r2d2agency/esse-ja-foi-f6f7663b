@@ -398,7 +398,11 @@ export const dispararCampanhaAgoraFn = createServerFn({ method: "POST" })
       const { reescalarFila } = await import("@/db/disparo-motor.server");
       await reescalarFila(data.id, Number(c.intervalo_minutos ?? 5), new Date());
 
-      const resumo = await processarDisparo({ forcar: true, campanhaId: data.id });
+      const resumo: any = await processarDisparo({ forcar: true, campanhaId: data.id });
+      // O motor devolve `erro` quando o disparo manual não se aplica (campanha
+      // cancelada, concluída ou bloqueada por template). Sem isso a tela
+      // mostrava "Disparo acionado" para uma campanha que não saiu.
+      if (resumo?.erro) return { ok: false, error: resumo.erro, resumo };
       return { ok: true, resumo };
     } catch (error: any) {
       return { ok: false, error: error?.message };
@@ -784,6 +788,24 @@ export const getLogsCampanhaFn = createServerFn({ method: "POST" })
     await ensureComunicacoesSchema();
     const { listarLogsCampanha } = await import("../db/logs-campanha.server");
     return listarLogsCampanha(id);
+  });
+
+/**
+ * Trilha de disparo de todas as campanhas (motor). Fica na aba de logs ao lado
+ * dos logs de webhook: sem ela o admin só via o registro do disparo escondido
+ * no dialog de cada campanha e concluía que o motor não logava nada.
+ */
+export const getLogsDisparoFn = createServerFn({ method: "POST" })
+  .handler(async () => {
+    try {
+      const { ensureComunicacoesSchema } = await import("../db/comunicacoes.server");
+      await ensureComunicacoesSchema();
+      const { listarLogsDisparo } = await import("../db/logs-campanha.server");
+      return listarLogsDisparo();
+    } catch (error: any) {
+      console.error("[comunicacoes] falha ao listar o log de disparo:", error);
+      return [];
+    }
   });
 
 export const processarEnvioCampanhaFn = createServerFn({ method: "POST" })

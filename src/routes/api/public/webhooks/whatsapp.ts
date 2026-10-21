@@ -5,6 +5,7 @@ import { ensureComunicacoesSchema } from "@/db/comunicacoes.server";
 import { ensureConversasSchema } from "@/db/conversas.server";
 import { sql } from "drizzle-orm";
 import { registrarLogMeta } from "@/db/logs-whatsapp.server";
+import { registrarLogCampanha } from "@/db/logs-campanha.server";
 import { extrairErroPostgres } from "@/db/erro-postgres";
 
 export const Route = createFileRoute("/api/public/webhooks/whatsapp")({
@@ -350,12 +351,26 @@ export const Route = createFileRoute("/api/public/webhooks/whatsapp")({
 
               // Template aprovado libera as campanhas que estavam travadas.
               if (statusTemplate === "APPROVED") {
-                await db.execute(sql`
+                const liberadas = await db.execute(sql`
                   UPDATE whatsapp_campanhas
                   SET status = 'AGUARDANDO', atualizado_em = now()
-                  WHERE status = 'TEMPLATE_INDISPONIVEL'
+                  WHERE status IN ('TEMPLATE_INDISPONIVEL', 'TEMPLATE_INDESPONIVEL')
                     AND template_id IN (SELECT id FROM whatsapp_templates WHERE meta_name = ${templateName})
+                  RETURNING id
                 `);
+                const linhas: any[] = (liberadas as any)?.rows
+                  ? (liberadas as any).rows
+                  : Array.isArray(liberadas)
+                    ? (liberadas as any[])
+                    : [];
+                for (const c of linhas) {
+                  await registrarLogCampanha({
+                    campanhaId: c.id,
+                    acao: "PROMOCAO_STATUS",
+                    detalhe: "Template aprovado pela Meta: campanha liberada para voltar a fila.",
+                    payload: { novo_status: "AGUARDANDO", origem: "webhook" },
+                  });
+                }
               }
             }
           }

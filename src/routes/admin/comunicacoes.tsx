@@ -92,6 +92,7 @@ import {
   exemploDestinatarioFn,
   getEnviosCampanhaFn,
   getLogsCampanhaFn,
+  getLogsDisparoFn,
   dispararCampanhaAgoraFn,
   agendarDisparoCampanhaFn,
 } from "@/lib/comunicacoes.functions";
@@ -100,6 +101,7 @@ import {
   normalizarStatusTemplate,
   rotuloStatusTemplate,
   templateAprovado,
+  campanhaTemplateIndisponivel,
 } from "@/db/whatsapp-status";
 import {
   listarAutomacoesFn,
@@ -312,11 +314,12 @@ const ROTULO_CAMPANHA: Record<string, string> = {
   CANCELADA: "Cancelada",
   PAUSADA: "Pausada",
   // Não é falha da campanha: o template ainda não foi aprovado pela Meta.
+  TEMPLATE_INDISPONIVEL: "Aguardando template",
   TEMPLATE_INDESPONIVEL: "Aguardando template",
 };
 
 function rotuloStatusCampanha(campanha: any) {
-  if (campanha?.status === "TEMPLATE_INDESPONIVEL") {
+  if (campanhaTemplateIndisponivel(campanha?.status)) {
     return `Aguardando template (${rotuloStatus(campanha.template_status).toLowerCase()})`;
   }
   return ROTULO_CAMPANHA[campanha?.status] || campanha?.status || "—";
@@ -325,8 +328,16 @@ function rotuloStatusCampanha(campanha: any) {
 function varianteStatusCampanha(status: string): any {
   if (status === "CONCLUIDA") return "success";
   if (status === "PROCESSANDO") return "warning";
-  if (status === "TEMPLATE_INDESPONIVEL" || status === "PAUSADA") return "secondary";
+  if (campanhaTemplateIndisponivel(status) || status === "PAUSADA") return "secondary";
   return "outline";
+}
+
+/** Cor do evento na trilha do motor de disparo. */
+function varianteAcaoDisparo(acao: string): any {
+  if (acao === "ERRO" || acao === "BLOQUEADA") return "destructive";
+  if (acao === "LOTE_ENVIADO" || acao === "CONCLUIDA") return "success";
+  if (acao === "DISPARO_FORCADO" || acao === "PROMOCAO_STATUS") return "warning";
+  return "secondary";
 }
 
 /** Texto → CSV, escapando o separador e aspas. */
@@ -446,6 +457,7 @@ function ComunicacoesPage() {
   const processarEnvio = useServerFn(processarEnvioCampanhaFn);
   const getEnviosCampanha = useServerFn(getEnviosCampanhaFn);
   const getLogsCampanha = useServerFn(getLogsCampanhaFn);
+  const getLogsDisparo = useServerFn(getLogsDisparoFn);
   const dispararCampanhaAgora = useServerFn(dispararCampanhaAgoraFn);
   const agendarDisparoCampanha = useServerFn(agendarDisparoCampanhaFn);
   const getAutomacoes = useServerFn(listarAutomacoesFn);
@@ -642,6 +654,15 @@ function ComunicacoesPage() {
   const { data: logs } = useQuery({
     queryKey: ["wa-logs"],
     queryFn: () => getLogs(),
+  });
+
+  // Trilha do motor de disparo (todas as campanhas). Antes ela só aparecia
+  // dentro do dialog de detalhe de cada campanha — esconder o registro do
+  // disparo era exatamente o que fazia o admin achar que o motor não logava.
+  const { data: logsDisparo } = useQuery({
+    queryKey: ["wa-logs-disparo"],
+    queryFn: () => getLogsDisparo(),
+    refetchInterval: 20_000,
   });
 
   const { data: templates } = useQuery({
@@ -1091,6 +1112,8 @@ function ComunicacoesPage() {
         return;
       }
       queryClient.invalidateQueries({ queryKey: ["wa-campanhas"] });
+      queryClient.invalidateQueries({ queryKey: ["wa-campanhas-detalhe"] });
+      queryClient.invalidateQueries({ queryKey: ["wa-logs-disparo"] });
       toast.success(`Disparo de "${campanha.nome}" iniciado.`);
     } catch (err: any) {
       toast.error(`Erro ao disparar: ${err.message}`);
@@ -2894,7 +2917,7 @@ function ComunicacoesPage() {
                                 size="sm"
                                 disabled={
                                   campanha.status === "CONCLUIDA" ||
-                                  campanha.status === "TEMPLATE_INDESPONIVEL"
+                                  campanhaTemplateIndisponivel(campanha.status)
                                 }
                                 onClick={() => handleAlterarStatus(campanha, "AGUARDANDO")}
                               >
@@ -2908,7 +2931,7 @@ function ComunicacoesPage() {
                               disabled={
                                 campanha.status === "CONCLUIDA" ||
                                 campanha.status === "CANCELADA" ||
-                                campanha.status === "TEMPLATE_INDISPONIVEL"
+                                campanhaTemplateIndisponivel(campanha.status)
                               }
                               onClick={() => handleDispararAgora(campanha)}
                             >
@@ -2921,7 +2944,7 @@ function ComunicacoesPage() {
                               title="Agendar o disparo desta campanha"
                               disabled={
                                 campanha.status === "CONCLUIDA" ||
-                                campanha.status === "TEMPLATE_INDISPONIVEL"
+                                campanhaTemplateIndisponivel(campanha.status)
                               }
                               onClick={() => {
                                 setAgendarParaCampanha(campanha);
@@ -4028,11 +4051,84 @@ function ComunicacoesPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => queryClient.invalidateQueries({ queryKey: ["wa-logs"] })}
+              onClick={() => {
+                queryClient.invalidateQueries({ queryKey: ["wa-logs"] });
+                queryClient.invalidateQueries({ queryKey: ["wa-logs-disparo"] });
+              }}
             >
               <RefreshCw className="w-4 h-4 mr-2" /> Atualizar
             </Button>
           </div>
+
+          {/* Trilha do motor de disparo. Fica acima dos logs de webhook
+              porque é ela que responde "por que a campanha não saiu?" — o
+              log de webhook só registra chamadas feitas à Meta. */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Log de disparo (motor)</CardTitle>
+              <CardDescription>
+                Cada passo do motor de envio: fila montada, bloqueio por template,
+                janela de trabalho, lotes enviados e erros.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="border rounded-lg overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-50 border-b">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">
+                        Data/Hora
+                      </th>
+                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">
+                        Campanha
+                      </th>
+                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">
+                        Evento
+                      </th>
+                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">
+                        Detalhe
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {(logsDisparo ?? []).map((log: any) => (
+                      <tr key={log.id} className="hover:bg-muted/30 align-top">
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          {new Date(log.criado_em).toLocaleString("pt-BR")}
+                        </td>
+                        <td className="px-3 py-2">
+                          {log.campanha_nome || (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          <Badge variant={varianteAcaoDisparo(log.acao)}>
+                            {log.acao}
+                          </Badge>
+                          {log.em_memoria && (
+                            <Badge variant="outline" className="ml-1">
+                              não gravado
+                            </Badge>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-muted-foreground max-w-xl">
+                          {log.detalhe || "—"}
+                        </td>
+                      </tr>
+                    ))}
+                    {!logsDisparo?.length && (
+                      <tr>
+                        <td colSpan={4} className="px-3 py-10 text-center text-muted-foreground">
+                          Nenhum evento de disparo ainda. Ao criar uma campanha ou apertar
+                          "Disparar agora", cada passo do motor aparece aqui.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
           <Card>
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
