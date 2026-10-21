@@ -668,6 +668,11 @@ function ComunicacoesPage() {
   const { data: templates } = useQuery({
     queryKey: ["wa-templates"],
     queryFn: () => getTemplates(),
+    // Sem isto a falha de banco virava uma lista vazia e silenciosa. A
+    // mensagem que chega aqui já é a causa real (SQLSTATE, coluna que falta),
+    // e não o "Failed query: SELECT ... params: ..." do Drizzle.
+    onError: (err: any) =>
+      toast.error(`Erro ao carregar os templates: ${err?.message ?? "erro desconhecido"}`),
   });
 
   /**

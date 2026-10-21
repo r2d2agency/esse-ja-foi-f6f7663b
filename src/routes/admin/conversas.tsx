@@ -387,6 +387,10 @@ function CentralConversasPage() {
   const { data: templates } = useQuery({
     queryKey: ['templates-ativos'],
     queryFn: () => getTemplates(),
+    // Falha de banco não pode virar lista vazia e silenciosa: a mensagem já
+    // vem com a causa real (SQLSTATE), não com o texto genérico do Drizzle.
+    onError: (err: any) =>
+      toast.error(`Erro ao carregar os templates: ${err?.message ?? "erro desconhecido"}`),
   });
 
   const { data: respostasProntas } = useQuery({

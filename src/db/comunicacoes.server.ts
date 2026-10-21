@@ -37,6 +37,30 @@ async function passoOpcional(rotulo: string, fn: () => Promise<unknown>) {
   }
 }
 
+/**
+ * Garante as tabelas do módulo antes de uma leitura.
+ *
+ * As tabelas `whatsapp_*` são criadas em tempo de execução (`CREATE TABLE IF
+ * NOT EXISTS`), fora das migrações do Drizzle. Se a criação falhou — ou se a
+ * leitura acontece antes do boot concluí-la — o `SELECT` morre com 42P01
+ * ("relation does not exist") e o Drizzle reporta só "Failed query: SELECT ...
+ * params: ...".
+ *
+ * A falha aqui NÃO interrompe a leitura: se a tabela existir, o `SELECT`
+ * funciona; se não existir, ela devolve o erro real (com SQLSTATE), que é o
+ * que o admin precisa ver.
+ */
+async function garantirTabelas() {
+  try {
+    await ensureComunicacoesSchema();
+  } catch (e) {
+    console.error(
+      "[comunicacoes.server] Falha ao garantir o schema antes da leitura:",
+      mensagemErroPostgres(e),
+    );
+  }
+}
+
 export async function ensureComunicacoesSchema(silent = true) {
   const d = requireDb();
   if (!silent && process.env["NODE_ENV"] === "development")
@@ -636,6 +660,7 @@ export async function updateWhatsappConfig(config: any) {
 
 export async function excluirTemplateLocal(metaName: string) {
   const d = requireDb();
+  await garantirTabelas();
   const res = await d.execute(sql`
     DELETE FROM whatsapp_templates WHERE meta_name = ${metaName}
     RETURNING id
@@ -645,6 +670,11 @@ export async function excluirTemplateLocal(metaName: string) {
 
 export async function listarTemplates() {
   const d = requireDb();
+  // As tabelas do módulo são criadas em tempo de execução, fora das migrações
+  // do Drizzle. Sem garantir antes de ler, uma base onde o passo de criação
+  // falhou devolve "Failed query: SELECT * FROM whatsapp_templates ..." — sem
+  // dizer que a tabela não existe.
+  await garantirTabelas();
   const res = await d.execute(sql`SELECT * FROM whatsapp_templates ORDER BY meta_name`);
   return rowsOf(res) || [];
 }
@@ -684,6 +714,7 @@ export async function anexarMidiaTemplate(
 
 export async function listarSegmentos() {
   const d = requireDb();
+  await garantirTabelas();
   const res = await d.execute(sql`SELECT * FROM whatsapp_segmentos ORDER BY nome`);
   return rowsOf(res) || [];
 }
@@ -705,6 +736,10 @@ export async function listarContatosWhatsapp(
   } = {},
 ) {
   const d = requireDb();
+  // As colunas `whatsapp_status` e `pode_receber_comunicacoes` da tabela
+  // `profiles` também são criadas por este passo — sem ele a consulta morre
+  // com 42703 (coluna não existe).
+  await garantirTabelas();
   const busca = (filtros.busca ?? "").trim();
   const termo = busca ? `%${busca}%` : null;
   const apenasElegiveis = filtros.apenasElegiveis ?? false;
@@ -741,6 +776,7 @@ export async function listarContatosWhatsapp(
 
 export async function listarCampanhas() {
   const d = requireDb();
+  await garantirTabelas();
   const res = await d.execute(sql`
     SELECT c.*, v.marca, v.modelo, t.nome_interno as template_nome
     FROM whatsapp_campanhas c
@@ -753,6 +789,7 @@ export async function listarCampanhas() {
 
 export async function getWebhookLogs() {
   const d = requireDb();
+  await garantirTabelas();
   const res = await d.execute(sql`
     SELECT * FROM whatsapp_webhook_logs 
     ORDER BY criado_em DESC 
@@ -763,6 +800,7 @@ export async function getWebhookLogs() {
 
 export async function getIndicadoresComunicacoes() {
   const d = requireDb();
+  await garantirTabelas();
   const res = await d.execute(sql`
     SELECT
       (SELECT count(*) FROM whatsapp_campanhas) as total_campanhas,
