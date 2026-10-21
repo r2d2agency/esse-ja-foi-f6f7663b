@@ -786,6 +786,8 @@ export class MetaWhatsAppService {
     salvos: number;
     falhas: { nome: string; erro: string }[];
     porStatus: Record<string, number>;
+    totalMeta?: number | null;
+    passagens?: { url: string; quantidade: number; totalMeta?: number | null; erro?: string }[];
   }> {
     // Rastro ANTES de qualquer chamada. A sincronização pode morrer antes do
     // primeiro contato com a Meta (token ausente, WABA ID vazio, banco fora) e,
@@ -807,7 +809,7 @@ export class MetaWhatsAppService {
       // sucesso sobre um gravação que não aconteceu.
       if (!db) throw new Error("Banco de dados indisponível.");
 
-      const templates: any[] = await this.listarTemplatesDaMeta();
+      const { templates, passagens, totalMeta } = await this.listarTemplatesDaMeta();
 
       const falhas: { nome: string; erro: string }[] = [];
       let salvos = 0;
@@ -831,18 +833,20 @@ export class MetaWhatsAppService {
           // recebia uma lista de falhas e nenhum template gravado. A fonte da
           // verdade é o template individual — e essa consulta também fica
           // registrada no log da Meta.
-          try {
-            const detalhe: any = await this.fetchMeta(
-              `${t.id}?fields=status`,
-              {},
-              "SINCRONIZAR_TEMPLATES",
-            );
-            statusMeta = normalizarStatusTemplate(detalhe?.status);
-          } catch (e: any) {
-            console.warn(
-              `[Meta] não foi possível consultar o status do template "${nome}":`,
-              mensagemErroPostgres(e),
-            );
+          //
+          // Duas tentativas: com `fields=status` e sem nenhum parâmetro.
+          // Dependendo da versão do Graph API, uma das duas é recusada.
+          for (const url of [`${t.id}?fields=status`, `${t.id}`]) {
+            if (statusMeta) break;
+            try {
+              const detalhe: any = await this.fetchMeta(url, {}, "SINCRONIZAR_TEMPLATES");
+              statusMeta = normalizarStatusTemplate(detalhe?.status);
+            } catch (e: any) {
+              console.warn(
+                `[Meta] não foi possível consultar o status do template "${nome}" (${url}):`,
+                mensagemErroPostgres(e),
+              );
+            }
           }
         }
         if (!statusMeta) {
@@ -879,17 +883,20 @@ export class MetaWhatsAppService {
       // A linha de log fecha o ciclo: quantos templates vieram da Meta, quantos
       // foram gravados e quais falharam. Sem ela, a aba de logs só diria que
       // "algo foi chamado" e a tela não teria como explicar a divergência.
+      // As passagens ficam no payload porque são elas que revelam se a Meta
+      // devolveu menos do que existe (total informado x total lido).
       await this.registrar({
         endpoint: `${this.config.waba_id}/message_templates`,
         operacao: "SINCRONIZAR_TEMPLATES",
         status: falhas.length ? "ERRO" : "SUCESSO",
         resumo:
-          `Sincronização concluída: ${templates.length} lidos da Meta, ` +
+          `Sincronização concluída: ${templates.length} lidos da Meta ` +
+          `(a Meta informa ${totalMeta ?? "?"} no total), ` +
           `${salvos} gravados, ${falhas.length} falha(s).`,
-        payload: { porStatus, falhas },
+        payload: { porStatus, falhas, totalMeta, passagens },
       });
 
-      return { lidos: templates.length, salvos, falhas, porStatus };
+      return { lidos: templates.length, salvos, falhas, porStatus, totalMeta, passagens };
     } catch (error: any) {
       // A falha precisa ficar registrada. Sem esta linha, um erro antes da
       // chamada à Meta aparecia só como um toast na tela e sumia — sem nenhum
@@ -919,7 +926,11 @@ export class MetaWhatsAppService {
    * devolve um conjunto mínimo, e sem `status` o template não pode ser
    * salvo (entraria como PENDING, que é o estado oposto do real).
    */
-  private async listarTemplatesDaMeta(): Promise<any[]> {
+  private async listarTemplatesDaMeta(): Promise<{
+    templates: any[];
+    passagens: { url: string; quantidade: number; totalMeta?: number | null; erro?: string }[];
+    totalMeta: number | null;
+  }> {
     const waba = String(this.config?.waba_id || "");
     const campos = "id,name,status,language,category,components";
 
@@ -927,12 +938,17 @@ export class MetaWhatsAppService {
       const itens: any[] = [];
       let proxima: string | null = null;
       let cursor: string | null = null;
-      for (let pagina = 0; pagina < 30; pagina++) {
+      let ultimo: any = null;
+      // A Meta devolve no máximo 1000 por página, mas a listagem sem `limit`
+      // vem com 25 — era esse o motivo de a sincronização "travar" num
+      // punhado de templates. 60 páginas cobrem 60.000 templates.
+      for (let pagina = 0; pagina < 60; pagina++) {
         const alvo =
           cursor !== null
             ? `${base}${base.includes("?") ? "&" : "?"}after=${encodeURIComponent(cursor)}`
-            : proxima ?? base;
+            : (proxima ?? base);
         const data: any = await this.fetchMeta(alvo, {}, "SINCRONIZAR_TEMPLATES");
+        ultimo = data;
         const lote = Array.isArray(data?.data)
           ? data.data
           : Array.isArray(data?.items)
@@ -956,22 +972,87 @@ export class MetaWhatsAppService {
         }
         break;
       }
-      return itens;
+      return {
+        itens,
+        totalMeta: Number(ultimo?.summary?.total_count ?? 0) || null,
+      };
     };
 
-    try {
-      return await paginar(`${waba}/message_templates?fields=${campos}`);
-    } catch (e: any) {
-      // Versões antigas do Graph API recusam `fields` neste edge. A listagem
-      // sem o parâmetro funciona em todas — é o que a Meta devolve por padrão.
-      // A recusa já ficou registrada no log pelo fetchMeta; aqui só se refaz a
-      // chamada simples para não perder a sincronização por causa do campo.
-      console.warn(
-        "[Meta] listagem com `fields` recusada, refazendo sem os campos:",
-        mensagemErroPostgres(e),
-      );
-      return await paginar(`${waba}/message_templates`);
+    /**
+     * A listagem de templates da Meta NÃO devolve o catálogo inteiro da WABA:
+     * o endpoint é escopado pelo token e, em muitos casos, devolve só o
+     * subconjunto visível para aquele app (e, com paginação padrão de 25,
+     * só os primeiros). O sintoma era: a Meta mostra 8 modelos no WhatsApp
+     * Manager, o sistema mostrava 8 mas não os 3 novos, e nada indicava
+     * onde estava a diferença.
+     *
+     * A saída é ler por vários ângulos e unir o que vier:
+     *  1. listagem completa, sem filtro, com `limit` alto;
+     *  2. a mesma listagem pedindo os campos explicitamente (`status` vem
+     *     junto, que sem ele o template não pode ser salvo);
+     *  3. uma passagem por status (APPROVED, PENDING, ...) — cada uma traz
+     *     um recorte que a listagem geral às vezes não traz;
+     *  4. `summary=total_count`, que diz quantos a Meta acha que existem,
+     *     para dar uma referência de conferência.
+     */
+    const STATUS_PARA_BUSCAR = [
+      "APPROVED",
+      "PENDING",
+      "REJECTED",
+      "PAUSED",
+      "DELETED",
+      "ARCHIVED",
+      "DISABLED",
+    ];
+
+    const alvos: string[] = [
+      // A listagem mais simples é a primeira de propósito: é a forma que
+      // nenhuma versão do Graph API recusa. As outras tentam trazer mais
+      // coisa (mais itens por página, `status`, contagem total) e uma recusa
+      // delas não pode derrubar a sincronização.
+      `${waba}/message_templates`,
+      `${waba}/message_templates?fields=${campos}`,
+      `${waba}/message_templates?limit=1000`,
+      `${waba}/message_templates?fields=${campos}&limit=1000`,
+      ...STATUS_PARA_BUSCAR.flatMap((s) => [
+        // O filtro de status é aceito como texto simples e como array JSON —
+        // a Graph API mudou de um para o outro entre versões, então as duas
+        // formas são tentadas.
+        `${waba}/message_templates?status=${s}&limit=1000`,
+        `${waba}/message_templates?status=${encodeURIComponent(`["${s}"]`)}`,
+      ]),
+      `${waba}/message_templates?summary=total_count&limit=1000`,
+    ];
+
+    const passagens: { url: string; quantidade: number; totalMeta?: number | null; erro?: string }[] =
+      [];
+    const vistos = new Map<string, any>();
+    let totalMeta: number | null = null;
+
+    for (const url of alvos) {
+      try {
+        const { itens, totalMeta: total } = await paginar(url);
+        passagens.push({ url, quantidade: itens.length, totalMeta: total });
+        if (total && !totalMeta) totalMeta = total;
+        for (const item of itens) {
+          const chave = String(item?.id || `${item?.name}|${item?.language}`);
+          if (!vistos.has(chave)) vistos.set(chave, item);
+        }
+      } catch (e: any) {
+        // Uma passagem recusada não pode derrubar a sincronização: as outras
+        // ainda podem trazer os templates. O motivo fica registrado.
+        const motivo = mensagemErroPostgres(e).slice(0, 300);
+        passagens.push({ url, quantidade: 0, erro: motivo });
+        console.warn(`[Meta] passagem de listagem recusada (${url}):`, motivo);
+      }
     }
+
+    const templates = [...vistos.values()];
+    console.info(
+      `[Meta] listagem de templates: ${templates.length} templates únicos em ` +
+        `${passagens.length} passagens (total informado pela Meta: ${totalMeta ?? "?"}).`,
+    );
+    return { templates, passagens, totalMeta };
   }
 
   async criarTemplate(template: any) {

@@ -1290,9 +1290,22 @@ function ComunicacoesPage() {
                   .map(([status, total]) => `${rotuloStatus(status)}: ${total}`)
                   .join(" · ")
               : "";
+          // A Meta informa quantos templates ela tem. Quando esse número é
+          // maior do que lemos, a diferença é a resposta para "não
+          // sincroniza": a listagem não-devolveu tudo, e o admin precisa ver
+          // essa conta, não um "sincronizado" sem número.
+          const totalMeta = Number(res.totalMeta ?? 0);
+          const faltando =
+            Number.isFinite(totalMeta) && totalMeta > 0 ? totalMeta - lidos : 0;
+          const aviso =
+            faltando > 0
+              ? ` Atenção: a Meta informa ${totalMeta} template${totalMeta === 1 ? "" : "s"} ` +
+                `no total e a listagem devolveu ${lidos} — ${faltando} não vieram.`
+              : "";
           return (
             `${salvos} template${salvos === 1 ? "" : "s"} sincronizado${salvos === 1 ? "" : "s"}!` +
-            (resumoStatus ? ` (${resumoStatus})` : "")
+            (resumoStatus ? ` (${resumoStatus})` : "") +
+            aviso
           );
         }
         throw new Error(res.error);
