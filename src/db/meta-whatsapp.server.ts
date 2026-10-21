@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "./index";
 import { lerWhatsappConfig } from "./whatsapp-config.server";
-import { normalizarStatusTemplate } from "./whatsapp-status";
+import { STATUS_REJECTED, normalizarStatusTemplate } from "./whatsapp-status";
 import { extrairErroPostgres, mensagemErroPostgres } from "./erro-postgres";
 
 const DEFAULT_GRAPH_VERSION = "v20.0";
@@ -34,9 +34,17 @@ const ORDEM_COMPONENTES: Record<string, number> = {
  * - `midia_*` são preservadas quando já existem: sem `midia_id` o HEADER de
  *   mídia some no envio.
  */
-export async function upsertTemplateDaMeta(t: any, nome: string) {
-  const status = normalizarStatusTemplate(t?.status) || "PENDING";
-  const motivoRecusa = t?.status === "REJECTED" ? (t?.reason ?? null) : null;
+export async function upsertTemplateDaMeta(
+  t: any,
+  nome: string,
+  statusResolvido?: string | null,
+) {
+  // `statusResolvido` vem da sincronização quando a listagem não trouxe o
+  // status e ele foi buscado no template individual: gravar o PENDING do
+  // default da coluna perderia o estado real (aprovado na Meta, "em análise"
+  // no sistema).
+  const status = statusResolvido || normalizarStatusTemplate(t?.status) || "PENDING";
+  const motivoRecusa = status === STATUS_REJECTED ? (t?.reason ?? null) : null;
 
   if (!db) return;
 
@@ -695,19 +703,30 @@ export class MetaWhatsAppService {
     payload?: unknown;
     httpStatus?: number | null;
     duracaoMs?: number | null;
+    direcao?: "SAIDA" | "ENTRADA";
   }) {
-    const { registrarLogMeta } = await import("./logs-whatsapp.server");
-    await registrarLogMeta({
-      direcao: "SAIDA",
-      operacao: params.operacao,
-      wabaId: this.config?.waba_id ?? null,
-      httpStatus: params.httpStatus,
-      status: params.status,
-      resumo: params.resumo,
-      payload: params.payload,
-      endpoint: params.endpoint,
-      duracaoMs: params.duracaoMs,
-    });
+    try {
+      const { registrarLogMeta } = await import("./logs-whatsapp.server");
+      await registrarLogMeta({
+        direcao: params.direcao ?? "SAIDA",
+        operacao: params.operacao,
+        wabaId: this.config?.waba_id ?? null,
+        httpStatus: params.httpStatus,
+        status: params.status,
+        resumo: params.resumo,
+        payload: params.payload,
+        endpoint: params.endpoint,
+        duracaoMs: params.duracaoMs,
+      });
+    } catch (e: any) {
+      // Log é diagnóstico, nunca parte do fluxo: se a escrita falhar, a
+      // operação que a originou tem de continuar. Sem este try/catch, uma
+      // falha na tabela de log derrubava a sincronização inteira.
+      console.error(
+        "[Meta] falha ao registrar o log da operação:",
+        mensagemErroPostgres(e),
+      );
+    }
   }
 
   async testarConexao() {
@@ -768,73 +787,191 @@ export class MetaWhatsAppService {
     falhas: { nome: string; erro: string }[];
     porStatus: Record<string, number>;
   }> {
-    await this.init();
-    if (!this.config?.waba_id) throw new Error("WABA ID não configurado.");
-    // Sem banco, todo template "sincronizava" e nada era gravado — a contagem
-    // de salvos mentia. Falhar cedo é o único jeito de a tela não anunciar
-    // sucesso sobre um gravação que não aconteceu.
-    if (!db) throw new Error("Banco de dados indisponível.");
+    // Rastro ANTES de qualquer chamada. A sincronização pode morrer antes do
+    // primeiro contato com a Meta (token ausente, WABA ID vazio, banco fora) e,
+    // nesse caso, nenhuma linha de log era criada — a aba de logs ficava
+    // vazia e o admin não tinha como saber que o botão tinha sido clicado.
+    await this.registrar({
+      endpoint: "message_templates",
+      operacao: "SINCRONIZAR_TEMPLATES",
+      status: "SUCESSO",
+      resumo: "Iniciando a sincronização de templates com a Meta.",
+      payload: null,
+    });
 
-    const templates: any[] = [];
-    // A Meta devolve ~25 por página e o resto vem em paging.next. Ler só a
-    // primeira página deixava parte dos templates invisível na tela para sempre.
-    // O teto evita laço infinito se a API devolver cursor malformado.
-    let url: string | undefined = `${this.config.waba_id}/message_templates`;
-    for (let pagina = 0; pagina < 20 && url; pagina++) {
-      const data: any = await this.fetchMeta(url, {}, "SINCRONIZAR_TEMPLATES");
-      templates.push(...(data.data || []));
-      url = data.paging?.next ? String(data.paging.next) : undefined;
+    try {
+      await this.init();
+      if (!this.config?.waba_id) throw new Error("WABA ID não configurado.");
+      // Sem banco, todo template "sincronizava" e nada era gravado — a contagem
+      // de salvos mentia. Falhar cedo é o único jeito de a tela não anunciar
+      // sucesso sobre um gravação que não aconteceu.
+      if (!db) throw new Error("Banco de dados indisponível.");
+
+      const templates: any[] = await this.listarTemplatesDaMeta();
+
+      const falhas: { nome: string; erro: string }[] = [];
+      let salvos = 0;
+      // Quantos vieram em cada status. A tela só dizia "sincronizado", então um
+      // template APPROVED que continuava aparecendo como "Em análise" no sistema
+      // não tinha explicação nenhuma. Com a contagem por status, a diferença
+      // entre a Meta e a tela fica visível na própria mensagem.
+      const porStatus: Record<string, number> = {};
+
+      for (const t of templates) {
+        const nome = String(t?.name || "");
+        if (!nome) {
+          falhas.push({ nome: "(sem nome)", erro: "A Meta devolveu um template sem `name`." });
+          continue;
+        }
+
+        let statusMeta = normalizarStatusTemplate(t?.status);
+        if (!statusMeta && t?.id) {
+          // A listagem veio sem `status`. Descartar o template por causa
+          // disso era o que fazia os aprovados "não aparecerem": a tela
+          // recebia uma lista de falhas e nenhum template gravado. A fonte da
+          // verdade é o template individual — e essa consulta também fica
+          // registrada no log da Meta.
+          try {
+            const detalhe: any = await this.fetchMeta(
+              `${t.id}?fields=status`,
+              {},
+              "SINCRONIZAR_TEMPLATES",
+            );
+            statusMeta = normalizarStatusTemplate(detalhe?.status);
+          } catch (e: any) {
+            console.warn(
+              `[Meta] não foi possível consultar o status do template "${nome}":`,
+              mensagemErroPostgres(e),
+            );
+          }
+        }
+        if (!statusMeta) {
+          // Sem status não dá para gravar: a coluna tem PENDING como default e
+          // o template apareceria "em análise" mesmo aprovado na Meta.
+          falhas.push({
+            nome,
+            erro: `A Meta não devolveu o status deste template (recebido: ${JSON.stringify(
+              t?.status ?? null,
+            )}).`,
+          });
+          continue;
+        }
+        porStatus[statusMeta] = (porStatus[statusMeta] ?? 0) + 1;
+        try {
+          await upsertTemplateDaMeta(t, nome, statusMeta);
+          salvos++;
+        } catch (e: any) {
+          // Esta mensagem vai direto para o relatório de sincronização que o
+          // admin lê na tela — precisa ser a causa real, não "Failed query: ...".
+          const motivo = mensagemErroPostgres(e);
+          console.warn(`[Meta] falha ao gravar o template "${nome}" na sincronização:`, motivo);
+          falhas.push({ nome, erro: motivo.slice(0, 300) });
+        }
+      }
+
+      console.info(
+        `[Meta] sincronização de templates: ${templates.length} lidos, ${salvos} gravados ` +
+          `(${Object.entries(porStatus)
+            .map(([s, n]) => `${s}: ${n}`)
+            .join(", ")}), ${falhas.length} falharam.`,
+      );
+
+      // A linha de log fecha o ciclo: quantos templates vieram da Meta, quantos
+      // foram gravados e quais falharam. Sem ela, a aba de logs só diria que
+      // "algo foi chamado" e a tela não teria como explicar a divergência.
+      await this.registrar({
+        endpoint: `${this.config.waba_id}/message_templates`,
+        operacao: "SINCRONIZAR_TEMPLATES",
+        status: falhas.length ? "ERRO" : "SUCESSO",
+        resumo:
+          `Sincronização concluída: ${templates.length} lidos da Meta, ` +
+          `${salvos} gravados, ${falhas.length} falha(s).`,
+        payload: { porStatus, falhas },
+      });
+
+      return { lidos: templates.length, salvos, falhas, porStatus };
+    } catch (error: any) {
+      // A falha precisa ficar registrada. Sem esta linha, um erro antes da
+      // chamada à Meta aparecia só como um toast na tela e sumia — sem nenhum
+      // registro para investigar depois.
+      const motivo = mensagemErroPostgres(error);
+      await this.registrar({
+        endpoint: "message_templates",
+        operacao: "SINCRONIZAR_TEMPLATES",
+        status: "ERRO",
+        resumo: `Falha na sincronização de templates: ${motivo.slice(0, 500)}`,
+        payload: null,
+      });
+      throw error;
     }
+  }
 
-    const falhas: { nome: string; erro: string }[] = [];
-    let salvos = 0;
-    // Quantos vieram em cada status. A tela só dizia "sincronizado", então um
-    // template APPROVED que continuava aparecendo como "Em análise" no sistema
-    // não tinha explicação nenhuma. Com a contagem por status, a diferença
-    // entre a Meta e a tela fica visível na própria mensagem.
-    const porStatus: Record<string, number> = {};
+  /**
+   * Lê a lista de templates da Meta, página por página.
+   *
+   * A Graph API mudou a forma de paginar: a versão clássica devolve
+   * `paging.next` com a URL da página seguinte, e a mais nova devolve só
+   * cursores (`paging.cursors.after`). Seguir apenas a URL deixava a
+   * sincronização presa na primeira página, e os templates que estavam depois
+   * dela nunca chegavam ao banco.
+   *
+   * Os campos são pedidos explicitamente porque a listagem sem `fields`
+   * devolve um conjunto mínimo, e sem `status` o template não pode ser
+   * salvo (entraria como PENDING, que é o estado oposto do real).
+   */
+  private async listarTemplatesDaMeta(): Promise<any[]> {
+    const waba = String(this.config?.waba_id || "");
+    const campos = "id,name,status,language,category,components";
 
-    for (const t of templates) {
-      const nome = String(t?.name || "");
-      if (!nome) {
-        falhas.push({ nome: "(sem nome)", erro: "A Meta devolveu um template sem `name`." });
-        continue;
+    const paginar = async (base: string) => {
+      const itens: any[] = [];
+      let proxima: string | null = null;
+      let cursor: string | null = null;
+      for (let pagina = 0; pagina < 30; pagina++) {
+        const alvo =
+          cursor !== null
+            ? `${base}${base.includes("?") ? "&" : "?"}after=${encodeURIComponent(cursor)}`
+            : proxima ?? base;
+        const data: any = await this.fetchMeta(alvo, {}, "SINCRONIZAR_TEMPLATES");
+        const lote = Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data?.items)
+            ? data.items
+            : [];
+        itens.push(...lote);
+
+        const next = data?.paging?.next;
+        if (typeof next === "string" && /^https?:\/\//i.test(next)) {
+          // Graph API clássica: a próxima página vem como URL pronta.
+          proxima = next;
+          cursor = null;
+          continue;
+        }
+        const after = data?.paging?.cursors?.after ?? (typeof next === "string" ? next : null);
+        if (after && lote.length) {
+          // Graph API nova: a paginação é por cursor.
+          cursor = String(after);
+          proxima = null;
+          continue;
+        }
+        break;
       }
-      const statusMeta = normalizarStatusTemplate(t?.status);
-      if (!statusMeta) {
-        // Gravar sem status deixaria o template em PENDING (default da coluna)
-        // — exatamente o sintoma de "está aprovado na Meta e o sistema não
-        // mostra". Melhor recusar a linha e dizer o motivo do que gravar um
-        // estado errado que ninguém consegue explicar depois.
-        falhas.push({
-          nome,
-          erro: `A Meta não devolveu o status deste template (recebido: ${JSON.stringify(
-            t?.status ?? null,
-          )}).`,
-        });
-        continue;
-      }
-      porStatus[statusMeta] = (porStatus[statusMeta] ?? 0) + 1;
-      try {
-        await upsertTemplateDaMeta(t, nome);
-        salvos++;
-      } catch (e: any) {
-        // Esta mensagem vai direto para o relatório de sincronização que o
-        // admin lê na tela — precisa ser a causa real, não "Failed query: ...".
-        const motivo = mensagemErroPostgres(e);
-        console.warn(`[Meta] falha ao gravar o template "${nome}" na sincronização:`, motivo);
-        falhas.push({ nome, erro: motivo.slice(0, 300) });
-      }
+      return itens;
+    };
+
+    try {
+      return await paginar(`${waba}/message_templates?fields=${campos}`);
+    } catch (e: any) {
+      // Versões antigas do Graph API recusam `fields` neste edge. A listagem
+      // sem o parâmetro funciona em todas — é o que a Meta devolve por padrão.
+      // A recusa já ficou registrada no log pelo fetchMeta; aqui só se refaz a
+      // chamada simples para não perder a sincronização por causa do campo.
+      console.warn(
+        "[Meta] listagem com `fields` recusada, refazendo sem os campos:",
+        mensagemErroPostgres(e),
+      );
+      return await paginar(`${waba}/message_templates`);
     }
-
-    console.info(
-      `[Meta] sincronização de templates: ${templates.length} lidos, ${salvos} gravados ` +
-        `(${Object.entries(porStatus)
-          .map(([s, n]) => `${s}: ${n}`)
-          .join(", ")}), ${falhas.length} falharam.`,
-    );
-
-    return { lidos: templates.length, salvos, falhas, porStatus };
   }
 
   async criarTemplate(template: any) {

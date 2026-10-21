@@ -70,7 +70,11 @@ function resumir(valor: unknown, limite = 8000): string | null {
   }
   if (!texto || texto === "null") return null;
   if (texto.length <= limite) return texto;
-  const cortado = texto.slice(0, limite);
+  // O corte não pode cair no meio de um par substituto (emoji): o caractere
+  // órfão vira UTF-8 inválido e o Postgres recusa o INSERT do log com
+  // "invalid byte sequence for encoding UTF8" — a linha do log era perdida.
+  let cortado = texto.slice(0, limite);
+  if (/[�-�]$/.test(cortado)) cortado = cortado.slice(0, -1);
   return JSON.stringify({ truncado: true, previa: cortado });
 }
 
