@@ -158,7 +158,12 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
   .validator((data: any) =>
     z
       .object({
-        nome: z.string().min(1),
+        // Nome é opcional no validador: o handler preenche "Campanha <data>"
+        // quando vem vazio. O `min(1)` barrava antes disso com "too_small" no
+        // path ["nome"] em todo caminho do wizard que não passa por um campo de
+        // nome — o atalho "Usar em campanha" (segmento) entra direto na etapa
+        // de ritmo e mandava nome em branco.
+        nome: z.string().trim().max(200).optional().nullable(),
         // Template é opcional: campanha de texto livre (ou de grupos Uazapi)
         // não passa pela Meta e pode nascer sem template nenhum.
         template_id: z.string().uuid().optional().or(z.literal("")).nullable(),
