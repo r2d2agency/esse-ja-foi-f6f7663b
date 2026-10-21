@@ -36,20 +36,14 @@ export type OperacaoMeta =
   | "UPLOAD_MIDIA"
   | string;
 
-const ROTULO_OPERACAO: Record<string, string> = {
-  TESTAR_CONEXAO: "Teste de conexão",
-  SINCRONIZAR_TEMPLATES: "Sincronização de templates",
-  CRIAR_TEMPLATE: "Criação de template",
-  EXCLUIR_TEMPLATE: "Exclusão de template",
-  ENVIAR_TESTE: "Envio de teste",
-  DISPARO_CAMPANHA: "Disparo de campanha",
-  BUSCAR_DADOS: "Consulta de dados do número",
-  WEBHOOK: "Evento recebido da Meta",
-  ENVIAR_MENSAGEM_ATENDENTE: "Envio do atendente",
-  UPLOAD_MIDIA: "Upload de mídia",
-  DIAGNOSTICO: "Diagnóstico do sistema",
-  INICIALIZACAO: "Inicialização do servidor",
-};
+/**
+ * O mapa de rótulos vive em `src/lib/rotulos-log.ts` e é reexportado aqui:
+ * a tela de logs roda no cliente e não pode importar este arquivo — ele
+ * puxa o acesso ao banco para o bundle do navegador. Os dois pontos usam o
+ * MESMO mapa, então o rótulo nunca diverge entre o que é gravado e o que
+ * aparece na tela.
+ */
+export { rotuloOperacao } from "@/lib/rotulos-log";
 
 /**
  * `payload` guarda até 8 KB do corpo. A Meta devolve a mensagem inteira em
@@ -76,10 +70,6 @@ function resumir(valor: unknown, limite = 8000): string | null {
   let cortado = texto.slice(0, limite);
   if (/[�-�]$/.test(cortado)) cortado = cortado.slice(0, -1);
   return JSON.stringify({ truncado: true, previa: cortado });
-}
-
-export function rotuloOperacao(operacao: string): string {
-  return ROTULO_OPERACAO[operacao] || operacao;
 }
 
 export async function registrarLogMeta(params: {

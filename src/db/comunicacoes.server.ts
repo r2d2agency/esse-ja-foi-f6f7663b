@@ -696,11 +696,22 @@ export async function updateWhatsappConfig(config: any) {
   return { ok: true };
 }
 
+/**
+ * Remove o registro local do template.
+ *
+ * A comparação é por `lower(trim(meta_name))`, e não pelo texto exato: a
+ * sincronização grava o nome como a Meta devolve, e o wizard do admin grava
+ * com a grafia que o usuário digitou. Com o nome exato, um template que
+ * diferisse só em caixa ou espaço sobrava na tela depois de uma exclusão
+ * "certa" na Meta — o admin via o erro "Invalid parameter" e o template
+ * continuava listado.
+ */
 export async function excluirTemplateLocal(metaName: string) {
   const d = requireDb();
   await garantirTabelas();
   const res = await d.execute(sql`
-    DELETE FROM whatsapp_templates WHERE meta_name = ${metaName}
+    DELETE FROM whatsapp_templates
+    WHERE lower(trim(meta_name)) = lower(trim(${metaName}))
     RETURNING id
   `);
   return { ok: true, removido: (rowsOf(res) as any[]).length > 0 };

@@ -103,6 +103,11 @@ import {
   templateAprovado,
   campanhaTemplateIndisponivel,
 } from "@/db/whatsapp-status";
+// Rótulo legível da operação: a tela mostrava o código cru
+// (SINCRONIZAR_TEMPLATES, TESTAR_CONEXAO...), que o admin não consegue
+// ligar ao que aconteceu. `rotuloOperacao` traduz; se a operação for nova e
+// ainda não estiver no mapa, devolve o próprio código em vez de esconder.
+import { rotuloOperacao } from "@/lib/rotulos-log";
 import {
   listarAutomacoesFn,
   salvarAutomacaoFn,
@@ -1237,7 +1242,13 @@ function ComunicacoesPage() {
   const handleExcluirTemplate = async () => {
     if (!templateParaExcluir) return;
     const res: any = await excluirTemplate({
-      data: { meta_name: templateParaExcluir.meta_name },
+      data: {
+        meta_name: templateParaExcluir.meta_name,
+        // O id que a Meta devolveu: sem ele a exclusão depende só do nome, e
+        // um nome com diferença de caixa/espaços faz a API recusar com
+        // "Invalid parameter".
+        meta_id: templateParaExcluir.meta_id ?? null,
+      },
     }).catch((e: any) => ({ ok: false, error: e?.message || String(e) }));
     if (res?.ok) {
       toast.success(
@@ -4198,7 +4209,7 @@ function ComunicacoesPage() {
                         </Badge>
                       </td>
                       <td className="px-4 py-3 font-medium">
-                        {log.event_type}
+                        {rotuloOperacao(log.event_type)}
                         {log.http_status != null && (
                           <span className="block font-mono text-xs text-muted-foreground">
                             HTTP {log.http_status}
@@ -4233,7 +4244,7 @@ function ComunicacoesPage() {
                             <DialogHeader>
                               <DialogTitle>Payload da chamada</DialogTitle>
                               <DialogDescription>
-                                {log.event_type} · {new Date(log.criado_em).toLocaleString("pt-BR")}
+                                {rotuloOperacao(log.event_type)} · {new Date(log.criado_em).toLocaleString("pt-BR")}
                               </DialogDescription>
                             </DialogHeader>
                             <pre className="max-h-[60vh] overflow-auto rounded-md bg-muted p-4 text-xs whitespace-pre-wrap break-all">

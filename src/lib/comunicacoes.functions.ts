@@ -725,13 +725,17 @@ export const excluirTemplateMetaFn = createServerFn({ method: "POST" })
   .validator((data: any) => {
     const nome = String(data?.meta_name || "").trim();
     if (!nome) throw new Error("Informe o nome do template a excluir.");
-    return { meta_name: nome };
+    // O `meta_id` é o identificador que a Meta devolveu. Sem ele, a exclusão
+    // depende só do nome — e um nome com diferença de caixa/espaços faz a Meta
+    // recusar com "Invalid parameter", mesmo com o template certo na tela.
+    const metaId = data?.meta_id ? String(data.meta_id).trim() : null;
+    return { meta_name: nome, meta_id: metaId };
   })
   .handler(async ({ data }) => {
     try {
       // Meta primeiro: se ela falhar, aborta e o registro local é preservado,
       // para o usuário não perder o template sem tê-lo apagado de verdade.
-      const naMeta = await metaService.excluirTemplate(data.meta_name);
+      const naMeta = await metaService.excluirTemplate(data.meta_name, data.meta_id);
       const local = await db.excluirTemplateLocal(data.meta_name);
 
       if (!local.removido && !naMeta.jaEstavaNaMeta) {

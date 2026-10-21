@@ -1133,28 +1133,99 @@ export class MetaWhatsAppService {
    * `DELETE /{waba}/message_templates?name=promocao`. Montando o nome no path a
    * API responde "Unknown path components: /promocao" e nada é apagado.
    *
+   * "Invalid parameter" é a resposta da Meta quando o `name` não é um nome
+   * válido de template (a Meta só aceita minúsculas, dígitos e `_`) OU quando o
+   * nome não existe exatamente assim na conta. O nome gravado no sistema pode
+   * ter vindo do wizard do admin (com maiúsculas ou espaços), enquanto a Meta
+   * devolve o nome já normalizado — as duas grafias não são o mesmo template
+   * para a API, e a exclusão falhava com "Invalid parameter" mesmo com o
+   * template certo na tela.
+   *
+   * Por isso a exclusão tenta, em ordem:
+   *  1. o nome como está no sistema;
+   *  2. o nome exato que a Meta devolve para aquele template (comparado por
+   *     `meta_id` e, na falta, por nome sem caixa/espaços);
+   *  3. o `id` do template (`DELETE /{template_id}`), que a Meta aceita.
+   *
    * Devolve "inexistente na Meta" em vez de lançar: quem chama trata esse caso
    * removendo só o registro local, porque o objetivo do usuário já foi atingido.
    */
-  async excluirTemplate(metaName: string) {
+  async excluirTemplate(metaName: string, metaId?: string | null) {
     await this.init();
     if (!this.config?.waba_id) throw new Error("WABA ID não configurado.");
 
-    const nome = encodeURIComponent(metaName);
+    const waba = this.config.waba_id;
+    const nomesTentados = new Set<string>();
+    let ultimoErro: any = null;
+
+    const tentar = async (nome: string) => {
+      const chave = nome.trim();
+      if (!chave || nomesTentados.has(chave)) return false;
+      nomesTentados.add(chave);
+      try {
+        await this.fetchMeta(
+          `${waba}/message_templates?name=${encodeURIComponent(chave)}`,
+          { method: "DELETE" },
+          "EXCLUIR_TEMPLATE",
+        );
+        return true;
+      } catch (e: any) {
+        ultimoErro = e;
+        return false;
+      }
+    };
+
+    // 1) O nome exato que o sistema conhece.
+    if (await tentar(metaName)) return { ok: true, jaEstavaNaMeta: false };
+
+    // 2) O nome real na Meta, encontrado pela listagem. É o que resolve o
+    //    "Invalid parameter" causado por diferença de caixa/espaços.
+    let encontrado: any = null;
     try {
-      await this.fetchMeta(
-        `${this.config.waba_id}/message_templates?name=${nome}`,
-        { method: "DELETE" },
-        "EXCLUIR_TEMPLATE",
-      );
-      return { ok: true, jaEstavaNaMeta: false };
+      const { templates } = await this.listarTemplatesDaMeta();
+      const alvo = String(metaName || "").trim().toLowerCase();
+      encontrado =
+        templates.find((t: any) => metaId && String(t?.id) === String(metaId)) ||
+        templates.find((t: any) => String(t?.name || "").trim().toLowerCase() === alvo) ||
+        null;
+      if (encontrado?.name) {
+        if (await tentar(String(encontrado.name))) return { ok: true, jaEstavaNaMeta: false };
+      }
     } catch (e: any) {
-      const msg = mensagemErroPostgres(e);
-      const naoExisteNaMeta =
-        /does not exist|not found|unsupported delete|Unknown path components/i.test(msg);
-      if (!naoExisteNaMeta) throw e;
-      return { ok: true, jaEstavaNaMeta: true };
+      // A listagem é apenas uma tentativa extra: se ela falhar, o erro original
+      // (o do DELETE) continua sendo o que interessa.
+      console.warn(
+        "[Meta] listagem de apoio para exclusão falhou:",
+        mensagemErroPostgres(e),
+      );
     }
+
+    // 3) Pelo id do template, que a Meta aceita como alvo do DELETE.
+    if (encontrado?.id) {
+      try {
+        await this.fetchMeta(
+          `${waba}/message_templates/${encodeURIComponent(String(encontrado.id))}`,
+          { method: "DELETE" },
+          "EXCLUIR_TEMPLATE",
+        );
+        return { ok: true, jaEstavaNaMeta: false };
+      } catch (e: any) {
+        ultimoErro = e;
+      }
+    }
+
+    const msg = mensagemErroPostgres(ultimoErro);
+    const naoExisteNaMeta =
+      /does not exist|not found|unsupported delete|Unknown path components/i.test(msg);
+    if (naoExisteNaMeta) return { ok: true, jaEstavaNaMeta: true };
+
+    // A Meta recusou de forma que não dá para saber se o template existe.
+    // O nome exato que ela devolveu (quando existe) é a informação útil:
+    // sem ela, o admin só vê "Invalid parameter" e não sabe o que corrigir.
+    const dica = encontrado?.name
+      ? ` O template existe na Meta com o nome "${encontrado.name}" — a exclusão automática não conseguiu usá-lo.`
+      : "";
+    throw new Error(`${msg}${dica}`);
   }
 
   /**
