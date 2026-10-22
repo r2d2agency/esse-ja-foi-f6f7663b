@@ -288,14 +288,31 @@ function componenteBotao(botao: any, posicao: number, valores: Record<string, st
     };
   }
   // Formato do wizard: { type: "URL", url: "https://...{{7}}" }
-  const url = String(botao?.url || "");
+  const tipo = String(botao?.type || "").toUpperCase();
+  const url = String(botao?.url || botao?.phone_number || "");
   if (!url) return null;
   const indice = Number.isInteger(botao?.index) ? botao.index : posicao;
+
+  // Botão de telefone: o número vai como parâmetro de texto.
+  if (tipo === "PHONE_NUMBER") {
+    return {
+      type: "button",
+      sub_type: "phone_number",
+      index: indice,
+      parameters: [{ type: "text", text: url }],
+    };
+  }
+
   // Botão de URL estática (sem {{n}}) não leva componente algum no envio: a
   // Meta rejeita `parameters: []` com 132018 "Button does not require
   // parameters". Só manda componente quando há {{n}} na URL para preencher.
   // (erro 132018 — o payload antigo mandava `"parameters": []` no botão)
-  if (!maiorPlaceholder(url)) return null;
+  //
+  // Mas o botão não pode SUMIR: sem ele o envio não casa com o template
+  // aprovado e a Meta responde 132012. O componente vai sem `parameters`.
+  if (!maiorPlaceholder(url)) {
+    return { type: "button", sub_type: "url", index: indice };
+  }
   const substitutos = parametersPara(url, valores, `botão de link ${posicao + 1}`);
   const urlResolvida = url.replace(/\{\{(\d+)\}\}/g, (_m, n) => {
     const p = substitutos[Number(n) - 1];
@@ -571,20 +588,56 @@ export class MetaWhatsAppService {
     // Parameters vazios viram poluição no JSON; a Meta exige array não-vazio.
     return ordenados
       .map((c) => {
+        const tipo = String(c?.type || "").toUpperCase();
+
         if (c?.parameters?.length === 0) {
           const { parameters, ...semParameters } = c;
-          return semParameters;
+          c = semParameters;
         }
-        if (c?.type === "HEADER" && String(c?.format || "").toUpperCase() !== "TEXT") {
-          const { parameters, ...semParameters } = c;
+
+        if (tipo === "HEADER") {
+          const formato = String(c?.format || "TEXT").toUpperCase();
+          if (formato !== "TEXT") {
+            const { parameters, ...semParameters } = c;
+            return {
+              type: "HEADER",
+              format: formato,
+              // O exemplo do anexo é obrigatório na criação. Sem ele a Meta
+              // recusa com 2388273.
+              ...(id ? { example: { header_handle: [id] } } : {}),
+            };
+          }
+          // HEADER de texto: a Meta espera `format` explícito. Sem ele a
+          // criação volta com "invalid parameter".
+          return { type: "HEADER", format: "TEXT", text: String(c?.text || "").trim() };
+        }
+
+        if (tipo === "BODY") {
+          const texto = String(c?.text ?? c?.parameters?.[0]?.text ?? "");
+          // A Meta exige um EXEMPLO de cada variável do corpo. Sem `example`
+          // a criação é recusada com "invalid parameter" — é a causa mais
+          // comum de template com {{n}} não passar.
+          const variaveis = [...texto.matchAll(/\{\{(\d+)\}\}/g)].map((m) => Number(m[1]));
+          if (!variaveis.length) return { type: "BODY", text: texto.trim() };
+          const maximo = Math.max(...variaveis);
+          const exemplos = Array.from({ length: maximo }, (_v, i) => `exemplo ${i + 1}`);
+          return { type: "BODY", text: texto.trim(), example: { body_text: [exemplos] } };
+        }
+
+        if (tipo === "FOOTER") {
+          return { type: "FOOTER", text: String(c?.text ?? c?.parameters?.[0]?.text ?? "").trim() };
+        }
+
+        if (tipo === "BUTTONS") {
+          const botoes = Array.isArray(c?.buttons) ? c.buttons : [];
           return {
-            ...semParameters,
-            text: "",
-            // O exemplo do anexo é obrigatório na criação. Sem ele a Meta
-            // recusa com 2388273.
-            ...(id ? { example: { header_handle: [id] } } : {}),
+            type: "BUTTONS",
+            buttons: botoes
+              .map((b: any) => this.normalizarBotao(b))
+              .filter(Boolean),
           };
         }
+
         return c;
       })
       .filter((c) => {
@@ -600,6 +653,49 @@ export class MetaWhatsAppService {
         if (c?.type === "BUTTONS") return Boolean(c.buttons?.length);
         return true;
       });
+  }
+
+  /**
+   * Botão no formato de CRIAÇÃO da Meta.
+   *
+   * A Meta distingue o botão de criação (`type: "URL"`, com `text` e `url`)
+   * do botão de envio (`type: "button"`, com `sub_type` e `parameters`). O
+   * wizard usava o formato de envio e a API recusava com "invalid parameter".
+   *
+   * Botão de URL com variável precisa de `example` (uma URL de amostra) — sem
+   * ele a Meta recusa a criação.
+   */
+  private normalizarBotao(botao: any): any | null {
+    const tipo = String(botao?.type || "").toUpperCase();
+    const texto = String(botao?.text || "").trim();
+    if (!texto) return null;
+
+    if (tipo === "URL" || tipo === "PHONE_NUMBER") {
+      const valor = String(botao?.url || botao?.phone_number || "").trim();
+      if (!valor) return null;
+      // A Meta usa campos diferentes para cada tipo: `url` no botão de site e
+      // `phone_number` no botão de telefone. Mandar `url` no botão de
+      // telefone é recusado com "invalid parameter".
+      if (tipo === "PHONE_NUMBER") {
+        return { type: "PHONE_NUMBER", text: texto, phone_number: valor };
+      }
+      const temVariavel = /\{\{\d+\}\}/.test(valor);
+      const exemplo = temVariavel
+        ? [valor.replace(/\{\{(\d+)\}\}/g, (_m, n) => String(Number(n)))]
+        : undefined;
+      return {
+        type: "URL",
+        text: texto,
+        url: valor,
+        ...(exemplo ? { example: exemplo } : {}),
+      };
+    }
+
+    if (tipo === "QUICK_REPLY") {
+      return { type: "QUICK_REPLY", text: texto };
+    }
+
+    return null;
   }
 
   /**
@@ -1140,7 +1236,21 @@ export class MetaWhatsAppService {
 
     const registrar = (item: any) => {
       const chave = String(item?.id || `${item?.name}|${item?.language}`);
-      if (!vistos.has(chave)) vistos.set(chave, item);
+      const existente = vistos.get(chave);
+      // A listagem mais simples vem primeiro e devolve o template "pelado".
+      // A listagem com `fields` traz `status` e `components` — e é ela que
+      // permite gravar o template. Antes, a primeira passagem ficava no mapa e
+      // as demais eram descartadas, então o template chegava ao banco sem
+      // status (e ia para a fila de falhas) e sem o conteúdo.
+      //
+      // A regra agora é: o que tem mais informação ganha. O que já está no
+      // mapa nunca é sobrescrito por um item mais pobre.
+      if (!existente) {
+        vistos.set(chave, item);
+        return;
+      }
+      const completo = (t: any) => Boolean(t?.status) && Array.isArray(t?.components);
+      if (completo(item) && !completo(existente)) vistos.set(chave, item);
     };
 
     /**
@@ -1180,14 +1290,19 @@ export class MetaWhatsAppService {
     /**
      * Ângulos de listagem, em ordem de confiança.
      *
-     * A listagem simples é a primeira de propósito: é a forma que nenhuma
+     * A listagem que pede `fields` vem PRIMEIRA de propósito: é a única que
+     * traz `status` e `components` juntos, e sem os dois o template não pode
+     * ser gravado (sem status ia para a fila de falhas; sem components
+     * gravava um template sem corpo, que a Meta recusa no envio com 132012).
+     *
+     * A listagem simples vem depois, como reserva: é a forma que nenhuma
      * versão do Graph API recusa. As demais tentam trazer mais coisa (mais
      * itens por página, `status` explícito, recorte por status) e uma recusa
      * delas não pode derrubar a sincronização.
      */
     const alvos: string[] = [
-      `${waba}/message_templates?limit=1000`,
       `${waba}/message_templates?fields=${campos}&limit=1000`,
+      `${waba}/message_templates?limit=1000`,
       `${waba}/message_templates`,
       `${waba}/message_templates?fields=${campos}`,
       ...STATUS_PARA_BUSCAR.flatMap((s) => [

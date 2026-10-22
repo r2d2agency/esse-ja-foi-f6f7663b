@@ -3848,33 +3848,123 @@ function ComunicacoesPage() {
                     )}
 
                     {wizardStep === 6 && (
-                      <div className="space-y-6">
-                        <Label>Botões de Ação</Label>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="border rounded-lg p-4 opacity-50 grayscale cursor-not-allowed">
-                            <h4 className="font-semibold flex items-center gap-2">
-                              <ChevronRight className="w-4 h-4" />
-                              Resposta Rápida
-                            </h4>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Até 3 botões de texto.
-                            </p>
-                          </div>
-                          <div className="border rounded-lg p-4 opacity-50 grayscale cursor-not-allowed">
-                            <h4 className="font-semibold flex items-center gap-2">
-                              <Globe className="w-4 h-4" />
-                              Call to Action
-                            </h4>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Botão para Site ou Telefone.
-                            </p>
-                          </div>
-                        </div>
-                        <div className="p-4 bg-teal-50 dark:bg-teal-900/10 rounded-lg text-center">
-                          <p className="text-xs text-teal-700 dark:text-teal-300">
-                            Suporte a botões interativos em breve nesta versão.
-                          </p>
-                        </div>
+                      <div className="space-y-4">
+                        <Label>Botões de Ação (Opcional)</Label>
+
+                        {(() => {
+                          const botoes: any[] =
+                            newTemplate.components.find((c: any) => c.type === "BUTTONS")
+                              ?.buttons ?? [];
+                          const setBotoes = (novos: any[]) => {
+                            const comps = newTemplate.components.filter(
+                              (c: any) => c.type !== "BUTTONS",
+                            );
+                            if (novos.length) {
+                              comps.push({ type: "BUTTONS", buttons: novos });
+                            }
+                            setNewTemplate({ ...newTemplate, components: comps });
+                          };
+
+                          return (
+                            <div className="space-y-3">
+                              {botoes.map((b: any, i: number) => (
+                                <div
+                                  key={i}
+                                  className="border rounded-lg p-3 space-y-3 bg-muted/30"
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs font-medium">
+                                      {b.type === "PHONE_NUMBER" ? "Ligar" : "Abrir site"}
+                                    </span>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7 text-destructive"
+                                      aria-label="Remover botão"
+                                      onClick={() =>
+                                        setBotoes(botoes.filter((_x, j) => j !== i))
+                                      }
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </Button>
+                                  </div>
+                                  <Input
+                                    placeholder="Texto do botão (ex: Ver veículos)"
+                                    maxLength={25}
+                                    value={b.text || ""}
+                                    onChange={(e) => {
+                                      const copia = [...botoes];
+                                      copia[i] = { ...copia[i], text: e.target.value };
+                                      setBotoes(copia);
+                                    }}
+                                  />
+                                  {b.type === "PHONE_NUMBER" ? (
+                                    <Input
+                                      placeholder="Telefone com DDD (ex: 5511999999999)"
+                                      value={b.phone_number || ""}
+                                      onChange={(e) => {
+                                        const copia = [...botoes];
+                                        copia[i] = {
+                                          ...copia[i],
+                                          phone_number: e.target.value,
+                                        };
+                                        setBotoes(copia);
+                                      }}
+                                    />
+                                  ) : (
+                                    <Input
+                                      placeholder="https://exemplo.com/veiculos"
+                                      value={b.url || ""}
+                                      onChange={(e) => {
+                                        const copia = [...botoes];
+                                        copia[i] = { ...copia[i], url: e.target.value };
+                                        setBotoes(copia);
+                                      }}
+                                    />
+                                  )}
+                                  {b.type === "URL" && (
+                                    <p className="text-[10px] text-muted-foreground">
+                                      A URL pode usar uma variável do corpo, como
+                                      {" {{1}}"} — o valor é preenchido no disparo.
+                                    </p>
+                                  )}
+                                </div>
+                              ))}
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <Button
+                                  variant="outline"
+                                  disabled={botoes.length >= 3}
+                                  onClick={() =>
+                                    setBotoes([
+                                      ...botoes,
+                                      { type: "URL", text: "", url: "" },
+                                    ])
+                                  }
+                                >
+                                  <Globe className="w-4 h-4 mr-2" /> Botão de site
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  disabled={botoes.length >= 3}
+                                  onClick={() =>
+                                    setBotoes([
+                                      ...botoes,
+                                      { type: "PHONE_NUMBER", text: "", url: "" },
+                                    ])
+                                  }
+                                >
+                                  <Smartphone className="w-4 h-4 mr-2" /> Botão de telefone
+                                </Button>
+                              </div>
+
+                              <p className="text-[10px] text-muted-foreground">
+                                A Meta aceita até 3 botões por template. Botão de resposta
+                                rápida não é suportado por aqui.
+                              </p>
+                            </div>
+                          );
+                        })()}
                       </div>
                     )}
 
