@@ -602,6 +602,36 @@ export class MetaWhatsAppService {
       });
   }
 
+  /**
+   * Grava o evento também na trilha do motor de disparo (`whatsapp_logs`).
+   *
+   * A sincronização gravava só na `whatsapp_webhook_logs`, que é a aba "Logs"
+   * geral. Mas o painel que o admin realmente usa para "o que o sistema fez"
+   * — o mesmo onde aparece o `ENVIO_TESTE` do teste de template — é o "Log de
+   * disparo (motor)", que lê a `whatsapp_logs`. Sem esta segunda gravação, a
+   * sincronização era invisível justamente onde o admin olha.
+   */
+  private async registrarTrilha(params: {
+    acao: string;
+    detalhe: string;
+    payload?: Record<string, any> | null;
+  }) {
+    try {
+      const { registrarLogCampanha } = await import("./logs-campanha.server");
+      await registrarLogCampanha({
+        campanhaId: null,
+        acao: params.acao,
+        detalhe: params.detalhe,
+        payload: params.payload ?? {},
+      });
+    } catch (e: any) {
+      console.error(
+        "[Meta] falha ao registrar o evento na trilha de disparo:",
+        mensagemErroPostgres(e),
+      );
+    }
+  }
+
   async init() {
     if (!db) return;
     // A configuração é lida pelo MESMO caminho que a tela usa (deduplica as
@@ -872,6 +902,11 @@ export class MetaWhatsAppService {
       resumo: "Iniciando a sincronização de templates com a Meta.",
       payload: null,
     });
+    await this.registrarTrilha({
+      acao: "SINCRONIZACAO",
+      detalhe: "Iniciando a sincronização de templates com a Meta.",
+      payload: { etapa: "inicio" },
+    });
 
     try {
       await this.init();
@@ -967,6 +1002,20 @@ export class MetaWhatsAppService {
           `${salvos} gravados, ${falhas.length} falha(s).`,
         payload: { porStatus, falhas, totalMeta, passagens },
       });
+      await this.registrarTrilha({
+        acao: falhas.length ? "ERRO" : "SINCRONIZACAO",
+        detalhe:
+          `Sincronização concluída: ${templates.length} lidos da Meta ` +
+          `(a Meta informa ${totalMeta ?? "?"} no total), ` +
+          `${salvos} gravados, ${falhas.length} falha(s).` +
+          (falhas.length
+            ? ` Primeiras falhas: ${falhas
+                .slice(0, 3)
+                .map((f) => `${f.nome} — ${f.erro}`)
+                .join(" | ")}`
+            : ""),
+        payload: { porStatus, falhas, totalMeta, passagens },
+      });
 
       return { lidos: templates.length, salvos, falhas, porStatus, totalMeta, passagens };
     } catch (error: any) {
@@ -980,6 +1029,11 @@ export class MetaWhatsAppService {
         status: "ERRO",
         resumo: `Falha na sincronização de templates: ${motivo.slice(0, 500)}`,
         payload: null,
+      });
+      await this.registrarTrilha({
+        acao: "ERRO",
+        detalhe: `Falha na sincronização de templates: ${motivo.slice(0, 500)}`,
+        payload: { etapa: "erro" },
       });
       throw error;
     }
@@ -1199,8 +1253,86 @@ export class MetaWhatsAppService {
     // A Meta devolve o `id` do template criado. Se a resposta vier sem `id`
     // (o Graph API nem sempre o inclui), o template JÁ EXISTE na Meta — e não
     // gravá-lo localmente deixaria o usuário sem nenhuma pista na tela, com o
-    // template órfão do lado da Meta. Grava de qualquer forma: o nome
-    // (`meta_name`) é a chave, e a sincronização preenche o `meta_id` depois.
+    // template órfão do lado da Meta.
+    //
+    // Mas o sintoma reportado era o contrário: o template aparecia na
+    // plataforma e NÃO na Meta. Sem `id` na resposta não dá para afirmar que
+    // a criação aconteceu — a API pode ter aceitado a chamada e não ter
+    // criado nada. Por isso a criação é CONFIRMADA na listagem: uma chamada
+    // só, filtrando pelo nome.
+    let idConfirmado: string | null = data?.id ?? null;
+    let statusConfirmado: string | null = null;
+    // `conferenciaDeuCerto` separa "a listagem rodou e o template não está
+    // nela" (o template NÃO foi criado) de "a listagem falhou" (não se pode
+    // afirmar nada). No segundo caso não se pode recusar a criação — seria
+    // reprovar um template que a Meta provavelmente criou.
+    let conferenciaDeuCerto = false;
+    if (!idConfirmado) {
+      try {
+        const conferencia: any = await this.fetchMeta(
+          `${this.config.waba_id}/message_templates?fields=id,name,status&limit=1000`,
+          {},
+          "VERIFICAR_TEMPLATE",
+        );
+        const lista = Array.isArray(conferencia?.data) ? conferencia.data : [];
+        // Uma listagem vazia sem erro também não prova nada: pode ser que a
+        // listagem esteja escopada. Só a ausência com a lista cheia é prova.
+        if (lista.length > 0) conferenciaDeuCerto = true;
+        const achado = lista.find(
+          (t: any) =>
+            String(t?.name || "").trim().toLowerCase() === String(template.name).trim().toLowerCase(),
+        );
+        if (achado?.id) {
+          idConfirmado = String(achado.id);
+          statusConfirmado = normalizarStatusTemplate(achado?.status);
+        }
+      } catch (e: any) {
+        console.warn(
+          "[Meta] não foi possível confirmar a criação do template:",
+          mensagemErroPostgres(e),
+        );
+      }
+    }
+
+    if (!idConfirmado && conferenciaDeuCerto) {
+      // A Meta aceitou a chamada, mas o template não aparece na listagem: ele
+      // não foi criado. Gravar localmente mentiria — a tela mostraria um
+      // template que não existe na Meta, e a campanha tentaria usá-lo.
+      const aviso =
+        `A Meta aceitou a criação do template "${template.name}", mas ele não aparece ` +
+        `na listagem de templates da conta — ou seja, NÃO foi criado na Meta. ` +
+        `Isso costuma acontecer quando o template já existe com esse nome ou quando ` +
+        `o token não tem permissão de criação nessa WABA.`;
+      await this.registrarTrilha({
+        acao: "ERRO",
+        detalhe: aviso,
+        payload: { nome: template.name, etapa: "criacao_nao_confirmada" },
+      });
+      throw new Error(aviso);
+    }
+
+    // A trilha do motor de disparo é onde o admin olha ("o que o sistema fez
+    // com a minha mensagem"). Sem esta linha, criar template não deixava
+    // rastro nenhum — e a falha "criou aqui mas não na Meta" não tinha onde
+    // aparecer.
+    await this.registrarTrilha({
+      acao: "CRIACAO_TEMPLATE",
+      detalhe:
+        `Template "${template.name}" criado na Meta e enviado para análise. ` +
+        `Id na Meta: ${idConfirmado}` +
+        (statusConfirmado ? ` Status: ${statusConfirmado}.` : ""),
+      payload: {
+        nome: template.name,
+        categoria: template.category,
+        meta_id: idConfirmado,
+        status: statusConfirmado,
+      },
+    });
+
+    // O `meta_id` gravado é o CONFIRMADO. Gravar o `data.id` quando ele não
+    // bate com o que está na Meta deixaria o sistema apontando para um id que
+    // não existe — e a verificação "o template ainda existe na Meta" passaria
+    // a errar em tudo.
     if (db) {
       // Mesmo motivo da sincronização: `ON CONFLICT (meta_name)` exige
       // restrição UNIQUE que bancos antigos não têm. UPDATE + INSERT funciona
@@ -1209,7 +1341,7 @@ export class MetaWhatsAppService {
       const atualizado = await db.execute(sql`
         UPDATE whatsapp_templates SET
           status = 'PENDING',
-          meta_id = COALESCE(${data?.id ?? null}, meta_id),
+          meta_id = COALESCE(${idConfirmado ?? null}, meta_id),
           ultima_sincronizacao = now()
         WHERE meta_name = ${nome}
         RETURNING id
@@ -1232,7 +1364,7 @@ export class MetaWhatsAppService {
             ultima_sincronizacao
           )
           VALUES (
-            ${data?.id ?? null},
+            ${idConfirmado ?? null},
             ${template.nome_interno || template.name},
             ${template.name},
             ${template.category},
@@ -1249,7 +1381,7 @@ export class MetaWhatsAppService {
       }
     }
 
-    return { ...data, ok: true, id: data?.id ?? null, nome: template.name };
+    return { ...data, ok: true, id: idConfirmado, nome: template.name };
   }
 
   /**
@@ -1292,6 +1424,11 @@ export class MetaWhatsAppService {
           { method: "DELETE" },
           "EXCLUIR_TEMPLATE",
         );
+        await this.registrarTrilha({
+          acao: "EXCLUSAO_TEMPLATE",
+          detalhe: `Template "${chave}" excluído na Meta pelo nome.`,
+          payload: { nome: chave, via: "nome" },
+        });
         return true;
       } catch (e: any) {
         ultimoErro = e;
@@ -1336,6 +1473,11 @@ export class MetaWhatsAppService {
           { method: "DELETE" },
           "EXCLUIR_TEMPLATE",
         );
+        await this.registrarTrilha({
+          acao: "EXCLUSAO_TEMPLATE",
+          detalhe: `Template "${metaName}" excluído na Meta pelo id ${encontrado.id}.`,
+          payload: { nome: metaName, meta_id: encontrado.id, via: "id" },
+        });
         return { ok: true, jaEstavaNaMeta: false };
       } catch (e: any) {
         ultimoErro = e;
@@ -1354,6 +1496,13 @@ export class MetaWhatsAppService {
     // que ele não está mais na listagem.
     const aindaExiste = await this.templateAindaNaMeta(metaName, metaId, encontrado);
     if (aindaExiste === true) {
+      await this.registrarTrilha({
+        acao: "ERRO",
+        detalhe:
+          `Falha ao excluir o template "${metaName}": ${msg} ` +
+          `O template continua existindo na Meta — ele não foi apagado de lá.`,
+        payload: { nome: metaName, erro: msg.slice(0, 500) },
+      });
       throw new Error(
         `${msg} O template continua existindo na Meta — ele não foi apagado de lá. ` +
           `Verifique o nome e as permissões do token, ou exclua pela WhatsApp Manager.`,

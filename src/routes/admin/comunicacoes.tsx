@@ -341,9 +341,46 @@ function varianteStatusCampanha(status: string): any {
 /** Cor do evento na trilha do motor de disparo. */
 function varianteAcaoDisparo(acao: string): any {
   if (acao === "ERRO" || acao === "BLOQUEADA") return "destructive";
-  if (acao === "LOTE_ENVIADO" || acao === "CONCLUIDA" || acao === "ENVIO_TESTE") return "success";
+  if (
+    acao === "LOTE_ENVIADO" ||
+    acao === "CONCLUIDA" ||
+    acao === "ENVIO_TESTE" ||
+    acao === "SINCRONIZACAO" ||
+    acao === "CRIACAO_TEMPLATE" ||
+    acao === "EXCLUSAO_TEMPLATE"
+  )
+    return "success";
   if (acao === "DISPARO_FORCADO" || acao === "PROMOCAO_STATUS") return "warning";
   return "secondary";
+}
+
+/**
+ * Rótulo legível das ações da trilha do motor.
+ *
+ * As ações novas (sincronização, criação e exclusão de template) são
+ * gravadas com o nome técnico; sem esta tradução a tela mostra
+ * "SINCRONIZACAO" cru e o admin não entende o que aconteceu.
+ */
+function rotuloAcaoDisparo(acao: string): string {
+  const mapa: Record<string, string> = {
+    SINCRONIZACAO: "Sincronização de templates",
+    CRIACAO_TEMPLATE: "Criação de template",
+    EXCLUSAO_TEMPLATE: "Exclusão de template",
+    ENVIO_TESTE: "Teste de template",
+    LOTE_ENVIADO: "Lote enviado",
+    FILA_MONTADA: "Fila montada",
+    FILA_VAZIA: "Fila vazia",
+    FORA_DA_JANELA: "Fora da janela",
+    AGUARDANDO_INTERVALO: "Aguardando intervalo",
+    BLOQUEADA: "Bloqueada",
+    CONCLUIDA: "Concluída",
+    DISPARO_FORCADO: "Disparo forçado",
+    REAGENDADA: "Reagendada",
+    PROMOCAO_STATUS: "Promoção de status",
+    CRIADA: "Criada",
+    ERRO: "Erro",
+  };
+  return mapa[acao] || acao;
 }
 
 /** Texto → CSV, escapando o separador e aspas. */
@@ -1518,7 +1555,11 @@ function ComunicacoesPage() {
     toast.promise(criarTemplate({ data: newTemplate }), {
       loading: "Enviando para análise da Meta...",
       success: (res: any) => {
-        if (res.id) {
+        // O servidor só devolve `id` quando a criação foi CONFIRMADA na Meta.
+        // Sem a confirmação, o servidor devolve `{ok:false, error}` com o
+        // motivo — e o template não é gravado aqui, para não existir na
+        // plataforma sem existir na Meta.
+        if (res?.ok && res?.id) {
           setIsWizardOpen(false);
           setWizardStep(1);
           setNewTemplate({
@@ -1533,11 +1574,16 @@ function ComunicacoesPage() {
           });
           setMidiaTemplate(null);
           queryClient.invalidateQueries({ queryKey: ["wa-templates"] });
-          return "Template criado e enviado para análise!";
+          queryClient.invalidateQueries({ queryKey: ["wa-logs-disparo"] });
+          queryClient.invalidateQueries({ queryKey: ["wa-logs"] });
+          return "Template criado na Meta e enviado para análise!";
         }
-        throw new Error(res.error || "Erro ao criar template");
+        throw new Error(res?.error || "Erro ao criar template");
       },
-      error: (err) => `Falha: ${err.message}`,
+      error: (err) => {
+        queryClient.invalidateQueries({ queryKey: ["wa-logs-disparo"] });
+        return `Falha: ${err.message}`;
+      },
     });
   };
 
@@ -4337,7 +4383,7 @@ function ComunicacoesPage() {
                         </td>
                         <td className="px-3 py-2">
                           <Badge variant={varianteAcaoDisparo(log.acao)}>
-                            {log.acao}
+                            {rotuloAcaoDisparo(log.acao)}
                           </Badge>
                           {log.em_memoria && (
                             <Badge variant="outline" className="ml-1">
