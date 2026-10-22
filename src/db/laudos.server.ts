@@ -410,13 +410,13 @@ export async function registrarDivergenciaPlaca(input: { agendamentoId: string; 
     DO $$
     BEGIN
       IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'notificacoes') THEN
-        -- Dentro do bloco DO as aspas simples precisam ser dobradas (''X'').
+        -- Dentro do bloco DO (dollar-quoting) a aspa simples vale como está.
         CREATE TABLE notificacoes (
           id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
           destinatario_id uuid REFERENCES profiles(id),
           titulo text NOT NULL,
           mensagem text NOT NULL,
-          tipo text DEFAULT ''GERAL'',
+          tipo text DEFAULT 'GERAL',
           lida boolean DEFAULT false,
           criado_em timestamptz DEFAULT now()
         );
@@ -529,13 +529,13 @@ export async function enviarLaudo(input: { laudoId: string; vistoriadorId?: stri
     DO $$
     BEGIN
       IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'notificacoes') THEN
-        -- Dentro do bloco DO as aspas simples precisam ser dobradas (''X'').
+        -- Dentro do bloco DO (dollar-quoting) a aspa simples vale como está.
         CREATE TABLE notificacoes (
           id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
           destinatario_id uuid REFERENCES profiles(id),
           titulo text NOT NULL,
           mensagem text NOT NULL,
-          tipo text DEFAULT ''GERAL'',
+          tipo text DEFAULT 'GERAL',
           lida boolean DEFAULT false,
           criado_em timestamptz DEFAULT now()
         );
@@ -609,13 +609,13 @@ export async function devolverLaudo(input: { laudoId: string; motivo: string; us
     DO $$
     BEGIN
       IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'notificacoes') THEN
-        -- Dentro do bloco DO as aspas simples precisam ser dobradas (''X'').
+        -- Dentro do bloco DO (dollar-quoting) a aspa simples vale como está.
         CREATE TABLE notificacoes (
           id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
           destinatario_id uuid REFERENCES profiles(id),
           titulo text NOT NULL,
           mensagem text NOT NULL,
-          tipo text DEFAULT ''GERAL'',
+          tipo text DEFAULT 'GERAL',
           lida boolean DEFAULT false,
           criado_em timestamptz DEFAULT now()
         );

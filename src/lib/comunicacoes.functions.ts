@@ -738,6 +738,12 @@ export const excluirTemplateMetaFn = createServerFn({ method: "POST" })
       const naMeta = await metaService.excluirTemplate(data.meta_name, data.meta_id);
       const local = await db.excluirTemplateLocal(data.meta_name);
 
+      // O banco pode recusar a exclusão (template em uso por campanha ou
+      // automação). Nesse caso a mensagem vem pronta, em português.
+      if (local.ok === false && local.erro) {
+        return { ok: false, error: local.erro };
+      }
+
       if (!local.removido && !naMeta.jaEstavaNaMeta) {
         return { ok: false, error: "Nenhum template encontrado com esse nome." };
       }

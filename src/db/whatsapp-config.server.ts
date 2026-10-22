@@ -44,7 +44,13 @@ function requireDb() {
  */
 export async function curarConfigDuplicada(d: any) {
   try {
-    await d.execute(sql`
+    // O array de colunas precisa ser literal no corpo do bloco: quando vinha
+    // interpolado (`ARRAY[$1]`), o PL/pgSQL não conseguia inferir o tipo do
+    // parâmetro e o Postgres devolvia "could not determine data type of
+    // parameter $1". Como são nomes de coluna fixos do código, montar o texto
+    // do array aqui é seguro.
+    const listaColunas = COLUNAS_CONFIG.map((c) => `'${c}'`).join(",");
+    await d.execute(sql.raw(`
       DO $$
       DECLARE
         alvo uuid;
@@ -54,7 +60,7 @@ export async function curarConfigDuplicada(d: any) {
         IF alvo IS NULL THEN RETURN; END IF;
 
         FOREACH col IN ARRAY ARRAY[
-          ${COLUNAS_CONFIG.join(",")}
+          ${listaColunas}
         ] LOOP
           EXECUTE format(
             'UPDATE whatsapp_config SET %I = COALESCE(%I, (SELECT %I FROM whatsapp_config WHERE %I IS NOT NULL AND id <> $1 LIMIT 1)) WHERE id = $1',
@@ -64,7 +70,7 @@ export async function curarConfigDuplicada(d: any) {
 
         DELETE FROM whatsapp_config WHERE id <> alvo;
       END $$;
-    `);
+    `));
   } catch (e) {
     // A causa real (SQLSTATE) vem do `.cause` do erro do Drizzle — `e.message`
     // é só "Failed query: ...".

@@ -121,8 +121,8 @@ async function notificar(tx: any, negociacaoId: string, publico: string, destina
           destinatario_id uuid REFERENCES profiles(id),
           titulo text NOT NULL,
           mensagem text NOT NULL,
-          -- Dentro do bloco DO as aspas simples precisam ser dobradas (''X'').
-          tipo text DEFAULT ''GERAL'',
+          -- Dentro do bloco DO (dollar-quoting) a aspa simples vale como está.
+          tipo text DEFAULT 'GERAL',
           lida boolean DEFAULT false,
           criado_em timestamptz DEFAULT now()
         );

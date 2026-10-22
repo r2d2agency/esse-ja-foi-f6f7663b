@@ -18,7 +18,7 @@ export async function ensureAutomacoesSchema(silent = true) {
         nome text NOT NULL,
         evento text NOT NULL, -- VEICULO_PUBLICADO, VISTORIA_AGENDADA, LANCE_SUPERADO, etc.
         publico text NOT NULL, -- VENDEDOR, COMPRADOR_VENCEDOR, COMPRADOR_PARTICIPANTE, etc.
-        template_id uuid REFERENCES whatsapp_templates(id),
+        template_id uuid REFERENCES whatsapp_templates(id) ON DELETE SET NULL,
         status text DEFAULT 'RASCUNHO', -- ATIVA, PAUSADA, RASCUNHO, COM_ERRO, TEMPLATE_INDISPONIVEL
         config_envio jsonb DEFAULT '{"momento": "IMEDIATO"}'::jsonb, -- { momento: 'IMEDIATO' | 'AGENDADO', delay_minutos: number }
         regras jsonb DEFAULT '{}'::jsonb, -- Condições extras
@@ -30,6 +30,28 @@ export async function ensureAutomacoesSchema(silent = true) {
         atualizado_em timestamptz DEFAULT now()
       );
     `);
+
+    // 1.1 Referência de template: SET NULL ao excluir.
+    // A FK original não tinha ação de delete, então excluir um template usado
+    // por uma automação quebrava com violação de chave estrangeira (SQLSTATE
+    // 23503). Recria a constraint de forma idempotente.
+    try {
+      await d.execute(sql`
+        ALTER TABLE whatsapp_automacoes
+          DROP CONSTRAINT IF EXISTS whatsapp_automacoes_template_id_fkey;
+      `);
+      await d.execute(sql`
+        ALTER TABLE whatsapp_automacoes
+          ADD CONSTRAINT whatsapp_automacoes_template_id_fkey
+          FOREIGN KEY (template_id) REFERENCES whatsapp_templates(id) ON DELETE SET NULL;
+      `);
+    } catch (e) {
+      if (process.env['NODE_ENV'] === 'development')
+        console.error(
+          "[automacoes.server] Falha ao ajustar a FK de template da automação:",
+          e,
+        );
+    }
 
     // 2. Fila de Execução de Automações (Idempotência e Histórico)
     await d.execute(sql`

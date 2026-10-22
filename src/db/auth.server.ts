@@ -102,9 +102,11 @@ export async function ensureAuthSchema(silent = true) {
     await db.execute(sql`
       DO $$ 
       BEGIN
-        -- Dentro do bloco DO toda aspa simples precisa ser dobrada (''X'').
-        IF NOT EXISTS (SELECT 1 FROM pg_type t WHERE t.typname = ''app_role'') THEN
-          CREATE TYPE app_role AS ENUM (''admin'', ''operacao'', ''vistoriador'', ''comprador'', ''vendedor'');
+        -- O corpo de um DO $$ ... $$ é dollar-quoting: o texto é repassado
+        -- literal ao Postgres, então a aspa simples do SQL vale como está.
+        -- Dobrá-la (''app_role'') produzia "syntax error at or near app_role".
+        IF NOT EXISTS (SELECT 1 FROM pg_type t WHERE t.typname = 'app_role') THEN
+          CREATE TYPE app_role AS ENUM ('admin', 'operacao', 'vistoriador', 'comprador', 'vendedor');
         ELSE
           IF NOT EXISTS (SELECT 1 FROM pg_enum e JOIN pg_type t ON e.enumtypid = t.oid WHERE t.typname = 'app_role' AND e.enumlabel = 'operacao') THEN
             ALTER TYPE app_role ADD VALUE 'operacao';
@@ -177,9 +179,9 @@ export async function ensureAuthSchema(silent = true) {
       DO $$
       BEGIN
         -- Garante todas as colunas individualmente caso a tabela já exista.
-        -- Dentro do bloco DO toda aspa simples precisa ser dobrada (''): o corpo
-        -- do bloco é uma string literal do Postgres, então 'PF'/'[]'/'PENDENTE'
-        -- chegavam como 0 aspas e o servidor devolvia "syntax error".
+        -- O corpo do bloco DO é dollar-quoting ($$ ... $$): o Postgres recebe
+        -- o texto literal, então a aspa simples do SQL vale como está.
+        -- Dobrá-la (''PF'') produzia "syntax error at or near PF".
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'cpf') THEN
           ALTER TABLE profiles ADD COLUMN cpf text;
         END IF;
@@ -187,7 +189,7 @@ export async function ensureAuthSchema(silent = true) {
           ALTER TABLE profiles ADD COLUMN cnpj text;
         END IF;
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'tipo_pessoa') THEN
-          ALTER TABLE profiles ADD COLUMN tipo_pessoa text DEFAULT ''PF'';
+          ALTER TABLE profiles ADD COLUMN tipo_pessoa text DEFAULT 'PF';
         END IF;
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'cep') THEN
           ALTER TABLE profiles ADD COLUMN cep text;
@@ -229,7 +231,7 @@ export async function ensureAuthSchema(silent = true) {
           ALTER TABLE profiles ADD COLUMN cadastro_completo boolean NOT NULL DEFAULT false;
         END IF;
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'status_compliance') THEN
-          ALTER TABLE profiles ADD COLUMN status_compliance text DEFAULT ''PENDENTE'';
+          ALTER TABLE profiles ADD COLUMN status_compliance text DEFAULT 'PENDENTE';
         END IF;
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'responsavel_nome') THEN
           ALTER TABLE profiles ADD COLUMN responsavel_nome text;

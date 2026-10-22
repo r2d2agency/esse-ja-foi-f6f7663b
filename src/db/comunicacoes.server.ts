@@ -240,8 +240,9 @@ export async function ensureComunicacoesSchema(silent = true) {
             FROM whatsapp_templates dup
             JOIN whatsapp_templates k
               ON k.id = (
-                SELECT MIN(x.id) FROM whatsapp_templates x
+                SELECT x.id FROM whatsapp_templates x
                 WHERE lower(trim(x.meta_name)) = lower(trim(dup.meta_name))
+                ORDER BY x.id LIMIT 1
               )
             WHERE c.template_id = dup.id;
           END IF;
@@ -254,8 +255,9 @@ export async function ensureComunicacoesSchema(silent = true) {
             FROM whatsapp_templates dup
             JOIN whatsapp_templates k
               ON k.id = (
-                SELECT MIN(x.id) FROM whatsapp_templates x
+                SELECT x.id FROM whatsapp_templates x
                 WHERE lower(trim(x.meta_name)) = lower(trim(dup.meta_name))
+                ORDER BY x.id LIMIT 1
               )
             WHERE a.template_id = dup.id;
           END IF;
@@ -285,8 +287,9 @@ export async function ensureComunicacoesSchema(silent = true) {
         ) s
         WHERE lower(trim(k.meta_name)) = s.chave
           AND k.id = (
-            SELECT MIN(x.id) FROM whatsapp_templates x
+            SELECT x.id FROM whatsapp_templates x
             WHERE lower(trim(x.meta_name)) = s.chave
+            ORDER BY x.id LIMIT 1
           )
       `);
 
@@ -356,7 +359,7 @@ export async function ensureComunicacoesSchema(silent = true) {
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         nome text NOT NULL,
         veiculo_id uuid REFERENCES veiculos(id),
-        template_id uuid REFERENCES whatsapp_templates(id),
+        template_id uuid REFERENCES whatsapp_templates(id) ON DELETE SET NULL,
         status text DEFAULT 'RASCUNHO', -- RASCUNHO, AGENDADA, PROCESSANDO, CONCLUIDA, CANCELADA
         agendado_para timestamptz,
         iniciado_em timestamptz,
@@ -381,6 +384,29 @@ export async function ensureComunicacoesSchema(silent = true) {
         ADD COLUMN IF NOT EXISTS total_destinatarios integer DEFAULT 0,
         ADD COLUMN IF NOT EXISTS criado_por uuid REFERENCES profiles(id);
     `);
+
+    // 5.1 Referência de template: SET NULL ao excluir.
+    // A FK original não tinha ação de delete, então excluir um template usado
+    // por uma campanha quebrava com violação de chave estrangeira (SQLSTATE
+    // 23503). Recria a constraint com ON DELETE SET NULL — de forma
+    // idempotente, para valer tanto em tabelas novas quanto nas já existem.
+    try {
+      await d.execute(sql`
+        ALTER TABLE whatsapp_campanhas
+          DROP CONSTRAINT IF EXISTS whatsapp_campanhas_template_id_fkey;
+      `);
+      await d.execute(sql`
+        ALTER TABLE whatsapp_campanhas
+          ADD CONSTRAINT whatsapp_campanhas_template_id_fkey
+          FOREIGN KEY (template_id) REFERENCES whatsapp_templates(id) ON DELETE SET NULL;
+      `);
+    } catch (e) {
+      if (process.env["NODE_ENV"] === "development")
+        console.error(
+          "[comunicacoes.server] Falha ao ajustar a FK de template da campanha:",
+          mensagemErroPostgres(e),
+        );
+    }
 
     // 6. Mensagens Individuais (Fila e Histórico)
     await d.execute(sql`
@@ -616,15 +642,13 @@ export async function ensureComunicacoesSchema(silent = true) {
 
     for (const [name, type] of profileCols) {
       try {
-        // O tipo é interpolado dentro de uma string SQL, então as aspas simples
-        // do DEFAULT precisam ser dobradas — senão a string fecha antes do
-        // valor e o Postgres devolve "syntax error at or near".
-        // A troca é feita uma única vez, na hora de montar o SQL. Tentar
-        // compensar um valor já escapado (a ideia do marcador ''D'') gerava
-        // `DEFAULT ''D''PF''D''` e quebrava todas essas colunas.
-        const tipoLimpo = String(type).replace(/'/g, "''");
+        // Este SQL é enviado AVULSO (fora de bloco DO), então a aspa simples
+        // do DEFAULT vai como é: `DEFAULT 'PF'`. Dobrar a aspa aqui — como se
+        // fosse um DO $$ ... $$ — produzia `DEFAULT ''PF''`, que o Postgres
+        // lia como string vazia seguida do identificador PF e devolvia
+        // "syntax error at or near PF" a cada chamada.
         await d.execute(
-          sql.raw(`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS ${name} ${tipoLimpo};`),
+          sql.raw(`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS ${name} ${type};`),
         );
       } catch (e) {
         if (process.env["NODE_ENV"] === "development")
@@ -709,12 +733,59 @@ export async function updateWhatsappConfig(config: any) {
 export async function excluirTemplateLocal(metaName: string) {
   const d = requireDb();
   await garantirTabelas();
-  const res = await d.execute(sql`
-    DELETE FROM whatsapp_templates
-    WHERE lower(trim(meta_name)) = lower(trim(${metaName}))
-    RETURNING id
-  `);
-  return { ok: true, removido: (rowsOf(res) as any[]).length > 0 };
+
+  // Desreferencia antes de apagar: com ON DELETE SET NULL o banco já resolve,
+  // mas garantir aqui deixa o resultado explícito (e protege o caso de uma
+  // constraint antiga ainda sem a ação de delete).
+  // Cada UPDATE é tolerante: a tabela pode não existir ainda nesta base.
+  const desreferenciar = async (tabela: "whatsapp_campanhas" | "whatsapp_automacoes") => {
+    try {
+      if (tabela === "whatsapp_campanhas") {
+        await d.execute(sql`
+          UPDATE whatsapp_campanhas
+          SET template_id = NULL
+          WHERE template_id IN (
+            SELECT id FROM whatsapp_templates
+            WHERE lower(trim(meta_name)) = lower(trim(${metaName}))
+          )
+        `);
+      } else {
+        await d.execute(sql`
+          UPDATE whatsapp_automacoes
+          SET template_id = NULL
+          WHERE template_id IN (
+            SELECT id FROM whatsapp_templates
+            WHERE lower(trim(meta_name)) = lower(trim(${metaName}))
+          )
+        `);
+      }
+    } catch {
+      // Sem a tabela (ou sem a coluna) não há o que desreferenciar.
+    }
+  };
+  await desreferenciar("whatsapp_campanhas");
+  await desreferenciar("whatsapp_automacoes");
+
+  try {
+    const res = await d.execute(sql`
+      DELETE FROM whatsapp_templates
+      WHERE lower(trim(meta_name)) = lower(trim(${metaName}))
+      RETURNING id
+    `);
+    return { ok: true, removido: (rowsOf(res) as any[]).length > 0 };
+  } catch (e) {
+    // Ainda assim pode sobrar referência (outra constraint). Devolve uma
+    // mensagem em português em vez do SQLSTATE cru.
+    const msg = mensagemErroPostgres(e);
+    if (msg.includes("23503") || /foreign key/i.test(msg))
+      return {
+        ok: false,
+        removido: false,
+        erro:
+          "Este template está em uso por uma campanha ou automação e não pode ser excluído.",
+      };
+    throw e;
+  }
 }
 
 export async function listarTemplates() {
