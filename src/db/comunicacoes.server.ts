@@ -1034,9 +1034,30 @@ export async function getWebhookLogs() {
   const d = requireDb();
   await garantirTabelas();
   const res = await d.execute(sql`
-    SELECT * FROM whatsapp_webhook_logs 
-    ORDER BY criado_em DESC 
+    SELECT * FROM whatsapp_webhook_logs
+    ORDER BY criado_em DESC
     LIMIT 50
+  `);
+  return rowsOf(res) || [];
+}
+
+/**
+ * Log só da sincronização de templates.
+ *
+ * A aba "Logs" geral é dominada pelos eventos do webhook e do motor de
+ * disparo — que são dezenas de linhas por minuto. A sincronização, que roda
+ * sob demanda, ficava soterrada nela, e o admin não via a passagem que
+ * falhou. Aqui a leitura é filtrada pela própria operação, então a aba
+ * Templates mostra exatamente o que a Meta respondeu na última sincronização.
+ */
+export async function getLogsSincronizacao(operacao = "SINCRONIZAR_TEMPLATES") {
+  const d = requireDb();
+  await garantirTabelas();
+  const res = await d.execute(sql`
+    SELECT * FROM whatsapp_webhook_logs
+    WHERE event_type = ${operacao}
+    ORDER BY criado_em DESC
+    LIMIT 30
   `);
   return rowsOf(res) || [];
 }

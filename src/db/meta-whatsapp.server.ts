@@ -1324,11 +1324,15 @@ export class MetaWhatsAppService {
       );
     }
 
-    // 3) Pelo id do template, que a Meta aceita como alvo do DELETE.
+    // 3) Pelo id do template. A Meta NÃO aceita DELETE em
+    //    `/{waba}/message_templates/{id}` (esse subdicionário não existe: a
+    //    resposta é "Unknown path components: /<id>"). A exclusão por
+    //    template individual é `DELETE /{TEMPLATE_ID}` — o id, sozinho, no
+    //    caminho da raiz.
     if (encontrado?.id) {
       try {
         await this.fetchMeta(
-          `${waba}/message_templates/${encodeURIComponent(String(encontrado.id))}`,
+          `${encodeURIComponent(String(encontrado.id))}`,
           { method: "DELETE" },
           "EXCLUIR_TEMPLATE",
         );
@@ -1382,11 +1386,17 @@ export class MetaWhatsAppService {
 
     // Consulta direta pelo id: mais barata que a listagem e suficiente
     // quando a tela tem o meta_id do template.
+    //
+    // O caminho é `/{TEMPLATE_ID}` — e NÃO `/{waba}/message_templates/{id}`.
+    // Esse subdicionário não existe na API da Meta: a resposta é "Unknown
+    // path components: /<id>", que não diz nada sobre o template e fazia a
+    // verificação cair no "não deu para conferir", devolvendo um erro
+    // confuso em vez da resposta certa.
     const id = String(metaId || jaEncontrado?.id || "").trim();
     if (id) {
       try {
         await this.fetchMeta(
-          `${waba}/message_templates/${encodeURIComponent(id)}?fields=id,name,status`,
+          `${encodeURIComponent(id)}?fields=id,name,status`,
           {},
           "VERIFICAR_TEMPLATE",
         );
@@ -1394,6 +1404,7 @@ export class MetaWhatsAppService {
       } catch (e: any) {
         const m = mensagemErroPostgres(e);
         if (/does not exist|not found/i.test(m)) return false;
+        console.warn(`[Meta] consulta do template ${id} falhou:`, m);
       }
     }
 

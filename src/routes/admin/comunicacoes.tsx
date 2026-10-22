@@ -73,6 +73,7 @@ import {
   updateWhatsappConfigFn,
   gerarNovoVerifyTokenFn,
   getWebhookLogsFn,
+  getLogsSincronizacaoFn,
   buscarDadosAutomaticosFn,
   listarTemplatesFn,
   listarContatosWhatsappFn,
@@ -442,6 +443,7 @@ function ComunicacoesPage() {
   const updateConfig = useServerFn(updateWhatsappConfigFn);
   const gerarToken = useServerFn(gerarNovoVerifyTokenFn);
   const getLogs = useServerFn(getWebhookLogsFn);
+  const getLogsSincronizacao = useServerFn(getLogsSincronizacaoFn);
   const buscarDadosAutos = useServerFn(buscarDadosAutomaticosFn);
   const getTemplates = useServerFn(listarTemplatesFn);
   const listarContatosFn = useServerFn(listarContatosWhatsappFn);
@@ -659,6 +661,14 @@ function ComunicacoesPage() {
   const { data: logs } = useQuery({
     queryKey: ["wa-logs"],
     queryFn: () => getLogs(),
+  });
+
+  // Log da sincronização de templates. Fica na aba Templates (perto do botão
+  // "Sincronizar") porque é ali que o admin precisa ver o que a Meta
+  // respondeu — o log geral é inundado pelos eventos do webhook e do motor.
+  const { data: logsSincronizacao } = useQuery({
+    queryKey: ["wa-logs-sincronizacao"],
+    queryFn: () => getLogsSincronizacao(),
   });
 
   // Trilha do motor de disparo (todas as campanhas). Antes ela só aparecia
@@ -1269,6 +1279,11 @@ function ComunicacoesPage() {
       success: (res: any) => {
         if (res.ok) {
           queryClient.invalidateQueries({ queryKey: ["wa-templates"] });
+          // O log da sincronização é o registro do que a Meta respondeu: sem
+          // invalidá-lo, a aba Templates continuava mostrando o log da
+          // sincronização anterior e parecia que o botão não fazia nada.
+          queryClient.invalidateQueries({ queryKey: ["wa-logs-sincronizacao"] });
+          queryClient.invalidateQueries({ queryKey: ["wa-logs"] });
           // A contagem é o que foi REALMENTE gravado, não o que a Meta
           // devolveu: um template que falha ao salvar não pode entrar na
           // conta, senão a tela anuncia uma sincronização que não aconteceu.
@@ -1321,7 +1336,12 @@ function ComunicacoesPage() {
         }
         throw new Error(res.error);
       },
-      error: (err) => `Erro na sincronização: ${err.message}`,
+      error: (err) => {
+        // Mesmo falhando, a tentativa fica registrada no log — é justamente
+        // aí que o admin vê a resposta da Meta.
+        queryClient.invalidateQueries({ queryKey: ["wa-logs-sincronizacao"] });
+        return `Erro na sincronização: ${err.message}`;
+      },
     });
   };
 
@@ -3949,6 +3969,171 @@ function ComunicacoesPage() {
                 </tbody>
               </table>
             </div>
+          </Card>
+
+          {/* Log da sincronização. Fica NA aba Templates, ao lado do botão
+              "Sincronizar", porque é ali que o admin precisa ver por que a
+              Meta devolveu 4 aprovados e a tela mostra menos. O log geral
+              (aba Logs) mistura com os eventos do webhook e some no meio
+              deles. */}
+          <Card>
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <div>
+                  <CardTitle>Log da sincronização</CardTitle>
+                  <CardDescription>
+                    Cada tentativa de listar templates na Meta, com o total informado
+                    pela Meta, o que veio em cada chamada e o que falhou.
+                  </CardDescription>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    queryClient.invalidateQueries({ queryKey: ["wa-logs-sincronizacao"] })
+                  }
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" /> Atualizar
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="border rounded-lg overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-50 border-b">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">
+                        Data/Hora
+                      </th>
+                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">
+                        Status
+                      </th>
+                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">
+                        Resumo
+                      </th>
+                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">
+                        Chamada
+                      </th>
+                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">
+                        Detalhe
+                      </th>
+                      <th className="px-3 py-2 text-right font-medium text-muted-foreground">
+                        Payload
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {(logsSincronizacao ?? []).map((log: any) => {
+                      // O resumo da operação é gravado na coluna `erro_detalhe`
+                      // (é onde o `registrarLogMeta` guarda o texto). O payload
+                      // traz os dados estruturados da sincronização.
+                      const resumo = log?.erro_detalhe ?? null;
+                      // O payload é jsonb: o driver pode devolver o objeto já
+                      // pronto ou o texto. Nos dois casos precisa virar objeto
+                      // para o painel conseguir ler `porStatus`/`falhas`.
+                      let payload: any = log?.payload ?? null;
+                      if (typeof payload === "string") {
+                        try {
+                          payload = JSON.parse(payload);
+                        } catch {
+                          payload = null;
+                        }
+                      }
+                      const porStatus = payload?.porStatus ?? null;
+                      const totalMeta = payload?.totalMeta ?? null;
+                      const falhas = Array.isArray(payload?.falhas) ? payload.falhas : [];
+                      const passagens = Array.isArray(payload?.passagens) ? payload.passagens : [];
+                      return (
+                        <tr key={log.id} className="hover:bg-muted/30 align-top">
+                          <td className="px-3 py-2 whitespace-nowrap">
+                            {new Date(log.criado_em).toLocaleString("pt-BR")}
+                            {log.duracao_ms != null && (
+                              <span className="block text-muted-foreground">{log.duracao_ms} ms</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2">
+                            <Badge
+                              variant={
+                                log.status === "ERRO"
+                                  ? "destructive"
+                                  : log.status === "SUCESSO"
+                                    ? "success"
+                                    : "secondary"
+                              }
+                            >
+                              {log.status}
+                            </Badge>
+                            {log.http_status != null && (
+                              <span className="block font-mono text-muted-foreground mt-1">
+                                HTTP {log.http_status}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2">
+                            {totalMeta != null && (
+                              <span className="block text-muted-foreground">
+                                Meta informa: {totalMeta}
+                              </span>
+                            )}
+                            {porStatus && (
+                              <span className="block text-muted-foreground">
+                                {Object.entries(porStatus)
+                                  .map(([s, t]) => `${rotuloStatus(String(s))}: ${t}`)
+                                  .join(" · ")}
+                              </span>
+                            )}
+                            {falhas.length > 0 && (
+                              <span className="block text-destructive">
+                                {falhas.length} falha(s)
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 font-mono text-muted-foreground max-w-xs">
+                            <span className="block truncate">{log.endpoint || "—"}</span>
+                            {passagens.length > 0 && (
+                              <span className="block">
+                                {passagens.length} chamada(s) feita(s)
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-muted-foreground max-w-xs">
+                            {resumo || "—"}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button variant="ghost" size="sm">
+                                  <Search className="w-4 h-4" />
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="max-w-3xl">
+                                <DialogHeader>
+                                  <DialogTitle>Log da sincronização</DialogTitle>
+                                  <DialogDescription>
+                                    {new Date(log.criado_em).toLocaleString("pt-BR")}
+                                  </DialogDescription>
+                                </DialogHeader>
+                                <pre className="max-h-[60vh] overflow-auto rounded-md bg-muted p-4 text-xs whitespace-pre-wrap break-all">
+                                  {JSON.stringify(log.payload, null, 2)}
+                                </pre>
+                              </DialogContent>
+                            </Dialog>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {!logsSincronizacao?.length && (
+                      <tr>
+                        <td colSpan={6} className="px-3 py-10 text-center text-muted-foreground">
+                          Nenhuma sincronização registrada ainda. Aperte "Sincronizar" e o
+                          resultado de cada chamada à Meta aparece aqui.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
           </Card>
 
           <Dialog

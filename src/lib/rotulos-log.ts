@@ -9,6 +9,7 @@
 const ROTULO_OPERACAO: Record<string, string> = {
   TESTAR_CONEXAO: "Teste de conexão",
   SINCRONIZAR_TEMPLATES: "Sincronização de templates",
+  VERIFICAR_TEMPLATE: "Verificação de template",
   CRIAR_TEMPLATE: "Criação de template",
   EXCLUIR_TEMPLATE: "Exclusão de template",
   ENVIAR_TESTE: "Envio de teste",

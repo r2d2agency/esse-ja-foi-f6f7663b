@@ -561,6 +561,16 @@ export const getWebhookLogsFn = createServerFn({ method: "GET" }).handler(async 
 });
 
 /**
+ * Log da sincronização de templates, separado do log geral (que é inundado
+ * pelos eventos do webhook). É o que permite ver, na própria aba Templates,
+ * qual chamada à Meta falhou.
+ */
+export const getLogsSincronizacaoFn = createServerFn({ method: "GET" }).handler(async () => {
+  const logs = await db.getLogsSincronizacao();
+  return logs as any[];
+});
+
+/**
  * Roda o diagnóstico do WhatsApp sob demanda (botão na tela de log). O mesmo
  * diagnóstico roda no boot; aqui ele pode ser repetido depois de corrigir a
  * configuração, sem reiniciar o servidor.
