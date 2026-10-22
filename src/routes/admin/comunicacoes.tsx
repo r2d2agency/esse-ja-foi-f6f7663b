@@ -717,7 +717,12 @@ function ComunicacoesPage() {
     refetchInterval: 20_000,
   });
 
-  const { data: templates } = useQuery({
+  const {
+    data: templates,
+    error: erroTemplates,
+    isFetching: buscandoTemplates,
+    refetch: recarregarTemplates,
+  } = useQuery({
     queryKey: ["wa-templates"],
     queryFn: () => getTemplates(),
     // Sem isto a falha de banco virava uma lista vazia e silenciosa. A
@@ -3930,12 +3935,32 @@ function ComunicacoesPage() {
                 <tbody>
                   {listaTemplates.length === 0 && (
                     <tr>
-                      <td
-                        colSpan={5}
-                        className="px-4 py-8 text-center text-muted-foreground text-sm"
-                      >
-                        Nenhum template ainda. Use "Sincronizar" para trazer os que já existem na
-                        Meta, ou "Novo Template" para enviar um novo para análise.
+                      <td colSpan={5} className="px-4 py-8 text-center text-sm">
+                        {erroTemplates ? (
+                          <>
+                            <p className="text-destructive font-medium">
+                              Não foi possível carregar os templates.
+                            </p>
+                            <p className="text-muted-foreground mt-1">
+                              {String((erroTemplates as any)?.message ?? erroTemplates)}
+                            </p>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="mt-3"
+                              onClick={() => recarregarTemplates()}
+                            >
+                              <RefreshCw className="w-4 h-4 mr-2" /> Tentar de novo
+                            </Button>
+                          </>
+                        ) : buscandoTemplates ? (
+                          <span className="text-muted-foreground">Carregando templates…</span>
+                        ) : (
+                          <span className="text-muted-foreground">
+                            Nenhum template ainda. Use "Sincronizar" para trazer os que já existem
+                            na Meta, ou "Novo Template" para enviar um novo para análise.
+                          </span>
+                        )}
                       </td>
                     </tr>
                   )}

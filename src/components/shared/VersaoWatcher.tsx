@@ -70,12 +70,17 @@ export function VersaoWatcher() {
     }
     document.addEventListener("visibilitychange", aoFocar);
 
-    // Uma chamada de função do servidor (POST) devolvendo 404 é outro sintoma clássico de aba
+    // Uma chamada de função do servidor devolvendo 404 é outro sintoma clássico de aba
     // presa numa versão antiga: o bundle antigo chama um endpoint interno que o deploy novo já
     // não expõe mais desse jeito. Ao contrário do `vite:preloadError` (chunk JS faltando), esse
     // caso não dispara evento nenhum — só dá pra perceber olhando a resposta do fetch. Em vez de
     // recarregar direto (um 404 isolado pode ser legítimo, ex.: recurso realmente inexistente),
     // só verifica a versão de imediato; só recarrega se a versão realmente mudou.
+    //
+    // Serve para GET e POST: o id de uma server fn é o hash do seu código, então
+    // ele muda a cada deploy que mexe no arquivo. Um GET de leitura que devolve
+    // 404 derrubava a query inteira e a tela mostrava "nenhum template" — o
+    // admin via "não sincroniza" quando o problema era a aba velha.
     const fetchOriginal = window.fetch;
     window.fetch = async (...args) => {
       const resposta = await fetchOriginal(...args);
@@ -83,7 +88,13 @@ export function VersaoWatcher() {
         const [entrada, init] = args;
         const url = typeof entrada === "string" ? entrada : entrada instanceof URL ? entrada.href : entrada?.url;
         const metodo = (init?.method || (entrada instanceof Request ? entrada.method : "GET") || "GET").toUpperCase();
-        if (resposta.status === 404 && metodo === "POST" && url && new URL(url, window.location.origin).origin === window.location.origin) {
+        const ehServerFn = url ? url.includes("/_serverFn/") : false;
+        if (
+          resposta.status === 404 &&
+          (metodo === "POST" || ehServerFn) &&
+          url &&
+          new URL(url, window.location.origin).origin === window.location.origin
+        ) {
           void verificar();
         }
       } catch {
