@@ -61,7 +61,40 @@ async function garantirTabelas() {
   }
 }
 
+/**
+ * Janela em que o esquema já garantido é aceito sem refazer o trabalho.
+ *
+ * `ensureComunicacoesSchema` roda em quase toda função de servidor do módulo
+ * WhatsApp. Cada execução refazia a deduplicação, recriava constraints e
+ * criava índices — e duas requisições simultâneas brigavam pelo mesmo
+ * deadlock. Como o passo é idempotente e só serve para garantir que as
+ * tabelas existem, repetir a cada requisição é desperdício: 30 segundos de
+ * folga bastam.
+ */
+const INTERVALO_ENSURE_MS = 30_000;
+let ultimoEnsureConcluido = 0;
+let ensureEmVoo: Promise<void> | null = null;
+
 export async function ensureComunicacoesSchema(silent = true) {
+  // Uma execução em andamento já vai fazer o trabalho: esperar por ela evita
+  // duas deduplicações simultâneas (a origem do "deadlock detected").
+  if (ensureEmVoo) {
+    await ensureEmVoo.catch(() => undefined);
+    return;
+  }
+  if (Date.now() - ultimoEnsureConcluido < INTERVALO_ENSURE_MS) return;
+
+  const execucao = garantirEsquemaComunicacoes(silent);
+  ensureEmVoo = execucao;
+  try {
+    await execucao;
+    ultimoEnsureConcluido = Date.now();
+  } finally {
+    ensureEmVoo = null;
+  }
+}
+
+async function garantirEsquemaComunicacoes(silent = true) {
   const d = requireDb();
   if (!silent && process.env["NODE_ENV"] === "development")
     console.log("[comunicacoes.server] Garantindo tabelas de comunicação...");
@@ -78,7 +111,7 @@ export async function ensureComunicacoesSchema(silent = true) {
         app_id text,
         app_secret text, -- Manter no backend
         access_token text, -- Manter no backend
-        graph_api_version text DEFAULT 'v20.0',
+        graph_api_version text DEFAULT 'v24.0',
         webhook_verify_token text,
         status text DEFAULT 'DESCONECTADO', -- CONECTADO, DESCONECTADO, ERRO
         ultimo_teste timestamptz,
@@ -96,12 +129,27 @@ export async function ensureComunicacoesSchema(silent = true) {
         ADD COLUMN IF NOT EXISTS app_id text,
         ADD COLUMN IF NOT EXISTS app_secret text,
         ADD COLUMN IF NOT EXISTS access_token text,
-        ADD COLUMN IF NOT EXISTS graph_api_version text DEFAULT 'v20.0',
+        ADD COLUMN IF NOT EXISTS graph_api_version text DEFAULT 'v24.0',
         ADD COLUMN IF NOT EXISTS webhook_verify_token text,
         ADD COLUMN IF NOT EXISTS status text DEFAULT 'DESCONECTADO',
         ADD COLUMN IF NOT EXISTS ultimo_teste timestamptz,
         ADD COLUMN IF NOT EXISTS detalhes_erro text;
     `);
+
+    // A versão da Graph API guardada pode ter saído do ar: a Meta expira cada
+    // versão ~2 anos após o lançamento da seguinte, e a v20.0 expirou em
+    // 24/09/2026. Uma versão morta derruba TODAS as chamadas à Meta (a
+    // sincronização voltava vazia, a criação de template era recusada e a
+    // exclusão não apagava nada) sem deixar pista no sistema. Quando a
+    // versão guardada não está mais no ar, ela sobe para a atual.
+    await passoOpcional("a versão da Graph API", () =>
+      d.execute(sql`
+        UPDATE whatsapp_config
+        SET graph_api_version = 'v24.0'
+        WHERE graph_api_version IS NULL
+           OR lower(trim(graph_api_version)) NOT IN ('v26.0', 'v25.0', 'v24.0');
+      `),
+    );
 
     // 2. Logs de Webhook (Histórico de eventos recebidos da Meta)
     await d.execute(sql`
@@ -229,6 +277,26 @@ export async function ensureComunicacoesSchema(silent = true) {
       await d.execute(sql`
         DO $$
         BEGIN
+          -- Serializa a deduplicação entre requisições simultâneas.
+          -- Sem esta trava, dois processes rodavam o mesmo UPDATE em
+          -- whatsapp_campanhas ao mesmo tempo e o Postgres abortava um deles
+          -- com "deadlock detected" (while locking tuple in relation
+          -- "whatsapp_campanhas"). A trava é de transação: vale só para o
+          -- bloco e some no fim, sem estado residual.
+          PERFORM pg_advisory_xact_lock(918273646);
+
+          -- Nada a fazer quando não há duplicata: evita tomar a trava de
+          -- escrita sobre as tabelas a cada requisição.
+          IF NOT EXISTS (
+            SELECT 1 FROM whatsapp_templates a
+            JOIN whatsapp_templates b
+              ON lower(trim(a.meta_name)) = lower(trim(b.meta_name))
+             AND a.meta_name IS NOT NULL
+             AND a.id > b.id
+          ) THEN
+            RETURN;
+          END IF;
+
           -- Campanhas: um template duplicado pode estar em uso por uma campanha.
           -- Reaponta para o registro mais antigo antes de apagar o duplicado.
           -- A comparação ignora caixa e espaços nas pontas: a Meta devolve o
@@ -390,15 +458,43 @@ export async function ensureComunicacoesSchema(silent = true) {
     // por uma campanha quebrava com violação de chave estrangeira (SQLSTATE
     // 23503). Recria a constraint com ON DELETE SET NULL — de forma
     // idempotente, para valer tanto em tabelas novas quanto nas já existem.
+    //
+    // DROP e ADD precisam ser o MESMO comando: feitos em duas chamadas
+    // separadas, duas requisições simultâneas faziam as duas o DROP e as duas
+    // o ADD, e a segunda ADD falhava com 'constraint
+    // whatsapp_campanhas_template_id_fkey ... already exists' — oito vezes
+    // numa única noite. O DO $$ abaixo confere pg_constraint e só recria o
+    // que falta, dentro de uma transação (o bloco DO já é atômico).
+    //
+    // A conferência é pelo COMPORTAMENTO, não pelo nome: `confdeltype = 'n'`
+    // significa NO ACTION (a FK antiga, que não tinha ON DELETE). Se a
+    // constraint existe mas ainda está sem SET NULL, ela precisa ser trocada
+    // — e a troca só acontece com o lock da tabela, dentro do mesmo bloco.
     try {
       await d.execute(sql`
-        ALTER TABLE whatsapp_campanhas
-          DROP CONSTRAINT IF EXISTS whatsapp_campanhas_template_id_fkey;
-      `);
-      await d.execute(sql`
-        ALTER TABLE whatsapp_campanhas
-          ADD CONSTRAINT whatsapp_campanhas_template_id_fkey
-          FOREIGN KEY (template_id) REFERENCES whatsapp_templates(id) ON DELETE SET NULL;
+        DO $$
+        BEGIN
+          IF EXISTS (
+            SELECT 1 FROM pg_constraint
+            WHERE conname = 'whatsapp_campanhas_template_id_fkey'
+              AND conrelid = 'whatsapp_campanhas'::regclass
+              AND confdeltype = 'n'
+          ) THEN
+            LOCK TABLE whatsapp_campanhas IN ACCESS EXCLUSIVE MODE;
+            ALTER TABLE whatsapp_campanhas
+              DROP CONSTRAINT whatsapp_campanhas_template_id_fkey;
+          END IF;
+
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint
+            WHERE conname = 'whatsapp_campanhas_template_id_fkey'
+              AND conrelid = 'whatsapp_campanhas'::regclass
+          ) THEN
+            ALTER TABLE whatsapp_campanhas
+              ADD CONSTRAINT whatsapp_campanhas_template_id_fkey
+              FOREIGN KEY (template_id) REFERENCES whatsapp_templates(id) ON DELETE SET NULL;
+          END IF;
+        END $$;
       `);
     } catch (e) {
       if (process.env["NODE_ENV"] === "development")
@@ -740,25 +836,26 @@ export async function excluirTemplateLocal(metaName: string) {
   // Cada UPDATE é tolerante: a tabela pode não existir ainda nesta base.
   const desreferenciar = async (tabela: "whatsapp_campanhas" | "whatsapp_automacoes") => {
     try {
-      if (tabela === "whatsapp_campanhas") {
-        await d.execute(sql`
-          UPDATE whatsapp_campanhas
-          SET template_id = NULL
-          WHERE template_id IN (
-            SELECT id FROM whatsapp_templates
-            WHERE lower(trim(meta_name)) = lower(trim(${metaName}))
-          )
-        `);
-      } else {
-        await d.execute(sql`
-          UPDATE whatsapp_automacoes
-          SET template_id = NULL
-          WHERE template_id IN (
-            SELECT id FROM whatsapp_templates
-            WHERE lower(trim(meta_name)) = lower(trim(${metaName}))
-          )
-        `);
+      // A tabela de automações é criada por outro módulo, de forma preguiçosa:
+      // referenciá-la antes de existir gerava "relation
+      // "whatsapp_automacoes" does not exist" no log do Postgres a cada
+      // exclusão. Conferir a existência ANTES evita o erro — e evita
+      // interpolar o nome dentro de um bloco dollar-quoted, onde um "$$" no
+      // texto quebraria a query.
+      if (tabela === "whatsapp_automacoes") {
+        const existe = await d.execute(sql`SELECT to_regclass('whatsapp_automacoes') AS t`);
+        const t = (rowsOf(existe) as any[])[0]?.t;
+        if (!t) return;
       }
+
+      await d.execute(sql`
+        UPDATE ${sql.identifier(tabela)}
+        SET template_id = NULL
+        WHERE template_id IN (
+          SELECT id FROM whatsapp_templates
+          WHERE lower(trim(meta_name)) = lower(trim(${metaName}))
+        )
+      `);
     } catch {
       // Sem a tabela (ou sem a coluna) não há o que desreferenciar.
     }

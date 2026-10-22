@@ -4,7 +4,47 @@ import { lerWhatsappConfig } from "./whatsapp-config.server";
 import { STATUS_REJECTED, normalizarStatusTemplate } from "./whatsapp-status";
 import { extrairErroPostgres, mensagemErroPostgres } from "./erro-postgres";
 
-const DEFAULT_GRAPH_VERSION = "v20.0";
+/**
+ * Versão padrão da Graph API.
+ *
+ * A Meta mantém cada versão por ~2 anos. A v20.0 (lançada em 21/05/2024)
+ * expirou em 24/09/2026 — e, com ela, TODAS as chamadas do sistema: a
+ * sincronização de templates voltava vazia, a criação de template era
+ * recusada e a exclusão não apagava nada na Meta, enquanto o banco local
+ * continuava funcionando (por isso o sintoma era "parou do nada há dias").
+ *
+ * A versão precisa ser atualizada de novo a cada ~2 anos; a boa notícia é
+ * que o campo `graph_api_version` da configuração tem um valor gravado
+ * (v20.0), que é MAIS VELHO que este padrão — então o valor gravado ganha
+ * e a falha continua. Por isso a versão gravada só é aceita se ainda
+ * estiver viva (ver `versaoGraphValida`).
+ */
+const DEFAULT_GRAPH_VERSION = "v24.0";
+
+/**
+ * Versões da Graph API que a Meta ainda aceita.
+ *
+ * A Meta expira cada versão dois anos após o lançamento da seguinte. A
+ * lista abaixo vai até a mais antiga ainda em suporte — a v20.0 expirou
+ * em 24/09/2026 e a v21.0/v22.0/v23.0 já saíram de suporte.
+ */
+const VERSOES_GRAPH_SUPORTADAS = ["v26.0", "v25.0", "v24.0"];
+
+/**
+ * Decide qual versão da Graph API usar.
+ *
+ * A configuração pode ter uma versão gravada (o admin a escolhe na tela),
+ * mas ela vale só se ainda estiver no ar: uma versão expirada faz a Meta
+ * responder erro em TODAS as chamadas, sem nenhuma pista no sistema.
+ * Quando a versão gravada não está mais no ar, sobe para a mais recente
+ * disponível.
+ */
+export function versaoGraphValida(versaoGravada?: string | null): string {
+  const bruta = String(versaoGravada || "").trim().toLowerCase();
+  const normalizada = /^v\d+\.\d+$/.test(bruta) ? bruta : "";
+  if (normalizada && VERSOES_GRAPH_SUPORTADAS.includes(normalizada)) return normalizada;
+  return DEFAULT_GRAPH_VERSION;
+}
 
 // A Meta recusa o template com "invalid parameter" quando os componentes chegam
 // fora desta ordem. A ordem é HEADER → BODY → FOOTER → BUTTONS.
@@ -611,8 +651,24 @@ export class MetaWhatsAppService {
   }
 
   private getGraphUrl(endpoint: string) {
-    const version = this.config?.graph_api_version || DEFAULT_GRAPH_VERSION;
+    const version = versaoGraphValida(this.config?.graph_api_version);
     return `https://graph.facebook.com/${version}/${endpoint}`;
+  }
+
+  /**
+   * Reescreve a versão de uma URL absoluta da Meta.
+   *
+   * O `paging.next` que a Meta devolve é uma URL completa, com a versão
+   * embutida (`/v20.0/...`). Se a Meta responder com um link na versão que
+   * saiu do ar, seguir o link devolve erro — e a paginação trava ali, com a
+   * sincronização "sem templates novos". A URL é reescrita para a versão em
+   * uso; o resto (token, cursor, parâmetros) é preservado.
+   */
+  private ajustarVersaoUrl(url: string): string {
+    return url.replace(
+      /(graph\.facebook\.com\/)v\d+\.\d+/i,
+      (_m, prefixo: string) => `${prefixo}${versaoGraphValida(this.config?.graph_api_version)}`,
+    );
   }
 
   private async fetchMeta(
@@ -626,7 +682,9 @@ export class MetaWhatsAppService {
 
     // O paging.next da Meta já vem como URL absoluta, com versão e token. Prefixar
     // a versão de novo produziria uma URL inválida.
-    const url = /^https?:\/\//i.test(endpoint) ? endpoint : this.getGraphUrl(endpoint);
+    const url = /^https?:\/\//i.test(endpoint)
+      ? this.ajustarVersaoUrl(endpoint)
+      : this.getGraphUrl(endpoint);
     const headers = {
       Authorization: `Bearer ${this.config.access_token}`,
       "Content-Type": "application/json",
@@ -1038,6 +1096,17 @@ export class MetaWhatsAppService {
           const chave = String(item?.id || `${item?.name}|${item?.language}`);
           if (!vistos.has(chave)) vistos.set(chave, item);
         }
+
+        // Se a Meta já disse quantos templates existem e já trouxemos todos,
+        // as passagens seguintes são desperdício — e cada uma delas é uma
+        // chamada à API que consome cota. Com 19 alvos e 60 páginas cada, a
+        // sincronização podia levar minutos e estourar o tempo da requisição.
+        if (totalMeta && vistos.size >= totalMeta) {
+          console.info(
+            `[Meta] listagem completa: ${vistos.size} de ${totalMeta} templates — demais passagens dispensadas.`,
+          );
+          break;
+        }
       } catch (e: any) {
         // Uma passagem recusada não pode derrubar a sincronização: as outras
         // ainda podem trazer os templates. O motivo fica registrado.
@@ -1215,9 +1284,23 @@ export class MetaWhatsAppService {
     }
 
     const msg = mensagemErroPostgres(ultimoErro);
-    const naoExisteNaMeta =
-      /does not exist|not found|unsupported delete|Unknown path components/i.test(msg);
-    if (naoExisteNaMeta) return { ok: true, jaEstavaNaMeta: true };
+
+    // "Unsupported delete request. Object with ID ... does not exist" é a
+    // resposta da Meta quando ela RECUSA o DELETE — e o texto contém
+    // "does not exist". Sem conferir, o sistema respondia "já não existia na
+    // Meta", apagava o registro local, e o template continuava vivo no
+    // WhatsApp Manager. Era exatamente o sintoma reportado.
+    //
+    // Só é seguro concluir que o template sumiu da Meta depois de CONFIRMAR
+    // que ele não está mais na listagem.
+    const aindaExiste = await this.templateAindaNaMeta(metaName, metaId, encontrado);
+    if (aindaExiste === true) {
+      throw new Error(
+        `${msg} O template continua existindo na Meta — ele não foi apagado de lá. ` +
+          `Verifique o nome e as permissões do token, ou exclua pela WhatsApp Manager.`,
+      );
+    }
+    if (aindaExiste === false) return { ok: true, jaEstavaNaMeta: true };
 
     // A Meta recusou de forma que não dá para saber se o template existe.
     // O nome exato que ela devolveu (quando existe) é a informação útil:
@@ -1226,6 +1309,56 @@ export class MetaWhatsAppService {
       ? ` O template existe na Meta com o nome "${encontrado.name}" — a exclusão automática não conseguiu usá-lo.`
       : "";
     throw new Error(`${msg}${dica}`);
+  }
+
+  /**
+   * Confere se o template ainda está na Meta depois de uma recusa no DELETE.
+   *
+   * Devolve `true` (continua lá), `false` (não está mais lá) ou `null`
+   * (não deu para conferir — a listação falhou).
+   */
+  private async templateAindaNaMeta(
+    metaName: string,
+    metaId?: string | null,
+    jaEncontrado?: any,
+  ): Promise<boolean | null> {
+    const waba = String(this.config?.waba_id || "");
+    if (!waba) return null;
+
+    // Consulta direta pelo id: mais barata que a listagem e suficiente
+    // quando a tela tem o meta_id do template.
+    const id = String(metaId || jaEncontrado?.id || "").trim();
+    if (id) {
+      try {
+        await this.fetchMeta(
+          `${waba}/message_templates/${encodeURIComponent(id)}?fields=id,name,status`,
+          {},
+          "VERIFICAR_TEMPLATE",
+        );
+        return true;
+      } catch (e: any) {
+        const m = mensagemErroPostgres(e);
+        if (/does not exist|not found/i.test(m)) return false;
+      }
+    }
+
+    // Sem id (ou com id que a Meta não reconheceu), procura na listagem.
+    try {
+      const { templates } = await this.listarTemplatesDaMeta();
+      const alvo = String(metaName || "").trim().toLowerCase();
+      const achou = templates.some(
+        (t: any) =>
+          (id && String(t?.id) === id) ||
+          String(t?.name || "").trim().toLowerCase() === alvo,
+      );
+      return achou;
+    } catch (e: any) {
+      console.warn(
+        "[Meta] não foi possível conferir se o template ainda existe:",
+        mensagemErroPostgres(e),
+      );
+      return null;
+    }
   }
 
   /**
@@ -1266,7 +1399,7 @@ export class MetaWhatsAppService {
 
     const corpo = Buffer.concat(partes);
 
-    const version = this.config?.graph_api_version || DEFAULT_GRAPH_VERSION;
+    const version = versaoGraphValida(this.config?.graph_api_version);
 
     if (!this.config?.access_token) throw new Error("Token de acesso do WhatsApp não configurado.");
 

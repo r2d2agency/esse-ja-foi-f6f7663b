@@ -38,11 +38,41 @@ function requireDb() {
 }
 
 /**
+ * Janela em que a deduplicação é dispensada.
+ *
+ * `curarConfigDuplicada` roda a cada leitura da configuração, e a leitura
+ * acontece em toda chamada à Meta (`metaService.init()`). O passo termina em
+ * `DELETE`, o que toma lock de escrita na tabela — e duas requisições
+ * simultâneas brigavam por ele. Como a duplicata só nasce quando a
+ * configuração é salva, verificar a cada 30 segundos é suficiente.
+ */
+const INTERVALO_CURAR_MS = 30_000;
+let ultimaCuragem = 0;
+let curagemEmVoo: Promise<void> | null = null;
+
+/**
  * Mantém a linha de menor id (a que o UPDATE já visa) e absorve dela qualquer
  * valor preenchido que exista nas duplicadas, para não perder a configuração
  * que o usuário já havia salvo.
  */
 export async function curarConfigDuplicada(d: any) {
+  if (curagemEmVoo) {
+    await curagemEmVoo.catch(() => undefined);
+    return;
+  }
+  if (Date.now() - ultimaCuragem < INTERVALO_CURAR_MS) return;
+
+  const execucao = curarConfigDuplicadaAgora(d);
+  curagemEmVoo = execucao;
+  try {
+    await execucao;
+    ultimaCuragem = Date.now();
+  } finally {
+    curagemEmVoo = null;
+  }
+}
+
+async function curarConfigDuplicadaAgora(d: any) {
   try {
     // O array de colunas precisa ser literal no corpo do bloco: quando vinha
     // interpolado (`ARRAY[$1]`), o PL/pgSQL não conseguia inferir o tipo do

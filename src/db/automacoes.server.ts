@@ -35,15 +35,37 @@ export async function ensureAutomacoesSchema(silent = true) {
     // A FK original não tinha ação de delete, então excluir um template usado
     // por uma automação quebrava com violação de chave estrangeira (SQLSTATE
     // 23503). Recria a constraint de forma idempotente.
+    //
+    // DROP e ADD no MESMO bloco DO $$: em chamadas separadas, duas requisições
+    // simultâneas faziam as duas o DROP e as duas o ADD, e a segunda ADD
+    // falhava com 'constraint ... already exists'. Aqui o bloco confere
+    // pg_constraint (inclusive o comportamento, via confdeltype) e só
+    // recria o que falta, de forma atômica.
     try {
       await d.execute(sql`
-        ALTER TABLE whatsapp_automacoes
-          DROP CONSTRAINT IF EXISTS whatsapp_automacoes_template_id_fkey;
-      `);
-      await d.execute(sql`
-        ALTER TABLE whatsapp_automacoes
-          ADD CONSTRAINT whatsapp_automacoes_template_id_fkey
-          FOREIGN KEY (template_id) REFERENCES whatsapp_templates(id) ON DELETE SET NULL;
+        DO $$
+        BEGIN
+          IF EXISTS (
+            SELECT 1 FROM pg_constraint
+            WHERE conname = 'whatsapp_automacoes_template_id_fkey'
+              AND conrelid = 'whatsapp_automacoes'::regclass
+              AND confdeltype = 'n'
+          ) THEN
+            LOCK TABLE whatsapp_automacoes IN ACCESS EXCLUSIVE MODE;
+            ALTER TABLE whatsapp_automacoes
+              DROP CONSTRAINT whatsapp_automacoes_template_id_fkey;
+          END IF;
+
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint
+            WHERE conname = 'whatsapp_automacoes_template_id_fkey'
+              AND conrelid = 'whatsapp_automacoes'::regclass
+          ) THEN
+            ALTER TABLE whatsapp_automacoes
+              ADD CONSTRAINT whatsapp_automacoes_template_id_fkey
+              FOREIGN KEY (template_id) REFERENCES whatsapp_templates(id) ON DELETE SET NULL;
+          END IF;
+        END $$;
       `);
     } catch (e) {
       if (process.env['NODE_ENV'] === 'development')

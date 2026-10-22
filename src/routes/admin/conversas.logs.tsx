@@ -50,6 +50,7 @@ type Diagnostico = {
     existe: boolean;
     status: string | null;
     campos: Record<string, { preenchido: boolean; hash?: string }>;
+    versaoGraph?: string;
   };
   tabelas: Record<string, { existe: boolean; linhas: number }>;
   contagens: {
@@ -225,6 +226,12 @@ function LogWhatsAppPage() {
                       <span>Status da configuração</span>
                       <Badge variant="outline">{diagnostico.config.status ?? "—"}</Badge>
                     </div>
+                    {diagnostico.config.versaoGraph && (
+                      <div className="flex items-center justify-between text-sm">
+                        <span>Versão da Graph API em uso</span>
+                        <Badge variant="outline">{diagnostico.config.versaoGraph}</Badge>
+                      </div>
+                    )}
                   </div>
                 </div>
 

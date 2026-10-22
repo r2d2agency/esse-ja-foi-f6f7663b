@@ -4,6 +4,7 @@ import { ensureComunicacoesSchema } from "./comunicacoes.server";
 import { ensureConversasSchema } from "./conversas.server";
 import { registrarLogMeta, getUltimoErroLog } from "./logs-whatsapp.server";
 import { extrairErroPostgres } from "./erro-postgres";
+import { versaoGraphValida } from "./meta-whatsapp.server";
 
 /**
  * Diagnóstico do WhatsApp Meta API.
@@ -79,6 +80,7 @@ export type DiagnosticoWhatsApp = {
     existe: boolean;
     campos: Record<string, { preenchido: boolean; hash?: string }>;
     status: string | null;
+    versaoGraph?: string;
   };
   tabelas: Record<string, { existe: boolean; linhas: number }>;
   contagens: {
@@ -149,6 +151,19 @@ export async function gerarDiagnosticoWhatsApp(): Promise<DiagnosticoWhatsApp> {
         }
       }
       diag.config.campos = campos;
+
+      // A versão da Graph API guardada é a causa mais comum de "a Meta parou
+      // de responder": cada versão sai do ar ~2 anos após o lançamento da
+      // seguinte, e a Meta passa a recusar TODAS as chamadas sem dar pista.
+      const versaoGuardada = String(linha.graph_api_version || "").trim();
+      const versaoEmUso = versaoGraphValida(versaoGuardada);
+      diag.config.versaoGraph = versaoEmUso;
+      if (versaoGuardada && versaoEmUso !== versaoGuardada.toLowerCase()) {
+        problemas.push(
+          `A versão da Graph API guardada (${versaoGuardada}) saiu do ar na Meta. ` +
+            `As chamadas passam a usar ${versaoEmUso}.`,
+        );
+      }
 
       if (linha.status && linha.status !== "CONECTADO") {
         problemas.push(

@@ -4388,7 +4388,7 @@ function ComunicacoesPage() {
                           <div className="space-y-2">
                             <Label>Graph API Version</Label>
                             <Input
-                              value={editingConfig.graph_api_version || "v20.0"}
+                              value={editingConfig.graph_api_version || "v24.0"}
                               onChange={(e) =>
                                 setEditingConfig({
                                   ...editingConfig,
@@ -4396,6 +4396,10 @@ function ComunicacoesPage() {
                                 })
                               }
                             />
+                            <p className="text-xs text-muted-foreground">
+                              Versões suportadas pela Meta: v26.0, v25.0 e v24.0. Versões
+                              antigas saem do ar e passam a recusar todas as chamadas.
+                            </p>
                           </div>
                         </div>
                         <DialogFooter>
