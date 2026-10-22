@@ -8,6 +8,59 @@ import { normalizarParaMeta } from "../db/publico.server";
 import { mensagemErroPostgres } from "../db/erro-postgres";
 import { hojeEmSaoPaulo } from "./brasil";
 
+/**
+ * Traduz o erro de criação de template da Meta para algo que o admin possa
+ * corrigir.
+ *
+ * A Meta responde "Invalid parameter" (código 100) sem dizer qual campo
+ * recusou. O código mais comum na criação é o HEADER de imagem sem o HANDLE do
+ * asset — e a mensagem crua não ajuda ninguém. Aqui o erro vira uma frase que
+ * diz o que fazer.
+ */
+function explicarErroCriacaoTemplate(error: any): string {
+  const original = mensagemErroPostgres(error);
+  const corpo = (error as any)?.erroOriginal?.error ?? null;
+  const codigo = (error as any)?.code ?? corpo?.code ?? null;
+  const subcodigo = corpo?.error_subcode ?? null;
+  const detalhes = corpo?.error_data?.details ?? null;
+  const bruto = [original, subcodigo, detalhes].filter(Boolean).join(" ");
+
+  if (/invalid parameter|parameter value is not valid/i.test(bruto) || codigo === 100) {
+    const extra = [
+      subcodigo ? `Subcódigo ${subcodigo}.` : "",
+      detalhes ? `Detalhe da Meta: ${detalhes}.` : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    return (
+      `A Meta recusou o template como "parâmetro inválido" (código 100) e não diz qual campo foi. ` +
+      `${extra} Causas comuns: o cabeçalho com imagem sem o anexo anexado, o corpo com variável ` +
+      `{{1}} sem exemplo, um link no corpo do texto, ou o nome do template já existente. ` +
+      `O payload exato que foi enviado está na aba "Logs" desta tela.`
+    );
+  }
+
+  if (/2388273/i.test(bruto)) {
+    return (
+      `A Meta recusou o cabeçalho com imagem porque o anexo não foi reconhecido. ` +
+      `Selecione a imagem novamente antes de criar o template.`
+    );
+  }
+
+  if (/2388047/i.test(bruto)) {
+    return `O formato do cabeçalho é inválido para a Meta. Verifique se é imagem ou PDF.`;
+  }
+
+  if (/2388072/i.test(bruto)) {
+    return (
+      `A Meta recusou o corpo do template. Verifique as variáveis ({{1}}, {{2}}...) — ` +
+      `elas precisam ser numeradas em sequência, sem pular números.`
+    );
+  }
+
+  return original;
+}
+
 export const getWhatsappConfigFn = createServerFn({ method: "GET" }).handler(async () => {
   const config = await db.getWhatsappConfig();
   if (config) {
@@ -619,6 +672,38 @@ export const criarTemplateMetaFn = createServerFn({ method: "POST" })
       );
     }
 
+    // Botão sem texto é recusado pela Meta com "parâmetro inválido" — este
+    // caso é objetivo, então pode ser barrado aqui com mensagem clara.
+    const botoes = componentes
+      .filter((c: any) => String(c?.type || "").toUpperCase() === "BUTTONS")
+      .flatMap((c: any) => (Array.isArray(c?.buttons) ? c.buttons : []));
+    for (const botao of botoes) {
+      if (!String(botao?.text || "").trim()) {
+        throw new Error(
+          `Todo botão de ação precisa de um texto (ex: "Ver veículos"). ` +
+            `Botão sem texto é recusado pela Meta com "parâmetro inválido".`,
+        );
+      }
+      const ehUrl = String(botao?.type || "").toUpperCase() === "URL";
+      if (ehUrl && !String(botao?.url || "").trim()) {
+        throw new Error(`O botão "${botao.text}" precisa de uma URL.`);
+      }
+    }
+
+    // A Meta costuma recusar com "parâmetro inválido" o corpo que tem um link
+    // no texto (o link deveria estar no botão de ação). Não dá para barrar
+    // aqui — a regra não está documentada com certeza e um template válido
+    // seria recusado sem necessidade — então o caso é registrado no log e
+    // aparece como aviso na tela do wizard.
+    const textoCorpo = String(corpo.text || "");
+    const linkNoCorpo = textoCorpo.match(/https?:\/\/\S+/i);
+    if (linkNoCorpo) {
+      console.warn(
+        `[comunicacoes] o template "${nome}" tem link no corpo (${linkNoCorpo[0]}). ` +
+          `A Meta pode recusar a criação com "parâmetro inválido" — o link deveria estar no botão de ação.`,
+      );
+    }
+
     return { ...data, name: nome };
   })
   .handler(async ({ data }) => {
@@ -633,7 +718,10 @@ export const criarTemplateMetaFn = createServerFn({ method: "POST" })
       }
       return await metaService.criarTemplate(data);
     } catch (error: any) {
-      return { ok: false, error: mensagemErroPostgres(error) };
+      // A Meta responde "Invalid parameter" (código 100) sem dizer qual campo
+      // recusou. Traduzir o erro mais comum para algo acionável — o que o
+      // admin precisa é saber O QUE corrigir, não ler o código cru.
+      return { ok: false, error: explicarErroCriacaoTemplate(error) };
     }
   });
 

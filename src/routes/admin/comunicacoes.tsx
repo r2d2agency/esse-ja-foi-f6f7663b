@@ -3770,6 +3770,26 @@ function ComunicacoesPage() {
                               dinâmicos como nome, marca, valor.
                             </p>
                           </div>
+                          {(() => {
+                            const texto = String(
+                              newTemplate.components.find((c: any) => c.type === "BODY")?.text ||
+                                "",
+                            );
+                            const link = texto.match(/https?:\/\/\S+/i);
+                            if (!link) return null;
+                            return (
+                              <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 rounded text-xs space-y-1">
+                                <p className="font-semibold text-amber-800 dark:text-amber-200">
+                                  Tem um link no texto do corpo
+                                </p>
+                                <p className="text-amber-700 dark:text-amber-300/90">
+                                  A Meta costuma recusar a criação de templates com link no
+                                  texto do corpo ("parâmetro inválido"). O link funciona
+                                  normalmente no botão de ação — considere tirá-lo de cá.
+                                </p>
+                              </div>
+                            );
+                          })()}
                         </div>
 
                         <div className="border rounded-xl p-4 bg-zinc-100 dark:bg-zinc-900 overflow-hidden">

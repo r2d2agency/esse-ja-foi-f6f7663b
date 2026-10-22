@@ -568,12 +568,17 @@ export class MetaWhatsAppService {
    * ao envio de mensagens, não ao cadastro do template; a API rejeita esse
    * campo no payload de criação com "Unexpected key parameters".
    *
-   * `midiaId` é o `media_id` devolvido pelo upload do cabeçalho. A Meta exige um
-   * EXEMPLO do anexo no pedido de criação — `example.header_handle: [media_id]` —
-   * e recusa o template com o subcode 2388273 ("Modelos com o tipo de cabeçalho
-   * IMAGE precisam de um exemplo/modelo, mas não foi fornecido") quando ele
-   * falta. O `media_id` do `/media` da Meta é uma string; o `header_handle`
-   * aceita essa mesma string.
+   * `midiaId` é o HANDLE do asset devolvido por `subirAssetTemplate`. A Meta
+   * exige um EXEMPLO do anexo no pedido de criação — `example.header_handle:
+   * [handle]` — e recusa o template com o subcode 2388273 ("Modelos com o tipo
+   * de cabeçalho IMAGE precisam de um exemplo/modelo, mas não foi fornecido")
+   * quando ele falta.
+   *
+   * O handle NÃO é o `media_id` do upload de mensagem (`/media`). O cadastro de
+   * template usa o upload resumível de assets (`message_templates_assets`), que
+   * devolve um handle próprio. Mandar o `media_id` no lugar do handle é recusado
+   * com "Invalid parameter" (código 100) — era o que acontecia com todo
+   * template de cabeçalho de imagem criado pelo sistema.
    */
   private normalizarComponentes(components: any[] = [], midiaId?: string | null) {
     const ordenados = [...components].sort(
@@ -599,13 +604,23 @@ export class MetaWhatsAppService {
           const formato = String(c?.format || "TEXT").toUpperCase();
           if (formato !== "TEXT") {
             const { parameters, ...semParameters } = c;
-            return {
-              type: "HEADER",
-              format: formato,
-              // O exemplo do anexo é obrigatório na criação. Sem ele a Meta
-              // recusa com 2388273.
-              ...(id ? { example: { header_handle: [id] } } : {}),
-            };
+            // `link:<url>` = fallback para a URL pública do arquivo.
+            const linkPublico = id.startsWith("link:") ? id.slice(5).trim() : "";
+            if (linkPublico) {
+              const chave = formato === "DOCUMENT" ? "document" : "image";
+              return { type: "HEADER", format: formato, [chave]: { link: linkPublico } };
+            }
+            // Com handle do asset: `example.header_handle` é o formato que a
+            // Meta usa quando o anexo foi enviado como asset.
+            if (id) {
+              return {
+                type: "HEADER",
+                format: formato,
+                example: { header_handle: [id] },
+              };
+            }
+            // Sem anexo nenhum: a Meta recusa com 2388273.
+            return { type: "HEADER", format: formato };
           }
           // HEADER de texto: a Meta espera `format` explícito. Sem ele a
           // criação volta com "invalid parameter".
@@ -1348,15 +1363,81 @@ export class MetaWhatsAppService {
     return { templates, passagens, totalMeta };
   }
 
+  /**
+   * Devolve o HANDLE do asset do cabeçalho, para uso em
+   * `example.header_handle` na criação do template.
+   *
+   * O binário vem da cópia local em `arquivos_upload` (`midia_arquivo_id`),
+   * que é o que sobrevive ao `media_id` da Meta (que expira em 30 dias). Se o
+   * arquivo não estiver mais disponível, a criação é recusada com uma
+   * mensagem que diz o que fazer — em vez de deixar a Meta recusar com
+   * "Invalid parameter", que não diz nada.
+   */
+  private async obterHandleAssetTemplate(template: any): Promise<string> {
+    const arquivoId = String(template?.midia_arquivo_id || "").trim();
+    if (!arquivoId) {
+      throw new Error(
+        "O anexo do cabeçalho não está mais disponível. Selecione a imagem de novo antes de criar o template.",
+      );
+    }
+
+    const { obterArquivo } = await import("./arquivos.server");
+    const arquivo = await obterArquivo(arquivoId);
+    if (!arquivo?.conteudo?.length) {
+      throw new Error(
+        "O anexo do cabeçalho não está mais disponível. Selecione a imagem de novo antes de criar o template.",
+      );
+    }
+
+    const tipo = String(arquivo.mimeType || "image/png");
+
+    // Caminho 1 (preferido): upload resumível de asset, que devolve o HANDLE
+    // — é o que a Meta espera em `example.header_handle`.
+    try {
+      const { handle } = await this.subirAssetTemplate(
+        arquivo.conteudo.toString("base64"),
+        String(template?.midia_nome || "anexo"),
+        tipo,
+      );
+      return handle;
+    } catch (e: any) {
+      console.warn(
+        "[Meta] upload do asset do cabeçalho falhou, tentando a URL pública:",
+        mensagemErroPostgres(e),
+      );
+    }
+
+    // Caminho 2 (fallback): a Meta aceita `image.link` / `document.link` e
+    // busca o arquivo sozinha. A cópia local já é servida em /api/public/arquivo.
+    const base =
+      process.env["APP_URL"] || process.env["VITE_APP_URL"] || "https://www.essejafoi.com.br";
+    const ext = tipo.includes("pdf") ? "pdf" : tipo.includes("png") ? "png" : "jpg";
+    const link = `${base.replace(/\/$/, "")}/api/public/arquivo/${arquivoId}.${ext}`;
+    return `link:${link}`;
+  }
+
   async criarTemplate(template: any) {
     await this.init();
     if (!this.config?.waba_id) throw new Error("WABA ID não configurado.");
+
+    // O HEADER de imagem/PDF precisa do HANDLE do asset, e não do `media_id`
+    // do upload de mensagem. A Meta recusa com "Invalid parameter" (código
+    // 100) quando recebe o id de mídia no lugar do handle — por isso o asset
+    // é enviado aqui, antes de montar o payload de criação.
+    let referenciaAnexo: string | null = null;
+    const header = (Array.isArray(template.components) ? template.components : []).find(
+      (c: any) => String(c?.type || "").toUpperCase() === "HEADER",
+    );
+    const formatoHeader = String(header?.format || "TEXT").toUpperCase();
+    if (header && formatoHeader !== "TEXT") {
+      referenciaAnexo = await this.obterHandleAssetTemplate(template);
+    }
 
     const metaPayload = {
       name: template.name,
       category: template.category,
       language: template.language || "pt_BR",
-      components: this.normalizarComponentes(template.components, template.midia_id),
+      components: this.normalizarComponentes(template.components, referenciaAnexo),
     };
 
     const data = await this.fetchMeta(
@@ -1700,6 +1781,128 @@ export class MetaWhatsAppService {
    * é relido em bytes), então o multipart é montado em memória com um
    * FormData próprio, sem depender de `form-data` no servidor.
    */
+  /**
+   * Sobe um anexo de CABEÇALHO de template para a Meta e devolve o HANDLE do
+   * asset — o valor que vai em `example.header_handle` na criação do template.
+   *
+   * Este caminho é diferente do upload de mídia de mensagem (`/media`, que
+   * devolve `media_id`): no cadastro de template a Meta exige o handle do
+   * asset, obtido pelo upload resumível em `message_templates_assets`. Mandar o
+   * `media_id` no lugar do handle faz a API recusar com "Invalid parameter"
+   * (código 100) — era o que acontecia com todo template de cabeçalho de imagem.
+   *
+   * O upload resumível tem duas etapas:
+   * 1. `POST /{waba}/message_templates_assets` com os cabeçalhos
+   *    `file_offset`, `file_length` e `file_type` — devolve o `id` do asset.
+   * 2. `POST /{waba}/message_templates_assets/{id}` com o binário — devolve o
+   *    `handle`, que é o que vai no template.
+   */
+  async subirAssetTemplate(
+    arquivoBase64: string,
+    nome: string,
+    tipo: string,
+  ): Promise<{ handle: string; assetId: string }> {
+    await this.init();
+    const waba = String(this.config?.waba_id || "");
+    if (!waba) throw new Error("WABA ID não configurado.");
+
+    const base64 = String(arquivoBase64).replace(/^data:[^;]+;base64,/, "");
+    const buffer = Buffer.from(base64, "base64");
+    if (buffer.length === 0) throw new Error("Arquivo vazio.");
+
+    const version = versaoGraphValida(this.config?.graph_api_version);
+    const token = this.config?.access_token;
+    if (!token) throw new Error("Token de acesso do WhatsApp não configurado.");
+
+    const base = `https://graph.facebook.com/${version}/${waba}/message_templates_assets`;
+    const cabecalhos = {
+      Authorization: `Bearer ${token}`,
+      file_offset: "0",
+      file_length: String(buffer.length),
+      file_type: String(tipo || "image/png"),
+    };
+
+    // Etapa 1: abre a sessão de upload.
+    const inicio = Date.now();
+    const abertura = await fetch(base, {
+      method: "POST",
+      headers: cabecalhos,
+    });
+    const textoAbertura = await abertura.text();
+    let dadosAbertura: any = null;
+    try {
+      dadosAbertura = JSON.parse(textoAbertura);
+    } catch {
+      dadosAbertura = null;
+    }
+
+    if (!abertura.ok || !dadosAbertura?.id) {
+      const detalhe =
+        dadosAbertura?.error?.message ||
+        textoAbertura.slice(0, 400) ||
+        `HTTP ${abertura.status}`;
+      await this.registrar({
+        endpoint: `${version}/${waba}/message_templates_assets`,
+        operacao: "UPLOAD_MIDIA",
+        status: "ERRO",
+        httpStatus: abertura.status,
+        resumo: `Falha ao abrir o upload do anexo do template: ${detalhe}`,
+        payload: { nome, tipo, tamanho: buffer.length },
+      });
+      throw new Error(`Falha ao enviar o anexo do template para a Meta: ${detalhe}`);
+    }
+
+    // Etapa 2: sobe o binário e recebe o handle.
+    const assetId = String(dadosAbertura.id);
+    const envio = await fetch(`${base}/${assetId}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        file_offset: "0",
+        file_length: String(buffer.length),
+        file_type: String(tipo || "image/png"),
+        "Content-Type": "application/octet-stream",
+      },
+      body: buffer,
+    });
+    const textoEnvio = await envio.text();
+    let dadosEnvio: any = null;
+    try {
+      dadosEnvio = JSON.parse(textoEnvio);
+    } catch {
+      dadosEnvio = null;
+    }
+
+    const handle = String(dadosEnvio?.handle ?? "").trim();
+    if (!envio.ok || !handle) {
+      const detalhe =
+        dadosEnvio?.error?.message ||
+        textoEnvio.slice(0, 400) ||
+        `HTTP ${envio.status}`;
+      await this.registrar({
+        endpoint: `${version}/${waba}/message_templates_assets/${assetId}`,
+        operacao: "UPLOAD_MIDIA",
+        status: "ERRO",
+        httpStatus: envio.status,
+        resumo: `Falha no upload do anexo do template: ${detalhe}`,
+        payload: { nome, tipo, tamanho: buffer.length, assetId },
+      });
+      throw new Error(`Falha ao enviar o anexo do template para a Meta: ${detalhe}`);
+    }
+
+    await this.registrar({
+      endpoint: `${version}/${waba}/message_templates_assets/${assetId}`,
+      operacao: "UPLOAD_MIDIA",
+      status: "SUCESSO",
+      httpStatus: envio.status,
+      resumo: `Anexo do template enviado (handle ${handle})`,
+      payload: { nome, tipo, tamanho: buffer.length, assetId, handle },
+      duracaoMs: Date.now() - inicio,
+    });
+
+    return { handle, assetId };
+  }
+
   async uploadMedia(fileData: string, fileName: string, fileType: string) {
     const inicio = Date.now();
     await this.init();
