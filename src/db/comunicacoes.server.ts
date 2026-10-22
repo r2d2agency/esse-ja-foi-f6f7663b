@@ -1,6 +1,6 @@
 import { sql, eq, and } from "drizzle-orm";
 import { db } from "./index";
-import { metaService } from "./meta-whatsapp.server";
+import { metaService, normalizarVersaoGraph } from "./meta-whatsapp.server";
 import {
   curarConfigDuplicada,
   lerWhatsappConfig,
@@ -111,7 +111,7 @@ async function garantirEsquemaComunicacoes(silent = true) {
         app_id text,
         app_secret text, -- Manter no backend
         access_token text, -- Manter no backend
-        graph_api_version text DEFAULT 'v24.0',
+        graph_api_version text DEFAULT 'v26.0',
         webhook_verify_token text,
         status text DEFAULT 'DESCONECTADO', -- CONECTADO, DESCONECTADO, ERRO
         ultimo_teste timestamptz,
@@ -129,7 +129,7 @@ async function garantirEsquemaComunicacoes(silent = true) {
         ADD COLUMN IF NOT EXISTS app_id text,
         ADD COLUMN IF NOT EXISTS app_secret text,
         ADD COLUMN IF NOT EXISTS access_token text,
-        ADD COLUMN IF NOT EXISTS graph_api_version text DEFAULT 'v24.0',
+        ADD COLUMN IF NOT EXISTS graph_api_version text DEFAULT 'v26.0',
         ADD COLUMN IF NOT EXISTS webhook_verify_token text,
         ADD COLUMN IF NOT EXISTS status text DEFAULT 'DESCONECTADO',
         ADD COLUMN IF NOT EXISTS ultimo_teste timestamptz,
@@ -145,9 +145,30 @@ async function garantirEsquemaComunicacoes(silent = true) {
     await passoOpcional("a versão da Graph API", () =>
       d.execute(sql`
         UPDATE whatsapp_config
-        SET graph_api_version = 'v24.0'
+        SET graph_api_version = CASE
+          -- Forma canônica: "v26", "26.0" e "V26.0" viram "v26.0".
+          WHEN btrim(lower(graph_api_version)) ~ '^v?[0-9]+(\.[0-9]+)?$'
+            THEN 'v' || split_part(regexp_replace(btrim(lower(graph_api_version)), '^v', ''), '.', 1)
+                 || '.' ||
+                 COALESCE(NULLIF(split_part(regexp_replace(btrim(lower(graph_api_version)), '^v', ''), '.', 2), ''), '0')
+          -- Texto fora do padrão (ou vazio): vai para a versão vigente.
+          ELSE 'v26.0'
+        END
         WHERE graph_api_version IS NULL
            OR lower(trim(graph_api_version)) NOT IN ('v26.0', 'v25.0', 'v24.0');
+      `),
+    );
+
+    // A normalização acima conserta o FORMATO, mas não sabe se a versão é
+    // ainda aceita pela Meta: uma "v20.0" normalizada continua "v20.0" e
+    // continua morta. Só as três versões em suporte sobrevivem — as demais
+    // sobem para a vigente.
+    await passoOpcional("a vigência da versão da Graph API", () =>
+      d.execute(sql`
+        UPDATE whatsapp_config
+        SET graph_api_version = 'v26.0'
+        WHERE graph_api_version IS NOT NULL
+          AND lower(trim(graph_api_version)) NOT IN ('v26.0', 'v25.0', 'v24.0');
       `),
     );
 
@@ -789,6 +810,11 @@ export async function updateWhatsappConfig(config: any) {
     SELECT gen_random_uuid()
     WHERE NOT EXISTS (SELECT 1 FROM whatsapp_config);
   `);
+  // A versão digitada pelo admin ("v26", "V26.0", "26.0") é normalizada para
+  // o formato canônico antes de gravar. Sem isso, um "v26" caía fora da lista
+  // de versões suportadas e era descartado na leitura — o admin via a tela
+  // dizer "salvou", mas o valor nunca era aceito.
+  const versaoInformada = normalizarVersaoGraph(config.graph_api_version);
   const res = await d.execute(sql`
     UPDATE whatsapp_config SET
       waba_id = COALESCE(${config.waba_id ?? null}, waba_id),
@@ -798,7 +824,7 @@ export async function updateWhatsappConfig(config: any) {
       app_id = COALESCE(${config.app_id ?? null}, app_id),
       app_secret = COALESCE(${config.app_secret ?? null}, app_secret),
       access_token = COALESCE(${config.access_token ?? null}, access_token),
-      graph_api_version = COALESCE(${config.graph_api_version ?? null}, graph_api_version),
+      graph_api_version = COALESCE(${versaoInformada || null}, graph_api_version),
       webhook_verify_token = COALESCE(${config.webhook_verify_token ?? null}, webhook_verify_token),
       status = COALESCE(${config.status ?? null}, status),
       atualizado_em = now()

@@ -4387,15 +4387,33 @@ function ComunicacoesPage() {
                           </div>
                           <div className="space-y-2">
                             <Label>Graph API Version</Label>
-                            <Input
-                              value={editingConfig.graph_api_version || "v24.0"}
-                              onChange={(e) =>
+                            <Select
+                              value={
+                                // A tela mostra sempre o formato canônico: o
+                                // valor gravado pode ter vindo como "v26" e
+                                // seria irreconhecível no seletor.
+                                ["v26.0", "v25.0", "v24.0"].includes(
+                                  editingConfig.graph_api_version || "",
+                                )
+                                  ? editingConfig.graph_api_version
+                                  : "v26.0"
+                              }
+                              onValueChange={(v) =>
                                 setEditingConfig({
                                   ...editingConfig,
-                                  graph_api_version: e.target.value,
+                                  graph_api_version: v,
                                 })
                               }
-                            />
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="v26.0">v26.0 (mais recente)</SelectItem>
+                                <SelectItem value="v25.0">v25.0</SelectItem>
+                                <SelectItem value="v24.0">v24.0</SelectItem>
+                              </SelectContent>
+                            </Select>
                             <p className="text-xs text-muted-foreground">
                               Versões suportadas pela Meta: v26.0, v25.0 e v24.0. Versões
                               antigas saem do ar e passam a recusar todas as chamadas.

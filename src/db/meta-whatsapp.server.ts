@@ -19,7 +19,7 @@ import { extrairErroPostgres, mensagemErroPostgres } from "./erro-postgres";
  * e a falha continua. Por isso a versão gravada só é aceita se ainda
  * estiver viva (ver `versaoGraphValida`).
  */
-const DEFAULT_GRAPH_VERSION = "v24.0";
+const DEFAULT_GRAPH_VERSION = "v26.0";
 
 /**
  * Versões da Graph API que a Meta ainda aceita.
@@ -31,6 +31,21 @@ const DEFAULT_GRAPH_VERSION = "v24.0";
 const VERSOES_GRAPH_SUPORTADAS = ["v26.0", "v25.0", "v24.0"];
 
 /**
+ * Normaliza o texto digitado pelo admin para o formato canônico `vN.0`.
+ *
+ * A tela deixa o campo livre, e "v26" (sem o `.0`) é a forma natural de digitar
+ * — mas o formato exato é o que a Meta espera na URL. Sem esta normalização, o
+ * "v26" gravado caía fora da lista de versões suportadas e era descartado,
+ * voltando para o padrão — o admin achava que não estava salvando.
+ */
+export function normalizarVersaoGraph(versao?: string | null): string {
+  const bruta = String(versao || "").trim().toLowerCase().replace(/^v/, "");
+  if (!/^\d+(\.\d+)?$/.test(bruta)) return "";
+  const [maior, menor] = bruta.split(".");
+  return `v${maior}.${menor ?? "0"}`;
+}
+
+/**
  * Decide qual versão da Graph API usar.
  *
  * A configuração pode ter uma versão gravada (o admin a escolhe na tela),
@@ -40,8 +55,7 @@ const VERSOES_GRAPH_SUPORTADAS = ["v26.0", "v25.0", "v24.0"];
  * disponível.
  */
 export function versaoGraphValida(versaoGravada?: string | null): string {
-  const bruta = String(versaoGravada || "").trim().toLowerCase();
-  const normalizada = /^v\d+\.\d+$/.test(bruta) ? bruta : "";
+  const normalizada = normalizarVersaoGraph(versaoGravada);
   if (normalizada && VERSOES_GRAPH_SUPORTADAS.includes(normalizada)) return normalizada;
   return DEFAULT_GRAPH_VERSION;
 }
@@ -999,8 +1013,10 @@ export class MetaWhatsAppService {
       let ultimo: any = null;
       // A Meta devolve no máximo 1000 por página, mas a listagem sem `limit`
       // vem com 25 — era esse o motivo de a sincronização "travar" num
-      // punhado de templates. 60 páginas cobrem 60.000 templates.
-      for (let pagina = 0; pagina < 60; pagina++) {
+      // punhado de templates. Com `limit=1000`, 20 páginas cobrem 20.000
+      // templates: passou de 60, porque cada página é uma chamada à API e a
+      // requisição do servidor tem tempo limite.
+      for (let pagina = 0; pagina < 20; pagina++) {
         const alvo =
           cursor !== null
             ? `${base}${base.includes("?") ? "&" : "?"}after=${encodeURIComponent(cursor)}`
@@ -1063,15 +1079,63 @@ export class MetaWhatsAppService {
       "DISABLED",
     ];
 
+    const passagens: { url: string; quantidade: number; totalMeta?: number | null; erro?: string }[] =
+      [];
+    const vistos = new Map<string, any>();
+    let totalMeta: number | null = null;
+
+    const registrar = (item: any) => {
+      const chave = String(item?.id || `${item?.name}|${item?.language}`);
+      if (!vistos.has(chave)) vistos.set(chave, item);
+    };
+
+    /**
+     * Primeiro passo: perguntar à Meta quantos templates existem.
+     *
+     * Isso precisa vir ANTES da varredura, por dois motivos:
+     *  1. `summary=total_count` só aparece quando é pedido explicitamente —
+     *     e ele estava no último dos 19 alvos, ou seja, nunca era conhecido a
+     *     tempo de interromper a varredura;
+     *  2. sem o total, a sincronização percorria 19 URLs × 60 páginas
+     *     (mais de mil chamadas à API), o que estourava o tempo da requisição
+     *     e fazia a tela voltar vazia — era esse o sintoma de "não sincroniza".
+     */
+    try {
+      const contagem: any = await this.fetchMeta(
+        `${waba}/message_templates?summary=total_count&limit=1`,
+        {},
+        "SINCRONIZAR_TEMPLATES",
+      );
+      const total = Number(contagem?.summary?.total_count ?? 0);
+      if (total > 0) totalMeta = total;
+      passagens.push({
+        url: `${waba}/message_templates?summary=total_count&limit=1`,
+        quantidade: Array.isArray(contagem?.data) ? contagem.data.length : 0,
+        totalMeta: totalMeta ?? null,
+      });
+    } catch (e: any) {
+      const motivo = mensagemErroPostgres(e).slice(0, 300);
+      passagens.push({
+        url: `${waba}/message_templates?summary=total_count&limit=1`,
+        quantidade: 0,
+        erro: motivo,
+      });
+      console.warn("[Meta] não foi possível obter o total de templates:", motivo);
+    }
+
+    /**
+     * Ângulos de listagem, em ordem de confiança.
+     *
+     * A listagem simples é a primeira de propósito: é a forma que nenhuma
+     * versão do Graph API recusa. As demais tentam trazer mais coisa (mais
+     * itens por página, `status` explícito, recorte por status) e uma recusa
+     * delas não pode derrubar a sincronização.
+     */
     const alvos: string[] = [
-      // A listagem mais simples é a primeira de propósito: é a forma que
-      // nenhuma versão do Graph API recusa. As outras tentam trazer mais
-      // coisa (mais itens por página, `status`, contagem total) e uma recusa
-      // delas não pode derrubar a sincronização.
-      `${waba}/message_templates`,
-      `${waba}/message_templates?fields=${campos}`,
       `${waba}/message_templates?limit=1000`,
       `${waba}/message_templates?fields=${campos}&limit=1000`,
+      `${waba}/message_templates`,
+      `${waba}/message_templates?fields=${campos}`,
       ...STATUS_PARA_BUSCAR.flatMap((s) => [
         // O filtro de status é aceito como texto simples e como array JSON —
         // a Graph API mudou de um para o outro entre versões, então as duas
@@ -1079,23 +1143,14 @@ export class MetaWhatsAppService {
         `${waba}/message_templates?status=${s}&limit=1000`,
         `${waba}/message_templates?status=${encodeURIComponent(`["${s}"]`)}`,
       ]),
-      `${waba}/message_templates?summary=total_count&limit=1000`,
     ];
-
-    const passagens: { url: string; quantidade: number; totalMeta?: number | null; erro?: string }[] =
-      [];
-    const vistos = new Map<string, any>();
-    let totalMeta: number | null = null;
 
     for (const url of alvos) {
       try {
         const { itens, totalMeta: total } = await paginar(url);
         passagens.push({ url, quantidade: itens.length, totalMeta: total });
         if (total && !totalMeta) totalMeta = total;
-        for (const item of itens) {
-          const chave = String(item?.id || `${item?.name}|${item?.language}`);
-          if (!vistos.has(chave)) vistos.set(chave, item);
-        }
+        for (const item of itens) registrar(item);
 
         // Se a Meta já disse quantos templates existem e já trouxemos todos,
         // as passagens seguintes são desperdício — e cada uma delas é uma
