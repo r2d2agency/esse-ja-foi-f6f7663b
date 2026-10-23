@@ -280,12 +280,21 @@ function parametersPara(texto: string, valores: Record<string, string>, rotulo: 
 function componenteBotao(botao: any, posicao: number, valores: Record<string, string>): any | null {
   // Formato da Meta: { type: "button", sub_type: "url", index, text }
   // Não tem `url` nem `parameters` — a URL não é devolvida na listagem.
+  // Exceção: botão de telefone. O envio DEVE levar o número como parâmetro de
+  // texto; sem ele a Meta responde 132000 "Number of parameters does not match
+  // the expected number of params" (conta 1 parâmetro do botão, nós mandávamos
+  // 0). Na listagem o número vem em `phone_number` (às vezes só no `text`).
   if (botao?.sub_type) {
-    return {
+    const componente: any = {
       type: "button",
       sub_type: botao.sub_type,
       index: Number.isInteger(botao.index) ? botao.index : posicao,
     };
+    if (String(botao.sub_type).toLowerCase() === "phone_number") {
+      const numero = String(botao.phone_number || botao.text || "").trim();
+      componente.parameters = [{ type: "text", text: numero }];
+    }
+    return componente;
   }
   // Formato do wizard: { type: "URL", url: "https://...{{7}}" }
   const tipo = String(botao?.type || "").toUpperCase();
