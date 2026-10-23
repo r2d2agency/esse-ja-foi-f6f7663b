@@ -247,18 +247,43 @@ function maiorPlaceholder(texto: string): number {
   return numeros.length ? Math.max(...numeros) : 0;
 }
 
-/** Monta `parameters` para um texto com {{n}} (corpo ou url de botão). */
+/** Placeholders {{...}} na ordem em que aparecem — aceita {{1}} e {{nome}}. */
+function placeholdersDe(texto: string): string[] {
+  return [...String(texto).matchAll(/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g)].map((m) => m[1]);
+}
+
+/**
+ * Monta `parameters` para um texto com {{n}} ou {{nome}} (corpo, cabeçalho ou
+ * url de botão).
+ *
+ * A Meta tem dois formatos de variável: posicional ({{1}}) e NOMEADO
+ * ({{nome}}, o formato novo do WhatsApp Manager). No nomeado o envio precisa
+ * de `parameter_name` em cada parâmetro; mandar só `text` faz a Meta não
+ * casar os parâmetros com o template e responder 132000 "Number of parameters
+ * does not match" — mesmo com a quantidade certa.
+ */
 function parametersPara(texto: string, valores: Record<string, string>, rotulo: string): any[] {
-  const maximo = maiorPlaceholder(texto);
-  if (!maximo) return [];
-  const parameters = Array.from({ length: maximo }, (_, i) => ({
-    type: "text",
-    text: String(valores[String(i + 1)] ?? valores[`{{${i + 1}}}`] ?? ""),
-  }));
+  const nomes = placeholdersDe(texto);
+  if (!nomes.length) return [];
+
+  const nomeado = nomes.some((n) => !/^\d+$/.test(n));
+  // `any[]` porque as duas formas têm campos diferentes (`parameter_name` só
+  // existe na nomeada) e o TypeScript não aceitaria ler o campo na união.
+  const parameters: any[] = nomeado
+    ? [...new Set(nomes)].map((nome, i) => ({
+        type: "text",
+        parameter_name: nome,
+        text: String(valores[nome] ?? valores[String(i + 1)] ?? valores[`{{${nome}}}`] ?? ""),
+      }))
+    : Array.from({ length: Math.max(...nomes.map(Number)) }, (_, i) => ({
+        type: "text",
+        text: String(valores[String(i + 1)] ?? valores[`{{${i + 1}}}`] ?? ""),
+      }));
+
   // Preenchimento obrigatório: a Meta recusa {{n}} vazio, e é melhor falhar
   // aqui com nome do campo do que gastar cota numa tentativa que volta.
   const faltando = parameters
-    .map((p, i) => (p.text.trim() === "" ? `{{${i + 1}}}` : null))
+    .map((p, i) => (p.text.trim() === "" ? `{{${p.parameter_name ?? i + 1}}}` : null))
     .filter(Boolean) as string[];
   if (faltando.length) {
     throw new Error(
@@ -280,21 +305,18 @@ function parametersPara(texto: string, valores: Record<string, string>, rotulo: 
 function componenteBotao(botao: any, posicao: number, valores: Record<string, string>): any | null {
   // Formato da Meta: { type: "button", sub_type: "url", index, text }
   // Não tem `url` nem `parameters` — a URL não é devolvida na listagem.
-  // Exceção: botão de telefone. O envio DEVE levar o número como parâmetro de
-  // texto; sem ele a Meta responde 132000 "Number of parameters does not match
-  // the expected number of params" (conta 1 parâmetro do botão, nós mandávamos
-  // 0). Na listagem o número vem em `phone_number` (às vezes só no `text`).
+  //
+  // Botão de telefone e de resposta rápida NÃO levam parâmetro no envio (o
+  // número e o texto já estão gravados no template). Mandar `parameters` neles
+  // é recusado com 132018 "There's an issue with the parameters in your
+  // template" — foi o que aconteceu na primeira tentativa de correção. Só o
+  // botão de URL com {{n}} tem parâmetro, e esse caso está mais abaixo.
   if (botao?.sub_type) {
-    const componente: any = {
+    return {
       type: "button",
       sub_type: botao.sub_type,
       index: Number.isInteger(botao.index) ? botao.index : posicao,
     };
-    if (String(botao.sub_type).toLowerCase() === "phone_number") {
-      const numero = String(botao.phone_number || botao.text || "").trim();
-      componente.parameters = [{ type: "text", text: numero }];
-    }
-    return componente;
   }
   // Formato do wizard: { type: "URL", url: "https://...{{7}}" }
   const tipo = String(botao?.type || "").toUpperCase();
@@ -302,14 +324,12 @@ function componenteBotao(botao: any, posicao: number, valores: Record<string, st
   if (!url) return null;
   const indice = Number.isInteger(botao?.index) ? botao.index : posicao;
 
-  // Botão de telefone: o número vai como parâmetro de texto.
+  // Botão de telefone: o número já está gravado no template e NÃO vai como
+  // parâmetro no envio. Mandar `parameters` aqui é o que produzia o 132018
+  // "There's an issue with the parameters in your template" — o botão só
+  // aceita o índice.
   if (tipo === "PHONE_NUMBER") {
-    return {
-      type: "button",
-      sub_type: "phone_number",
-      index: indice,
-      parameters: [{ type: "text", text: url }],
-    };
+    return { type: "button", sub_type: "phone_number", index: indice };
   }
 
   // Botão de URL estática (sem {{n}}) não leva componente algum no envio: a
@@ -471,14 +491,34 @@ export async function montarComponents(
     const tipo = String(comp?.type || "").toUpperCase();
 
     if (tipo === "HEADER") {
-      const formato = String(comp.format || "TEXT").toUpperCase();
+      // O formato nem sempre vem explícito: conteúdo gravado no formato de
+      // ENVIO (`{type:"header", parameters:[{type:"image", ...}]}`) — que é o
+      // que a sincronização grava — traz o tipo do anexo em `parameters[0].type`
+      // e nenhum `format`. Sem inferir, o cabeçalho de mídia era tratado como
+      // TEXTO, não entrava no payload e a Meta respondia 132000 ("esperava 1
+      // parâmetro, recebeu 0").
+      const parametroMidia = comp?.parameters?.[0];
+      const tipoParametro = String(parametroMidia?.type || "").toLowerCase();
+      const formato = String(
+        comp.format ||
+          (["image", "document", "video"].includes(tipoParametro)
+            ? tipoParametro.toUpperCase()
+            : "TEXT"),
+      ).toUpperCase();
 
       // HEADER de mídia sem `midia_id` salvo na linha: templates criados direto
       // na Meta (fora do wizard) chegam pela sincronização com o anexo em
-      // `example.header_handle[0]`. Sem ler esse campo, o HEADER é omitido e a
-      // Meta responde 132012 "expected IMAGE, received UNKNOWN". Esse campo pode
-      // vir como id numérico (raro) ou como URL de CDN — só o id serve.
-      const midiaFallback = String(comp.example?.header_handle?.[0] ?? "").trim();
+      // `example.header_handle[0]` ou já resolvido em `parameters[0].<tipo>.id`.
+      // Sem ler essas fontes, o HEADER é omitido e a Meta responde 132012
+      // "expected IMAGE, received UNKNOWN". Elas podem vir como id numérico
+      // (raro) ou como URL de CDN — só o id serve.
+      const midiaFallback = String(
+        comp.example?.header_handle?.[0] ||
+          parametroMidia?.image?.id ||
+          parametroMidia?.document?.id ||
+          parametroMidia?.video?.id ||
+          "",
+      ).trim();
       const temAnexo = Boolean(anexo?.mediaId || anexo?.base64 || midiaFallback);
 
       if (formato !== "TEXT" && temAnexo) {
@@ -515,10 +555,18 @@ export async function montarComponents(
 
       // O texto do HEADER pode vir em `comp.text` (formato do wizard) ou em
       // `comp.parameters[0].text` (formato que a Meta devolve na sincronização).
-      // Sem ler os dois, o HEADER de texto salvo como Meta desaparece do envio
-      // e a Meta responde 132012 "Parameter format does not match".
+      //
+      // CUIDADO: na sincronização, o texto de um header ESTÁTICO (sem {{1}})
+      // vem dentro de `parameters[0].text` — mas isso NÃO significa que ele
+      // leve parâmetro no envio. Componente com parâmetro só existe quando o
+      // header tem {{1}}; mandar parânum para header estático faz a Meta
+      // contar 1 e esperar 0, respondendo 132000 "Number of parameters does
+      // not match". Header estático simplesmente NÃO VAI no payload.
       const texto = String(comp.text ?? comp.parameters?.[0]?.text ?? "").trim();
-      if (texto) saida.push({ type: "header", parameters: [{ type: "text", text: texto }] });
+      if (placeholdersDe(texto).length) {
+        const parameters = parametersPara(texto, valores, "cabeçalho do template");
+        saida.push({ type: "header", parameters });
+      }
       continue;
     }
 
@@ -529,9 +577,11 @@ export async function montarComponents(
       // comp.parameters[0].text (Meta). Extrair de onde estiver.
       const textoBody = comp.text ?? comp.parameters?.[0]?.text ?? "";
       const parameters = parametersPara(textoBody, valores, "corpo do template");
-      // Template sem {{n}} ainda tem BODY na Meta; sem este componente o envio
-      // responde 132012 "Parameter format does not match". Texto vai vazio.
-      saida.push({ type: "body", parameters });
+      // Corpo com variável leva os parâmetros; corpo SEM variável NÃO entra no
+      // payload: o texto fica gravado no template e mandar `parameters: []`
+      // (ou pior, o texto fixo como parâmetro) quebra a contagem da Meta
+      // (132000/132012).
+      if (parameters.length) saida.push({ type: "body", parameters });
       continue;
     }
 
@@ -557,14 +607,9 @@ export async function montarComponents(
     }
   }
 
-  // Template sem nenhum {{n}} ainda tem um BODY na Meta, e o envio precisa
-  // levar esse componente — sem ele a API responde 132012 "Parameter format
-  // does not match format in the created template". O texto vai vazio.
-  if (!saida.some((c) => String(c?.type || "").toUpperCase() === "BODY")) {
-    const corpo = comps.find((c) => String(c?.type || "").toUpperCase() === "BODY");
-    const textoCorpo = corpo?.text ?? corpo?.parameters?.[0]?.text ?? "";
-    saida.push({ type: "body", parameters: [{ type: "text", text: String(textoCorpo).trim() }] });
-  }
+  // Corpo sem variável nenhuma não precisa de componente no envio: o texto
+  // fica gravado no template. (Versões anteriores mandavam um parâmetro com o
+  // texto fixo — a Meta contava 1 parâmetro a mais e respondia 132000.)
 
   return saida;
 }
