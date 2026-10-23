@@ -622,6 +622,9 @@ function ComunicacoesPage() {
 
   const [estimativa, setEstimativa] = useState<any>({ total: 0, elegiveis: 0, nao_elegiveis: 0 });
   const [tagsSelecionadas, setTagsSelecionadas] = useState<string[]>([]);
+  // "Só novos" x "todos": com true, quem já recebeu alguma campanha antes
+  // sai da estimativa e da fila. O valor viaja em `dadosEstimativa`.
+  const [apenasNovos, setApenasNovos] = useState(false);
   // Campanha aberta no detalhe de envios (contatos agendados, data e hora,
   // estado). A query em si vive abaixo, junto das outras.
   const [enviosCampanha, setEnviosCampanha] = useState<any>(null);
@@ -822,10 +825,11 @@ function ComunicacoesPage() {
       tagsSelecionadas,
       novaCampanha.filtros.tipo,
       novaCampanha.filtros.uf,
+      apenasNovos,
     ],
     queryFn: () =>
       estimarPublico({
-        data: { ...novaCampanha.filtros, origem: "IMPORTADOS", tagIds: tagsSelecionadas },
+        data: { ...novaCampanha.filtros, origem: "IMPORTADOS", tagIds: tagsSelecionadas, apenasNaoEnviados: apenasNovos },
       }),
     enabled: campanhaStep === 3 && tagsSelecionadas.length > 0,
   });
@@ -896,6 +900,9 @@ function ComunicacoesPage() {
     ...novaCampanha.filtros,
     origem: novaCampanha.origem_publico,
     tagIds: tagsSelecionadas,
+    // O "só novos" precisa viajar junto: sem isto a tela estimava todos e a
+    // fila entrava só com os novos (ou o contrário).
+    apenasNaoEnviados: apenasNovos,
   };
 
   const handleEstimar = async () => {
@@ -909,6 +916,9 @@ function ComunicacoesPage() {
     setIsCampanhaWizardOpen(false);
     setCampanhaGeral(false);
     setTagsSelecionadas([]);
+    // Voltar o filtro para "todos": se "só novos" ficasse marcado, a próxima
+    // campanha nasceria excluindo gente em silêncio.
+    setApenasNovos(false);
     // Voltar o canal para META e limpar os grupos: se a opção Uazapi ficasse
     // marcada, a próxima campanha de contatos nasceria como campanha de grupo.
     setCanalEnvio("META");
@@ -2121,6 +2131,45 @@ function ComunicacoesPage() {
                         </p>
                       </div>
 
+                      {/* Quem recebe: "só novos" exclui quem já recebeu qualquer
+                          campanha antes; "todos" manda para a base inteira de novo. */}
+                      <div
+                        className={`space-y-2 ${
+                          canalEnvio === "UAZAPI" ? "hidden" : ""
+                        }`}
+                      >
+                        <Label>Quem recebe</Label>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setApenasNovos(false)}
+                            className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${
+                              !apenasNovos
+                                ? "border-teal-600 bg-teal-50 text-teal-700"
+                                : "border-slate-200 bg-white text-slate-600 hover:border-slate-400"
+                            }`}
+                          >
+                            Todos
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setApenasNovos(true)}
+                            className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${
+                              apenasNovos
+                                ? "border-teal-600 bg-teal-50 text-teal-700"
+                                : "border-slate-200 bg-white text-slate-600 hover:border-slate-400"
+                            }`}
+                          >
+                            Só quem nunca recebeu
+                          </button>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">
+                          {apenasNovos
+                            ? "Só entra na fila quem nunca recebeu nenhuma campanha (a estimativa já reflete isso)."
+                            : "Manda para todo o público selecionado, mesmo quem já recebeu antes."}
+                        </p>
+                      </div>
+
                       <div
                         className={`space-y-2 ${
                           canalEnvio === "UAZAPI" ? "hidden" : ""
@@ -3112,6 +3161,7 @@ function ComunicacoesPage() {
                           <th className="px-3 py-2 text-left font-medium text-muted-foreground">Telefone</th>
                           <th className="px-3 py-2 text-left font-medium text-muted-foreground">Agendado para</th>
                           <th className="px-3 py-2 text-left font-medium text-muted-foreground">Enviado em</th>
+                          <th className="px-3 py-2 text-left font-medium text-muted-foreground">Já recebeu</th>
                           <th className="px-3 py-2 text-left font-medium text-muted-foreground">Status</th>
                           <th className="px-3 py-2 text-left font-medium text-muted-foreground">Erro</th>
                         </tr>
@@ -3132,6 +3182,15 @@ function ComunicacoesPage() {
                                 : "—"}
                             </td>
                             <td className="px-3 py-2">
+                              {envio.ja_recebeu_antes ? (
+                                <Badge variant="outline" className="text-[10px]">
+                                  Já recebeu antes
+                                </Badge>
+                              ) : (
+                                <span className="text-muted-foreground">Primeira vez</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2">
                               <Badge variant={varianteStatusEnvio(envio)} className="text-[10px]">
                                 {rotuloStatusEnvio(envio)}
                               </Badge>
@@ -3144,7 +3203,7 @@ function ComunicacoesPage() {
                         {!enviosCampabela?.length && (
                           <tr>
                             <td
-                              colSpan={6}
+                              colSpan={7}
                               className="px-3 py-6 text-center text-muted-foreground"
                             >
                               Nenhum contato na fila desta campanha.

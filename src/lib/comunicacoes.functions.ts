@@ -197,6 +197,7 @@ export const contarPublicoFn = createServerFn({ method: "POST" })
         tipo: z.string().optional(),
         segmentoId: z.string().optional(),
         loteId: z.string().optional(),
+        apenasNaoEnviados: z.boolean().optional(),
       })
       .parse(data ?? {}),
   )
@@ -213,6 +214,7 @@ export const contarPublicoFn = createServerFn({ method: "POST" })
         tipo: data.tipo ?? null,
         segmentoId: data.segmentoId ?? null,
         loteId: data.loteId ?? null,
+        apenasNaoEnviados: data.apenasNaoEnviados ?? null,
       }),
     };
   });
@@ -234,6 +236,7 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
         segmento_id: z.string().uuid().optional().nullable(),
         origem_publico: z.enum(["COMPRADORES", "IMPORTADOS", "AMBOS"]).default("AMBOS"),
         tag_ids: z.array(z.string().uuid()).optional(),
+        apenasNaoEnviados: z.boolean().optional(),
         janela_inicio: z.string().optional().nullable(),
         janela_fim: z.string().optional().nullable(),
         intervalo_minutos: z.number().int().min(1).max(1440).default(5),
@@ -383,6 +386,9 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
         // A tag tem que chegar ao motor: sem ela a fila era montada com "todos
         // os prospects" e a campanha mirava a base inteira em vez da etiqueta.
         tagIds: data.tag_ids ?? data.filtros?.tagIds ?? null,
+        // "So novos": tira da fila quem ja recebeu alguma campanha antes. Sem
+        // isto a tela estimava 140 novos mas a fila entrava com todo mundo.
+        apenasNaoEnviados: data.apenasNaoEnviados ?? data.filtros?.apenasNaoEnviados ?? null,
         // A UI manda `filtros.status`; a estimativa já lê esse campo como
         // statusCompliance. Sem este alias a fila ignorava o filtro que a
         // tela mostrava — a estimativa apontava 2 elegíveis e a fila entrava

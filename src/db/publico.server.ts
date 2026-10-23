@@ -27,6 +27,12 @@ export type CriterioPublico = {
    * restante dos filtros (origem/UF/tipo) é ignorado — a tag já é a seleção.
    */
   tagIds?: string[] | null;
+  /**
+   * Quando true, tira do público quem já recebeu alguma campanha
+   * (telefone presente em `whatsapp_mensagens` com estado_fila ENVIADA).
+   * É o "enviar só para quem nunca recebeu" do wizard.
+   */
+  apenasNaoEnviados?: boolean | null;
 };
 
 export type Destinatario = {
@@ -179,6 +185,11 @@ export async function resolverPublico(criterio: CriterioPublico = {}): Promise<D
   // gente de fora da etiqueta e a contagem da tela não bateria com a fila.
   const comTag = Array.isArray(criterio.tagIds) && criterio.tagIds.length > 0;
 
+  // "Só quem nunca recebeu": quem já saiu como ENVIADA em qualquer campanha
+  // anterior sai do público — e também da contagem, para a estimativa da tela
+  // bater com a fila que o motor monta.
+  const enviados = criterio.apenasNaoEnviados ? await telefonesJaEnviados() : null;
+
   const partes: any[] = [];
   if (!comTag && (origem === "COMPRADORES" || origem === "AMBOS"))
     partes.push(filtroCompradores(criterio));
@@ -206,6 +217,8 @@ export async function resolverPublico(criterio: CriterioPublico = {}): Promise<D
     const tel = soDigitos(l.telefone);
     if (!tel) continue;
     const chave = normalizarParaMeta(tel);
+    // Com "só novos", quem já recebeu antes nem entra no mapa.
+    if (enviados?.has(chave)) continue;
     const existente = vistos.get(chave);
     // Comprador tem precedência: já tem conta e histórico no sistema.
     if (existente) {
@@ -230,6 +243,25 @@ export async function resolverPublico(criterio: CriterioPublico = {}): Promise<D
 /** Só a contagem, para a tela mostrar "N elegíveis" sem trazer a lista inteira. */
 export async function contarPublico(criterio: CriterioPublico = {}): Promise<number> {
   return (await resolverPublico(criterio)).length;
+}
+
+/**
+ * Telefones que já receberam alguma campanha (estado_fila ENVIADA), já
+ * normalizados para o formato da Meta. O dedup da fila é por campanha, então
+ * sem isso a tela não tinha como dizer "este contato já recebeu antes".
+ */
+export async function telefonesJaEnviados(): Promise<Set<string>> {
+  const d = requireDb();
+  const res = await d.execute(sql`
+    SELECT DISTINCT telefone FROM whatsapp_mensagens
+    WHERE estado_fila = 'ENVIADA' AND telefone IS NOT NULL
+  `);
+  const set = new Set<string>();
+  for (const l of rowsOf(res)) {
+    const tel = soDigitos(l.telefone);
+    if (tel) set.add(normalizarParaMeta(tel));
+  }
+  return set;
 }
 
 /**

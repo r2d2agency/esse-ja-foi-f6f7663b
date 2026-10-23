@@ -130,6 +130,9 @@ function MarketingPage() {
   // independente do arquivo escolhido — o usuário pode importar vários
   // arquivos com a mesma tag.
   const [tagImportacao, setTagImportacao] = useState("");
+  // Etiqueta existente escolhida na importação: evita criar uma tag nova a
+  // cada arquivo. Quando preenchida, vale mais que o campo de texto.
+  const [tagImportacaoId, setTagImportacaoId] = useState("");
   const [contatoEditando, setContatoEditando] = useState<any>(null);
   const [editForm, setEditForm] = useState<Record<string, string>>({});
   const [contatoExcluir, setContatoExcluir] = useState<any>(null);
@@ -371,12 +374,19 @@ function MarketingPage() {
     // A tag só é criada se o nome estiver preenchido; sem nome, a importação
     // segue sem tag.
     let tagId: string | null = null;
-    if (tagImportacao.trim()) {
+    let tagNomeAplicada = "";
+    // Etiqueta existente vale mais que o texto: evita criar "lista-outubro",
+    // "lista-outubro-2", "lista-outubro-3" a cada arquivo importado.
+    if (tagImportacaoId) {
+      tagId = tagImportacaoId;
+      tagNomeAplicada = tags.find((t: any) => t.id === tagId)?.nome ?? "";
+    } else if (tagImportacao.trim()) {
       try {
         const t = await criarTag({ data: { nome: tagImportacao.trim() } });
         if (!t.ok) throw new Error(t.message);
         tagId = t.data?.id;
         if (!tagId) throw new Error("Tag não retornada pelo servidor.");
+        tagNomeAplicada = tagImportacao.trim();
       } catch (e: any) {
         toast.error(e.message);
         setImportando(false);
@@ -412,7 +422,7 @@ function MarketingPage() {
               .then((r) => {
                 if (!r.ok) throw new Error(r.message);
                 toast.success(
-                  `Importação concluída: ${d.inseridos} novo(s), ${d.atualizados} atualizado(s), ${d.duplicados} duplicado(s), ${d.invalidos} inválido(s). Tag "${tagImportacao.trim()}" aplicada.`,
+                  `Importação concluída: ${d.inseridos} novo(s), ${d.atualizados} atualizado(s), ${d.duplicados} duplicado(s), ${d.invalidos} inválido(s). Tag "${tagNomeAplicada}" aplicada.`,
                 );
               })
               .catch((e: any) => {
@@ -427,6 +437,8 @@ function MarketingPage() {
           }
           setImportOpen(false);
           setArquivo(null);
+          setTagImportacao("");
+          setTagImportacaoId("");
           setImportadosIds(d.inseridosIds ?? []);
           queryClient.invalidateQueries({
             queryKey: ["admin-marketing"],
@@ -1182,16 +1194,32 @@ function MarketingPage() {
                   <label className="text-xs font-bold text-slate-500">
                     Etiquetar contatos importados
                   </label>
+                  {tags.length > 0 && (
+                    <select
+                      className="w-full rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm"
+                      value={tagImportacaoId}
+                      onChange={(e) => setTagImportacaoId(e.target.value)}
+                    >
+                      <option value="">Usar etiqueta existente…</option>
+                      {tags.map((t: any) => (
+                        <option key={t.id} value={t.id}>
+                          {t.nome} ({Number(t.total ?? 0)})
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   <input
                     type="text"
                     className="w-full rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm"
-                    placeholder="Ex: lista-outubro, feirao-sp, ..."
+                    placeholder="Ou criar nova: ex: lista-outubro, feirao-sp, ..."
                     value={tagImportacao}
                     onChange={(e) => setTagImportacao(e.target.value)}
+                    disabled={!!tagImportacaoId}
                   />
                   <p className="text-xs text-slate-500">
-                    Cria a tag se ela não existir e aplica a todos os contatos que entrarem.
-                    Deixe em branco para importar sem etiqueta.
+                    Escolha uma etiqueta existente ou digite o nome para criar uma nova.
+                    Aplica a todos os contatos que entrarem. Deixe em branco para
+                    importar sem etiqueta.
                   </p>
                 </div>
               </div>

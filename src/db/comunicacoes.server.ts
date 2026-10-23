@@ -1093,6 +1093,9 @@ export async function estimarPublico(filtros: any) {
     // mirava a base inteira enquanto o wizard mostrava outro número.
     tagIds: filtros?.tagIds ?? null,
     busca: filtros?.busca ?? null,
+    // "Só novos" precisa chegar à contagem do mesmo jeito que chega à fila:
+    // sem isso a tela mostra 200 e o motor enfileira 140.
+    apenasNaoEnviados: filtros?.apenasNaoEnviados ?? filtros?.apenas_nao_enviados ?? null,
   });
   return { total, elegiveis: total, nao_elegiveis: 0 };
 }
@@ -1136,6 +1139,8 @@ export async function criarCampanha(data: any, usuarioId: string) {
     statusCompliance: data.filtros?.status ?? null,
     tagIds: (data as any).tag_ids ?? data.filtros?.tagIds ?? null,
     mapeamento: data.mapeamento_variaveis ?? {},
+    apenasNaoEnviados:
+      (data as any).apenas_nao_enviados ?? data.filtros?.apenasNaoEnviados ?? null,
   } as any);
 
   return { id: campanhaId, total: fila.inseridos };
@@ -1204,7 +1209,16 @@ export async function listarEnviosCampanha(campanhaId: string) {
       m.tentativas,
       m.erro_codigo,
       m.erro_mensagem,
-      m.criado_em
+      m.criado_em,
+      -- "Já recebeu antes": existe outra mensagem ENVIADA para o mesmo
+      -- telefone em outra campanha. É o que a tela usa para mostrar, na
+      -- frente do contato, se ele já foi alcançado antes.
+      EXISTS (
+        SELECT 1 FROM whatsapp_mensagens m2
+        WHERE m2.telefone = m.telefone
+          AND m2.campanha_id <> m.campanha_id
+          AND m2.estado_fila = 'ENVIADA'
+      ) AS ja_recebeu_antes
     FROM whatsapp_mensagens m
     LEFT JOIN profiles p ON p.id = m.comprador_id
     LEFT JOIN marketing_contatos mc ON mc.id = m.contato_marketing_id
