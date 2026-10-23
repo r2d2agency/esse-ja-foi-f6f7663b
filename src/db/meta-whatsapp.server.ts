@@ -303,45 +303,27 @@ function parametersPara(texto: string, valores: Record<string, string>, rotulo: 
  * tentar extrair URL que não existe.
  */
 function componenteBotao(botao: any, posicao: number, valores: Record<string, string>): any | null {
-  // Formato da Meta: { type: "button", sub_type: "url", index, text }
-  // Não tem `url` nem `parameters` — a URL não é devolvida na listagem.
-  //
-  // Botão de telefone e de resposta rápida NÃO levam parâmetro no envio (o
-  // número e o texto já estão gravados no template). Mandar `parameters` neles
-  // é recusado com 132018 "There's an issue with the parameters in your
-  // template" — foi o que aconteceu na primeira tentativa de correção. Só o
-  // botão de URL com {{n}} tem parâmetro, e esse caso está mais abaixo.
-  if (botao?.sub_type) {
-    return {
-      type: "button",
-      sub_type: botao.sub_type,
-      index: Number.isInteger(botao.index) ? botao.index : posicao,
-    };
-  }
-  // Formato do wizard: { type: "URL", url: "https://...{{7}}" }
-  const tipo = String(botao?.type || "").toUpperCase();
-  const url = String(botao?.url || botao?.phone_number || "");
-  if (!url) return null;
+  // Dois formatos chegam aqui:
+  //  - Meta (sincronização): { type: "button", sub_type: "url", index, text }
+  //    — sem `url`, porque a listagem pode não devolver o link;
+  //  - wizard: { type: "URL"|"PHONE_NUMBER"|"QUICK_REPLY", url|phone_number }.
+  const subTipo = String(botao?.sub_type || botao?.type || "").toLowerCase();
   const indice = Number.isInteger(botao?.index) ? botao.index : posicao;
 
-  // Botão de telefone: o número já está gravado no template e NÃO vai como
-  // parâmetro no envio. Mandar `parameters` aqui é o que produzia o 132018
-  // "There's an issue with the parameters in your template" — o botão só
-  // aceita o índice.
-  if (tipo === "PHONE_NUMBER") {
-    return { type: "button", sub_type: "phone_number", index: indice };
-  }
-
-  // Botão de URL estática (sem {{n}}) não leva componente algum no envio: a
-  // Meta rejeita `parameters: []` com 132018 "Button does not require
-  // parameters". Só manda componente quando há {{n}} na URL para preencher.
-  // (erro 132018 — o payload antigo mandava `"parameters": []` no botão)
+  // SÓ o botão de URL com {{n}} leva componente (e parâmetro) no envio.
   //
-  // Mas o botão não pode SUMIR: sem ele o envio não casa com o template
-  // aprovado e a Meta responde 132012. O componente vai sem `parameters`.
-  if (!maiorPlaceholder(url)) {
-    return { type: "button", sub_type: "url", index: indice };
-  }
+  // Botão de telefone e de resposta rápida são ESTÁTICOS: o número e o texto de
+  // resposta ficam gravados no template. O schema de envio nem aceita
+  // `sub_type: "phone_number"` — mandar esse componente volta 132018 "There's
+  // an issue with the parameters in your template". Era o que derrubava todo
+  // template sincronizado com botão de telefone, mesmo sem `parameters`.
+  if (subTipo !== "url") return null;
+
+  const url = String(botao?.url || "");
+  // Sem URL (formato da listagem da Meta) não há como saber se o botão tem
+  // variável; e botão estático não precisa ir no payload de envio.
+  if (!maiorPlaceholder(url)) return null;
+
   const substitutos = parametersPara(url, valores, `botão de link ${posicao + 1}`);
   const urlResolvida = url.replace(/\{\{(\d+)\}\}/g, (_m, n) => {
     const p = substitutos[Number(n) - 1];
@@ -597,12 +579,14 @@ export async function montarComponents(
     // Formato da Meta: botões vêm como componentes individuais
     // { type: "button", sub_type: "url", index: 0, text: "..." }
     // O wizard grava BUTTONS com array; a Meta devolve button solto.
+    //
+    // Passa pela MESMA regra do array de botões: só botão de URL com {{n}} vai
+    // no payload. Antes este branch empurrava o componente como viesse — e um
+    // botão de telefone (sub_type phone_number) enviado assim derruba o envio
+    // com 132018 "There's an issue with the parameters in your template".
     if (tipo === "BUTTON" && comp?.sub_type) {
-      saida.push({
-        type: "button",
-        sub_type: comp.sub_type,
-        index: Number.isInteger(comp.index) ? comp.index : 0,
-      });
+      const montado = componenteBotao(comp, Number.isInteger(comp.index) ? comp.index : 0, valores);
+      if (montado) saida.push(montado);
       continue;
     }
   }
