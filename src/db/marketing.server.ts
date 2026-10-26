@@ -600,17 +600,31 @@ export async function getUazapiConfig() {
   await d.execute(sql`
     INSERT INTO configuracoes_sistema (chave, valor, descricao)
     VALUES ('uazapi_base_url', '', 'URL base da instância Uazapi (ex: https://gleego.uazapi.com)'),
-           ('uazapi_token', '', 'Token da instância Uazapi (enviado no header token)')
+           ('uazapi_token', '', 'Token da instância Uazapi (enviado no header token)'),
+           ('uazapi_grupos_permitidos', '[]', 'Lista de JIDs @g.us permitidos para aparecer em automações e campanhas')
     ON CONFLICT (chave) DO NOTHING
   `);
   const rows = rowsOf(
     await d.execute(
-      sql`SELECT chave, valor FROM configuracoes_sistema WHERE chave IN ('uazapi_base_url','uazapi_token')`,
+      sql`SELECT chave, valor FROM configuracoes_sistema WHERE chave IN ('uazapi_base_url','uazapi_token','uazapi_grupos_permitidos')`,
     ),
   );
   const cfg: Record<string, string> = {};
   for (const r of rows) cfg[r.chave] = r.valor || "";
   return cfg;
+}
+
+/** Salva quais grupos da Uazapi podem ser usados em automações e campanhas. */
+export async function salvarUazapiGruposPermitidos(grupos: string[]) {
+  const d = requireDb();
+  await ensureMarketingSchema();
+  const lista = Array.isArray(grupos) ? grupos.filter((g) => typeof g === "string" && g.includes("@g.us")) : [];
+  await d.execute(sql`
+    INSERT INTO configuracoes_sistema (chave, valor, atualizado_em)
+    VALUES ('uazapi_grupos_permitidos', ${JSON.stringify(lista)}::jsonb, now())
+    ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor, atualizado_em = now()
+  `);
+  return { ok: true, grupos: lista };
 }
 
 export async function salvarUazapiConfig(base_url: string, token: string) {

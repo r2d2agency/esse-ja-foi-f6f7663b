@@ -99,7 +99,7 @@ import {
   dispararCampanhaAgoraFn,
   agendarDisparoCampanhaFn,
 } from "@/lib/comunicacoes.functions";
-import { listarMarketingTagsFn, listarGruposUazapiFn } from "@/lib/marketing.functions";
+import { listarMarketingTagsFn, listarGruposUazapiFn, getUazapiConfigFn } from "@/lib/marketing.functions";
 import {
   normalizarStatusTemplate,
   rotuloStatusTemplate,
@@ -513,6 +513,7 @@ function ComunicacoesPage() {
   const getExecucoes = useServerFn(getExecucoesAutomacaoFn);
   const listarTagsMarketing = useServerFn(listarMarketingTagsFn);
   const listarGruposUazapi = useServerFn(listarGruposUazapiFn);
+  const obterConfigUazapi = useServerFn(getUazapiConfigFn);
 
   const [activeTab, setActiveTab] = useState("campanhas");
   const [selectedAutomacao, setSelectedAutomacao] = useState<any>(null);
@@ -658,6 +659,7 @@ function ComunicacoesPage() {
   const [canalEnvio, setCanalEnvio] = useState<"META" | "UAZAPI">("META");
   const [gruposAlvo, setGruposAlvo] = useState<string[]>([]);
   const [gruposUazapi, setGruposUazapi] = useState<any[]>([]);
+  const [gruposPermitidosUazapi, setGruposPermitidosUazapi] = useState<string[]>([]);
   const [carregandoGrupos, setCarregandoGrupos] = useState(false);
   const [erroGrupos, setErroGrupos] = useState<string | null>(null);
 
@@ -665,6 +667,14 @@ function ComunicacoesPage() {
     setCarregandoGrupos(true);
     setErroGrupos(null);
     try {
+      // Os grupos marcados como permitidos na configuração (Marketing >
+      // Uazapi) são os que aparecem aqui e na automação. Lista vazia = sem
+      // filtro, mostra tudo da instância.
+      const cfg: any = await obterConfigUazapi();
+      const permitidos: string[] = Array.isArray(cfg?.data?.uazapi_grupos_permitidos)
+        ? cfg.data.uazapi_grupos_permitidos
+        : [];
+      setGruposPermitidosUazapi(permitidos);
       // Sem este tempo limite a promessa podia ficar pendente para sempre (a
       // função servidora não descarta sozinha), e o botão travava em
       // "Carregando..." com o clique desabilitado — sem saída a não ser
@@ -692,6 +702,13 @@ function ComunicacoesPage() {
       setCarregandoGrupos(false);
     }
   };
+
+  // Só os grupos marcados como permitidos na configuração aparecem na
+  // automação e no disparo. Sem nada marcado, mostra tudo da instância.
+  const gruposVisiveisUazapi =
+    gruposPermitidosUazapi.length > 0
+      ? gruposUazapi.filter((g: any) => gruposPermitidosUazapi.includes(g.id))
+      : gruposUazapi;
 
   const { data: indicadores } = useQuery({
     queryKey: ["wa-indicadores"],
@@ -2081,7 +2098,7 @@ function ComunicacoesPage() {
                             >
                               {carregandoGrupos
                                 ? "Carregando..."
-                                : gruposUazapi.length
+                                : gruposVisiveisUazapi.length
                                   ? "Atualizar lista"
                                   : "Carregar grupos"}
                             </Button>
@@ -2091,9 +2108,9 @@ function ComunicacoesPage() {
                             <p className="text-xs text-red-600 dark:text-red-400">{erroGrupos}</p>
                           )}
 
-                          {gruposUazapi.length > 0 && (
+                          {gruposVisiveisUazapi.length > 0 && (
                             <div className="grid grid-cols-1 gap-2 max-h-56 overflow-y-auto pr-1">
-                              {gruposUazapi.map((g: any) => {
+                              {gruposVisiveisUazapi.map((g: any) => {
                                 const ativo = gruposAlvo.includes(g.id);
                                 return (
                                   <label
@@ -2133,9 +2150,14 @@ function ComunicacoesPage() {
                             </div>
                           )}
 
-                          {gruposUazapi.length > 0 && gruposAlvo.length === 0 && (
+                          {gruposVisiveisUazapi.length > 0 && gruposAlvo.length === 0 && (
                             <p className="text-xs text-amber-600 dark:text-amber-400">
                               Marque pelo menos um grupo para continuar.
+                            </p>
+                          )}
+                          {gruposPermitidosUazapi.length > 0 && gruposVisiveisUazapi.length === 0 && (
+                            <p className="text-xs text-amber-600 dark:text-amber-400">
+                              Nenhum grupo permitido foi encontrado nesta instância. Confira a seleção em Marketing, na configuração da Uazapi.
                             </p>
                           )}
                           {gruposAlvo.length > 0 && (
@@ -2916,7 +2938,7 @@ function ComunicacoesPage() {
                                     {gruposAlvo
                                       .map(
                                         (id) =>
-                                          gruposUazapi.find((g: any) => g.id === id)?.nome ?? id,
+                                          gruposVisiveisUazapi.find((g: any) => g.id === id)?.nome ?? id,
                                       )
                                       .join(", ")}
                                   </p>
@@ -5415,7 +5437,7 @@ function ComunicacoesPage() {
                   {automacaoStep === 3 && novaAutomacao.publico === "GRUPOS_UAZAPI" && (
                     <div className="space-y-4">
                       <Label>Quais grupos recebem o veículo publicado?</Label>
-                      {gruposUazapi.length === 0 && (
+                      {gruposVisiveisUazapi.length === 0 && (
                         <Button
                           type="button"
                           variant="outline"
@@ -5428,9 +5450,14 @@ function ComunicacoesPage() {
                       {erroGrupos && (
                         <p className="text-xs text-amber-600 dark:text-amber-400">{erroGrupos}</p>
                       )}
-                      {gruposUazapi.length > 0 && (
+                      {gruposPermitidosUazapi.length > 0 && gruposVisiveisUazapi.length === 0 && !carregandoGrupos && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400">
+                          Nenhum grupo permitido foi encontrado nesta instância. Confira a seleção em Marketing, na configuração da Uazapi.
+                        </p>
+                      )}
+                      {gruposVisiveisUazapi.length > 0 && (
                         <div className="grid grid-cols-1 gap-2 max-h-56 overflow-y-auto pr-1">
-                          {gruposUazapi.map((g: any) => {
+                          {gruposVisiveisUazapi.map((g: any) => {
                             const ativo = (novaAutomacao.regras?.grupos_alvo || []).includes(g.id);
                             return (
                               <label

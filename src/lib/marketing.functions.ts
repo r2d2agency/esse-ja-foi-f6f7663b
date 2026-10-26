@@ -234,17 +234,40 @@ export const getUazapiConfigFn = createServerFn({ method: "GET" }).handler(async
     await adminOuOperacaoDaSessao();
     const { getUazapiConfig } = await import("@/db/marketing.server");
     const cfg = await getUazapiConfig();
+    let gruposPermitidos: string[] = [];
+    try {
+      const raw = cfg.uazapi_grupos_permitidos;
+      if (raw) gruposPermitidos = typeof raw === "string" ? JSON.parse(raw) : (raw as any);
+      if (!Array.isArray(gruposPermitidos)) gruposPermitidos = [];
+    } catch {
+      gruposPermitidos = [];
+    }
     return {
       ok: true as const,
       data: {
         uazapi_base_url: cfg.uazapi_base_url || "",
         uazapi_token_definido: !!cfg.uazapi_token,
+        uazapi_grupos_permitidos: gruposPermitidos,
       },
     };
   } catch (e: any) {
     return { ok: false as const, message: e.message };
   }
 });
+
+/** Salva a lista de grupos Uazapi permitidos em automações e campanhas. */
+export const salvarUazapiGruposPermitidosFn = createServerFn({ method: "POST" })
+  .inputValidator((d) => z.object({ grupos: z.array(z.string()).max(500) }).parse(d))
+  .handler(async ({ data }) => {
+    try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
+      const { salvarUazapiGruposPermitidos } = await import("@/db/marketing.server");
+      return { ok: true as const, data: await salvarUazapiGruposPermitidos(data.grupos) };
+    } catch (e: any) {
+      return { ok: false as const, message: e.message };
+    }
+  });
 
 export const salvarUazapiConfigFn = createServerFn({ method: "POST" })
   .inputValidator((d) =>

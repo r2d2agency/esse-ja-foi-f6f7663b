@@ -16,6 +16,8 @@ import {
   geocodificarContatosFn,
   getUazapiConfigFn,
   salvarUazapiConfigFn,
+  salvarUazapiGruposPermitidosFn,
+  listarGruposUazapiFn,
   testarUazapiFn,
   verificarWhatsappContatosFn,
 } from "@/lib/marketing.functions";
@@ -66,6 +68,7 @@ import {
   XCircle,
   Zap,
   Link2,
+  Users,
 } from "lucide-react";
 import MapaContatos from "@/components/shared/MapaContatos";
 import {
@@ -237,8 +240,16 @@ function MarketingPage() {
   const geocodificar = useServerFn(geocodificarContatosFn);
   const getUazapiConfig = useServerFn(getUazapiConfigFn);
   const salvarUazapi = useServerFn(salvarUazapiConfigFn);
+  const salvarGruposPermitidos = useServerFn(salvarUazapiGruposPermitidosFn);
+  const listarGrupos = useServerFn(listarGruposUazapiFn);
   const verificarWhatsapp = useServerFn(verificarWhatsappContatosFn);
   const testarUazapi = useServerFn(testarUazapiFn);
+  // Grupos da Uazapi: permitidos (salvos) vs disponíveis na instância. Os
+  // marcados como permitidos são os que aparecem em automações e campanhas.
+  const [gruposDisponiveis, setGruposDisponiveis] = useState<any[]>([]);
+  const [gruposPermitidos, setGruposPermitidos] = useState<string[]>([]);
+  const [carregandoGrupos, setCarregandoGrupos] = useState(false);
+  const [salvandoGrupos, setSalvandoGrupos] = useState(false);
   // Resultado do "Testar": conectado + nome/número da instância, ou o motivo.
   const [testeUazapi, setTesteUazapi] = useState<{
     ok: boolean;
@@ -256,10 +267,39 @@ function MarketingPage() {
         setUazapiUrl(r.data.uazapi_base_url || "");
         setUazapiToken(r.data.uazapi_token_definido ? "••••••••••••" : "");
         setUazapiConfigurado(r.data.uazapi_token_definido);
+        setGruposPermitidos(r.data.uazapi_grupos_permitidos || []);
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Carrega os grupos da instância para marcar os permitidos. Só roda quando
+  // o painel de config está aberto, para não bater na Uazapi à toa.
+  async function carregarGruposUazapi() {
+    setCarregandoGrupos(true);
+    try {
+      const r: any = await listarGrupos();
+      if (r?.ok === false) throw new Error(r.message || "Falha ao listar grupos.");
+      setGruposDisponiveis(r?.data || r || []);
+    } catch (e: any) {
+      toast.error(e?.message || "Falha ao listar grupos.");
+    } finally {
+      setCarregandoGrupos(false);
+    }
+  }
+
+  async function confirmarSalvarGrupos() {
+    setSalvandoGrupos(true);
+    try {
+      const r: any = await salvarGruposPermitidos({ data: { grupos: gruposPermitidos } });
+      if (r?.ok === false) throw new Error(r.message || "Falha ao salvar grupos.");
+      toast.success(`${gruposPermitidos.length} grupo(s) permitido(s). Automação e campanha passam a listar só esses.`);
+    } catch (e: any) {
+      toast.error(e?.message || "Falha ao salvar grupos.");
+    } finally {
+      setSalvandoGrupos(false);
+    }
+  }
 
   async function confirmarSalvarUazapi() {
     setSalvandoUazapi(true);
@@ -737,6 +777,67 @@ function MarketingPage() {
               )}
               {testandoUazapi ? "Testando..." : "Testar conexão"}
             </Button>
+          </div>
+        )}
+        {/* Grupos permitidos: marca aqui quais grupos da instância podem ser
+            usados. Automação e campanha/disparo passam a listar só esses. */}
+        {uazapiOpen && (
+          <div className="border-t border-slate-100 pt-3 space-y-2">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <p className="text-xs font-bold text-slate-500 uppercase">
+                Grupos permitidos ({gruposPermitidos.length})
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={carregarGruposUazapi} disabled={carregandoGrupos}>
+                  {carregandoGrupos ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Users className="mr-2 h-4 w-4" />
+                  )}
+                  {carregandoGrupos ? "Carregando..." : "Carregar grupos da instância"}
+                </Button>
+                <Button size="sm" onClick={confirmarSalvarGrupos} disabled={salvandoGrupos}>
+                  {salvandoGrupos ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="mr-2 h-4 w-4" />
+                  )}
+                  Salvar seleção
+                </Button>
+              </div>
+            </div>
+            {gruposDisponiveis.length === 0 ? (
+              <p className="text-xs text-slate-500">
+                Clique em "Carregar grupos da instância" e marque os que devem aparecer em
+                automações e campanhas.
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-64 overflow-y-auto">
+                {gruposDisponiveis.map((g: any) => {
+                  const id = g.id || g.jid;
+                  const ativo = gruposPermitidos.includes(id);
+                  return (
+                    <label
+                      key={id}
+                      className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm cursor-pointer ${
+                        ativo ? "border-teal-500 bg-teal-50" : "border-slate-200"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={ativo}
+                        onChange={() =>
+                          setGruposPermitidos((atual) =>
+                            ativo ? atual.filter((x) => x !== id) : [...atual, id],
+                          )
+                        }
+                      />
+                      <span className="font-medium">{g.nome || g.name || id}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
       </div>
