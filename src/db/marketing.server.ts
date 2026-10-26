@@ -900,8 +900,8 @@ export async function listarGruposUazapi() {
   }
 
   // 3) Algumas versões exigem POST nas rotas de listagem de grupos/chats
-  //    (/chats já foi retirado daqui: ele responde 405 ao POST nesta versão).
-  for (const rota of ["/group/list", "/group/all", "/groups/list", "/list-chats"]) {
+  //    (/chats já foi retirado daqui; /list-chats varia entre versões, evitar POST aqui)
+  for (const rota of ["/group/list", "/group/all", "/groups/list"]) {
     const ctrl = new AbortController();
     const esgotou = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
     try {
