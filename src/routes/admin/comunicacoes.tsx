@@ -633,6 +633,11 @@ function ComunicacoesPage() {
   const [agendarParaValor, setAgendarParaValor] = useState("");
   const [enviosCampabela, setEnviosCampabela] = useState<any[] | null>(null);
   const [logsCampanha, setLogsCampanha] = useState<any[] | null>(null);
+  // Paginação da lista de campanhas, do modal de envios e do log: sem isso,
+  // com dezenas de campanhas a tela virava uma rolagem sem fim.
+  const [paginaCampanhas, setPaginaCampanhas] = useState(1);
+  const [paginaEnvios, setPaginaEnvios] = useState(1);
+  const [paginaLogs, setPaginaLogs] = useState(1);
 
   // Canal de envio: Meta (template oficial) ou Uazapi (conexão nova — a única
   // rota que aceita grupos, já que a Meta não processa template para @g.us).
@@ -2779,6 +2784,25 @@ function ComunicacoesPage() {
                   {campanhaStep === 7 && (
                     <div className="space-y-6">
                       <Label className="text-lg">Revisão Final</Label>
+                      {/* Nome próprio para cada campanha: sem isso todas caíam
+                          no fallback "Campanha Geral" e a lista ficava
+                          indistinguível. */}
+                      <div className="space-y-2">
+                        <Label htmlFor="nome-campanha">Nome da campanha</Label>
+                        <Input
+                          id="nome-campanha"
+                          placeholder='Ex.: "Lançamento SUV — novembro"'
+                          value={novaCampanha.nome}
+                          onChange={(e) =>
+                            setNovaCampanha({ ...novaCampanha, nome: e.target.value })
+                          }
+                        />
+                        {!novaCampanha.nome.trim() && (
+                          <p className="text-[11px] text-muted-foreground">
+                            Sem nome, ela será salva como "Campanha Geral".
+                          </p>
+                        )}
+                      </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-4">
                           <div className="p-4 border rounded-lg bg-slate-50 dark:bg-slate-900/50 space-y-2">
@@ -3015,7 +3039,15 @@ function ComunicacoesPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {(campanhasDetalhadas ?? campanhas ?? []).map((campanha: any) => (
+                    {(() => {
+                      // Paginação da lista: 10 por página para a tela não
+                      // virar rolagem infinita quando houver dezenas.
+                      const todas = campanhasDetalhadas ?? campanhas ?? [];
+                      const totalPaginas = Math.max(1, Math.ceil(todas.length / 10));
+                      const pagina = Math.min(paginaCampanhas, totalPaginas);
+                      return todas
+                        .slice((pagina - 1) * 10, pagina * 10)
+                        .map((campanha: any) => (
                       <tr key={campanha.id} className="hover:bg-slate-50 transition-colors">
                         <td className="px-4 py-3">
                           <div className="flex flex-col">
@@ -3126,33 +3158,70 @@ function ComunicacoesPage() {
                           </div>
                         </td>
                       </tr>
-                    ))}
+                        ));
+                    })()}
                   </tbody>
                 </table>
+                {/* Controles de página da lista de campanhas. */}
+                {(() => {
+                  const todas = campanhasDetalhadas ?? campanhas ?? [];
+                  const totalPaginas = Math.max(1, Math.ceil(todas.length / 10));
+                  if (totalPaginas <= 1) return null;
+                  return (
+                    <div className="flex items-center justify-between px-4 py-3 border-t bg-slate-50">
+                      <span className="text-xs text-muted-foreground">
+                        Página {paginaCampanhas} de {totalPaginas} — {todas.length} campanha(s)
+                      </span>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={paginaCampanhas <= 1}
+                          onClick={() => setPaginaCampanhas((p) => Math.max(1, p - 1))}
+                        >
+                          Anterior
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={paginaCampanhas >= totalPaginas}
+                          onClick={() => setPaginaCampanhas((p) => Math.min(totalPaginas, p + 1))}
+                        >
+                          Próxima
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             )}
 
-            {/* Detalhe por envio: cada linha da campanha abre a fila de contatos.
-                A lista vem da própria linha de campanha (envios), então o
-                administrador vê o que foi agendado sem abrir outra tela. */}
+            {/* Detalhe por envio em modal: a lupa abre por cima, sem rolar
+                a página. Envios e log têm paginação própria de 20 itens. */}
             {enviosCampanha && (
-              <Card className="mt-4">
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
-                    <span>Envios — {enviosCampanha.nome}</span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setEnviosCampanha(null)}
-                    >
-                      Fechar
-                    </Button>
-                  </CardTitle>
-                  <CardDescription>
-                    {enviosCampabela?.length ?? 0} contato(s) na fila
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
+              <Dialog open onOpenChange={(v) => {
+                if (!v) {
+                  setEnviosCampanha(null);
+                  setPaginaEnvios(1);
+                  setPaginaLogs(1);
+                }
+              }}>
+                <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>Envios — {enviosCampanha.nome}</DialogTitle>
+                    <DialogDescription>
+                      {enviosCampabela?.length ?? 0} contato(s) na fila
+                    </DialogDescription>
+                  </DialogHeader>
+                  {(() => {
+                    const todosEnvios = enviosCampabela ?? [];
+                    const totalPagEnvios = Math.max(1, Math.ceil(todosEnvios.length / 20));
+                    const pagEnv = Math.min(paginaEnvios, totalPagEnvios);
+                    const todosLogs = logsCampanha ?? [];
+                    const totalPagLogs = Math.max(1, Math.ceil(todosLogs.length / 20));
+                    const pagLog = Math.min(paginaLogs, totalPagLogs);
+                    return (
+                      <>
                   <div className="border rounded-lg overflow-hidden">
                     <table className="w-full text-xs">
                       <thead className="bg-slate-50 border-b">
@@ -3167,7 +3236,7 @@ function ComunicacoesPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y">
-                        {(enviosCampabela ?? []).map((envio: any) => (
+                        {todosEnvios.slice((pagEnv - 1) * 20, pagEnv * 20).map((envio: any) => (
                           <tr key={envio.id}>
                             <td className="px-3 py-2">{envio.contato_nome || "—"}</td>
                             <td className="px-3 py-2 font-mono">{envio.telefone}</td>
@@ -3212,6 +3281,31 @@ function ComunicacoesPage() {
                         )}
                       </tbody>
                     </table>
+                    {totalPagEnvios > 1 && (
+                      <div className="flex items-center justify-between px-3 py-2 border-t bg-slate-50">
+                        <span className="text-[11px] text-muted-foreground">
+                          Página {pagEnv} de {totalPagEnvios} — {todosEnvios.length} contato(s)
+                        </span>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={pagEnv <= 1}
+                            onClick={() => setPaginaEnvios((p) => Math.max(1, p - 1))}
+                          >
+                            Anterior
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={pagEnv >= totalPagEnvios}
+                            onClick={() => setPaginaEnvios((p) => Math.min(totalPagEnvios, p + 1))}
+                          >
+                            Próxima
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Log do motor: o que a campanha esta fazendo (ou por que
@@ -3222,7 +3316,7 @@ function ComunicacoesPage() {
                       Log da campanha ({logsCampanha?.length ?? 0} evento(s))
                     </div>
                     <div className="max-h-72 overflow-y-auto divide-y">
-                      {(logsCampanha ?? []).map((log: any) => (
+                      {todosLogs.slice((pagLog - 1) * 20, pagLog * 20).map((log: any) => (
                         <div key={log.id} className="px-3 py-2 text-xs flex gap-3">
                           <span className="text-muted-foreground whitespace-nowrap">
                             {new Date(log.criado_em).toLocaleString()}
@@ -3242,9 +3336,37 @@ function ComunicacoesPage() {
                         </div>
                       )}
                     </div>
+                    {totalPagLogs > 1 && (
+                      <div className="flex items-center justify-between px-3 py-2 border-t bg-slate-50">
+                        <span className="text-[11px] text-muted-foreground">
+                          Página {pagLog} de {totalPagLogs} — {todosLogs.length} evento(s)
+                        </span>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={pagLog <= 1}
+                            onClick={() => setPaginaLogs((p) => Math.max(1, p - 1))}
+                          >
+                            Anterior
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={pagLog >= totalPagLogs}
+                            onClick={() => setPaginaLogs((p) => Math.min(totalPagLogs, p + 1))}
+                          >
+                            Próxima
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </CardContent>
-              </Card>
+                      </>
+                    );
+                  })()}
+                </DialogContent>
+              </Dialog>
             )}
 
             {/* Agendar o disparo de uma campanha que já existe. O novo horario
