@@ -460,6 +460,60 @@ export const alterarStatusCampanhaFn = createServerFn({ method: "POST" })
     }
   });
 
+/**
+ * Edição segura de campanha: permite ajustar nome, horário agendado, janela
+ * de trabalho e intervalo entre mensagens. Não altera público, template,
+ * mapeamento de variáveis ou mídias (para evitar inconsistências com a fila
+ * já gerada).
+ */
+export const atualizarCampanhaFn = createServerFn({ method: "POST" })
+  .validator((data: any) =>
+    z
+      .object({
+        id: z.string().uuid(),
+        nome: z.string().min(1).max(150).optional(),
+        agendado_para: z.string().datetime().nullable().optional(),
+        janela_inicio: z.string().max(10).nullable().optional(),
+        janela_fim: z.string().max(10).nullable().optional(),
+        intervalo_minutos: z.number().int().min(1).max(120).optional(),
+      })
+      .parse(data),
+  )
+  .handler(async ({ data }) => {
+    try {
+      const { db: dbc } = await import("@/db/index");
+      if (!dbc) throw new Error("Banco indisponível.");
+      const sets: any[] = [];
+      if (data.nome !== undefined) sets.push(sql`nome = ${data.nome.trim() || "Campanha Geral"}`);
+      if (data.agendado_para !== undefined) sets.push(sql`agendado_para = ${data.agendado_para ? new Date(data.agendado_para) : null}`);
+      if (data.janela_inicio !== undefined) sets.push(sql`janela_inicio = ${data.janela_inicio}`);
+      if (data.janela_fim !== undefined) sets.push(sql`janela_fim = ${data.janela_fim}`);
+      if (data.intervalo_minutos !== undefined) sets.push(sql`intervalo_minutos = ${data.intervalo_minutos}`);
+      sets.push(sql`atualizado_em = now()`);
+      await dbc.execute(sql`UPDATE whatsapp_campanhas SET ${sql.join(sets, sql`, `)} WHERE id = ${data.id}::uuid`);
+      return { ok: true };
+    } catch (error: any) {
+      return { ok: false, error: mensagemErroPostgres(error) };
+    }
+  });
+
+/**
+ * Exclusão definitiva da campanha. Envios são apagados em cascata (ON DELETE CASCADE),
+ * logs ficam com campanha_id = NULL para preservar o histórico de auditoria.
+ */
+export const excluirCampanhaFn = createServerFn({ method: "POST" })
+  .validator((data: any) => z.object({ id: z.string().uuid() }).parse(data))
+  .handler(async ({ data }) => {
+    try {
+      const { db: dbc } = await import("@/db/index");
+      if (!dbc) throw new Error("Banco indisponível.");
+      await dbc.execute(sql`DELETE FROM whatsapp_campanhas WHERE id = ${data.id}::uuid`);
+      return { ok: true };
+    } catch (error: any) {
+      return { ok: false, error: mensagemErroPostgres(error) };
+    }
+  });
+
 export const processarDisparoAgoraFn = createServerFn({ method: "POST" }).handler(async () => {
   try {
     const { processarDisparo } = await import("@/db/disparo-motor.server");

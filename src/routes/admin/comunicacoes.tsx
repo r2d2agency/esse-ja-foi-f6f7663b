@@ -86,6 +86,8 @@ import {
   criarCampanhaFn,
   criarCampanhaDisparoFn,
   alterarStatusCampanhaFn,
+  atualizarCampanhaFn,
+  excluirCampanhaFn,
   listarCampanhasDetalhadoFn,
   processarDisparoAgoraFn,
   enviarTesteFn,
@@ -493,6 +495,8 @@ function ComunicacoesPage() {
   const criarCampanhaDisparo = useServerFn(criarCampanhaDisparoFn);
   const processarDisparoAgora = useServerFn(processarDisparoAgoraFn);
   const alterarStatusCampanha = useServerFn(alterarStatusCampanhaFn);
+  const atualizarCampanha = useServerFn(atualizarCampanhaFn);
+  const excluirCampanha = useServerFn(excluirCampanhaFn);
   const listarCampanhasDetalhado = useServerFn(listarCampanhasDetalhadoFn);
   const enviarTeste = useServerFn(enviarTesteFn);
   const exemploDestinatario = useServerFn(exemploDestinatarioFn);
@@ -638,6 +642,16 @@ function ComunicacoesPage() {
   const [paginaCampanhas, setPaginaCampanhas] = useState(1);
   const [paginaEnvios, setPaginaEnvios] = useState(1);
   const [paginaLogs, setPaginaLogs] = useState(1);
+  // Edição de ajustes seguros (nome, agendamento, janela, intervalo) e
+  // exclusão definitiva. A exclusão apaga a fila em cascata; os logs ficam
+  // com campanha_id NULL para preservar a auditoria.
+  const [editarCampanha, setEditarCampanha] = useState<any>(null);
+  const [editarNome, setEditarNome] = useState("");
+  const [editarAgendadoPara, setEditarAgendadoPara] = useState("");
+  const [editarJanelaInicio, setEditarJanelaInicio] = useState("");
+  const [editarJanelaFim, setEditarJanelaFim] = useState("");
+  const [editarIntervalo, setEditarIntervalo] = useState("5");
+  const [excluirCampanhaAlvo, setExcluirCampanhaAlvo] = useState<any>(null);
 
   // Canal de envio: Meta (template oficial) ou Uazapi (conexão nova — a única
   // rota que aceita grupos, já que a Meta não processa template para @g.us).
@@ -1159,6 +1173,59 @@ function ComunicacoesPage() {
       toast.success(`Campanha ${status === "PAUSADA" ? "pausada" : "retomada"}.`);
     } else {
       toast.error(res.error || "Erro ao alterar a campanha.");
+    }
+  };
+
+  // Abre o modal de edição preenchido com os valores atuais. Só ajustes
+  // seguros: nome, agendamento, janela e intervalo. O datetime-local espera
+  // "YYYY-MM-DDTHH:mm"; o ISO do banco é convertido para esse formato.
+  const handleAbrirEdicao = (campanha: any) => {
+    setEditarCampanha(campanha);
+    setEditarNome(campanha.nome ?? "");
+    setEditarAgendadoPara(
+      campanha.agendado_para
+        ? new Date(campanha.agendado_para).toISOString().slice(0, 16)
+        : "",
+    );
+    setEditarJanelaInicio(campanha.janela_inicio ?? "");
+    setEditarJanelaFim(campanha.janela_fim ?? "");
+    setEditarIntervalo(String(campanha.intervalo_minutos ?? 5));
+  };
+
+  const handleSalvarEdicao = async () => {
+    if (!editarCampanha) return;
+    const res: any = await atualizarCampanha({
+      data: {
+        id: editarCampanha.id,
+        nome: editarNome,
+        agendado_para: editarAgendadoPara
+          ? new Date(editarAgendadoPara).toISOString()
+          : null,
+        janela_inicio: editarJanelaInicio || null,
+        janela_fim: editarJanelaFim || null,
+        intervalo_minutos: Number(editarIntervalo) || 5,
+      },
+    }).catch((e: any) => ({ ok: false, error: e?.message || String(e) }));
+    if (res.ok) {
+      queryClient.invalidateQueries({ queryKey: ["wa-campanhas"] });
+      toast.success("Campanha atualizada.");
+      setEditarCampanha(null);
+    } else {
+      toast.error(res.error || "Erro ao atualizar a campanha.");
+    }
+  };
+
+  const handleExcluirCampanha = async () => {
+    if (!excluirCampanhaAlvo) return;
+    const res: any = await excluirCampanha({ data: { id: excluirCampanhaAlvo.id } }).catch(
+      (e: any) => ({ ok: false, error: e?.message || String(e) }),
+    );
+    if (res.ok) {
+      queryClient.invalidateQueries({ queryKey: ["wa-campanhas"] });
+      toast.success("Campanha excluída.");
+      setExcluirCampanhaAlvo(null);
+    } else {
+      toast.error(res.error || "Erro ao excluir a campanha.");
     }
   };
 
@@ -3155,6 +3222,25 @@ function ComunicacoesPage() {
                               <Clock className="w-3.5 h-3.5 mr-1" />
                               Agendar
                             </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              title="Editar nome, agendamento, janela e intervalo"
+                              onClick={() => handleAbrirEdicao(campanha)}
+                            >
+                              <FileEdit className="w-3.5 h-3.5 mr-1" />
+                              Editar
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              title="Excluir a campanha e a fila de envios"
+                              className="text-destructive hover:text-destructive"
+                              onClick={() => setExcluirCampanhaAlvo(campanha)}
+                            >
+                              <Trash2 className="w-3.5 h-3.5 mr-1" />
+                              Excluir
+                            </Button>
                           </div>
                         </td>
                       </tr>
@@ -3403,6 +3489,100 @@ function ComunicacoesPage() {
                       onClick={handleAgendarDisparo}
                     >
                       Agendar disparo
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            )}
+
+            {editarCampanha && (
+              <Dialog open onOpenChange={(v) => !v && setEditarCampanha(null)}>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Editar campanha</DialogTitle>
+                    <DialogDescription>
+                      Ajustes seguros: nome, agendamento, janela de trabalho e intervalo entre mensagens.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-3 py-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="editar-nome">Nome da campanha</Label>
+                      <Input
+                        id="editar-nome"
+                        value={editarNome}
+                        onChange={(e) => setEditarNome(e.target.value)}
+                        placeholder='Ex.: "Lançamento SUV — novembro"'
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="editar-agendado">Agendar para (opcional)</Label>
+                      <Input
+                        id="editar-agendado"
+                        type="datetime-local"
+                        value={editarAgendadoPara}
+                        onChange={(e) => setEditarAgendadoPara(e.target.value)}
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="editar-janela-inicio">Janela início</Label>
+                        <Input
+                          id="editar-janela-inicio"
+                          type="time"
+                          value={editarJanelaInicio}
+                          onChange={(e) => setEditarJanelaInicio(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="editar-janela-fim">Janela fim</Label>
+                        <Input
+                          id="editar-janela-fim"
+                          type="time"
+                          value={editarJanelaFim}
+                          onChange={(e) => setEditarJanelaFim(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="editar-intervalo">Intervalo entre mensagens (minutos)</Label>
+                      <Input
+                        id="editar-intervalo"
+                        type="number"
+                        min={1}
+                        max={120}
+                        value={editarIntervalo}
+                        onChange={(e) => setEditarIntervalo(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setEditarCampanha(null)}>
+                      Cancelar
+                    </Button>
+                    <Button onClick={handleSalvarEdicao}>Salvar</Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            )}
+
+            {excluirCampanhaAlvo && (
+              <Dialog open onOpenChange={(v) => !v && setExcluirCampanhaAlvo(null)}>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Excluir campanha</DialogTitle>
+                    <DialogDescription>
+                      Tem certeza que deseja excluir a campanha{" "}
+                      <strong>{excluirCampanhaAlvo.nome}</strong>? Esta ação é definitiva: a
+                      fila de envios será apagada em cascata. Os logs de auditoria serão
+                      preservados sem vínculo com esta campanha.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setExcluirCampanhaAlvo(null)}>
+                      Cancelar
+                    </Button>
+                    <Button variant="destructive" onClick={handleExcluirCampanha}>
+                      Excluir definitivamente
                     </Button>
                   </DialogFooter>
                 </DialogContent>
