@@ -601,12 +601,14 @@ export async function getUazapiConfig() {
     INSERT INTO configuracoes_sistema (chave, valor, descricao)
     VALUES ('uazapi_base_url', '', 'URL base da instância Uazapi (ex: https://gleego.uazapi.com)'),
            ('uazapi_token', '', 'Token da instância Uazapi (enviado no header token)'),
-           ('uazapi_grupos_permitidos', '[]', 'Lista de JIDs @g.us permitidos para aparecer em automações e campanhas')
+           ('uazapi_grupos_permitidos', '[]', 'Lista de JIDs @g.us permitidos para aparecer em automações e campanhas'),
+           ('uazapi_auto_incluir_grupo', 'false', 'Incluir comprador automaticamente no grupo ao concluir pré-cadastro'),
+           ('uazapi_grupo_auto_jid', '', 'JID @g.us do grupo para inclusão automática no pré-cadastro')
     ON CONFLICT (chave) DO NOTHING
   `);
   const rows = rowsOf(
     await d.execute(
-      sql`SELECT chave, valor FROM configuracoes_sistema WHERE chave IN ('uazapi_base_url','uazapi_token','uazapi_grupos_permitidos')`,
+      sql`SELECT chave, valor FROM configuracoes_sistema WHERE chave IN ('uazapi_base_url','uazapi_token','uazapi_grupos_permitidos','uazapi_auto_incluir_grupo','uazapi_grupo_auto_jid')`,
     ),
   );
   const cfg: Record<string, string> = {};
@@ -1121,9 +1123,17 @@ export async function incluirCompradorNoGrupo(groupjid: string, numero: string) 
   };
 }
 
-/** Primeiro grupo permitido — destino padrão da auto-inclusão no pré-cadastro. */
-export async function grupoPadraoUazapi(): Promise<string | null> {
+/**
+ * Auto-inclusão no pré-cadastro: só acontece quando o interruptor
+ * `uazapi_auto_incluir_grupo` está ligado E um grupo de destino está
+ * selecionado (`uazapi_grupo_auto_jid`). O JID precisa estar entre os
+ * permitidos, senão a inclusão volta null e o cadastro segue normal.
+ */
+export async function configAutoIncluirGrupo(): Promise<{ ativo: boolean; groupjid: string | null }> {
   const cfg = await getUazapiConfig();
+  const ativo = String((cfg as any).uazapi_auto_incluir_grupo || "").toLowerCase() === "true";
+  const destino = String((cfg as any).uazapi_grupo_auto_jid || "").trim();
+  if (!ativo || !destino.includes("@g.us")) return { ativo: false, groupjid: null };
   let lista: string[] = [];
   try {
     const raw = (cfg as any).uazapi_grupos_permitidos;
@@ -1131,10 +1141,30 @@ export async function grupoPadraoUazapi(): Promise<string | null> {
   } catch {
     lista = [];
   }
-  const valido = (Array.isArray(lista) ? lista : []).find(
-    (g) => typeof g === "string" && g.includes("@g.us"),
-  );
-  return valido ?? null;
+  // Lista vazia = sem filtro, qualquer grupo vale. Com filtro, o destino
+  // precisa estar entre os permitidos.
+  if (Array.isArray(lista) && lista.length > 0 && !lista.includes(destino))
+    return { ativo: false, groupjid: null };
+  return { ativo: true, groupjid: destino };
+}
+
+/** Liga/desliga a inclusão automática e define o grupo de destino. */
+export async function salvarUazapiAutoIncluir(ativo: boolean, groupjid: string | null) {
+  const d = requireDb();
+  await ensureMarketingSchema();
+  const destino = typeof groupjid === "string" && groupjid.includes("@g.us") ? groupjid : "";
+  if (ativo && !destino) throw new Error("Escolha o grupo de destino antes de ativar.");
+  for (const [chave, valor] of [
+    ["uazapi_auto_incluir_grupo", ativo ? "true" : "false"],
+    ["uazapi_grupo_auto_jid", ativo ? destino : ""],
+  ] as const) {
+    await d.execute(sql`
+      INSERT INTO configuracoes_sistema (chave, valor, atualizado_em)
+      VALUES (${chave}, ${valor}, now())
+      ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor, atualizado_em = now()
+    `);
+  }
+  return { ok: true, ativo, groupjid: ativo ? destino : "" };
 }
 export async function enviarTextoUazapi(alvo: string, texto: string) {
   const cfg = await getUazapiConfig();

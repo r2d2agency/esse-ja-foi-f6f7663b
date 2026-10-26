@@ -248,6 +248,8 @@ export const getUazapiConfigFn = createServerFn({ method: "GET" }).handler(async
         uazapi_base_url: cfg.uazapi_base_url || "",
         uazapi_token_definido: !!cfg.uazapi_token,
         uazapi_grupos_permitidos: gruposPermitidos,
+        uazapi_auto_incluir_grupo: String((cfg as any).uazapi_auto_incluir_grupo || "").toLowerCase() === "true",
+        uazapi_grupo_auto_jid: String((cfg as any).uazapi_grupo_auto_jid || ""),
       },
     };
   } catch (e: any) {
@@ -354,6 +356,20 @@ export const adicionarParticipantesGrupoUazapiFn = createServerFn({ method: "POS
       return { ok: true as const, data: await adicionarParticipantesGrupoUazapi(data.groupjid, data.participantes) };
     } catch (e: any) {
       return { ok: false as const, message: e?.message || "Falha ao adicionar participante ao grupo." };
+    }
+  });
+
+/** Liga/desliga a inclusão automática no grupo + grupo de destino (grupo auto). */
+export const salvarUazapiAutoIncluirFn = createServerFn({ method: "POST" })
+  .inputValidator((d) => z.object({ ativo: z.boolean(), groupjid: z.string().nullable().optional() }).parse(d))
+  .handler(async ({ data }) => {
+    try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
+      const { salvarUazapiAutoIncluir } = await import("@/db/marketing.server");
+      return { ok: true as const, data: await salvarUazapiAutoIncluir(data.ativo, data.groupjid ?? null) };
+    } catch (e: any) {
+      return { ok: false as const, message: e?.message || "Falha ao salvar a inclusão automática." };
     }
   });
 

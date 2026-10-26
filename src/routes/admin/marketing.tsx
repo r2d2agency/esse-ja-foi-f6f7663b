@@ -17,6 +17,7 @@ import {
   getUazapiConfigFn,
   salvarUazapiConfigFn,
   salvarUazapiGruposPermitidosFn,
+  salvarUazapiAutoIncluirFn,
   listarGruposUazapiFn,
   testarUazapiFn,
   verificarWhatsappContatosFn,
@@ -241,6 +242,7 @@ function MarketingPage() {
   const getUazapiConfig = useServerFn(getUazapiConfigFn);
   const salvarUazapi = useServerFn(salvarUazapiConfigFn);
   const salvarGruposPermitidos = useServerFn(salvarUazapiGruposPermitidosFn);
+  const salvarAutoIncluir = useServerFn(salvarUazapiAutoIncluirFn);
   const listarGrupos = useServerFn(listarGruposUazapiFn);
   const verificarWhatsapp = useServerFn(verificarWhatsappContatosFn);
   const testarUazapi = useServerFn(testarUazapiFn);
@@ -250,6 +252,10 @@ function MarketingPage() {
   const [gruposPermitidos, setGruposPermitidos] = useState<string[]>([]);
   const [carregandoGrupos, setCarregandoGrupos] = useState(false);
   const [salvandoGrupos, setSalvandoGrupos] = useState(false);
+  // Inclusão automática no pré-cadastro: interruptor + grupo de destino.
+  const [autoIncluirAtivo, setAutoIncluirAtivo] = useState(false);
+  const [grupoAutoJid, setGrupoAutoJid] = useState("");
+  const [salvandoAuto, setSalvandoAuto] = useState(false);
   // Resultado do "Testar": conectado + nome/número da instância, ou o motivo.
   const [testeUazapi, setTesteUazapi] = useState<{
     ok: boolean;
@@ -268,6 +274,8 @@ function MarketingPage() {
         setUazapiToken(r.data.uazapi_token_definido ? "••••••••••••" : "");
         setUazapiConfigurado(r.data.uazapi_token_definido);
         setGruposPermitidos(r.data.uazapi_grupos_permitidos || []);
+        setAutoIncluirAtivo(!!(r.data as any).uazapi_auto_incluir_grupo);
+        setGrupoAutoJid((r.data as any).uazapi_grupo_auto_jid || "");
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -298,6 +306,27 @@ function MarketingPage() {
       toast.error(e?.message || "Falha ao salvar grupos.");
     } finally {
       setSalvandoGrupos(false);
+    }
+  }
+
+  async function confirmarSalvarAutoIncluir() {
+    if (autoIncluirAtivo && !grupoAutoJid) {
+      toast.error("Selecione o grupo de destino para habilitar a inclusão automática.");
+      return;
+    }
+    setSalvandoAuto(true);
+    try {
+      const r: any = await salvarAutoIncluir({ data: { ativo: autoIncluirAtivo, groupjid: autoIncluirAtivo ? grupoAutoJid : null } });
+      if (r?.ok === false) throw new Error(r.message || "Falha ao salvar.");
+      toast.success(
+        autoIncluirAtivo
+          ? "Inclusão automática no grupo habilitada para o pré-cadastro."
+          : "Inclusão automática no grupo desabilitada.",
+      );
+    } catch (e: any) {
+      toast.error(e?.message || "Falha ao salvar a inclusão automática.");
+    } finally {
+      setSalvandoAuto(false);
     }
   }
 
@@ -838,6 +867,61 @@ function MarketingPage() {
                 })}
               </div>
             )}
+
+            <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50/50 p-3 space-y-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  <p className="text-xs font-bold text-slate-600 uppercase">
+                    Incluir comprador no grupo ao concluir o pré-cadastro
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Valida o WhatsApp e adiciona ao grupo selecionado. Se desativado, não toca na Uazapi.
+                  </p>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={autoIncluirAtivo}
+                    onChange={(e) => setAutoIncluirAtivo(e.target.checked)}
+                  />
+                  <span className="text-sm font-medium">{autoIncluirAtivo ? "Ativado" : "Desativado"}</span>
+                </label>
+              </div>
+              <div className="flex flex-col gap-2 md:flex-row md:items-end">
+                <div className="flex-1 space-y-1">
+                  <p className="text-[11px] font-bold text-slate-500 uppercase">Grupo de destino</p>
+                  <Select value={grupoAutoJid} onValueChange={setGrupoAutoJid} disabled={!autoIncluirAtivo}>
+                    <SelectTrigger className="h-10">
+                      <SelectValue placeholder="Selecione o grupo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(gruposPermitidos.length > 0
+                        ? gruposDisponiveis.filter((g: any) => gruposPermitidos.includes(g.id || g.jid))
+                        : gruposDisponiveis
+                      ).map((g: any) => {
+                        const id = g.id || g.jid;
+                        return (
+                          <SelectItem key={id} value={id}>
+                            {g.nome || g.name || id}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-slate-400">
+                    Precisa ter pelo menos 1 grupo permitido ou disponível para selecionar.
+                  </p>
+                </div>
+                <Button size="sm" onClick={confirmarSalvarAutoIncluir} disabled={salvandoAuto}>
+                  {salvandoAuto ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="mr-2 h-4 w-4" />
+                  )}
+                  Salvar inclusão automática
+                </Button>
+              </div>
+            </div>
           </div>
         )}
       </div>

@@ -77,15 +77,17 @@ export type PreCadastroPublicoInput = {
 export async function criarPreCadastroPublico(data: PreCadastroPublicoInput) {
   if (!db) throw new Error("DB offline");
 
-  // Valida o WhatsApp ANTES de criar a conta: se o número não existir no
-  // WhatsApp, o comprador corrige na hora em vez de descobrir depois.
-  // Sem Uazapi configurada, segue sem validar (não trava o cadastro).
+  // Valida o WhatsApp e inclui no grupo ANTES de criar a conta — mas SÓ
+  // quando o interruptor está ligado na configuração (Marketing > Configurar
+  // > "Incluir comprador no grupo ao concluir o pré-cadastro") com um grupo
+  // de destino escolhido. Desligado = cadastro segue normal, sem tocar na Uazapi.
   let whatsappNormalizado: string | null = null;
   let grupoDestino: string | null = null;
   try {
-    const { checarNumeroWhatsappUazapi, grupoPadraoUazapi } = await import("./marketing.server");
-    grupoDestino = await grupoPadraoUazapi().catch(() => null);
-    if (grupoDestino) {
+    const { checarNumeroWhatsappUazapi, configAutoIncluirGrupo } = await import("./marketing.server");
+    const conf = await configAutoIncluirGrupo().catch(() => ({ ativo: false, groupjid: null }));
+    if (conf.ativo && conf.groupjid) {
+      grupoDestino = conf.groupjid;
       const checagem = await checarNumeroWhatsappUazapi(data.responsavel_whatsapp);
       if (!checagem.whatsappAtivo) {
         return {
@@ -96,9 +98,11 @@ export async function criarPreCadastroPublico(data: PreCadastroPublicoInput) {
       whatsappNormalizado = checagem.numero;
     }
   } catch (e: any) {
-    // Uazapi fora do ar ou sem config: não trava o pré-cadastro.
-    if (e?.message && /inválido|WhatsApp/i.test(e.message)) throw e;
+    // Erro de validação volta para o comprador corrigir; Uazapi fora do ar
+    // ou sem config não trava o pré-cadastro.
+    if (e?.message && /inválido|WhatsApp|não está no/i.test(e.message)) throw e;
     console.error("[pre-cadastro publico] checagem whatsapp (ignorada):", e?.message || e);
+    grupoDestino = null;
   }
   try {
     await ensureCompradorSchema();
