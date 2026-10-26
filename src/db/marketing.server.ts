@@ -854,9 +854,17 @@ export async function listarGruposUazapi() {
   if (achados.length) return achados;
 
   // 2) Reserva: a Uazapi muda a rota de listagem entre versões. POST /group/list
-  //    é a atual; as mais novas usam GET /list-chats, /group/fetch e /groups/list;
-  //    as antigas, /group/all e /chats. Qualquer 404 segue para a próxima.
-  for (const rota of ["/list-chats", "/groups/list", "/group/fetch", "/group/all", "/chats"]) {
+  //    é a atual; tentamos variações comuns antes de falhar.
+  for (const rota of [
+    "/list-chats",
+    "/groups/list",
+    "/group/fetch",
+    "/groups",
+    "/group/all",
+    "/chat/all",
+    "/chats/groups",
+    "/chats",
+  ]) {
     const ctrl = new AbortController();
     const esgotou = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
     try {
@@ -879,6 +887,39 @@ export async function listarGruposUazapi() {
     } catch (e: any) {
       if (e?.name === "AbortError") {
         ultimoMotivo = `A instância não respondeu em ${TIMEOUT_MS / 1000}s em ${rota}.`;
+        continue;
+      }
+      throw e;
+    } finally {
+      clearTimeout(esgotou);
+    }
+  }
+
+  // 3) Algumas versões exigem POST nas rotas de listagem de grupos/chats
+  for (const rota of ["/group/all", "/groups/list", "/list-chats", "/chats"]) {
+    const ctrl = new AbortController();
+    const esgotou = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+    try {
+      const res = await fetch(`${base}${rota}`, {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json", token },
+        body: JSON.stringify({}),
+        signal: ctrl.signal,
+      });
+      if (res.status === 404) {
+        ultimoMotivo = `${rota} (POST) não existe nesta versão (HTTP 404).`;
+        continue;
+      }
+      const r = await lerResposta(res, `${rota} (POST)`);
+      if (r.erro) {
+        ultimoMotivo = r.erro;
+        continue;
+      }
+      if (r.grupos!.length) return r.grupos;
+      ultimoMotivo = `${rota} (POST) respondeu, mas sem nenhum grupo (@g.us) na lista.`;
+    } catch (e: any) {
+      if (e?.name === "AbortError") {
+        ultimoMotivo = `A instância não respondeu em ${TIMEOUT_MS / 1000}s em ${rota} (POST).`;
         continue;
       }
       throw e;
