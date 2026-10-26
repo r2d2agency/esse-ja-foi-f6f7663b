@@ -856,6 +856,7 @@ export async function listarGruposUazapi() {
   // 2) Reserva: a Uazapi muda a rota de listagem entre versões. POST /group/list
   //    é a atual; tentamos variações comuns antes de falhar.
   for (const rota of [
+    "/chats",
     "/list-chats",
     "/groups/list",
     "/group/fetch",
@@ -863,7 +864,6 @@ export async function listarGruposUazapi() {
     "/group/all",
     "/chat/all",
     "/chats/groups",
-    "/chats",
   ]) {
     const ctrl = new AbortController();
     const esgotou = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
@@ -875,6 +875,10 @@ export async function listarGruposUazapi() {
       });
       if (res.status === 404) {
         ultimoMotivo = `${rota} não existe nesta versão (HTTP 404).`;
+        continue;
+      }
+      if (res.status === 405) {
+        ultimoMotivo = `${rota} não aceita GET (HTTP 405).`;
         continue;
       }
       const r = await lerResposta(res, rota);
@@ -896,7 +900,8 @@ export async function listarGruposUazapi() {
   }
 
   // 3) Algumas versões exigem POST nas rotas de listagem de grupos/chats
-  for (const rota of ["/group/all", "/groups/list", "/list-chats", "/chats"]) {
+  //    (/chats já foi retirado daqui: ele responde 405 ao POST nesta versão).
+  for (const rota of ["/group/list", "/group/all", "/groups/list", "/list-chats"]) {
     const ctrl = new AbortController();
     const esgotou = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
     try {
@@ -908,6 +913,10 @@ export async function listarGruposUazapi() {
       });
       if (res.status === 404) {
         ultimoMotivo = `${rota} (POST) não existe nesta versão (HTTP 404).`;
+        continue;
+      }
+      if (res.status === 405) {
+        ultimoMotivo = `${rota} (POST) não aceita POST (HTTP 405).`;
         continue;
       }
       const r = await lerResposta(res, `${rota} (POST)`);
