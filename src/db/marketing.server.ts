@@ -733,6 +733,7 @@ function normalizarTelefone(telefone: string): string | null {
 function normalizarIdGrupo(g: any): string {
   const candidatos = [
     g?.id,
+    g?.JID,
     g?.jid,
     g?.remoteJid,
     g?.remote_jid,
@@ -740,7 +741,10 @@ function normalizarIdGrupo(g: any): string {
     g?.group_jid,
     g?.group_id,
     g?.groupId,
+    g?.jid,
+    g?.chatId,
     g?.group?.jid,
+    g?.group?.JID,
     g?.group?.id,
   ];
   for (const c of candidatos) {
@@ -801,10 +805,11 @@ export async function listarGruposUazapi() {
       .map((g: any) => ({
         id: normalizarIdGrupo(g),
         nome: String(
-          g?.name ?? g?.subject ?? g?.groupName ?? g?.groupMetadata?.subject ?? "Grupo sem nome",
+          g?.Name ?? g?.name ?? g?.subject ?? g?.groupName ?? g?.groupMetadata?.subject ?? "Grupo sem nome",
         ),
         participantes: Number(
-          g?.participants_count ??
+          g?.ParticipantCount ??
+            g?.participants_count ??
             g?.size ??
             g?.participants?.length ??
             g?.groupMetadata?.size ??
@@ -856,6 +861,7 @@ export async function listarGruposUazapi() {
   // 2) Reserva: a Uazapi muda a rota de listagem entre versões. POST /group/list
   //    é a atual; tentamos variações comuns antes de falhar.
   for (const rota of [
+    "/group/list?noParticipants=true",
     "/chats",
     "/list-chats",
     "/groups/list",
