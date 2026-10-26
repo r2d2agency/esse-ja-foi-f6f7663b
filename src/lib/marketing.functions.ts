@@ -324,6 +324,65 @@ export const listarGruposUazapiFn = createServerFn({ method: "POST" }).handler(a
   }
 });
 
+export const obterInfoGrupoUazapiFn = createServerFn({ method: "POST" })
+  .inputValidator((d) => z.object({ groupjid: z.string().min(1) }).parse(d))
+  .handler(async ({ data }) => {
+    try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
+      const { obterInfoGrupoUazapi } = await import("@/db/marketing.server");
+      return { ok: true as const, data: await obterInfoGrupoUazapi(data.groupjid) };
+    } catch (e: any) {
+      return { ok: false as const, message: e?.message || "Falha ao obter informações do grupo." };
+    }
+  });
+
+export const adicionarParticipantesGrupoUazapiFn = createServerFn({ method: "POST" })
+  .inputValidator((d) =>
+    z
+      .object({
+        groupjid: z.string().min(1),
+        participantes: z.array(z.string()).min(1),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data }) => {
+    try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
+      const { adicionarParticipantesGrupoUazapi } = await import("@/db/marketing.server");
+      return { ok: true as const, data: await adicionarParticipantesGrupoUazapi(data.groupjid, data.participantes) };
+    } catch (e: any) {
+      return { ok: false as const, message: e?.message || "Falha ao adicionar participante ao grupo." };
+    }
+  });
+
+export const verificarParticipanteNoGrupoFn = createServerFn({ method: "POST" })
+  .inputValidator((d) => z.object({ groupjid: z.string().min(1), numero: z.string().min(1) }).parse(d))
+  .handler(async ({ data }) => {
+    try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
+      const { verificarParticipanteNoGrupo } = await import("@/db/marketing.server");
+      return { ok: true as const, data: await verificarParticipanteNoGrupo(data.groupjid, data.numero) };
+    } catch (e: any) {
+      return { ok: false as const, message: e?.message || "Falha ao verificar participante no grupo." };
+    }
+  });
+
+export const incluirCompradorNoGrupoFn = createServerFn({ method: "POST" })
+  .inputValidator((d) => z.object({ groupjid: z.string().min(1), numero: z.string().min(1) }).parse(d))
+  .handler(async ({ data }) => {
+    try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
+      const { incluirCompradorNoGrupo } = await import("@/db/marketing.server");
+      return { ok: true as const, data: await incluirCompradorNoGrupo(data.groupjid, data.numero) };
+    } catch (e: any) {
+      return { ok: false as const, message: e?.message || "Falha ao incluir no grupo." };
+    }
+  });
+
 /**
  * Testa a instância Uazapi com os valores digitados na tela, sem gravar nada.
  * Deixa o usuário ver "conectado" (e o número da instância) antes de salvar —

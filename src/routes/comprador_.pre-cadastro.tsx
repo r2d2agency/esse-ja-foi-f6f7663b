@@ -168,6 +168,7 @@ function PreCadastroComprador() {
         },
       });
       toast.success("Cadastro criado! Você já pode acompanhar os veículos e os lances.");
+      if (res?.avisoGrupo) toast(res.avisoGrupo, { duration: 8000 });
       navigate({ to: "/veiculos" });
     } catch {
       toast.error("Não foi possível criar o cadastro agora. Tente novamente em instantes.");

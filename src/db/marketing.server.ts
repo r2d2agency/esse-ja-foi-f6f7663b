@@ -949,11 +949,193 @@ export async function listarGruposUazapi() {
 }
 
 /**
- * Envia texto livre pela instância Uazapi — o caminho que aceita grupos
- * ("120363...@g.us") e que não depende de template aprovado pela Meta.
- * A Meta não aceita template para grupo; por isso a campanha que mira grupo
- * precisa sair por aqui, e não pelo serviço da Meta.
+ * Obtém informações detalhadas de um grupo, incluindo participantes.
+ * POST /group/info com {"groupjid": "..."}
  */
+export async function obterInfoGrupoUazapi(groupjid: string) {
+  const cfg = await getUazapiConfig();
+  const base = (cfg.uazapi_base_url || "").trim().replace(/\/+$/, "");
+  const token = (cfg.uazapi_token || "").trim();
+  if (!base || !token) throw new Error("Instância Uazapi não configurada.");
+  if (!groupjid?.includes("@g.us")) throw new Error("JID do grupo inválido.");
+
+  const ctrl = new AbortController();
+  const esgotou = setTimeout(() => ctrl.abort(), 30000);
+  try {
+    const res = await fetch(`${base}/group/info`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        token,
+      },
+      body: JSON.stringify({ groupjid }),
+      signal: ctrl.signal,
+    });
+    const dados: any = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const detalhe = dados?.message || (await res.text().catch(() => ""));
+      const err = new Error(
+        res.status === 401 || res.status === 403
+          ? "Token recusado pela instância (HTTP 401/403). Confira em Marketing > Configurar."
+          : `Uazapi retornou HTTP ${res.status}: ${String(detalhe).slice(0, 200)}`,
+      ) as any;
+      err.permanente = res.status === 400 || res.status === 404;
+      throw err;
+    }
+    return dados;
+  } catch (e: any) {
+    if (e?.name === "AbortError") throw new Error("A instância não respondeu em 30s (timeout).");
+    throw e;
+  } finally {
+    clearTimeout(esgotou);
+  }
+}
+
+/**
+ * Adiciona participantes a um grupo via POST /group/updateParticipants.
+ * Se a privacidade bloquear, o retorno traz AddRequest para convite individual.
+ */
+export async function adicionarParticipantesGrupoUazapi(groupjid: string, participantes: string[]) {
+  const cfg = await getUazapiConfig();
+  const base = (cfg.uazapi_base_url || "").trim().replace(/\/+$/, "");
+  const token = (cfg.uazapi_token || "").trim();
+  if (!base || !token) throw new Error("Instância Uazapi não configurada.");
+  if (!groupjid?.includes("@g.us")) throw new Error("JID do grupo inválido.");
+  if (!Array.isArray(participantes) || participantes.length === 0) throw new Error("Informe pelo menos um participante.");
+
+  const ctrl = new AbortController();
+  const esgotou = setTimeout(() => ctrl.abort(), 30000);
+  try {
+    const res = await fetch(`${base}/group/updateParticipants`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        token,
+      },
+      body: JSON.stringify({
+        groupjid,
+        action: "add",
+        participants: participantes.map((p) => String(p).replace(/\D/g, "")).filter(Boolean),
+      }),
+      signal: ctrl.signal,
+    });
+    const dados: any = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const detalhe = dados?.message || (await res.text().catch(() => ""));
+      const err = new Error(
+        res.status === 401 || res.status === 403
+          ? "Token recusado pela instância (HTTP 401/403). Confira em Marketing > Configurar."
+          : `Uazapi retornou HTTP ${res.status}: ${String(detalhe).slice(0, 200)}`,
+      ) as any;
+      err.permanente = res.status === 400 || res.status === 404;
+      throw err;
+    }
+    return dados;
+  } catch (e: any) {
+    if (e?.name === "AbortError") throw new Error("A instância não respondeu em 30s (timeout).");
+    throw e;
+  } finally {
+    clearTimeout(esgotou);
+  }
+}
+/**
+ * Checa um único número no WhatsApp via POST /chat/check da Uazapi.
+ * Usado na lista de compradores e no pré-cadastro para validar o número
+ * antes de tentar incluir no grupo — sem isso o add falhava mudo.
+ */
+export async function checarNumeroWhatsappUazapi(numero: string) {
+  const cfg = await getUazapiConfig();
+  const base = (cfg.uazapi_base_url || "").trim().replace(/\/+$/, "");
+  const token = (cfg.uazapi_token || "").trim();
+  if (!base || !token) throw new Error("Instância Uazapi não configurada.");
+  const digitos = String(numero || "").replace(/\D/g, "");
+  const normalizado =
+    digitos.length >= 10 && digitos.length <= 11
+      ? `55${digitos}`
+      : digitos.length >= 12 && digitos.length <= 13
+        ? digitos
+        : null;
+  if (!normalizado) throw new Error("Número de WhatsApp inválido. Confira o DDD e o número.");
+  const res = await fetch(`${base}/chat/check`, {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json", token },
+    body: JSON.stringify({ numbers: [normalizado] }),
+  });
+  if (!res.ok) {
+    if (res.status === 401 || res.status === 403)
+      throw new Error("Token recusado pela instância (HTTP 401/403). Confira em Marketing > Configurar.");
+    throw new Error(`Uazapi retornou HTTP ${res.status} ao checar o número.`);
+  }
+  const dados: any[] = await res.json().catch(() => []);
+  const r = Array.isArray(dados) ? dados[0] : null;
+  return {
+    numero: normalizado,
+    whatsappAtivo: r?.isInWhatsapp === true,
+    nomeVerificado: r?.verifiedName ?? null,
+  };
+}
+
+/** Só dígitos — participantes do grupo chegam como "55119...@s.whatsapp.net" ou "@lid". */
+function digitosDeParticipante(valor: unknown): string {
+  return String(valor ?? "").replace(/\D/g, "");
+}
+
+/**
+ * Verifica se um número já participa de um grupo (POST /group/info).
+ * Retorna também se o número é WhatsApp válido, para a tela pedir correção.
+ */
+export async function verificarParticipanteNoGrupo(groupjid: string, numero: string) {
+  const checagem = await checarNumeroWhatsappUazapi(numero);
+  const info: any = await obterInfoGrupoUazapi(groupjid);
+  const lista: any[] =
+    info?.participants ?? info?.group?.participants ?? info?.data?.participants ?? [];
+  const alvo = checagem.numero;
+  const noGrupo = lista.some((p: any) => {
+    const d = digitosDeParticipante(p?.id ?? p?.jid ?? p?.participant ?? p);
+    // Compara os últimos 10-11 dígitos: o grupo pode trazer com ou sem DDI.
+    return d && alvo && (d.endsWith(alvo.slice(-10)) || alvo.endsWith(d.slice(-10)));
+  });
+  return { ...checagem, noGrupo, totalParticipantes: lista.length };
+}
+
+/**
+ * Valida o WhatsApp e inclui o número no grupo. Se a privacidade bloquear,
+ * o retorno pede convite individual em vez de erro genérico.
+ */
+export async function incluirCompradorNoGrupo(groupjid: string, numero: string) {
+  const checagem = await checarNumeroWhatsappUazapi(numero);
+  if (!checagem.whatsappAtivo)
+    throw new Error("Este número não está no WhatsApp. Confira o DDD e o número.");
+  const dados: any = await adicionarParticipantesGrupoUazapi(groupjid, [checagem.numero]);
+  const texto = JSON.stringify(dados ?? {});
+  const precisaConvite = /AddRequest|403/i.test(texto);
+  return {
+    ok: true as const,
+    numero: checagem.numero,
+    precisaConvite,
+    mensagem: precisaConvite
+      ? "A privacidade do contato bloqueou a adição direta — envie um convite individual pelo WhatsApp."
+      : "Comprador incluído no grupo.",
+  };
+}
+
+/** Primeiro grupo permitido — destino padrão da auto-inclusão no pré-cadastro. */
+export async function grupoPadraoUazapi(): Promise<string | null> {
+  const cfg = await getUazapiConfig();
+  let lista: string[] = [];
+  try {
+    const raw = (cfg as any).uazapi_grupos_permitidos;
+    lista = typeof raw === "string" ? JSON.parse(raw) : Array.isArray(raw) ? raw : [];
+  } catch {
+    lista = [];
+  }
+  const valido = (Array.isArray(lista) ? lista : []).find(
+    (g) => typeof g === "string" && g.includes("@g.us"),
+  );
+  return valido ?? null;
+}
 export async function enviarTextoUazapi(alvo: string, texto: string) {
   const cfg = await getUazapiConfig();
   const base = (cfg.uazapi_base_url || "").trim().replace(/\/+$/, "");

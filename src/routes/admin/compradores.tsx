@@ -2,12 +2,18 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { listarCompradoresFn, preCadastrarCompradorFn } from "@/lib/admin-compradores.functions";
+import {
+  getUazapiConfigFn,
+  incluirCompradorNoGrupoFn,
+  listarGruposUazapiFn,
+  verificarParticipanteNoGrupoFn,
+} from "@/lib/marketing.functions";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useState } from "react";
-import { 
-  Search, 
-  ChevronRight, 
+import {
+  Search,
+  ChevronRight,
   ShoppingBag,
   UserPlus,
   Building2,
@@ -15,11 +21,22 @@ import {
   CheckCircle2,
   Clock,
   AlertTriangle,
-  Link2
+  Link2,
+  Users,
+  UserCheck,
+  UserMinus,
+  Loader2,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { 
   Table, 
   TableBody, 
@@ -60,6 +77,112 @@ function CompradoresPage() {
     nome: "", email: "", senha: "", whatsapp: "", cnpj: "", regiao: "", endereco: "", cidade: "", uf: "",
   });
   const [salvandoPre, setSalvandoPre] = useState(false);
+
+  // Verificação de presença no grupo WhatsApp (Uazapi).
+  const obterConfigUazapi = useServerFn(getUazapiConfigFn);
+  const listarGrupos = useServerFn(listarGruposUazapiFn);
+  const verificarNoGrupo = useServerFn(verificarParticipanteNoGrupoFn);
+  const incluirNoGrupo = useServerFn(incluirCompradorNoGrupoFn);
+  const [gruposDisponiveis, setGruposDisponiveis] = useState<any[]>([]);
+  const [gruposPermitidos, setGruposPermitidos] = useState<string[]>([]);
+  const [grupoEscolhido, setGrupoEscolhido] = useState<string>("");
+  const [gruposCarregando, setGruposCarregando] = useState(false);
+  const [verificandoId, setVerificandoId] = useState<string | null>(null);
+  const [incluindoId, setIncluindoId] = useState<string | null>(null);
+  /** Resultado por comprador: noGrupo true/false ou mensagem de erro. */
+  const [statusGrupo, setStatusGrupo] = useState<Record<string, { noGrupo?: boolean; erro?: string; numero?: string }>>({});
+
+  const gruposVisiveis =
+    gruposPermitidos.length > 0
+      ? gruposDisponiveis.filter((g: any) => gruposPermitidos.includes(g.id))
+      : gruposDisponiveis;
+
+  async function carregarGruposUazapi() {
+    setGruposCarregando(true);
+    try {
+      const cfg: any = await obterConfigUazapi();
+      if (cfg?.ok && cfg?.data) {
+        const permitidos = Array.isArray(cfg.data.uazapi_grupos_permitidos)
+          ? cfg.data.uazapi_grupos_permitidos
+          : [];
+        setGruposPermitidos(permitidos);
+        if (permitidos.length === 1) setGrupoEscolhido((atual) => atual || permitidos[0]);
+      }
+      const r: any = await listarGrupos();
+      if (!r?.ok) {
+        toast.error(r?.message || "Falha ao listar grupos.");
+        return;
+      }
+      const lista = Array.isArray(r?.data) ? r.data : [];
+      setGruposDisponiveis(lista);
+      if (!grupoEscolhido && lista.length === 1) setGrupoEscolhido(lista[0].id);
+    } catch {
+      toast.error("Não foi possível carregar os grupos da instância.");
+    } finally {
+      setGruposCarregando(false);
+    }
+  }
+
+  function numeroDoComprador(c: any): string {
+    return String(c?.whatsapp || c?.responsavel_whatsapp || "").trim();
+  }
+
+  async function verificarComprador(c: any) {
+    const numero = numeroDoComprador(c);
+    if (!numero) {
+      setStatusGrupo((s) => ({ ...s, [c.id]: { erro: "Sem WhatsApp cadastrado." } }));
+      return;
+    }
+    if (!grupoEscolhido) {
+      toast.error("Escolha o grupo do WhatsApp acima antes de verificar.");
+      return;
+    }
+    setVerificandoId(c.id);
+    try {
+      const r: any = await verificarNoGrupo({ data: { groupjid: grupoEscolhido, numero } });
+      if (!r?.ok) {
+        setStatusGrupo((s) => ({ ...s, [c.id]: { erro: r?.message || "Falha ao verificar." } }));
+        return;
+      }
+      if (!r.data?.whatsappAtivo) {
+        setStatusGrupo((s) => ({
+          ...s,
+          [c.id]: { noGrupo: false, erro: `Não está no WhatsApp (${r.data?.numero || numero}) — peça para corrigir o número.`, numero: r.data?.numero },
+        }));
+        return;
+      }
+      setStatusGrupo((s) => ({ ...s, [c.id]: { noGrupo: !!r.data?.noGrupo, numero: r.data?.numero } }));
+    } finally {
+      setVerificandoId(null);
+    }
+  }
+
+  async function incluirComprador(c: any) {
+    const numero = numeroDoComprador(c);
+    if (!numero) {
+      toast.error("Comprador sem WhatsApp cadastrado.");
+      return;
+    }
+    if (!grupoEscolhido) {
+      toast.error("Escolha o grupo do WhatsApp acima antes de incluir.");
+      return;
+    }
+    setIncluindoId(c.id);
+    try {
+      const r: any = await incluirNoGrupo({ data: { groupjid: grupoEscolhido, numero } });
+      if (!r?.ok) {
+        toast.error(r?.message || "Falha ao incluir no grupo.");
+        setStatusGrupo((s) => ({ ...s, [c.id]: { erro: r?.message || "Falha ao incluir no grupo." } }));
+        return;
+      }
+      toast.success(r.data?.mensagem || (r.data?.precisaConvite
+        ? "Adição direta bloqueada — envie o convite individual."
+        : "Comprador incluído no grupo."));
+      setStatusGrupo((s) => ({ ...s, [c.id]: { noGrupo: !r.data?.precisaConvite, numero: r.data?.numero } }));
+    } finally {
+      setIncluindoId(null);
+    }
+  }
 
   async function salvarPreCadastro() {
     if (!pre.nome || !pre.email || pre.senha.length < 6) {
@@ -176,6 +299,46 @@ function CompradoresPage() {
         </div>
       </div>
 
+      <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-3 md:flex-row md:items-end">
+          <div className="flex-1 space-y-1">
+            <p className="text-[11px] font-black uppercase tracking-wider text-slate-400">
+              Grupo do WhatsApp (Uazapi)
+            </p>
+            <Select value={grupoEscolhido} onValueChange={setGrupoEscolhido}>
+              <SelectTrigger className="h-11">
+                <SelectValue placeholder="Escolha o grupo para verificar/incluir" />
+              </SelectTrigger>
+              <SelectContent>
+                {gruposVisiveis.map((g: any) => (
+                  <SelectItem key={g.id} value={g.id}>
+                    {g.nome} ({g.participantes ?? "?"} participantes)
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-slate-400">
+              {gruposPermitidos.length > 0
+                ? `Só aparecem os ${gruposPermitidos.length} grupo(s) permitido(s) em Marketing > Configurar.`
+                : "Sem filtro: mostrando todos os grupos da instância."}
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            className="h-11 rounded-xl font-bold"
+            onClick={carregarGruposUazapi}
+            disabled={gruposCarregando}
+          >
+            {gruposCarregando ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Users className="mr-2 h-4 w-4" />
+            )}
+            Carregar grupos
+          </Button>
+        </div>
+      </div>
+
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <Table>
           <TableHeader className="bg-slate-50">
@@ -184,6 +347,7 @@ function CompradoresPage() {
               <TableHead className="text-[11px] font-black text-slate-400 uppercase tracking-wider py-4">Documento</TableHead>
               <TableHead className="text-[11px] font-black text-slate-400 uppercase tracking-wider py-4">Localização</TableHead>
               <TableHead className="text-[11px] font-black text-slate-400 uppercase tracking-wider py-4">Compliance</TableHead>
+              <TableHead className="text-[11px] font-black text-slate-400 uppercase tracking-wider py-4">Grupo WhatsApp</TableHead>
               <TableHead className="text-[11px] font-black text-slate-400 uppercase tracking-wider py-4">Atualização</TableHead>
               <TableHead className="text-[11px] font-black text-slate-400 uppercase tracking-wider py-4 text-right">Ações</TableHead>
             </TableRow>
@@ -192,18 +356,18 @@ function CompradoresPage() {
             {isLoading ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={i} className="animate-pulse">
-                  <TableCell colSpan={6} className="h-16 bg-slate-50/50" />
+                  <TableCell colSpan={7} className="h-16 bg-slate-50/50" />
                 </TableRow>
               ))
             ) : res && (res as any).ok === false ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-32 text-center text-red-500 font-medium">
+                <TableCell colSpan={7} className="h-32 text-center text-red-500 font-medium">
                   Erro ao carregar compradores: {(res as any).message || "tente novamente."}
                 </TableCell>
               </TableRow>
             ) : compradores.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-32 text-center text-slate-400 font-medium italic">
+                <TableCell colSpan={7} className="h-32 text-center text-slate-400 font-medium italic">
                   Nenhum comprador encontrado.
                 </TableCell>
               </TableRow>
@@ -247,6 +411,55 @@ function CompradoresPage() {
                       )}>
                         {c.status_compliance ? STATUS_CONFIG[c.status_compliance]?.label : 'Pendente'}
                       </span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-col gap-1" onClick={(e) => e.stopPropagation()}>
+                      {(() => {
+                        const st = statusGrupo[c.id];
+                        const numero = numeroDoComprador(c);
+                        if (st?.erro) {
+                          return <span className="max-w-[220px] text-[11px] font-medium text-red-600">{st.erro}</span>;
+                        }
+                        if (st?.noGrupo === true) {
+                          return (
+                            <span className="inline-flex items-center gap-1 text-xs font-bold text-teal-700">
+                              <UserCheck className="h-4 w-4" /> Já está no grupo
+                            </span>
+                          );
+                        }
+                        if (st?.noGrupo === false && st && !st.erro) {
+                          return (
+                            <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-600">
+                              <UserMinus className="h-4 w-4" /> Fora do grupo
+                            </span>
+                          );
+                        }
+                        return numero ? (
+                          <span className="text-[11px] text-slate-400">Não verificado</span>
+                        ) : (
+                          <span className="text-[11px] font-medium text-red-600">Sem WhatsApp</span>
+                        );
+                      })()}
+                      <div className="flex gap-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2 text-[11px] font-bold"
+                          disabled={verificandoId === c.id || !grupoEscolhido}
+                          onClick={() => verificarComprador(c)}
+                        >
+                          {verificandoId === c.id ? <Loader2 className="h-3 w-3 animate-spin" /> : "Verificar"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="h-7 px-2 text-[11px] font-bold bg-teal-600 hover:bg-teal-700"
+                          disabled={incluindoId === c.id || !grupoEscolhido || statusGrupo[c.id]?.noGrupo === true}
+                          onClick={() => incluirComprador(c)}
+                        >
+                          {incluindoId === c.id ? <Loader2 className="h-3 w-3 animate-spin" /> : "Incluir"}
+                        </Button>
+                      </div>
                     </div>
                   </TableCell>
                   <TableCell>

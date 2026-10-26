@@ -76,6 +76,30 @@ export type PreCadastroPublicoInput = {
 
 export async function criarPreCadastroPublico(data: PreCadastroPublicoInput) {
   if (!db) throw new Error("DB offline");
+
+  // Valida o WhatsApp ANTES de criar a conta: se o número não existir no
+  // WhatsApp, o comprador corrige na hora em vez de descobrir depois.
+  // Sem Uazapi configurada, segue sem validar (não trava o cadastro).
+  let whatsappNormalizado: string | null = null;
+  let grupoDestino: string | null = null;
+  try {
+    const { checarNumeroWhatsappUazapi, grupoPadraoUazapi } = await import("./marketing.server");
+    grupoDestino = await grupoPadraoUazapi().catch(() => null);
+    if (grupoDestino) {
+      const checagem = await checarNumeroWhatsappUazapi(data.responsavel_whatsapp);
+      if (!checagem.whatsappAtivo) {
+        return {
+          ok: false as const,
+          message: `O número ${data.responsavel_whatsapp} não está no WhatsApp. Confira o DDD e o número e tente de novo.`,
+        };
+      }
+      whatsappNormalizado = checagem.numero;
+    }
+  } catch (e: any) {
+    // Uazapi fora do ar ou sem config: não trava o pré-cadastro.
+    if (e?.message && /inválido|WhatsApp/i.test(e.message)) throw e;
+    console.error("[pre-cadastro publico] checagem whatsapp (ignorada):", e?.message || e);
+  }
   try {
     await ensureCompradorSchema();
   } catch (e: any) {
@@ -174,5 +198,19 @@ export async function criarPreCadastroPublico(data: PreCadastroPublicoInput) {
     SELECT id, nome, email, role, tipo_pessoa, pode_ver_valores
     FROM profiles WHERE id = ${perfilId}::uuid
   `);
-  return { ok: true as const, user: rowsOf(res)[0] };
+
+  // Auto-inclusão no grupo de compradores. Não trava o cadastro: se falhar,
+  // o admin inclui depois pela lista de compradores.
+  let avisoGrupo: string | null = null;
+  if (grupoDestino && whatsappNormalizado) {
+    try {
+      const { incluirCompradorNoGrupo } = await import("./marketing.server");
+      const r = await incluirCompradorNoGrupo(grupoDestino, whatsappNormalizado);
+      if (r.precisaConvite) avisoGrupo = r.mensagem;
+    } catch (e: any) {
+      console.error("[pre-cadastro publico] incluir no grupo:", e?.message || e);
+    }
+  }
+
+  return { ok: true as const, user: rowsOf(res)[0], avisoGrupo };
 }
