@@ -1,0 +1,27 @@
+:root {
+  --page: #F3F7FA;
+  --surface: #FFFFFF;
+  --navy: #0B2054;
+  --text: #304463;
+  --muted: #657791;
+  --green: #009966;
+  --green-hover: #007C53;
+  --mint: #EAF8F2;
+  --mint-strong: #DDF3E9;
+  --border: #E2EAF0;
+  --teal: #004C48;
+  --radius-card: 16px;
+  --radius-control: 8px;
+  --shadow-card: 0 6px 24px rgba(11, 32, 84, .035);
+  --focus: 0 0 0 3px rgba(0, 153, 102, .22);
+}
+.dashboard { background: var(--page); color: var(--text); font-family: Inter, system-ui, sans-serif; }
+.dashboard-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); box-shadow: var(--shadow-card); }
+.dashboard-primary { background: var(--green); color: white; border: 0; border-radius: var(--radius-control); min-height: 48px; padding: 12px 24px; font-weight: 600; }
+.dashboard-primary:hover { background: var(--green-hover); }
+.dashboard-primary:focus-visible { outline: 2px solid var(--navy); outline-offset: 3px; }
+.dashboard-input { min-height: 56px; border: 1px solid #CEDAE4; border-radius: var(--radius-control); background: white; color: var(--navy); font-size: 24px; font-weight: 600; letter-spacing: 2px; padding: 12px 18px; }
+.dashboard-input:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.dashboard-trust { background: linear-gradient(135deg, #F0FBF6, #E0F5ED); overflow: hidden; }
+.dashboard-trust img { display: block; width: 100%; height: auto; object-fit: contain; }
+.dashboard-status { background: var(--mint); color: var(--green-hover); padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; }

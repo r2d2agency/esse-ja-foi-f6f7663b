@@ -1,0 +1,36 @@
+Redesenhe a seção interna do sistema seguindo de perto a imagem referencia-layout.png e os arquivos deste kit. Faça a implementação no projeto existente, preservando integrações, rotas, autenticação, consultas e identidade da marca. Primeiro inspecione a estrutura e use a stack já adotada.
+
+DIREÇÃO VISUAL
+Dashboard claro, elegante e organizado. Fundo #F3F7FA, cards brancos #FFFFFF, títulos azul-marinho #0B2054, corpo #304463, texto secundário #657791. Verde principal #009966, hover #007C53, seleção e badges #EAF8F2, bordas #E2EAF0. Estas cores são uma especificação visual aproximada da imagem gerada. Use cores-e-estilos.css como base e adapte as classes à estrutura do projeto.
+Fonte Inter, com fallback system-ui. Título principal 36px/44px, peso 700; título dos cards 26–30px/1.2, peso 700; corpo 14–16px/1.5; labels 12–14px. Ícones vetoriais de traço consistente, 20–24px, preferencialmente da biblioteca já instalada. Não use emojis como ícones definitivos.
+Cards com raio 16px, borda 1px e sombra muito leve. Controles com raio 8px. Espaçamento em múltiplos de 8px. Pouco gradiente, sem brilho exagerado.
+
+COMPOSIÇÃO DESKTOP
+Use a referência como guia visual, não como uma imagem de fundo da página.
+Sidebar branca de aproximadamente 240px, separada por borda sutil. Logo original no topo. Links: Visão geral, Meus veículos, Minhas consultas e Meu cadastro. Ativo com fundo menta, texto e ícone verdes e pequeno marcador vertical à esquerda. Ajuda e perfil na parte inferior.
+Cabeçalho branco de 64–72px com breadcrumb à esquerda e notificações e perfil à direita.
+Conteúdo com padding 32px e gaps 24px. Saudação à esquerda e botão Nova consulta à direita.
+Abaixo, três indicadores de mesma largura: Consultas realizadas, Veículos acompanhados e situação da conta. Dados reais do sistema.
+Linha principal em grid de duas colunas, aproximadamente 63% e 37%, gap 24px. Card de consulta com padding 28px; card de confiança em fundo menta.
+
+CARD DE CONSULTA
+Pequeno rótulo verde COMECE PELA PLACA.
+Título: Qual carro você está avaliando?
+Subtítulo: Comece pela placa e encontre a consulta ideal.
+Indicador de etapas: 1 Placa, 2 Consulta, 3 Resultado. Primeiro ativo em verde; demais neutros. Conectores finos.
+Label Placa do veículo. Campo grande, faixa BR à esquerda, placeholder ABC1D23 e botão Ver consultas disponíveis com seta. Campo e botão na mesma linha quando houver espaço. Linha discreta com ícone de cadeado e texto Seus dados estão seguros.
+Use assets/carro-verde.png como decoração no canto superior direito, aproximadamente 230x210px, object-fit: cover, object-position: right center. Recrie a curva branca com máscara CSS ou SVG. A arte não deve ficar atrás dos textos nem reduzir sua legibilidade. Em telas menores, esconda a decoração.
+
+CARD DE CONFIANÇA
+Título: Mais confiança na sua próxima escolha.
+Texto: Conheça o histórico antes de fechar negócio.
+Use assets/carro-escudo.png com object-fit: contain, sem distorcer nem cortar carro ou escudo. Fundo com gradiente suave #F0FBF6 para #E0F5ED. Link inferior Compare as consultas com seta. A arte foi recriada separadamente e pode variar em relação à referência; ajuste escala e posição para manter a composição.
+
+CONSULTAS RECENTES
+Card branco abaixo, título Consultas recentes e link Ver todas. Tabela com Veículo, Placa, Data, Status e Relatório. Cabeçalho cinza muito claro, separadores sutis, badge Concluída verde e botão Ver relatório. Use os dados existentes. Não invente números ou consultas em produção: os dados da imagem são apenas exemplos. Se não houver miniaturas reais dos veículos, use ícone vetorial de carro.
+
+RESPONSIVIDADE E COMPORTAMENTO
+Abaixo de 1100px empilhe o card de confiança; abaixo de 768px use menu recolhível, padding 16px e indicadores em uma coluna. Campo e botão empilhados no celular. Tabela com rolagem horizontal contida ou cartões equivalentes. Nenhum texto cortado ou página com rolagem horizontal.
+Implemente estados de foco, hover, carregamento, vazio e erro; validação de placa compatível com formatos brasileiros; labels acessíveis; botões com área de toque de 44px ou mais. Artes decorativas com alt vazio. Preserve comportamentos existentes e conecte as ações às rotas reais. Não deixe botões sem função.
+Não substitua o logo por uma aproximação gerada: reutilize o arquivo oficial do projeto.
+Ao finalizar, compare a tela renderizada com a referência em desktop e celular e ajuste proporções, tipografia e espaçamentos. Entregue o código funcionando, não apenas uma explicação.
