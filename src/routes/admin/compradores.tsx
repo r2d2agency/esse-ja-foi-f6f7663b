@@ -10,6 +10,7 @@ import {
 } from "@/lib/marketing.functions";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useState } from "react";
 import {
   Search,
@@ -64,11 +65,12 @@ function CompradoresPage() {
   const navigate = useNavigate();
   const [busca, setBusca] = useState("");
   const [filtroStatus, setFiltroStatus] = useState<string | undefined>(undefined);
-  
+  const [tipo, setTipo] = useState<"CADASTRADOS" | "WHATSAPP">("CADASTRADOS");
+
   const loadCompradores = useServerFn(listarCompradoresFn);
   const { data: res, isLoading } = useQuery({
-    queryKey: ["admin-compradores", busca, filtroStatus],
-    queryFn: () => loadCompradores({ data: { busca, status: filtroStatus } })
+    queryKey: ["admin-compradores", busca, filtroStatus, tipo],
+    queryFn: () => loadCompradores({ data: { busca, status: filtroStatus, tipo } })
   });
 
   const compradores = res?.data || [];

@@ -751,12 +751,12 @@ export async function processarMensagemRecebida(
     // e o webhook já gravou 'PROCESSADO' antes, então a falha fica invisível.
     const emailSintetico = `whatsapp_${noveDigitos}@contato.local`;
     const res = await db.execute(sql`
-      INSERT INTO profiles (nome, telefone, role, whatsapp_status, email)
+      INSERT INTO profiles (nome, telefone, role, whatsapp_status, email, origem_cadastro)
       VALUES (
         ${nomePerfil?.trim() || "Contato não identificado"}, ${telefone}, 'comprador', 'ATIVO',
-        ${emailSintetico}
+        ${emailSintetico}, 'WHATSAPP'
       )
-      ON CONFLICT (email) DO UPDATE SET telefone = EXCLUDED.telefone
+      ON CONFLICT (email) DO UPDATE SET telefone = EXCLUDED.telefone, origem_cadastro = COALESCE(profiles.origem_cadastro, EXCLUDED.origem_cadastro)
       RETURNING id
     `);
     perfilId = rowsOf(res)[0].id;

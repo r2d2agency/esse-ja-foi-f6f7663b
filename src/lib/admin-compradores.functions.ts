@@ -12,9 +12,10 @@ async function ensureSchema() {
 }
 
 export const listarCompradoresFn = createServerFn({ method: "GET" })
-  .validator((d: unknown) => z.object({ 
-    status: z.string().optional(), 
-    busca: z.string().optional() 
+  .validator((d: unknown) => z.object({
+    status: z.string().optional(),
+    busca: z.string().optional(),
+    tipo: z.enum(["CADASTRADOS", "WHATSAPP"]).optional()
   }).parse(d))
   .handler(async ({ data }) => {
     await ensureSchema();
@@ -23,16 +24,17 @@ export const listarCompradoresFn = createServerFn({ method: "GET" })
 
     const search = data.busca ? `%${data.busca.toLowerCase()}%` : null;
     const status = data.status && data.status !== "TODOS" ? data.status : null;
+    const tipo = data.tipo || "CADASTRADOS";
 
     // Fragmentos condicionais: evitam parâmetros sem tipo definido ($1 IS NULL),
     // que fazem o Postgres recusar a query.
     const filtroStatus = status ? sql` AND p.status_compliance = ${status}` : sql``;
-    const filtroBusca = search
-      ? sql` AND (lower(p.nome) LIKE ${search} OR lower(coalesce(p.cpf,'')) LIKE ${search} OR lower(coalesce(p.email,'')) LIKE ${search})`
-      : sql``;
     const filtroBuscaCompleta = search
       ? sql` AND (lower(p.nome) LIKE ${search} OR lower(coalesce(p.cpf,'')) LIKE ${search} OR lower(coalesce(p.cnpj,'')) LIKE ${search} OR lower(coalesce(p.email,'')) LIKE ${search})`
       : sql``;
+    const filtroOrigem = tipo === "WHATSAPP"
+      ? sql` AND (p.origem_cadastro = 'WHATSAPP' OR (p.origem_cadastro IS NULL AND p.email LIKE 'whatsapp_%'))`
+      : sql` AND (p.origem_cadastro IS NOT NULL AND p.origem_cadastro != 'WHATSAPP')`;
 
     try {
       const res = await d.execute(sql`
@@ -57,10 +59,19 @@ export const listarCompradoresFn = createServerFn({ method: "GET" })
           SELECT p.id, p.nome, p.email, p.whatsapp, p.cpf, p.cidade, p.uf, p.criado_em
           FROM profiles p
           WHERE p.role::text = 'comprador'
+            ${tipo === "WHATSAPP"
+              ? sql` AND (p.origem_cadastro = 'WHATSAPP' OR (p.origem_cadastro IS NULL AND p.email LIKE 'whatsapp_%'))`
+              : sql` AND (p.origem_cadastro IS NOT NULL AND p.origem_cadastro != 'WHATSAPP')`}
           ${filtroBusca}
           ORDER BY p.criado_em DESC
           LIMIT 100
         `);
+        const rows = Array.isArray(res) ? res : (res as any).rows || [];
+        return {
+          ok: true as const,
+          data: rows.map((r: any) => ({ ...r, status_compliance: r.status_compliance ?? "NAO_ENVIADO" })),
+        };
+      } catch (e2: any) {
         const rows = Array.isArray(res) ? res : (res as any).rows || [];
         return {
           ok: true as const,
