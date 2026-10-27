@@ -494,7 +494,15 @@ export const atualizarCampanhaFn = createServerFn({ method: "POST" })
       if (!dbc) throw new Error("Banco indisponível.");
       const sets: any[] = [];
       if (data.nome !== undefined) sets.push(sql`nome = ${data.nome.trim() || "Campanha Geral"}`);
-      if (data.agendado_para !== undefined) sets.push(sql`agendado_para = ${data.agendado_para ? new Date(data.agendado_para) : null}`);
+      if (data.agendado_para !== undefined) {
+        if (data.agendado_para === null || data.agendado_para === "") {
+          sets.push(sql`agendado_para = NULL`);
+        } else {
+          const d = new Date(data.agendado_para);
+          if (Number.isNaN(d.getTime())) throw new Error("Horário de agendamento inválido.");
+          sets.push(sql`agendado_para = ${d.toISOString()}::timestamptz`);
+        }
+      }
       if (data.janela_inicio !== undefined) sets.push(sql`janela_inicio = ${data.janela_inicio}`);
       if (data.janela_fim !== undefined) sets.push(sql`janela_fim = ${data.janela_fim}`);
       if (data.intervalo_minutos !== undefined) sets.push(sql`intervalo_minutos = ${data.intervalo_minutos}`);
