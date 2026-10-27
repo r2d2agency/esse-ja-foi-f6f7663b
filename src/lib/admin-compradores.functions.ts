@@ -12,11 +12,15 @@ async function ensureSchema() {
 }
 
 export const listarCompradoresFn = createServerFn({ method: "GET" })
-  .validator((d: unknown) => z.object({
-    status: z.string().optional(),
-    busca: z.string().optional(),
-    tipo: z.enum(["CADASTRADOS", "WHATSAPP"]).optional()
-  }).parse(d))
+  .validator((d: unknown) =>
+    z
+      .object({
+        status: z.string().optional(),
+        busca: z.string().optional(),
+        tipo: z.enum(["CADASTRADOS", "WHATSAPP"]).optional(),
+      })
+      .parse(d),
+  )
   .handler(async ({ data }) => {
     await ensureSchema();
     const d = db;
@@ -26,15 +30,17 @@ export const listarCompradoresFn = createServerFn({ method: "GET" })
     const status = data.status && data.status !== "TODOS" ? data.status : null;
     const tipo = data.tipo || "CADASTRADOS";
 
-    // Fragmentos condicionais: evitam parâmetros sem tipo definido ($1 IS NULL),
-    // que fazem o Postgres recusar a query.
     const filtroStatus = status ? sql` AND p.status_compliance = ${status}` : sql``;
     const filtroBuscaCompleta = search
       ? sql` AND (lower(p.nome) LIKE ${search} OR lower(coalesce(p.cpf,'')) LIKE ${search} OR lower(coalesce(p.cnpj,'')) LIKE ${search} OR lower(coalesce(p.email,'')) LIKE ${search})`
       : sql``;
-    const filtroOrigem = tipo === "WHATSAPP"
-      ? sql` AND (p.origem_cadastro = 'WHATSAPP' OR (p.origem_cadastro IS NULL AND p.email LIKE 'whatsapp_%'))`
-      : sql` AND (p.origem_cadastro IS NOT NULL AND p.origem_cadastro != 'WHATSAPP')`;
+    const filtroBusca = search
+      ? sql` AND (lower(p.nome) LIKE ${search} OR lower(coalesce(p.cpf,'')) LIKE ${search} OR lower(coalesce(p.email,'')) LIKE ${search})`
+      : sql``;
+    const filtroOrigem =
+      tipo === "WHATSAPP"
+        ? sql` AND (p.origem_cadastro = 'WHATSAPP' OR (p.origem_cadastro IS NULL AND p.email LIKE 'whatsapp_%'))`
+        : sql` AND (p.origem_cadastro IS NOT NULL AND p.origem_cadastro != 'WHATSAPP')`;
 
     try {
       const res = await d.execute(sql`
@@ -44,6 +50,7 @@ export const listarCompradoresFn = createServerFn({ method: "GET" })
           p.responsavel_nome as responsavel
         FROM profiles p
         WHERE p.role::text = 'comprador'
+        ${filtroOrigem}
         ${filtroStatus}
         ${filtroBuscaCompleta}
         ORDER BY p.criado_em DESC
@@ -54,24 +61,15 @@ export const listarCompradoresFn = createServerFn({ method: "GET" })
     } catch (e: any) {
       console.error("[admin-compradores] listagem completa falhou:", e?.message || e);
       try {
-        // Fallback: colunas básicas, para bancos ainda sem as colunas de compliance.
         const res = await d.execute(sql`
           SELECT p.id, p.nome, p.email, p.whatsapp, p.cpf, p.cidade, p.uf, p.criado_em
           FROM profiles p
           WHERE p.role::text = 'comprador'
-            ${tipo === "WHATSAPP"
-              ? sql` AND (p.origem_cadastro = 'WHATSAPP' OR (p.origem_cadastro IS NULL AND p.email LIKE 'whatsapp_%'))`
-              : sql` AND (p.origem_cadastro IS NOT NULL AND p.origem_cadastro != 'WHATSAPP')`}
+          ${filtroOrigem}
           ${filtroBusca}
           ORDER BY p.criado_em DESC
           LIMIT 100
         `);
-        const rows = Array.isArray(res) ? res : (res as any).rows || [];
-        return {
-          ok: true as const,
-          data: rows.map((r: any) => ({ ...r, status_compliance: r.status_compliance ?? "NAO_ENVIADO" })),
-        };
-      } catch (e2: any) {
         const rows = Array.isArray(res) ? res : (res as any).rows || [];
         return {
           ok: true as const,
@@ -83,7 +81,6 @@ export const listarCompradoresFn = createServerFn({ method: "GET" })
     }
   });
 
-// postgres-js retorna array direto; pg retorna { rows }. Normaliza ambos.
 function rowsOf(res: any): any[] {
   if (!res) return [];
   if (Array.isArray(res)) return res;
@@ -99,83 +96,40 @@ export const obterDetalheCompradorFn = createServerFn({ method: "GET" })
     if (!d) return { ok: false, message: "DB offline" };
 
     const res = await d.execute(sql`
-      SELECT * FROM profiles 
+      SELECT * FROM profiles
       WHERE id = ${data.id}::uuid AND role::text = 'comprador'
     `);
     const comprador = rowsOf(res)[0];
 
     if (!comprador) return { ok: false, message: "Comprador não encontrado" };
 
-    let documentos: any[] = [];
     try {
-      const docsRes = await d.execute(sql`
-        SELECT * FROM documentos 
-        WHERE entidade = 'comprador' AND entidade_id = ${data.id}::uuid
+      const docs = await d.execute(sql`
+        SELECT * FROM comprador_documentos WHERE comprador_id = ${data.id}::uuid ORDER BY criado_em ASC
       `);
-      documentos = rowsOf(docsRes);
+      return { ok: true, comprador, documentos: rowsOf(docs) };
     } catch (e: any) {
       console.error("[admin-compradores] documentos falhou:", e?.message || e);
+      return { ok: true, comprador, documentos: [] };
     }
-
-    return { ok: true, data: { ...comprador, documentos } };
-  });
-
-export const aprovarCompradorFn = createServerFn({ method: "POST" })
-  .validator((d: unknown) => z.object({ 
-    id: z.string().uuid(),
-    observacao: z.string().optional()
-  }).parse(d))
-  .handler(async ({ data }) => {
-    await ensureSchema();
-    const d = db;
-    if (!d) return { ok: false, message: "DB offline" };
-
-    await d.execute(sql`
-      UPDATE profiles 
-      SET status_compliance = 'APROVADO', 
-          pode_ver_valores = true,
-          pode_dar_lances = true,
-          atualizado_em = now()
-      WHERE id = ${data.id}::uuid
-    `);
-
-    return { ok: true };
-  });
-
-export const solicitarPendenciaCompradorFn = createServerFn({ method: "POST" })
-  .validator((d: unknown) => z.object({ 
-    id: z.string().uuid(),
-    campo: z.string(),
-    mensagem: z.string()
-  }).parse(d))
-  .handler(async ({ data }) => {
-    await ensureSchema();
-    const d = db;
-    if (!d) return { ok: false, message: "DB offline" };
-
-    await d.execute(sql`
-      UPDATE profiles 
-      SET status_compliance = 'PENDENCIA',
-          compliance_motivo_pendencia = ${data.mensagem},
-          atualizado_em = now()
-      WHERE id = ${data.id}::uuid
-    `);
-
-    return { ok: true };
   });
 
 export const preCadastrarCompradorFn = createServerFn({ method: "POST" })
-  .validator((d: unknown) => z.object({
-    nome: z.string().min(2),
-    email: z.string().email(),
-    senha: z.string().min(6),
-    whatsapp: z.string().optional(),
-    cnpj: z.string().optional(),
-    regiao: z.string().optional(),
-    endereco: z.string().optional(),
-    cidade: z.string().optional(),
-    uf: z.string().optional(),
-  }).parse(d))
+  .validator((d: unknown) =>
+    z
+      .object({
+        nome: z.string().min(2),
+        email: z.string().email(),
+        senha: z.string().min(6),
+        whatsapp: z.string().optional(),
+        cnpj: z.string().optional(),
+        regiao: z.string().optional(),
+        endereco: z.string().optional(),
+        cidade: z.string().optional(),
+        uf: z.string().optional(),
+      })
+      .parse(d),
+  )
   .handler(async ({ data }) => {
     try {
       await ensureSchema();
