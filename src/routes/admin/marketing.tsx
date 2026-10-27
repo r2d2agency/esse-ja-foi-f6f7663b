@@ -457,44 +457,43 @@ function MarketingPage() {
     if (verificandoWhatsapp) return;
     setVerificandoWhatsapp(true);
     try {
-      // Congela o total no início para a barra não andar para trás.
-      const contagem = await contarWhatsappPendentes();
-      if (!contagem.ok) throw new Error(contagem.message);
-      const totalFila = Number((contagem.data as any)?.total ?? 0);
-      if (totalFila <= 0) {
-        toast.info("Nenhum número pendente de verificação.");
+      // Valida apenas os contatos da página atual (igual à paginação)
+      const idsPagina = (contatos || [])
+        .map((c: any) => c?.id)
+        .filter(Boolean);
+      if (idsPagina.length === 0) {
+        toast.info("Nenhum contato nesta página para verificar.");
+        setVerificandoWhatsapp(false);
         return;
       }
+      const totalFila = idsPagina.length;
       setProgressoWhatsapp({ total: totalFila, feito: 0, verificados: 0, invalidos: 0, erros: 0 });
-      // Lotes pequenos com pausa: a Uazapi bloqueia rajada e cada chamada
-      // processa só o que cabe no limite — por isso o loop até restantes === 0.
-      // O atraso entre rodadas fica no cliente (setTimeout) para a tela
-      // respirar e a barra atualizar entre um lote e outro.
       let verificados = 0;
       let invalidos = 0;
       let erros = 0;
-      for (;;) {
-        const r = await verificarWhatsapp({
-          data: { limite: 100, loteTamanho: 10, pausaMs: 1500, somenteNovos: true },
-        });
-        if (!r.ok) throw new Error(r.message);
-        const d = r.data as any;
-        verificados += Number(d.verificados ?? 0);
-        invalidos += Number(d.invalidos ?? 0);
-        erros += Number(d.erros ?? 0);
-        const restantes = Number(d.restantes ?? 0);
-        setProgressoWhatsapp({
-          total: totalFila,
-          feito: Math.min(totalFila, totalFila - restantes),
-          verificados,
-          invalidos,
-          erros,
-        });
-        if (restantes <= 0) break;
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-      }
+      const r = await verificarWhatsapp({
+        data: {
+          limite: totalFila,
+          loteTamanho: 10,
+          pausaMs: 1500,
+          somenteNovos: true,
+          contatoIds: idsPagina,
+        },
+      });
+      if (!r.ok) throw new Error(r.message);
+      const d = r.data as any;
+      verificados = Number(d.verificados ?? 0);
+      invalidos = Number(d.invalidos ?? 0);
+      erros = Number(d.erros ?? 0);
+      setProgressoWhatsapp({
+        total: totalFila,
+        feito: totalFila,
+        verificados,
+        invalidos,
+        erros,
+      });
       toast.success(
-        `WhatsApp: ${verificados} verificado(s), ${invalidos} sem WhatsApp, ${erros} erro(s).`,
+        `WhatsApp: ${verificados} verificado(s), ${invalidos} sem WhatsApp, ${erros} erro(s). (página atual)`,
       );
       queryClient.invalidateQueries({ queryKey: ["admin-marketing"], exact: false });
     } catch (e: any) {

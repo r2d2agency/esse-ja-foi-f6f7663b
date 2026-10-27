@@ -350,6 +350,7 @@ export const verificarWhatsappContatosFn = createServerFn({ method: "POST" })
         loteTamanho: z.number().int().min(1).max(30).optional(),
         pausaMs: z.number().int().min(0).max(10000).optional(),
         somenteNovos: z.boolean().optional(),
+        contatoIds: z.array(z.string()).optional(),
       })
       .parse(d),
   )
@@ -365,6 +366,7 @@ export const verificarWhatsappContatosFn = createServerFn({ method: "POST" })
           data.loteTamanho,
           data.pausaMs,
           data.somenteNovos !== false,
+          Array.isArray(data.contatoIds) ? data.contatoIds : undefined,
         ),
       };
     } catch (e: any) {

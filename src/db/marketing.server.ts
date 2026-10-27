@@ -1348,6 +1348,7 @@ export async function verificarWhatsappContatos(
   loteTamanho = 10,
   pausaMs = 1500,
   somenteNovos = true,
+  contatoIds?: string[],
 ) {
   const d = requireDb();
   const cfg = await getUazapiConfig();
@@ -1358,30 +1359,47 @@ export async function verificarWhatsappContatos(
   // "Somente novos" = só quem ainda está 'nao_verificado'. O já verificado
   // (ou inválido) não entra na fila de novo — com 170 mil contatos, rechecar
   // tudo a cada clique é o que derruba a instância e bloqueia o IP.
-  const condicaoNovos = somenteNovos
+  const ids = Array.isArray(contatoIds) ? contatoIds.filter(Boolean) : [];
+  const usarIds = ids.length > 0;
+  const condicaoNovos = somenteNovos && !usarIds
     ? sql`AND whatsapp_status = 'nao_verificado'`
     : sql``;
-  const quantidade = Math.max(1, Math.min(200, Number(limite) || 50));
+  const quantidade = usarIds
+    ? ids.length
+    : Math.max(1, Math.min(200, Number(limite) || 50));
   // Lote pequeno + pausa entre lotes: a Uazapi responde /chat/check por
   // instância, e rajadas grandes num curto intervalo fazem ela parar de
   // responder (rate limit/bloqueio de IP). Devagar protege os dois lados.
   const tamanho = Math.max(1, Math.min(30, Number(loteTamanho) || 10));
   const pausa = Math.max(0, Math.min(30000, Number(pausaMs) || 0));
   // Conta quantos restam para a UI calcular a barra de progresso global
-  const totalRes = rowsOf(
-    await d.execute(sql`
-      SELECT COUNT(*)::int AS total FROM marketing_contatos
-      WHERE telefone IS NOT NULL ${condicaoNovos}
-    `),
-  );
-  const totalPendentes = Number((totalRes[0] as any)?.total || 0);
+  let totalPendentes = quantidade;
+  if (!usarIds) {
+    const totalRes = rowsOf(
+      await d.execute(sql`
+        SELECT COUNT(*)::int AS total FROM marketing_contatos
+        WHERE telefone IS NOT NULL ${condicaoNovos}
+      `),
+    );
+    totalPendentes = Number((totalRes[0] as any)?.total || 0);
+  }
   const pendentes = rowsOf(
-    await d.execute(sql`
-      SELECT id, telefone FROM marketing_contatos
-      WHERE telefone IS NOT NULL ${condicaoNovos}
-      ORDER BY criado_em ASC LIMIT ${quantidade}
-    `),
-  );
+    usarIds
+      ? await d.execute(sql`
+          SELECT id, telefone FROM marketing_contatos
+          WHERE telefone IS NOT NULL
+            AND id IN (${sql.join(
+              ids.map((id) => sql`${id}::uuid`),
+              sql.raw(", "),
+            )})
+            ${somenteNovos ? sql`AND whatsapp_status = 'nao_verificado'` : sql``}
+        `)
+      : await d.execute(sql`
+          SELECT id, telefone FROM marketing_contatos
+          WHERE telefone IS NOT NULL ${condicaoNovos}
+          ORDER BY criado_em ASC LIMIT ${quantidade}
+        `),
+  ) as Array<{ id: string; telefone: string }>;
   if (!pendentes.length)
     return {
       processados: 0,
