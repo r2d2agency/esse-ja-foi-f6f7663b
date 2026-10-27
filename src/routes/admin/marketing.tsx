@@ -217,7 +217,6 @@ function MarketingPage() {
       setRemovendo(false);
     }
   }
-  const criarTag = useServerFn(criarMarketingTagFn);
   const renomearTag = useServerFn(renomearMarketingTagFn);
   const excluirTag = useServerFn(excluirMarketingTagFn);
   const atribuirTag = useServerFn(atribuirMarketingTagFn);
@@ -624,7 +623,7 @@ function MarketingPage() {
     } catch (e: any) {
       toast.error(e.message || "Falha ao excluir.");
     }
-  async function aplicarTag() {
+  }
     if (!nomeTag.trim() || !selecionados.length) return;
     try {
       const t = await criarTag({ data: { nome: nomeTag.trim() } });
@@ -1779,5 +1778,4 @@ function MarketingPage() {
       </Dialog>
     </div>
   );
-}
-}
+
