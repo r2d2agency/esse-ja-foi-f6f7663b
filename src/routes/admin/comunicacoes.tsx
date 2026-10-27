@@ -637,6 +637,19 @@ function ComunicacoesPage() {
   // "Só novos" x "todos": com true, quem já recebeu alguma campanha antes
   // sai da estimativa e da fila. O valor viaja em `dadosEstimativa`.
   const [apenasNovos, setApenasNovos] = useState(false);
+
+  // Extrai DDD do telefone (considera código do país 55)
+  const extrairDDD = (telefone: string | null | undefined): string | null => {
+    if (!telefone) return null;
+    const d = String(telefone).replace(/\D/g, "");
+    if (d.length < 10) return null;
+    if (d.length >= 12 && d.startsWith("55")) {
+      const ddd = d.slice(2, 4);
+      return ddd.length === 2 ? ddd : null;
+    }
+    const ddd = d.slice(0, 2);
+    return ddd.length === 2 ? ddd : null;
+  };
   // Campanha aberta no detalhe de envios (contatos agendados, data e hora,
   // estado). A query em si vive abaixo, junto das outras.
   const [enviosCampanha, setEnviosCampanha] = useState<any>(null);
@@ -876,6 +889,83 @@ function ComunicacoesPage() {
       }),
     enabled: campanhaStep === 3 && tagsSelecionadas.length > 0,
   });
+
+  // Carrega os contatos da(s) etiqueta(s) selecionada(s) para permitir a
+  // seleção manual. Sem isso a opção de marcar contatos nunca aparecia na
+  // tela, porque a etapa 3 só estimava o público agregado.
+  useEffect(() => {
+    let ativo = true;
+    if (!isCampanhaWizardOpen || campanhaStep !== 3 || tagsSelecionadas.length === 0) {
+      setContatosCampanha([]);
+      setContatosSelecionados([]);
+      return;
+    }
+    setCarregandoContatosCamp(true);
+    listarContatosFn({
+      data: { tagIds: tagsSelecionadas, origem: "IMPORTADOS", limite: 5000 },
+    })
+      .then((res: any) => {
+        if (!ativo) return;
+        const lista = Array.isArray(res) ? res : (res?.data ?? []);
+        setContatosCampanha(lista);
+        // Ao trocar de etiqueta a seleção antiga aponta para contatos que
+        // podem nem estar na nova lista — zera para não mandar para gente errada.
+        setContatosSelecionados([]);
+      })
+      .catch(() => {
+        if (ativo) setContatosCampanha([]);
+      })
+      .finally(() => {
+        if (ativo) setCarregandoContatosCamp(false);
+      });
+    return () => {
+      ativo = false;
+    };
+  }, [tagsSelecionadas, campanhaStep, isCampanhaWizardOpen]);
+
+  // Lista de contatos já filtrada por busca, cidade e DDD.
+  const contatosFiltrados = contatosCampanha.filter((c: any) => {
+    if (buscaContatoCamp.trim()) {
+      const termo = buscaContatoCamp.trim().toLowerCase();
+      const alvo = [
+        c?.nome ?? "",
+        c?.telefone ?? "",
+        c?.email ?? "",
+        c?.cidade ?? "",
+        c?.uf ?? "",
+      ]
+        .join(" ")
+        .toLowerCase();
+      if (!alvo.includes(termo)) return false;
+    }
+    if (filtroCidadeCamp.trim()) {
+      const cidade = String(c?.cidade ?? "").trim().toLowerCase();
+      if (!cidade.includes(filtroCidadeCamp.trim().toLowerCase())) return false;
+    }
+    if (filtroDDDCamp.trim()) {
+      const ddd = extrairDDD(c?.telefone);
+      if (ddd !== filtroDDDCamp.trim()) return false;
+    }
+    return true;
+  });
+
+  const idsContatosFiltrados = contatosFiltrados.map((c: any) => c.id);
+
+  const alternarContato = (id: string) => {
+    setContatosSelecionados((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  };
+
+  const selecionarTodosFiltrados = () => {
+    setContatosSelecionados((prev) => {
+      const junto = new Set(prev);
+      idsContatosFiltrados.forEach((id: string) => junto.add(id));
+      return [...junto];
+    });
+  };
+
+  const limparSelecaoContatos = () => setContatosSelecionados([]);
 
   // Contatos e segmentos: as abas mostravam linhas fictícias escritas no JSX, não
   // consultavam nada. Agora vêm do banco e respeitam busca e filtro.
@@ -2036,12 +2126,16 @@ function ComunicacoesPage() {
                         <Label className="text-lg">Público Alvo</Label>
                         <div className="text-right">
                           <p className="text-2xl font-bold text-teal-600">
-                            {tagsSelecionadas.length
-                              ? (estimativaTags?.elegiveis ?? "…")
-                              : estimativa.elegiveis}
+                            {contatosSelecionados.length
+                              ? contatosSelecionados.length
+                              : tagsSelecionadas.length
+                                ? (estimativaTags?.elegiveis ?? "…")
+                                : estimativa.elegiveis}
                           </p>
                           <p className="text-[10px] text-muted-foreground">
-                            Elegíveis para WhatsApp
+                            {contatosSelecionados.length
+                              ? "Contatos selecionados"
+                              : "Elegíveis para WhatsApp"}
                           </p>
                         </div>
                       </div>
@@ -2232,6 +2326,137 @@ function ComunicacoesPage() {
                             : "Sem etiqueta, o público é definido pela origem e pelos filtros abaixo."}
                         </p>
                       </div>
+
+                      {/* Seleção de contatos da etiqueta: com a etiqueta marcada
+                          os contatos dela aparecem aqui para o admin escolher
+                          exatamente quem entra na campanha. Sem marcar nada, a
+                          campanha usa a etiqueta inteira. */}
+                      {tagsSelecionadas.length > 0 && (
+                        <div className="space-y-3 rounded-lg border border-teal-200 dark:border-teal-900/50 bg-teal-50/40 dark:bg-teal-950/20 p-4">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                            <div>
+                              <Label className="text-sm">Selecionar contatos</Label>
+                              <p className="text-[11px] text-muted-foreground">
+                                {carregandoContatosCamp
+                                  ? "Carregando contatos da etiqueta..."
+                                  : `${contatosFiltrados.length} de ${contatosCampanha.length} contato(s) na lista · ${contatosSelecionados.length} selecionado(s)`}
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="text-xs"
+                                onClick={selecionarTodosFiltrados}
+                                disabled={!idsContatosFiltrados.length}
+                              >
+                                Selecionar todos (filtrados)
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="text-xs"
+                                onClick={limparSelecaoContatos}
+                                disabled={!contatosSelecionados.length}
+                              >
+                                Limpar seleção
+                              </Button>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            <Input
+                              value={buscaContatoCamp}
+                              onChange={(e) => setBuscaContatoCamp(e.target.value)}
+                              placeholder="Buscar por nome, telefone, e-mail..."
+                              className="text-xs"
+                            />
+                            <Input
+                              value={filtroCidadeCamp}
+                              onChange={(e) => setFiltroCidadeCamp(e.target.value)}
+                              placeholder="Filtrar por cidade"
+                              className="text-xs"
+                            />
+                            <Input
+                              value={filtroDDDCamp}
+                              onChange={(e) => setFiltroDDDCamp(e.target.value.replace(/\D/g, "").slice(0, 2))}
+                              placeholder="Filtrar por DDD (ex.: 11)"
+                              className="text-xs"
+                            />
+                          </div>
+
+                          {carregandoContatosCamp ? (
+                            <p className="text-xs text-muted-foreground">Carregando...</p>
+                          ) : contatosFiltrados.length === 0 ? (
+                            <p className="text-xs text-muted-foreground">
+                              {contatosCampanha.length
+                                ? "Nenhum contato bate com os filtros."
+                                : "Nenhum contato encontrado nesta etiqueta."}
+                            </p>
+                          ) : (
+                            <div className="max-h-72 overflow-y-auto rounded-md border border-slate-200 dark:border-slate-800">
+                              <table className="w-full text-xs">
+                                <thead className="bg-slate-50 dark:bg-slate-900/60 sticky top-0">
+                                  <tr>
+                                    <th className="w-8 px-2 py-2" />
+                                    <th className="text-left px-2 py-2 font-medium">Contato</th>
+                                    <th className="text-left px-2 py-2 font-medium">Telefone</th>
+                                    <th className="text-left px-2 py-2 font-medium">Cidade</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {contatosFiltrados.map((c: any) => {
+                                    const marcado = contatosSelecionados.includes(c.id);
+                                    const ddd = extrairDDD(c?.telefone);
+                                    return (
+                                      <tr
+                                        key={c.id}
+                                        className={`border-t border-slate-100 dark:border-slate-800 cursor-pointer ${
+                                          marcado ? "bg-teal-50 dark:bg-teal-950/40" : ""
+                                        }`}
+                                        onClick={() => alternarContato(c.id)}
+                                      >
+                                        <td className="px-2 py-2">
+                                          <input
+                                            type="checkbox"
+                                            checked={marcado}
+                                            onChange={() => alternarContato(c.id)}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="h-3.5 w-3.5 accent-teal-600"
+                                          />
+                                        </td>
+                                        <td className="px-2 py-2">
+                                          <p className="font-medium truncate max-w-[180px]">{c.nome ?? "—"}</p>
+                                          {c.email ? (
+                                            <p className="text-[10px] text-muted-foreground truncate max-w-[180px]">{c.email}</p>
+                                          ) : null}
+                                        </td>
+                                        <td className="px-2 py-2 whitespace-nowrap">
+                                          {c.telefone ?? "—"}
+                                          {ddd ? (
+                                            <span className="ml-1 text-[10px] text-muted-foreground">DDD {ddd}</span>
+                                          ) : null}
+                                        </td>
+                                        <td className="px-2 py-2 whitespace-nowrap">
+                                          {c.cidade ? `${c.cidade}${c.uf ? `/${c.uf}` : ""}` : "—"}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+
+                          <p className="text-[11px] text-muted-foreground">
+                            {contatosSelecionados.length
+                              ? "A campanha vai apenas para os contatos marcados acima."
+                              : "Nenhum contato marcado: a campanha usa todos os contatos da etiqueta."}
+                          </p>
+                        </div>
+                      )}
 
                       {/* Quem recebe: "só novos" exclui quem já recebeu qualquer
                           campanha antes; "todos" manda para a base inteira de novo. */}

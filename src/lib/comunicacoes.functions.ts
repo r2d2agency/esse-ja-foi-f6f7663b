@@ -160,6 +160,7 @@ export const listarContatosWhatsappFn = createServerFn({ method: "GET" })
         apenasElegiveis: z.boolean().optional(),
         origem: z.enum(["COMPRADORES", "IMPORTADOS", "AMBOS"]).optional(),
         tagIds: z.array(z.string().uuid()).optional(),
+        limite: z.number().int().positive().optional(),
       })
       .parse(data ?? {}),
   )
@@ -170,6 +171,7 @@ export const listarContatosWhatsappFn = createServerFn({ method: "GET" })
       apenasElegiveis: data.apenasElegiveis ?? false,
       origem: data.origem ?? null,
       tagIds: data.tagIds ?? null,
+      limite: data.limite ?? null,
     });
   });
 

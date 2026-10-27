@@ -291,6 +291,12 @@ export async function listarContatos(
     apenasElegiveis?: boolean;
     origem?: OrigemPublico | null;
     tagIds?: string[] | null;
+    /**
+     * Quantos contatos devolver. A aba de Contatos usa 300 para não pesar a
+     * tela; a seleção de contatos da campanha precisa da etiqueta inteira,
+     * senão o admin marca "todos" e só 300 entram na fila.
+     */
+    limite?: number | null;
   } = {},
 ) {
   const d = requireDb();
@@ -298,6 +304,13 @@ export async function listarContatos(
   const termo = busca ? `%${busca}%` : null;
   const somenteProspects = filtros.origem === "IMPORTADOS";
   const somenteCompradores = filtros.origem === "COMPRADORES";
+  // A etiqueta só existe em `marketing_contato_tags`, que liga contatos de
+  // marketing — nunca compradores do `profiles`. Sem esta guarda a lista da
+  // etiqueta vinha com todos os compradores misturados, e o admin podia
+  // marcar alguém que a fila depois descartaria (o filtro por `contatoIds`
+  // olha só `marketing_contatos`).
+  const tagIds = (Array.isArray(filtros.tagIds) ? filtros.tagIds : []).filter((t) => !!t);
+  const comTag = tagIds.length > 0;
 
   const res = await d.execute(sql`
     SELECT
@@ -311,6 +324,7 @@ export async function listarContatos(
     WHERE p.role = 'comprador'
       AND p.ativo IS NOT FALSE
       AND NOT ${somenteProspects}
+      AND NOT ${comTag}
       ${
         termo
           ? sql`AND (
@@ -346,11 +360,11 @@ export async function listarContatos(
       AND m.status NOT IN ('descartado', 'convertido')
       AND NOT ${somenteCompradores}
       ${
-        Array.isArray(filtros.tagIds) && filtros.tagIds.length > 0
+        comTag
           ? sql`AND m.id IN (
               SELECT ct.contato_id FROM marketing_contato_tags ct
               WHERE ct.tag_id IN (${sql.join(
-                filtros.tagIds.map((t) => sql`${t}::uuid`),
+                tagIds.map((t) => sql`${t}::uuid`),
                 ", ",
               )})
             )`
@@ -369,7 +383,7 @@ export async function listarContatos(
       ${filtros.apenasElegiveis ? sql`AND btrim(coalesce(m.telefone, '')) <> ''` : sql``}
 
     ORDER BY origem, nome
-    LIMIT 300
+    LIMIT ${filtros.limite != null ? Number(filtros.limite) : 300}
   `);
 
   return rowsOf(res).map((c: any) => {
