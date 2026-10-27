@@ -28,6 +28,12 @@ export type CriterioPublico = {
    */
   tagIds?: string[] | null;
   /**
+   * Ids explícitos de `marketing_contatos`. Quando presentes, a fila é
+   * montada só desses contatos (a tag/filtros são ignorados). É o que a
+   * tela usa quando o admin seleciona contatos individualmente.
+   */
+  contatoIds?: string[] | null;
+  /**
    * Quando true, tira do público quem já recebeu alguma campanha
    * (telefone presente em `whatsapp_mensagens` com estado_fila ENVIADA).
    * É o "enviar só para quem nunca recebeu" do wizard.
@@ -125,6 +131,8 @@ function filtroProspects(c: CriterioPublico) {
   // tipo e UF ficam de fora — misturá-los esvaziava a fila sem aviso.
   const tagIds = (Array.isArray(c.tagIds) ? c.tagIds : []).filter((t) => !!t);
   const comTag = tagIds.length > 0;
+  const contatoIds = (Array.isArray(c.contatoIds) ? c.contatoIds : []).filter((t) => !!t);
+  const comContato = contatoIds.length > 0;
 
   // `comprador_id IS NULL` é o que impede mandar convite para quem já se
   // cadastrou: quem já é comprador chega pela outra UNION.
@@ -139,19 +147,24 @@ function filtroProspects(c: CriterioPublico) {
       m.telefone, m.email,
       m.cidade, m.uf
     FROM marketing_contatos m
-    WHERE (${comTag} OR m.comprador_id IS NULL)
+    WHERE (${comTag || comContato} OR m.comprador_id IS NULL)
       AND m.status NOT IN ('descartado', 'convertido')
       AND btrim(coalesce(m.telefone, '')) <> ''
       ${
-        comTag
-          ? sql`AND m.id IN (
+        comContato
+          ? sql`AND m.id IN (${sql.join(
+              contatoIds.map((t) => sql`${t}::uuid`),
+              ", ",
+            )})`
+          : comTag
+            ? sql`AND m.id IN (
         SELECT ct.contato_id FROM marketing_contato_tags ct
         WHERE ct.tag_id IN (${sql.join(
           tagIds.map((t) => sql`${t}::uuid`),
           ", ",
         )})
       )`
-          : sql``
+            : sql``
       }
       AND (
         ${comTag}
@@ -184,6 +197,8 @@ export async function resolverPublico(criterio: CriterioPublico = {}): Promise<D
   // Com tag marcada, a tag define o público: buscar compradores junto traria
   // gente de fora da etiqueta e a contagem da tela não bateria com a fila.
   const comTag = Array.isArray(criterio.tagIds) && criterio.tagIds.length > 0;
+  // Contatos selecionados explicitamente: define o público sozinho.
+  const comContato = Array.isArray(criterio.contatoIds) && criterio.contatoIds.length > 0;
 
   // "Só quem nunca recebeu": quem já saiu como ENVIADA em qualquer campanha
   // anterior sai do público — e também da contagem, para a estimativa da tela
@@ -191,9 +206,11 @@ export async function resolverPublico(criterio: CriterioPublico = {}): Promise<D
   const enviados = criterio.apenasNaoEnviados ? await telefonesJaEnviados() : null;
 
   const partes: any[] = [];
-  if (!comTag && (origem === "COMPRADORES" || origem === "AMBOS"))
+  // Com contatos selecionados explicitamente, não busca compradores nem
+  // prospects por origem — só os prospects marcados.
+  if (!comContato && !comTag && (origem === "COMPRADORES" || origem === "AMBOS"))
     partes.push(filtroCompradores(criterio));
-  if (origem === "IMPORTADOS" || origem === "AMBOS" || comTag)
+  if (comContato || origem === "IMPORTADOS" || origem === "AMBOS" || comTag)
     partes.push(filtroProspects(criterio));
   if (!partes.length) return [];
 
@@ -273,6 +290,7 @@ export async function listarContatos(
     busca?: string | null;
     apenasElegiveis?: boolean;
     origem?: OrigemPublico | null;
+    tagIds?: string[] | null;
   } = {},
 ) {
   const d = requireDb();
@@ -327,6 +345,17 @@ export async function listarContatos(
     WHERE m.comprador_id IS NULL
       AND m.status NOT IN ('descartado', 'convertido')
       AND NOT ${somenteCompradores}
+      ${
+        Array.isArray(filtros.tagIds) && filtros.tagIds.length > 0
+          ? sql`AND m.id IN (
+              SELECT ct.contato_id FROM marketing_contato_tags ct
+              WHERE ct.tag_id IN (${sql.join(
+                filtros.tagIds.map((t) => sql`${t}::uuid`),
+                ", ",
+              )})
+            )`
+          : sql``
+      }
       ${
         termo
           ? sql`AND (

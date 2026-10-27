@@ -1138,6 +1138,7 @@ export async function criarCampanha(data: any, usuarioId: string) {
     cidade: data.filtros?.cidade ?? null,
     statusCompliance: data.filtros?.status ?? null,
     tagIds: (data as any).tag_ids ?? data.filtros?.tagIds ?? null,
+    contatoIds: (data as any).contato_ids ?? data.filtros?.contatoIds ?? null,
     mapeamento: data.mapeamento_variaveis ?? {},
     apenasNaoEnviados:
       (data as any).apenas_nao_enviados ?? data.filtros?.apenasNaoEnviados ?? null,

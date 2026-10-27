@@ -159,6 +159,7 @@ export const listarContatosWhatsappFn = createServerFn({ method: "GET" })
         busca: z.string().optional(),
         apenasElegiveis: z.boolean().optional(),
         origem: z.enum(["COMPRADORES", "IMPORTADOS", "AMBOS"]).optional(),
+        tagIds: z.array(z.string().uuid()).optional(),
       })
       .parse(data ?? {}),
   )
@@ -168,6 +169,7 @@ export const listarContatosWhatsappFn = createServerFn({ method: "GET" })
       busca: data.busca ?? null,
       apenasElegiveis: data.apenasElegiveis ?? false,
       origem: data.origem ?? null,
+      tagIds: data.tagIds ?? null,
     });
   });
 
@@ -236,6 +238,7 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
         segmento_id: z.string().uuid().optional().nullable(),
         origem_publico: z.enum(["COMPRADORES", "IMPORTADOS", "AMBOS"]).default("AMBOS"),
         tag_ids: z.array(z.string().uuid()).optional(),
+        contato_ids: z.array(z.string().uuid()).optional(),
         apenasNaoEnviados: z.boolean().optional(),
         janela_inicio: z.string().optional().nullable(),
         janela_fim: z.string().optional().nullable(),
@@ -386,6 +389,7 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
         // A tag tem que chegar ao motor: sem ela a fila era montada com "todos
         // os prospects" e a campanha mirava a base inteira em vez da etiqueta.
         tagIds: data.tag_ids ?? data.filtros?.tagIds ?? null,
+        contatoIds: data.contato_ids ?? data.filtros?.contatoIds ?? null,
         // "So novos": tira da fila quem ja recebeu alguma campanha antes. Sem
         // isto a tela estimava 140 novos mas a fila entrava com todo mundo.
         apenasNaoEnviados: data.apenasNaoEnviados ?? data.filtros?.apenasNaoEnviados ?? null,

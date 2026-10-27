@@ -627,6 +627,13 @@ function ComunicacoesPage() {
 
   const [estimativa, setEstimativa] = useState<any>({ total: 0, elegiveis: 0, nao_elegiveis: 0 });
   const [tagsSelecionadas, setTagsSelecionadas] = useState<string[]>([]);
+  // Contatos carregados da(s) tag(s) selecionada(s), para seleção manual.
+  const [contatosCampanha, setContatosCampanha] = useState<any[]>([]);
+  const [contatosSelecionados, setContatosSelecionados] = useState<string[]>([]);
+  const [buscaContatoCamp, setBuscaContatoCamp] = useState("");
+  const [filtroCidadeCamp, setFiltroCidadeCamp] = useState("");
+  const [filtroDDDCamp, setFiltroDDDCamp] = useState("");
+  const [carregandoContatosCamp, setCarregandoContatosCamp] = useState(false);
   // "Só novos" x "todos": com true, quem já recebeu alguma campanha antes
   // sai da estimativa e da fila. O valor viaja em `dadosEstimativa`.
   const [apenasNovos, setApenasNovos] = useState(false);
