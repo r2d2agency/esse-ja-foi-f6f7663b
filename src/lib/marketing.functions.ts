@@ -75,7 +75,7 @@ export const importarMarketingContatosFn = createServerFn({ method: "POST" })
 
 const contatoEditavelSchema = z.object({
   nome: z.string().min(1).optional(),
-  email: z.string().email().optional(),
+  email: z.string().email().optional().or(z.literal("")),
   telefone: z.string().optional(),
   empresa: z.string().optional(),
   tipo: z.string().optional(),
