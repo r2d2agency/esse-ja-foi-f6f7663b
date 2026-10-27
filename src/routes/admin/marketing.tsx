@@ -9,6 +9,8 @@ import {
   excluirMarketingContatoFn,
   removerContatosSemWhatsappFn,
   criarMarketingTagFn,
+  renomearMarketingTagFn,
+  excluirMarketingTagFn,
   atribuirMarketingTagFn,
   listarMarketingTagsFn,
   removerMarketingTagFn,
@@ -109,6 +111,7 @@ function MarketingPage() {
   const [removendo, setRemovendo] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [tagOpen, setTagOpen] = useState(false);
+  const [tagsGerenciarOpen, setTagsGerenciarOpen] = useState(false);
   const [nomeTag, setNomeTag] = useState("");
   const [selecionados, setSelecionados] = useState<string[]>([]);
   const [importando, setImportando] = useState(false);
@@ -214,7 +217,8 @@ function MarketingPage() {
       setRemovendo(false);
     }
   }
-  const criarTag = useServerFn(criarMarketingTagFn);
+  const renomearTag = useServerFn(renomearMarketingTagFn);
+  const excluirTag = useServerFn(excluirMarketingTagFn);
   const atribuirTag = useServerFn(atribuirMarketingTagFn);
   const removerTag = useServerFn(removerMarketingTagFn);
   const converterComprador = useServerFn(converterContatoEmCompradorFn);
@@ -597,7 +601,29 @@ function MarketingPage() {
     }
   }
 
-  async function aplicarTag() {
+  async function renomearTagContato(tag: any) {
+    const novo = prompt("Novo nome da etiqueta:", tag.nome);
+    if (!novo || novo === tag.nome) return;
+    try {
+      await renomearTag({ data: { tagId: tag.id, nome: novo } });
+      toast.success("Etiqueta renomeada.");
+      loadTags().then((r: any) => r?.ok && Array.isArray(r.data) && setTags(r.data));
+    } catch (e: any) {
+      toast.error(e.message || "Falha ao renomear.");
+    }
+  }
+
+  async function excluirTagContato(tag: any) {
+    if (!confirm(`Excluir a etiqueta "${tag.nome}"? Ela será removida de todos os contatos.`)) return;
+    try {
+      await excluirTag({ data: { tagId: tag.id } });
+      toast.success("Etiqueta excluída.");
+      loadTags().then((r: any) => r?.ok && Array.isArray(r.data) && setTags(r.data));
+      setFiltroTags((prev) => prev.filter((id) => id !== tag.id));
+    } catch (e: any) {
+      toast.error(e.message || "Falha ao excluir.");
+    }
+  }
     if (!nomeTag.trim() || !selecionados.length) return;
     try {
       const t = await criarTag({ data: { nome: nomeTag.trim() } });
@@ -642,6 +668,9 @@ function MarketingPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setTagsGerenciarOpen(true)}>
+            <Tag className="mr-2 h-4 w-4" /> Gerenciar etiquetas
+          </Button>
           {selecionados.length > 0 && (
             <Button variant="outline" onClick={() => setTagOpen(true)}>
               <Tag className="mr-2 h-4 w-4" /> Tag para {selecionados.length} selecionado(s)
@@ -1646,7 +1675,46 @@ function MarketingPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Tag */}
+      {/* Gerenciar etiquetas */}
+  <Dialog open={tagsGerenciarOpen} onOpenChange={setTagsGerenciarOpen}>
+    <DialogContent className="max-w-lg">
+      <DialogHeader>
+        <DialogTitle>Gerenciar etiquetas</DialogTitle>
+        <DialogDescription>
+          Renomeie ou exclua etiquetas. A contagem ao lado é de contatos vinculados.
+        </DialogDescription>
+      </DialogHeader>
+      <div className="space-y-2 max-h-96 overflow-y-auto">
+        {tags.length === 0 ? (
+          <p className="text-sm text-slate-500">Nenhuma etiqueta criada.</p>
+        ) : (
+          tags.map((t: any) => (
+            <div key={t.id} className="flex items-center justify-between rounded-md border p-2">
+              <div>
+                <p className="text-sm font-medium">{t.nome}</p>
+                <p className="text-xs text-slate-500">{Number(t.total ?? 0)} contato(s)</p>
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={() => renomearTagContato(t)}>
+                  Renomear
+                </Button>
+                <Button size="sm" variant="destructive" onClick={() => excluirTagContato(t)}>
+                  Excluir
+                </Button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+      <DialogFooter>
+        <Button variant="outline" onClick={() => setTagsGerenciarOpen(false)}>
+          Fechar
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
+
+  {/* Tag */}
       <Dialog open={tagOpen} onOpenChange={setTagOpen}>
         <DialogContent>
           <DialogHeader>
@@ -1710,4 +1778,4 @@ function MarketingPage() {
       </Dialog>
     </div>
   );
-}
+
