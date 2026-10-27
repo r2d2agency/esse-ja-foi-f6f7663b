@@ -1108,7 +1108,7 @@ function ComunicacoesPage() {
           // só cai em `filtros.tagIds` como fallback. Sem isto a fila nascia
           // vazia e o motor marcava a campanha como concluída sem enviar nada.
           tag_ids: tagsSelecionadas,
-          contato_ids: contatosSelecionados.length ? contatosSelecionados : null,
+          contato_ids: contatosSelecionados.length ? contatosSelecionados : undefined,
           enviar_agora: enviarAgora,
           // O datetime-local devolve hora local do navegador. Convertemos para
           // ISO antes de mandar: se o servidor ler a string crua, o agendamento

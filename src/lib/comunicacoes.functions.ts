@@ -240,7 +240,10 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
         segmento_id: z.string().uuid().optional().nullable(),
         origem_publico: z.enum(["COMPRADORES", "IMPORTADOS", "AMBOS"]).default("AMBOS"),
         tag_ids: z.array(z.string().uuid()).optional(),
-        contato_ids: z.array(z.string().uuid()).optional(),
+        // `null` é o que a tela manda quando não há seleção manual — por isso
+        // precisa aceitar null e não só undefined: com `.optional()` o Zod
+        // barrava null com "expected: array" e a campanha não saía.
+        contato_ids: z.array(z.string().uuid()).optional().nullable(),
         apenasNaoEnviados: z.boolean().optional(),
         janela_inicio: z.string().optional().nullable(),
         janela_fim: z.string().optional().nullable(),
