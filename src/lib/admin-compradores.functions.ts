@@ -153,3 +153,48 @@ export const reprovarCompradorFn = createServerFn({ method: "POST" })
     `);
     return { ok: true as const };
   });
+
+export const aprovarCompradorFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data }) => {
+    await ensureSchema();
+    if (!db) return { ok: false as const, message: "DB offline" };
+    await db.execute(sql`
+      UPDATE profiles
+      SET status_compliance = 'APROVADO',
+          compliance_motivo_pendencia = NULL,
+          pode_ver_valores = true,
+          pode_dar_lances = true,
+          atualizado_em = now()
+      WHERE id = ${data.id}::uuid
+        AND role::text = 'comprador'
+    `);
+    return { ok: true as const };
+  });
+
+export const solicitarPendenciaCompradorFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) =>
+    z
+      .object({
+        id: z.string().uuid(),
+        campo: z.string().optional(),
+        mensagem: z.string().min(1),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data }) => {
+    await ensureSchema();
+    if (!db) return { ok: false as const, message: "DB offline" };
+    await db.execute(sql`
+      UPDATE profiles
+      SET status_compliance = 'PENDENCIA',
+          compliance_motivo_pendencia = ${data.mensagem.trim()},
+          compliance_campo_pendencia = ${data.campo || null},
+          pode_ver_valores = true,
+          pode_dar_lances = false,
+          atualizado_em = now()
+      WHERE id = ${data.id}::uuid
+        AND role::text = 'comprador'
+    `);
+    return { ok: true as const };
+  });
