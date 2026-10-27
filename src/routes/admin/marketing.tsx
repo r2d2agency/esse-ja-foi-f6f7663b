@@ -217,6 +217,7 @@ function MarketingPage() {
       setRemovendo(false);
     }
   }
+  const criarTag = useServerFn(criarMarketingTagFn);
   const renomearTag = useServerFn(renomearMarketingTagFn);
   const excluirTag = useServerFn(excluirMarketingTagFn);
   const atribuirTag = useServerFn(atribuirMarketingTagFn);
@@ -1781,3 +1782,4 @@ function MarketingPage() {
     </div>
   );
 
+}
