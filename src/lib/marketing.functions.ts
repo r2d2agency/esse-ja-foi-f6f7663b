@@ -163,6 +163,22 @@ export const listarMarketingTagsFn = createServerFn({ method: "POST" }).handler(
   }
 });
 
+export const renomearMarketingTagFn = createServerFn({ method: "POST" })
+  .inputValidator((d: any) => d)
+  .handler(async ({ data }: { data: any }) => {
+    const { renomearMarketingTag } = await import("@/db/marketing.server");
+    await renomearMarketingTag(data.tagId, data.nome, data.cor);
+    return { ok: true as const };
+  });
+
+export const excluirMarketingTagFn = createServerFn({ method: "POST" })
+  .inputValidator((d: any) => d)
+  .handler(async ({ data }: { data: any }) => {
+    const { excluirMarketingTag } = await import("@/db/marketing.server");
+    await excluirMarketingTag(data.tagId);
+    return { ok: true as const };
+  });
+
 export const atribuirMarketingTagFn = createServerFn({ method: "POST" })
   .inputValidator((d) =>
     z.object({ contatoIds: z.array(z.string().uuid()), tagId: z.string().uuid() }).parse(d),

@@ -489,6 +489,20 @@ export async function listarMarketingTags() {
   );
 }
 
+export async function renomearMarketingTag(tagId: string, nome: string, cor?: string) {
+  const d = requireDb();
+  await ensureMarketingSchema();
+  await d.execute(
+    sql`UPDATE marketing_tags SET nome = ${nome.trim()}, cor = COALESCE(${cor ?? null}, cor) WHERE id = ${tagId}::uuid`,
+  );
+}
+
+export async function excluirMarketingTag(tagId: string) {
+  const d = requireDb();
+  await ensureMarketingSchema();
+  await d.execute(sql`DELETE FROM marketing_contato_tags WHERE tag_id = ${tagId}::uuid`);
+  await d.execute(sql`DELETE FROM marketing_tags WHERE id = ${tagId}::uuid`);
+}
 export async function atribuirMarketingTag(contatoIds: string[], tagId: string) {
   const d = requireDb();
   await ensureMarketingSchema();
