@@ -252,7 +252,14 @@ export const Route = createFileRoute("/api/public/webhooks/whatsapp")({
               // (telefone com formato inesperado, insert que estoura) não pode
               // derrubar as demais e nem deixar o lote marcado como PROCESSADO.
               try {
-                await processarMensagemRecebida(msg.from, msg);
+                // A Meta envia o nome do perfil do WhatsApp junto do lote
+                // (value.contacts[].profile.name), casando por wa_id. Sem
+                // passar adiante, todo contato novo nascia "Contato não
+                // identificado" mesmo com a Meta sabendo o nome.
+                const nomePerfil = (value?.contacts ?? []).find(
+                  (ct: any) => ct?.wa_id === msg.from || !ct?.wa_id,
+                )?.profile?.name;
+                await processarMensagemRecebida(msg.from, msg, nomePerfil);
               } catch (err: any) {
                 console.error("[WhatsApp Webhook] Falha ao processar mensagem:", err);
                 // O Drizzle envolve o erro real do Postgres em `.cause`; sem isto

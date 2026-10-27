@@ -706,7 +706,11 @@ function apenasDigitos(s: string | null | undefined): string {
   return (s || "").replace(/\D/g, "");
 }
 
-export async function processarMensagemRecebida(telefone: string, payload: any) {
+export async function processarMensagemRecebida(
+  telefone: string,
+  payload: any,
+  nomePerfil?: string | null,
+) {
   if (!db) return;
 
   // O payload que a tela lê é o normalizado, não o objeto cru da Meta. O
@@ -728,7 +732,20 @@ export async function processarMensagemRecebida(telefone: string, payload: any) 
   `);
   let perfilId = rowsOf(resPerfil)[0]?.id;
 
-  if (!perfilId) {
+  if (perfilId) {
+    // O webhook da Meta manda o nome do perfil do WhatsApp (profile.name).
+    // Se o contato foi criado antes como "Contato não identificado", a gente
+    // atualiza. Nomes próprios do cadastro nunca são sobrescritos.
+    const nomeNovo = nomePerfil?.trim();
+    if (nomeNovo) {
+      await db.execute(sql`
+        UPDATE profiles
+        SET nome = ${nomeNovo}
+        WHERE id = ${perfilId}::uuid
+          AND (nome IS NULL OR nome = '' OR nome = 'Contato não identificado')
+      `);
+    }
+  } else {
     // `profiles.email` é NOT NULL UNIQUE, então um contato novo precisa de um
     // endereço sintético. Sem isto o INSERT estoura e nenhuma conversa nasce —
     // e o webhook já gravou 'PROCESSADO' antes, então a falha fica invisível.
@@ -736,7 +753,7 @@ export async function processarMensagemRecebida(telefone: string, payload: any) 
     const res = await db.execute(sql`
       INSERT INTO profiles (nome, telefone, role, whatsapp_status, email)
       VALUES (
-        'Contato não identificado', ${telefone}, 'comprador', 'ATIVO',
+        ${nomePerfil?.trim() || "Contato não identificado"}, ${telefone}, 'comprador', 'ATIVO',
         ${emailSintetico}
       )
       ON CONFLICT (email) DO UPDATE SET telefone = EXCLUDED.telefone
