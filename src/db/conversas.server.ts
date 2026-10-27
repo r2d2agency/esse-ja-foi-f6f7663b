@@ -839,6 +839,84 @@ function rowsOf(res: any): any[] {
   return [];
 }
 
+/**
+ * Reparo dos contatos antigos: os logs do webhook guardam os pares
+ * wa_id/name que a Meta mandou junto de cada lote de mensagens. Aqui essa
+ * informação volta para os perfis cadastrados como "Contato não identificado".
+ *
+ * Só sobrescreve nomes vazios ou o próprio placeholder — nada de cadastro
+ * real é perdido.
+ */
+export async function repararNomesContatos() {
+  if (!db) return { atualizados: 0 };
+  await ensureConversasSchema();
+
+  // Perfis sem nome real, com seus telefones normalizados (número completo
+  // internacional, igual ao wa_id da Meta).
+  const resPerfis = await db.execute(sql`
+    SELECT id, telefone,
+           regexp_replace(telefone, '\D', '', 'g') AS digitos
+    FROM profiles
+    WHERE telefone IS NOT NULL
+      AND (nome IS NULL OR nome = '' OR nome = 'Contato não identificado')
+  `);
+  const perfis = rowsOf(resPerfis) as any[];
+
+  if (perfis.length === 0) return { atualizados: 0 };
+
+  const porDigitos = new Map<string, string>();
+  for (const p of perfis) {
+    const d = String(p.digitos || "");
+    if (d.length >= 10) porDigitos.set(d, p.id);
+    // wa_id pode vir sem o 55: guarda também o número sem o prefixo.
+    if (d.startsWith("55") && d.length >= 12) porDigitos.set(d.slice(2), p.id);
+  }
+
+  // Varre os logs recentes (30 dias) atrás dos contatos nomeados.
+  const resLogs = await db.execute(sql`
+    SELECT payload, criado_em
+    FROM whatsapp_webhook_logs
+    WHERE payload IS NOT NULL
+      AND criado_em > now() - interval '30 days'
+    ORDER BY criado_em DESC
+    LIMIT 2000
+  `);
+
+  let atualizados = 0;
+  const vistos = new Map<string, string>(); // perfilId -> nome
+  for (const log of rowsOf(resLogs) as any[]) {
+    const contacts = log?.payload?.contacts;
+    if (!Array.isArray(contacts)) continue;
+    for (const ct of contacts) {
+      const waId = String(ct?.wa_id ?? "").replace(/\D/g, "");
+      const nome = String(ct?.name ?? "").trim();
+      if (!waId || !nome) continue;
+      const direto = porDigitos.get(waId);
+      const sem55 = waId.startsWith("55") ? porDigitos.get(waId.slice(2)) : undefined;
+      const perfilIdLog = direto ?? sem55;
+      if (!perfilIdLog) continue;
+      if (!vistos.has(perfilIdLog)) vistos.set(perfilIdLog, nome);
+    }
+  }
+
+  for (const [perfilId, nome] of vistos) {
+    try {
+      const res = await db.execute(sql`
+        UPDATE profiles
+        SET nome = ${nome}
+        WHERE id = ${perfilId}::uuid
+          AND (nome IS NULL OR nome = '' OR nome = 'Contato não identificado')
+        RETURNING id
+      `);
+      atualizados += rowsOf(res).length;
+    } catch {
+      // Um perfil com telefone maluco não trava os demais.
+    }
+  }
+
+  return { atualizados };
+}
+
 /** Define (ou remove) o apelido de uma conversa. String vazia/NULL remove. */
 export async function definirApelido(conversaId: string, apelido: string | null) {
   if (!db) return;

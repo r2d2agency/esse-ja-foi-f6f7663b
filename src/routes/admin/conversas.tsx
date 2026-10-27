@@ -39,6 +39,7 @@ import {
   Video,
   MapPin,
   ScrollText,
+  UserCog,
 } from 'lucide-react';
 import {
   Popover,
@@ -67,6 +68,7 @@ import {
   excluirRespostaProntaFn,
   listarContatosDisponiveisFn,
   iniciarConversaFn,
+  repararNomesContatosFn,
   cadastrarContatoFn,
   uploadMidiaWhatsAppFn,
 } from '@/lib/conversas.functions';
@@ -313,6 +315,7 @@ function CentralConversasPage() {
   const iniciarConversa = useServerFn(iniciarConversaFn);
   const cadastrarContato = useServerFn(cadastrarContatoFn);
   const uploadMidia = useServerFn(uploadMidiaWhatsAppFn);
+  const repararNomes = useServerFn(repararNomesContatosFn);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busca, setBusca] = useState('');
@@ -457,6 +460,26 @@ function CentralConversasPage() {
       toast.success('Conversa resolvida');
     },
     onError: (err) => toast.error(`Erro ao resolver: ${err.message}`),
+  });
+
+  // Reparo em massa: puxa os nomes de perfil que a Meta já mandou para os
+  // contatos criados como "Contato não identificado".
+  const mutationRepararNomes = useMutation({
+    mutationFn: async () => {
+      const res: any = await repararNomes();
+      exigirOk(res);
+      return res;
+    },
+    onSuccess: (res: any) => {
+      queryClient.invalidateQueries({ queryKey: ['conversas'] });
+      queryClient.invalidateQueries({ queryKey: ['conversa'] });
+      toast.success(
+        res?.atualizados > 0
+          ? `${res.atualizados} contato(s) atualizado(s) com o nome do WhatsApp.`
+          : "Nenhum contato pôde ser atualizado — a Meta ainda não mandou o nome de nenhum deles.",
+      );
+    },
+    onError: (err) => toast.error(`Erro ao reparar: ${err.message}`),
   });
 
   const mutationSalvarResposta = useMutation({
@@ -774,6 +797,17 @@ function CentralConversasPage() {
             <div className="flex items-center gap-1">
               {/* Atalho para o log da API Meta: a conversa só existe quando o
                   webhook entrega, e o log é o que mostra se ele está chegando. */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs gap-1"
+                title="Puxar os nomes de perfil da Meta para os contatos não identificados"
+                disabled={mutationRepararNomes.isPending}
+                onClick={() => mutationRepararNomes.mutate()}
+              >
+                <UserCog className="w-3 h-3" />
+                {mutationRepararNomes.isPending ? 'Atualizando...' : 'Atualizar nomes'}
+              </Button>
               <Link to="/admin/conversas/logs">
                 <Button
                   variant="outline"

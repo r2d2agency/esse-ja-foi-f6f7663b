@@ -144,6 +144,12 @@ export const Route = createFileRoute("/api/public/webhooks/whatsapp")({
               bytes: bodyText.length,
               assinaturaPresente: Boolean(signature),
               configLida,
+              // Nomes de perfil que a Meta mandou junto — servem de histórico
+              // para retroalimentar contatos criados como "não identificado".
+              contacts: (value?.contacts ?? []).map((ct: any) => ({
+                wa_id: ct?.wa_id ?? null,
+                name: ct?.profile?.name ?? null,
+              })),
             },
             duracaoMs: Date.now() - inicio,
           });

@@ -255,6 +255,25 @@ export const definirApelidoFn = createServerFn({ method: "POST" })
   });
 
 /**
+ * Reparo dos contatos "não identificado": cruza os perfis sem nome com os
+ * pares wa_id/name que a Meta já mandou nos logs do webhook. Só admin/operação
+ * executa — mexe em cadastro de contatos em massa.
+ */
+export const repararNomesContatosFn = createServerFn({ method: "POST" }).handler(
+  async () => {
+    try {
+      const { adminOuOperacaoDaSessao } = await import("@/lib/sessao.server");
+      const autor = await adminOuOperacaoDaSessao();
+      if (!autor) throw new Error("Sem permissão para executar o reparo.");
+      return { ok: true, ...(await db.repararNomesContatos()) };
+    } catch (error: any) {
+      console.error("[conversas] falha ao reparar nomes:", error);
+      return { ok: false, error: mensagemErroPostgres(error) };
+    }
+  },
+);
+
+/**
  * Wrapper que garante que toda operação do atendimento responda com JSON
  * legível em vez de derrubar a requisição. Sem isso o navegador recebia uma
  * página de erro sem corpo (`503 ()`) e o atendente via "Falha ao carregar"
