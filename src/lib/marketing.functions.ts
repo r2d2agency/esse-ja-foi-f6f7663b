@@ -8,6 +8,8 @@ const filtroSchema = z.object({
   somenteComCoordenadas: z.boolean().optional(),
   whatsappStatus: z.string().optional(),
   tagIds: z.array(z.string()).optional(),
+  page: z.number().int().min(1).optional(),
+  pageSize: z.number().int().min(1).max(200).optional(),
 });
 
 /**
@@ -23,7 +25,16 @@ export const listarMarketingContatosFn = createServerFn({ method: "POST" })
       const { adminOuOperacaoDaSessao } = await import("@/lib/sessao.server");
       await adminOuOperacaoDaSessao();
       const { listarMarketingContatos } = await import("@/db/marketing.server");
-      return { ok: true as const, data: await listarMarketingContatos(data) };
+      // A listagem agora é paginada: devolve a página E o total filtrado,
+      // para a barra de paginação saber quantas páginas existem.
+      const r = await listarMarketingContatos(data);
+      return {
+        ok: true as const,
+        data: r.data,
+        total: r.total,
+        page: r.page,
+        pageSize: r.pageSize,
+      };
     } catch (e: any) {
       // Log no servidor: sem ele, a falha da query virava lista vazia na tela
       // e ninguém sabia que o banco tinha recusado a consulta.
@@ -40,6 +51,8 @@ export const importarMarketingContatosFn = createServerFn({ method: "POST" })
         tipo: z.string().optional(),
         /** Reimportar atualiza o contato em vez de tratá-lo como duplicado. */
         atualizarExistentes: z.boolean().optional(),
+        /** Número da primeira linha do lote no arquivo (1-based). */
+        linhaInicial: z.number().int().min(1).optional(),
       })
       .parse(d),
   )
@@ -52,6 +65,7 @@ export const importarMarketingContatosFn = createServerFn({ method: "POST" })
         data.contatos,
         typeof data.tipo === "string" && data.tipo ? data.tipo : "prospect",
         data.atualizarExistentes === true,
+        typeof data.linhaInicial === "number" ? data.linhaInicial : 1,
       );
       // As linhas rejeitadas voltam com o motivo: sem elas a importação parece
       // ter "engolido" contatos sem explicar por quê.
@@ -313,14 +327,46 @@ export const salvarUazapiConfigFn = createServerFn({ method: "POST" })
     }
   });
 
+/**
+ * Conta quantos contatos ainda precisam de verificação de WhatsApp.
+ * A barra de progresso usa esse número para mostrar o total da fila.
+ */
+export const contarWhatsappPendentesFn = createServerFn({ method: "POST" }).handler(async () => {
+  try {
+    const { adminOuOperacaoDaSessao } = await import("@/lib/sessao.server");
+    await adminOuOperacaoDaSessao();
+    const { contarWhatsappPendentes } = await import("@/db/marketing.server");
+    return { ok: true as const, data: { total: await contarWhatsappPendentes() } };
+  } catch (e: any) {
+    return { ok: false as const, message: e.message };
+  }
+});
+
 export const verificarWhatsappContatosFn = createServerFn({ method: "POST" })
-  .inputValidator((d) => z.object({ limite: z.number().int().min(1).max(250).optional() }).parse(d))
+  .inputValidator((d) =>
+    z
+      .object({
+        limite: z.number().int().min(1).max(100).optional(),
+        loteTamanho: z.number().int().min(1).max(30).optional(),
+        pausaMs: z.number().int().min(0).max(10000).optional(),
+        somenteNovos: z.boolean().optional(),
+      })
+      .parse(d),
+  )
   .handler(async ({ data }) => {
     try {
       const { adminDaSessao } = await import("@/lib/sessao.server");
       await adminDaSessao();
       const { verificarWhatsappContatos } = await import("@/db/marketing.server");
-      return { ok: true as const, data: await verificarWhatsappContatos(data.limite) };
+      return {
+        ok: true as const,
+        data: await verificarWhatsappContatos(
+          data.limite,
+          data.loteTamanho,
+          data.pausaMs,
+          data.somenteNovos !== false,
+        ),
+      };
     } catch (e: any) {
       return { ok: false as const, message: e.message };
     }

@@ -22,6 +22,7 @@ import {
   salvarUazapiAutoIncluirFn,
   listarGruposUazapiFn,
   testarUazapiFn,
+  contarWhatsappPendentesFn,
   verificarWhatsappContatosFn,
 } from "@/lib/marketing.functions";
 import {
@@ -34,6 +35,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import {
   Dialog,
   DialogContent,
@@ -50,6 +52,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 import { toast } from "sonner";
 import {
   Search,
@@ -96,6 +106,31 @@ const TIPOS = [
   { label: "Prospects", value: "prospect" },
 ];
 
+/**
+ * Quais páginas mostrar na barra de paginação.
+ *
+ * Com 170 mil contatos a base tem milhares de páginas: listar todas as linhas
+ * de número não cabe na tela e afoga o DOM. Aqui ficam só asJanelas em torno da
+ * página atual, com "..." no meio.
+ */
+function paginasVisiveis(atual: number, total: number): Array<number | "..."> {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const paginas = new Set<number>([1, total, atual]);
+  for (const d of [1, 2]) {
+    if (atual - d >= 1) paginas.add(atual - d);
+    if (atual + d <= total) paginas.add(atual + d);
+  }
+  const ordenadas = [...paginas].sort((a, b) => a - b);
+  const saida: Array<number | "..."> = [];
+  let anterior = 0;
+  for (const p of ordenadas) {
+    if (p - anterior > 1) saida.push("...");
+    saida.push(p);
+    anterior = p;
+  }
+  return saida;
+}
+
 function MarketingPage() {
   const queryClient = useQueryClient();
   const [busca, setBusca] = useState("");
@@ -107,6 +142,8 @@ function MarketingPage() {
   const [tags, setTags] = useState<any[]>([]);
   // Filtro por etiqueta: OR entre as escolhidas (mesma lógica do servidor).
   const [filtroTags, setFiltroTags] = useState<string[]>([]);
+  const [pagina, setPagina] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   const [removerSemWhatsappOpen, setRemoverSemWhatsappOpen] = useState(false);
   const [removendo, setRemovendo] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -128,6 +165,14 @@ function MarketingPage() {
   const [uazapiConfigurado, setUazapiConfigurado] = useState(false);
   const [salvandoUazapi, setSalvandoUazapi] = useState(false);
   const [verificandoWhatsapp, setVerificandoWhatsapp] = useState(false);
+  // Barra "VALIDANDO WHATSAPP META": total da fila no início + quantos já saíram da fila.
+  const [progressoWhatsapp, setProgressoWhatsapp] = useState<{
+    total: number;
+    feito: number;
+    verificados: number;
+    invalidos: number;
+    erros: number;
+  } | null>(null);
   const [uazapiOpen, setUazapiOpen] = useState(false);
 
   // Importação
@@ -152,8 +197,20 @@ function MarketingPage() {
   } | null>(null);
 
   const loadContatos = useServerFn(listarMarketingContatosFn);
-  const { data: res, isLoading } = useQuery({
-    queryKey: ["admin-marketing", buscaAplicada, filtroTipo, filtroWhatsapp, somenteComCoordenadas, filtroTags],
+  // A listagem é paginada de verdade: o banco tem centenas de milhares de
+  // contatos e trazer todos de uma vez travava a tela. O servidor devolve só
+  // a página pedida + o total filtrado, e a barra de paginação usa os dois.
+  const { data: res, isLoading, isFetching } = useQuery({
+    queryKey: [
+      "admin-marketing",
+      buscaAplicada,
+      filtroTipo,
+      filtroWhatsapp,
+      somenteComCoordenadas,
+      filtroTags,
+      pagina,
+      pageSize,
+    ],
     queryFn: () =>
       loadContatos({
         data: {
@@ -162,10 +219,14 @@ function MarketingPage() {
           whatsappStatus: filtroWhatsapp,
           somenteComCoordenadas,
           tagIds: filtroTags,
+          page: pagina,
+          pageSize,
         },
       }),
   });
   const contatos = res?.data || [];
+  const totalContatos = Number((res as any)?.total ?? 0);
+  const totalPaginas = Math.max(1, Math.ceil(totalContatos / pageSize));
   // A server fn devolve {ok:false, message} quando a query falha. Sem surfar
   // isso, a tela mostrava "Nenhum contato na base" — como se o banco tivesse
   // vazio — e ninguém entendia o que estava quebrado.
@@ -188,11 +249,18 @@ function MarketingPage() {
       importadosIds.map((id) => contatos.find((c: any) => c.id === id)).filter(Boolean) as any[],
     [importadosIds, contatos],
   );
+  const [progressoImportacao, setProgressoImportacao] = useState<{ total: number; feito: number } | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setBuscaAplicada(busca), 400);
     return () => clearTimeout(t);
   }, [busca]);
+
+  // Qualquer mudança de filtro volta para a primeira página: a pessoa estava
+  // na página 40 e o filtro novo tem 3 páginas — sem isso a tela ficava vazia.
+  useEffect(() => {
+    setPagina(1);
+  }, [buscaAplicada, filtroTipo, filtroWhatsapp, somenteComCoordenadas, filtroTags, pageSize]);
 
   const importar = useServerFn(importarMarketingContatosFn);
   const atualizarContato = useServerFn(atualizarMarketingContatoFn);
@@ -250,6 +318,7 @@ function MarketingPage() {
   const salvarAutoIncluir = useServerFn(salvarUazapiAutoIncluirFn);
   const listarGrupos = useServerFn(listarGruposUazapiFn);
   const verificarWhatsapp = useServerFn(verificarWhatsappContatosFn);
+  const contarWhatsappPendentes = useServerFn(contarWhatsappPendentesFn);
   const testarUazapi = useServerFn(testarUazapiFn);
   // Grupos da Uazapi: permitidos (salvos) vs disponíveis na instância. Os
   // marcados como permitidos são os que aparecem em automações e campanhas.
@@ -385,18 +454,54 @@ function MarketingPage() {
   }
 
   async function rodarVerificacaoWhatsapp() {
+    if (verificandoWhatsapp) return;
     setVerificandoWhatsapp(true);
     try {
-      const r = await verificarWhatsapp({ data: { limite: 100 } });
-      if (!r.ok) throw new Error(r.message);
+      // Congela o total no início para a barra não andar para trás.
+      const contagem = await contarWhatsappPendentes();
+      if (!contagem.ok) throw new Error(contagem.message);
+      const totalFila = Number((contagem.data as any)?.total ?? 0);
+      if (totalFila <= 0) {
+        toast.info("Nenhum número pendente de verificação.");
+        return;
+      }
+      setProgressoWhatsapp({ total: totalFila, feito: 0, verificados: 0, invalidos: 0, erros: 0 });
+      // Lotes pequenos com pausa: a Uazapi bloqueia rajada e cada chamada
+      // processa só o que cabe no limite — por isso o loop até restantes === 0.
+      // O atraso entre rodadas fica no cliente (setTimeout) para a tela
+      // respirar e a barra atualizar entre um lote e outro.
+      let verificados = 0;
+      let invalidos = 0;
+      let erros = 0;
+      for (;;) {
+        const r = await verificarWhatsapp({
+          data: { limite: 100, loteTamanho: 10, pausaMs: 1500, somenteNovos: true },
+        });
+        if (!r.ok) throw new Error(r.message);
+        const d = r.data as any;
+        verificados += Number(d.verificados ?? 0);
+        invalidos += Number(d.invalidos ?? 0);
+        erros += Number(d.erros ?? 0);
+        const restantes = Number(d.restantes ?? 0);
+        setProgressoWhatsapp({
+          total: totalFila,
+          feito: Math.min(totalFila, totalFila - restantes),
+          verificados,
+          invalidos,
+          erros,
+        });
+        if (restantes <= 0) break;
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
       toast.success(
-        `WhatsApp: ${r.data.verificados} verificado(s), ${r.data.invalidos} sem WhatsApp, ${r.data.erros} erro(s).`,
+        `WhatsApp: ${verificados} verificado(s), ${invalidos} sem WhatsApp, ${erros} erro(s).`,
       );
       queryClient.invalidateQueries({ queryKey: ["admin-marketing"], exact: false });
     } catch (e: any) {
       toast.error(e.message);
     } finally {
       setVerificandoWhatsapp(false);
+      setProgressoWhatsapp(null);
     }
   }
 
@@ -438,9 +543,16 @@ function MarketingPage() {
   }
 
   async function confirmarImportacao() {
-    if (!arquivo) return;
+    if (!arquivo || importando) return;
     setImportando(true);
     setErrosImportacao([]);
+    // Lotes de 500: cada chamada ao servidor processa de forma síncrona, e
+    // mandar 10 mil linhas de uma vez travava a tela até o timeout. Com o
+    // loop, o servidor responde rápido por lote e a barra anda entre eles.
+    const LOTE = 500;
+    const linhasMapeadas = arquivo.linhas.map((l) => mapearLinha(l, mapeamento));
+    const total = linhasMapeadas.length;
+    setProgressoImportacao({ total, feito: 0 });
     // A tag é criada e aplicada ANTES da importação rodar no banco. Se a
     // importação falhar (arquivo ruim, etc), a tag fica órfã — mas isso é
     // melhor que o usuário importar 500 contatos, criar a tag, e descobrir
@@ -464,71 +576,89 @@ function MarketingPage() {
       } catch (e: any) {
         toast.error(e.message);
         setImportando(false);
+        setProgressoImportacao(null);
         return;
       }
     }
-    importar({
-      data: {
-        contatos: arquivo.linhas.map((l) => mapearLinha(l, mapeamento)),
-        tipo: tipoContato,
-        atualizarExistentes,
-      },
-    })
-      .then((r) => {
+    let inseridos = 0;
+    let atualizados = 0;
+    let duplicados = 0;
+    let invalidos = 0;
+    const erros: string[] = [];
+    const todosIds: string[] = [];
+    try {
+      for (let inicio = 0; inicio < total; inicio += LOTE) {
+        const lote = linhasMapeadas.slice(inicio, inicio + LOTE);
+        // Linha 1-based no arquivo, para o erro dizer "Linha 1234" e não "Linha 12 do lote".
+        const r = await importar({
+          data: {
+            contatos: lote,
+            tipo: tipoContato,
+            atualizarExistentes,
+            linhaInicial: inicio + 1,
+          },
+        });
         if (!r.ok) throw new Error(r.message);
-        const d = r.data;
-        setErrosImportacao(d.erros ?? []);
-        if (d.inseridos > 0 || d.atualizados > 0) {
-          // Sem isso o importado fica invisível: a lista ainda estava filtrada
-          // pelo tipo/busca anteriores (ex. "Prospects"), e lojista não entra
-          // nesse filtro. Forçamos os dois para o que foi importado agora.
-          setBusca("");
-          setBuscaAplicada("");
-          setFiltroTipo(tipoContato);
-          setVisao("lista");
-          // A tag é aplicada aos contatos que acabaram de entrar. Sem isso o
-          // usuário teria que selecionar tudo de novo e aplicar a tag na mão.
-          // A tag só é aplicada se foi criada acima (tagId não é null).
-          if (tagId) {
-            atribuirTag({
-              data: { contatoIds: d.inseridosIds ?? [], tagId },
-            })
-              .then((r) => {
-                if (!r.ok) throw new Error(r.message);
-                toast.success(
-                  `Importação concluída: ${d.inseridos} novo(s), ${d.atualizados} atualizado(s), ${d.duplicados} duplicado(s), ${d.invalidos} inválido(s). Tag "${tagNomeAplicada}" aplicada.`,
-                );
-              })
-              .catch((e: any) => {
-                toast.error(
-                  `Importação concluída, mas a tag não foi aplicada: ${e.message}`,
-                );
-              });
-          } else {
+        const d = r.data as any;
+        inseridos += Number(d.inseridos ?? 0);
+        atualizados += Number(d.atualizados ?? 0);
+        duplicados += Number(d.duplicados ?? 0);
+        invalidos += Number(d.invalidos ?? 0);
+        erros.push(...(d.erros ?? []));
+        todosIds.push(...(d.inseridosIds ?? []));
+        setProgressoImportacao({ total, feito: Math.min(total, inicio + lote.length) });
+        // Respiro entre lotes para a UI pintar a barra antes do próximo POST.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      setErrosImportacao(erros);
+      if (inseridos > 0 || atualizados > 0) {
+        // Sem isso o importado fica invisível: a lista ainda estava filtrada
+        // pelo tipo/busca anteriores (ex. "Prospects"), e lojista não entra
+        // nesse filtro. Forçamos os dois para o que foi importado agora.
+        setBusca("");
+        setBuscaAplicada("");
+        setFiltroTipo(tipoContato);
+        setVisao("lista");
+        // A tag é aplicada uma vez só, a todos os ids acumulados dos lotes.
+        // Sem isso o usuário teria que selecionar tudo de novo e aplicar a tag na mão.
+        if (tagId) {
+          try {
+            const rt = await atribuirTag({ data: { contatoIds: todosIds, tagId } });
+            if (!rt.ok) throw new Error(rt.message);
             toast.success(
-              `Importação concluída: ${d.inseridos} novo(s), ${d.atualizados} atualizado(s), ${d.duplicados} duplicado(s), ${d.invalidos} inválido(s).`,
+              `Importação concluída: ${inseridos} novo(s), ${atualizados} atualizado(s), ${duplicados} duplicado(s), ${invalidos} inválido(s). Tag "${tagNomeAplicada}" aplicada.`,
             );
+          } catch (e: any) {
+            toast.error(`Importação concluída, mas a tag não foi aplicada: ${e.message}`);
           }
-          setImportOpen(false);
-          setArquivo(null);
-          setTagImportacao("");
-          setTagImportacaoId("");
-          setImportadosIds(d.inseridosIds ?? []);
-          queryClient.invalidateQueries({
-            queryKey: ["admin-marketing"],
-            exact: false,
-          });
-          // O filtro/tipo foram trocados acima, então a chave da query mudou:
-          // sem isso a UI ainda mostrava o resultado da busca anterior.
-          queryClient.refetchQueries({ queryKey: ["admin-marketing"], exact: false });
         } else {
-          toast.warning(
-            `Nenhum contato importado: ${d.duplicados} duplicado(s), ${d.invalidos} inválido(s). Veja os motivos abaixo.`,
+          toast.success(
+            `Importação concluída: ${inseridos} novo(s), ${atualizados} atualizado(s), ${duplicados} duplicado(s), ${invalidos} inválido(s).`,
           );
         }
-      })
-      .catch((e: any) => toast.error(e.message))
-      .finally(() => setImportando(false));
+        setImportOpen(false);
+        setArquivo(null);
+        setTagImportacao("");
+        setTagImportacaoId("");
+        setImportadosIds(todosIds);
+        queryClient.invalidateQueries({
+          queryKey: ["admin-marketing"],
+          exact: false,
+        });
+        // O filtro/tipo foram trocados acima, então a chave da query mudou:
+        // sem isso a UI ainda mostrava o resultado da busca anterior.
+        queryClient.refetchQueries({ queryKey: ["admin-marketing"], exact: false });
+      } else {
+        toast.warning(
+          `Nenhum contato importado: ${duplicados} duplicado(s), ${invalidos} inválido(s). Veja os motivos abaixo.`,
+        );
+      }
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setImportando(false);
+      setProgressoImportacao(null);
+    }
   }
 
   async function salvarEdicao() {
@@ -768,6 +898,20 @@ function MarketingPage() {
             </Button>
           </div>
         </div>
+        {progressoWhatsapp && (
+          <div className="border-t border-slate-100 pt-3 space-y-2">
+            <div className="flex items-center justify-between text-xs text-slate-600">
+              <span className="font-bold text-slate-900 flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin text-teal-600" />
+                VALIDANDO WHATSAPP META
+              </span>
+              <span>
+                {progressoWhatsapp.feito} / {progressoWhatsapp.total} • {progressoWhatsapp.verificados} verificado(s), {progressoWhatsapp.invalidos} sem WhatsApp, {progressoWhatsapp.erros} erro(s)
+              </span>
+            </div>
+            <Progress value={progressoWhatsapp.total > 0 ? (progressoWhatsapp.feito / progressoWhatsapp.total) * 100 : 0} />
+          </div>
+        )}
         {uazapiOpen && (
           <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2 items-end border-t border-slate-100 pt-3">
             <div>
@@ -1287,6 +1431,80 @@ function MarketingPage() {
         </div>
       )}
 
+      {/* Paginação: a base tem centenas de milhares de contatos, então a tela
+          mostra uma página de cada vez. Sem isso a listagem arrastava a base
+          inteira para o navegador. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2 text-sm text-slate-600">
+          <span>
+            {totalContatos > 0
+              ? `${(pagina - 1) * pageSize + 1}-${Math.min(pagina * pageSize, totalContatos)} de ${totalContatos.toLocaleString("pt-BR")}`
+              : "0 de 0"}
+          </span>
+          <Select value={String(pageSize)} onValueChange={(v) => setPageSize(Number(v))}>
+            <SelectTrigger className="h-8 w-[110px] text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {[25, 50, 100, 200].map((n) => (
+                <SelectItem key={n} value={String(n)}>
+                  {n} por página
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {totalPaginas > 1 && (
+          <Pagination className="mx-0 w-full justify-end sm:w-auto">
+            <PaginationContent>
+              <PaginationItem>
+                <PaginationPrevious
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setPagina((p) => Math.max(1, p - 1));
+                  }}
+                  className={pagina <= 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                />
+              </PaginationItem>
+              {paginasVisiveis(pagina, totalPaginas).map((p, i) =>
+                p === "..." ? (
+                  <PaginationItem key={`e${i}`}>
+                    <span className="flex h-9 w-9 items-center justify-center text-slate-400">
+                      ...
+                    </span>
+                  </PaginationItem>
+                ) : (
+                  <PaginationItem key={p}>
+                    <PaginationLink
+                      href="#"
+                      isActive={p === pagina}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setPagina(p as number);
+                      }}
+                      className="cursor-pointer"
+                    >
+                      {p}
+                    </PaginationLink>
+                  </PaginationItem>
+                ),
+              )}
+              <PaginationItem>
+                <PaginationNext
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setPagina((p) => Math.min(totalPaginas, p + 1));
+                  }}
+                  className={pagina >= totalPaginas ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                />
+              </PaginationItem>
+            </PaginationContent>
+          </Pagination>
+        )}
+      </div>
+
       {/* Importação */}
       <Dialog
         open={importOpen}
@@ -1452,6 +1670,35 @@ function MarketingPage() {
                 </div>
               )}
 
+              {importando && progressoImportacao && (
+                <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex items-center justify-between text-xs text-slate-600">
+                    <span>Importando contatos…</span>
+                    <span>
+                      {progressoImportacao.feito}/{progressoImportacao.total}
+                    </span>
+                  </div>
+                  <Progress
+                    value={(progressoImportacao.feito / Math.max(1, progressoImportacao.total)) * 100}
+                  />
+                </div>
+              )}
+
+              {importando && progressoImportacao && (
+                <div className="space-y-2 border-t pt-4">
+                  <div className="flex items-center justify-between text-xs text-slate-600">
+                    <span className="font-bold text-slate-900 flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin text-slate-900" />
+                      Importando contatos...
+                    </span>
+                    <span>
+                      {progressoImportacao.feito.toLocaleString("pt-BR")} / {progressoImportacao.total.toLocaleString("pt-BR")}
+                    </span>
+                  </div>
+                  <Progress value={progressoImportacao.total > 0 ? (progressoImportacao.feito / progressoImportacao.total) * 100 : 0} />
+                </div>
+              )}
+
               <DialogFooter>
                 <Button
                   variant="outline"
@@ -1466,7 +1713,7 @@ function MarketingPage() {
                   ) : (
                     <Upload className="mr-2 h-4 w-4" />
                   )}
-                  Confirmar importação
+                  {importando ? "Importando..." : "Confirmar importação"}
                 </Button>
               </DialogFooter>
             </>

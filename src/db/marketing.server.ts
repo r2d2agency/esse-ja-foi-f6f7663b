@@ -31,6 +31,39 @@ export async function ensureMarketingSchema() {
     tag_id uuid NOT NULL REFERENCES marketing_tags(id) ON DELETE CASCADE,
     criado_em timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (contato_id, tag_id)
   )`);
+  // Índices: a base passa de 170 mil contatos e a tela lista paginada com
+  // filtros. Sem índice, cada página e a contagem fazem full scan da tabela
+  // e a listagem "congela" exatamente quando o admin mais precisa dela.
+  // `IF NOT EXISTS` faz isso ser idempotente — roda a cada boot, sem custo.
+  await d.execute(
+    sql`CREATE INDEX IF NOT EXISTS idx_marketing_contatos_criado_em ON marketing_contatos (criado_em DESC)`,
+  );
+  await d.execute(
+    sql`CREATE INDEX IF NOT EXISTS idx_marketing_contatos_whatsapp_status ON marketing_contatos (whatsapp_status)`,
+  );
+  await d.execute(
+    sql`CREATE INDEX IF NOT EXISTS idx_marketing_contatos_tipo ON marketing_contatos (tipo)`,
+  );
+  await d.execute(
+    sql`CREATE INDEX IF NOT EXISTS idx_marketing_contatos_telefone ON marketing_contatos (telefone)`,
+  );
+  // A busca por texto usa ILIKE com %termo%, que não aproveita índice B-tree.
+  // Um índice trigram deixa isso indexável — o LIKE %termo% vira busca real.
+  // O pg_trgm nem sempre está instalado na base; sem ele a busca funciona
+  // igual (só mais lenta), então seguimos sem índice em vez de derrubar a
+  // aplicação inteira na inicialização.
+  try {
+    await d.execute(sql`CREATE EXTENSION IF NOT EXISTS pg_trgm`);
+    await d.execute(
+      sql`CREATE INDEX IF NOT EXISTS idx_marketing_contatos_nome_trgm ON marketing_contatos USING gin (nome gin_trgm_ops)`,
+    );
+  } catch {
+    // Extensão indisponível: a listagem segue funcionando, só sem acelerar
+    // a busca por texto.
+  }
+  await d.execute(
+    sql`CREATE INDEX IF NOT EXISTS idx_marketing_contato_tags_tag ON marketing_contato_tags (tag_id)`,
+  );
 }
 
 export type MarketingFiltro = {
@@ -45,6 +78,8 @@ export type MarketingFiltro = {
    * delas. Campanhas usam a mesma lógica pelo lado da campanha.
    */
   tagIds?: string[];
+  page?: number;
+  pageSize?: number;
 }
 
 export async function listarMarketingContatos(filtro: MarketingFiltro = {}) {
@@ -76,10 +111,26 @@ export async function listarMarketingContatos(filtro: MarketingFiltro = {}) {
   // O termo só existe quando há busca. Sem isso virava a string "%null%" e a
   // query não achava ninguém — a lista aparecia vazia mesmo com a base cheia.
   const termo = busca ? `%${busca}%` : null;
+
+  const page = Math.max(1, Number(filtro.page) || 1);
+  const pageSize = Math.min(200, Math.max(1, Number(filtro.pageSize) || 50));
+  const offset = (page - 1) * pageSize;
+
   // Os casts ::text são obrigatórios: sem eles o Postgres não consegue inferir
   // o tipo de um parâmetro que só aparece em `IS NULL` e a consulta falha. Como
   // o erro sobe para o catch da server fn, a tela mostrava lista vazia em vez
   // do erro.
+  const countRes = await d.execute(sql`
+    SELECT COUNT(*)::int AS total
+    FROM marketing_contatos c
+    WHERE (${termo}::text IS NULL OR c.nome ILIKE ${termo} OR c.email ILIKE ${termo} OR c.empresa ILIKE ${termo} OR c.telefone ILIKE ${termo})
+      AND (${tipo}::text IS NULL OR c.tipo = ${tipo}) AND (${status}::text IS NULL OR c.status = ${status})
+      AND (${whatsappStatus}::text IS NULL OR c.whatsapp_status = ${whatsappStatus})
+      AND (${filtro.somenteComCoordenadas !== true} OR (c.latitude IS NOT NULL AND c.longitude IS NOT NULL))
+      ${clausulaTag}
+  `);
+  const total = Number((rowsOf(countRes)[0] as any)?.total || 0);
+
   const rows = await d.execute(sql`
     SELECT c.*, COALESCE(json_agg(json_build_object('id', t.id, 'nome', t.nome, 'cor', t.cor))
       FILTER (WHERE t.id IS NOT NULL), '[]') AS tags
@@ -91,8 +142,9 @@ export async function listarMarketingContatos(filtro: MarketingFiltro = {}) {
       AND (${whatsappStatus}::text IS NULL OR c.whatsapp_status = ${whatsappStatus})
       AND (${filtro.somenteComCoordenadas !== true} OR (c.latitude IS NOT NULL AND c.longitude IS NOT NULL))
       ${clausulaTag}
-    GROUP BY c.id ORDER BY c.criado_em DESC`);
-  return rowsOf(rows);
+    GROUP BY c.id ORDER BY c.criado_em DESC
+    LIMIT ${pageSize} OFFSET ${offset}`);
+  return { data: rowsOf(rows), total, page, pageSize };
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -196,6 +248,15 @@ export async function importarMarketingContatos(
   tipoPadrao = "prospect",
   /** Quando true, linha que já existe é atualizada em vez de descartada. */
   atualizarExistentes = false,
+  /**
+   * Número da primeira linha do lote (1-based).
+   *
+   * A importação roda em lotes: a UI fatia o arquivo e chama esta função
+   * várias vezes. Sem isso, o erro da linha 7.400 do arquivo aparecia como
+   * "Linha 137" — o lote recomeça do zero. O número viaja junto para o
+   * aviso continuar apontando para a linha que a pessoa reconhece no Excel.
+   */
+  linhaInicial = 1,
 ): Promise<ResultadoImportacao> {
   const d = requireDb();
   await ensureMarketingSchema();
@@ -209,6 +270,7 @@ export async function importarMarketingContatos(
 
   for (let i = 0; i < contatos.length; i++) {
     const item = contatos[i];
+    const numeroLinha = i + linhaInicial;
     // Nome é o mínimo para um contato ser identificável na lista.
     const nome = String(item.nome ?? "").trim();
     const email =
@@ -220,19 +282,19 @@ export async function importarMarketingContatos(
     if (!nome || (!email && !telefone)) {
       invalidos++;
       erros.push(
-        `Linha ${i + 1}: sem nome e sem e-mail/telefone — preencha pelo menos um contato.`,
+        `Linha ${numeroLinha}: sem nome e sem e-mail/telefone — preencha pelo menos um contato.`,
       );
       continue;
     }
     if (email && !EMAIL_RE.test(email)) {
       invalidos++;
-      erros.push(`Linha ${i + 1}: e-mail inválido ("${email}").`);
+      erros.push(`Linha ${numeroLinha}: e-mail inválido ("${email}").`);
       continue;
     }
     if (String(item.telefone ?? item.whatsapp ?? "").trim() && !telefone) {
       invalidos++;
       erros.push(
-        `Linha ${i + 1}: telefone inválido ("${String(item.telefone ?? item.whatsapp)}") — use DDD + número.`,
+        `Linha ${numeroLinha}: telefone inválido ("${String(item.telefone ?? item.whatsapp)}") — use DDD + número.`,
       );
       continue;
     }
@@ -269,7 +331,7 @@ export async function importarMarketingContatos(
     } catch (e: any) {
       // Falhar em descobrir duplicata é aceitável; travar a importação inteira
       // por causa da checagem não é. O INSERT ainda protege a base.
-      console.warn(`[marketing] duplicidade não verificada na linha ${i + 1}:`, e?.message ?? e);
+      console.warn(`[marketing] duplicidade não verificada na linha ${numeroLinha}:`, e?.message ?? e);
     }
     if (motivo) {
       const existenteId = atualizarExistentes
@@ -286,7 +348,7 @@ export async function importarMarketingContatos(
         continue;
       }
       duplicados++;
-      erros.push(`Linha ${i + 1}: ignorada, ${motivo}.`);
+      erros.push(`Linha ${numeroLinha}: ignorada, ${motivo}.`);
       continue;
     }
 
@@ -1281,21 +1343,54 @@ export async function enviarMidiaUazapi(alvo: string, file: string, texto?: stri
  * Verifica quais contatos possuem WhatsApp ativo via POST /chat/check da Uazapi
  * e grava o resultado em whatsapp_status (verificado | invalido | erro).
  */
-export async function verificarWhatsappContatos(limite = 50) {
+export async function verificarWhatsappContatos(
+  limite = 50,
+  loteTamanho = 10,
+  pausaMs = 1500,
+  somenteNovos = true,
+) {
   const d = requireDb();
   const cfg = await getUazapiConfig();
   if (!cfg.uazapi_base_url || !cfg.uazapi_token) {
     throw new Error("Configure a URL e o token da Uazapi antes de verificar.");
   }
   await ensureMarketingSchema();
+  // "Somente novos" = só quem ainda está 'nao_verificado'. O já verificado
+  // (ou inválido) não entra na fila de novo — com 170 mil contatos, rechecar
+  // tudo a cada clique é o que derruba a instância e bloqueia o IP.
+  const condicaoNovos = somenteNovos
+    ? sql`AND whatsapp_status = 'nao_verificado'`
+    : sql``;
+  const quantidade = Math.max(1, Math.min(200, Number(limite) || 50));
+  // Lote pequeno + pausa entre lotes: a Uazapi responde /chat/check por
+  // instância, e rajadas grandes num curto intervalo fazem ela parar de
+  // responder (rate limit/bloqueio de IP). Devagar protege os dois lados.
+  const tamanho = Math.max(1, Math.min(30, Number(loteTamanho) || 10));
+  const pausa = Math.max(0, Math.min(30000, Number(pausaMs) || 0));
+  // Conta quantos restam para a UI calcular a barra de progresso global
+  const totalRes = rowsOf(
+    await d.execute(sql`
+      SELECT COUNT(*)::int AS total FROM marketing_contatos
+      WHERE telefone IS NOT NULL ${condicaoNovos}
+    `),
+  );
+  const totalPendentes = Number((totalRes[0] as any)?.total || 0);
   const pendentes = rowsOf(
     await d.execute(sql`
       SELECT id, telefone FROM marketing_contatos
-      WHERE telefone IS NOT NULL AND whatsapp_status = 'nao_verificado'
-      ORDER BY criado_em ASC LIMIT ${limite}
+      WHERE telefone IS NOT NULL ${condicaoNovos}
+      ORDER BY criado_em ASC LIMIT ${quantidade}
     `),
   );
-  if (!pendentes.length) return { processados: 0, verificados: 0, invalidos: 0, erros: 0 };
+  if (!pendentes.length)
+    return {
+      processados: 0,
+      verificados: 0,
+      invalidos: 0,
+      erros: 0,
+      restantes: 0,
+      totalPendentes: 0,
+    };
 
   // Prepara pares {id, numero normalizado} — descarta telefones sem formato válido
   const pares: Array<{ id: string; numero: string }> = [];
@@ -1309,58 +1404,91 @@ export async function verificarWhatsappContatos(limite = 50) {
   }
 
   const base = cfg.uazapi_base_url.replace(/\/+$/, "");
-  const res = await fetch(`${base}/chat/check`, {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      token: cfg.uazapi_token,
-    },
-    body: JSON.stringify({ numbers: pares.map((p) => p.numero) }),
-  });
-  if (!res.ok) {
-    const texto = await res.text().catch(() => "");
-    // O 401 aqui quase sempre é token de outra instância (ou token global da
-    // Uazapi, que não vale como credencial da instância). A mensagem precisa
-    // dizer isso — "Invalid token" crua não indica onde arrumar.
-    if (res.status === 401 || res.status === 403) {
-      throw new Error(
-        "Token recusado pela instância da Uazapi (HTTP 401). Use o token desta instância, " +
-          "não o token global — confira em Configurar > Verificação de WhatsApp.",
-      );
+  const checarLote = async (lote: Array<{ id: string; numero: string }>) => {
+    const res = await fetch(`${base}/chat/check`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        token: cfg.uazapi_token,
+      },
+      body: JSON.stringify({ numbers: lote.map((p) => p.numero) }),
+    });
+    if (!res.ok) {
+      const texto = await res.text().catch(() => "");
+      // O 401 aqui quase sempre é token de outra instância (ou token global da
+      // Uazapi, que não vale como credencial da instância). A mensagem precisa
+      // dizer isso — "Invalid token" crua não indica onde arrumar.
+      if (res.status === 401 || res.status === 403) {
+        throw new Error(
+          "Token recusado pela instância da Uazapi (HTTP 401). Use o token desta instância, " +
+            "não o token global — confira em Configurar > Verificação de WhatsApp.",
+        );
+      }
+      throw new Error(`Uazapi retornou HTTP ${res.status}: ${texto.slice(0, 200)}`);
     }
-    throw new Error(`Uazapi retornou HTTP ${res.status}: ${texto.slice(0, 200)}`);
-  }
-  const resultados: Array<{
-    query: string;
-    isInWhatsapp?: boolean;
-    verifiedName?: string;
-    error?: string;
-  }> = await res.json();
+    return (await res.json()) as Array<{
+      query: string;
+      isInWhatsapp?: boolean;
+      verifiedName?: string;
+      error?: string;
+    }>;
+  };
 
   let verificados = 0,
     invalidos = 0,
     erros = 0;
-  for (let i = 0; i < pares.length; i++) {
-    const r = resultados[i];
-    if (!r) {
-      erros++;
-      continue;
+  for (let inicio = 0; inicio < pares.length; inicio += tamanho) {
+    const lote = pares.slice(inicio, inicio + tamanho);
+    const resultados = await checarLote(lote);
+    for (let i = 0; i < lote.length; i++) {
+      const r = resultados[i];
+      if (!r) {
+        erros++;
+        // Não marca como 'erro' definitivo: deixa 'nao_verificado' para tentar
+        // no próximo lote em vez de sumir da fila de verificação.
+        continue;
+      }
+      // A API responde na ordem enviada; casamos por query (número normalizado)
+      const alvo = lote.find((p) => p.numero === r.query) || lote[i];
+      // Número com erro de checagem continua 'nao_verificado': a falha foi na
+      // API (instância caiu, rate limit), não no número. Marcar como 'erro' o
+      // tiraria da fila para sempre; assim ele tenta de novo na próxima rodada.
+      const status = r.isInWhatsapp ? "verificado" : "invalido";
+      if (r.isInWhatsapp) verificados++;
+      else if (r.error) erros++;
+      else invalidos++;
+      await d.execute(
+        sql`UPDATE marketing_contatos SET whatsapp_status = ${status}, atualizado_em = now() WHERE id = ${alvo.id}::uuid`,
+      );
     }
-    // A API responde na ordem enviada; casamos por query (número normalizado)
-    const alvo = pares.find((p) => p.numero === r.query) || pares[i];
-    const status = r.isInWhatsapp ? "verificado" : "invalido";
-    if (r.isInWhatsapp) verificados++;
-    else if (r.error) erros++;
-    else invalidos++;
-    await d.execute(
-      sql`UPDATE marketing_contatos SET whatsapp_status = ${status}, atualizado_em = now() WHERE id = ${alvo.id}::uuid`,
-    );
+    // Pausa entre lotes: dá respiro para a instância Uazapi não travar nem
+    // bloquear o IP por rajada. Só descansa se ainda há lote pela frente.
+    if (pausa > 0 && inicio + tamanho < pares.length) {
+      await new Promise((r) => setTimeout(r, pausa));
+    }
   }
   return {
     processados: pares.length + (pendentes.length - pares.length),
     verificados,
     invalidos,
     erros,
+    /** Quantos continuam na fila depois deste lote. */
+    restantes: Math.max(0, totalPendentes - pendentes.length),
+    /** Total de pendentes no início da verificação. */
+    totalPendentes,
   };
+}
+
+/** Quantos contatos ainda aguardam verificação de WhatsApp. */
+export async function contarWhatsappPendentes() {
+  const d = requireDb();
+  await ensureMarketingSchema();
+  const r = rowsOf(
+    await d.execute(sql`
+      SELECT COUNT(*)::int AS total FROM marketing_contatos
+      WHERE telefone IS NOT NULL AND whatsapp_status = 'nao_verificado'
+    `),
+  );
+  return Number((r[0] as any)?.total || 0);
 }
