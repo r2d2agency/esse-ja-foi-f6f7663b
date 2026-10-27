@@ -40,7 +40,7 @@ export const listarCompradoresFn = createServerFn({ method: "GET" })
     const filtroOrigem =
       tipo === "WHATSAPP"
         ? sql` AND (p.origem_cadastro = 'WHATSAPP' OR (p.origem_cadastro IS NULL AND p.email LIKE 'whatsapp_%'))`
-        : sql` AND (p.origem_cadastro IS NOT NULL AND p.origem_cadastro != 'WHATSAPP')`;
+        : sql` AND p.origem_cadastro IN ('AUTOCADASTRO', 'PRE_CADASTRO_ADMIN')`;
 
     try {
       const res = await d.execute(sql`
