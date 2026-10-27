@@ -459,6 +459,31 @@ export const alterarStatusCampanhaFn = createServerFn({ method: "POST" })
     try {
       const { db: dbc } = await import("@/db/index");
       if (!dbc) throw new Error("Banco indisponível.");
+
+      if (data.status === "PAUSADA") {
+        await dbc.execute(sql`
+          UPDATE whatsapp_campanhas SET status = 'PAUSADA', atualizado_em = now()
+          WHERE id = ${data.id}::uuid
+        `);
+        return { ok: true };
+      }
+
+      if (data.status === "AGUARDANDO") {
+        const camp = await dbc.execute(sql`
+          SELECT intervalo_minutos FROM whatsapp_campanhas WHERE id = ${data.id}::uuid
+        `);
+        const c: any = (camp as any[])[0];
+        if (c) {
+          const { reescalarFila } = await import("@/db/disparo-motor.server");
+          await reescalarFila(data.id, Number(c.intervalo_minutos ?? 5), new Date());
+        }
+        await dbc.execute(sql`
+          UPDATE whatsapp_campanhas SET status = 'AGUARDANDO', atualizado_em = now()
+          WHERE id = ${data.id}::uuid
+        `);
+        return { ok: true };
+      }
+
       await dbc.execute(sql`
         UPDATE whatsapp_campanhas SET status = ${data.status}, atualizado_em = now()
         WHERE id = ${data.id}::uuid
