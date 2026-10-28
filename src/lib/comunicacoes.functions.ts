@@ -386,15 +386,16 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
         return { ok: true, id: campanhaId, inseridos: (data.grupos_alvo ?? []).length, ignorados: 0 };
       }
 
+      const contatoIdsBrutos = data.contato_ids ?? data.filtros?.contatoIds ?? null;
+      const contatoIds = Array.isArray(contatoIdsBrutos) && contatoIdsBrutos.length > 0 ? contatoIdsBrutos : null;
       const fila = await popularFilaCampanha(campanhaId, {
         origem: data.origem_publico,
-        uf: data.filtros?.uf ?? null,
-        cidade: data.filtros?.cidade ?? null,
+        uf: contatoIds ? null : (data.filtros?.uf ?? null),
+        cidade: contatoIds ? null : (data.filtros?.cidade ?? null),
         tipo: data.filtros?.tipo ?? null,
-        // A tag tem que chegar ao motor: sem ela a fila era montada com "todos
-        // os prospects" e a campanha mirava a base inteira em vez da etiqueta.
-        tagIds: data.tag_ids ?? data.filtros?.tagIds ?? null,
-        contatoIds: data.contato_ids ?? data.filtros?.contatoIds ?? null,
+        // Se houver contatos selecionados manualmente, usar apenas esses.
+        tagIds: contatoIds ? null : (data.tag_ids ?? data.filtros?.tagIds ?? null),
+        contatoIds,
         // "So novos": tira da fila quem ja recebeu alguma campanha antes. Sem
         // isto a tela estimava 140 novos mas a fila entrava com todo mundo.
         apenasNaoEnviados: data.apenasNaoEnviados ?? data.filtros?.apenasNaoEnviados ?? null,

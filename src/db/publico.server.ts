@@ -372,7 +372,7 @@ export async function listarContatos(
           : sql``
       }
       ${
-        termo
+        termo && !comTag
           ? sql`AND (
             coalesce(nullif(m.empresa, ''), m.nome) ILIKE ${termo}
             OR coalesce(m.telefone, '') ILIKE ${termo}
