@@ -93,6 +93,8 @@ function filtroCompradores(c: CriterioPublico) {
   const cidade = limparFiltro(c.cidade);
   const busca = limparFiltro(c.busca);
   const statusCompliance = limparFiltro(c.statusCompliance);
+  const contatoIds = (Array.isArray(c.contatoIds) ? c.contatoIds : []).filter((t) => !!t);
+  const comContato = contatoIds.length > 0;
 
   // O cadastro grava o telefone em `profiles.whatsapp` (ver
   // comprador.server.ts), então `telefone` pode ser NULL para compradores
@@ -109,6 +111,8 @@ function filtroCompradores(c: CriterioPublico) {
     WHERE p.role = 'comprador'
       AND p.ativo IS NOT FALSE
       AND coalesce(nullif(btrim(p.telefone), ''), nullif(btrim(p.whatsapp), '')) IS NOT NULL
+      ${comContato ? sql`AND p.id IN (${sql.join(contatoIds.map((t) => sql`${t}::uuid`), ", ")})` : sql``}
+      ${comContato ? sql`` : sql`
       AND (${statusCompliance}::text IS NULL OR p.status_compliance = ${statusCompliance})
       AND (${tipo}::text IS NULL OR p.tipo_pessoa = ${tipo})
       AND (${uf}::text IS NULL OR upper(coalesce(p.uf, '')) = upper(${uf}))
@@ -118,6 +122,7 @@ function filtroCompradores(c: CriterioPublico) {
           ? sql`AND p.nome ILIKE ${"%" + busca + "%"}`
           : sql``
       }
+      `}
   `;
 }
 
@@ -207,12 +212,17 @@ export async function resolverPublico(criterio: CriterioPublico = {}): Promise<D
   const enviados = criterio.apenasNaoEnviados ? await telefonesJaEnviados() : null;
 
   const partes: any[] = [];
-  // Com contatos selecionados explicitamente, não busca compradores nem
-  // prospects por origem — só os prospects marcados.
-  if (!comContato && !comTag && (origem === "COMPRADORES" || origem === "AMBOS"))
-    partes.push(filtroCompradores(criterio));
-  if (comContato || origem === "IMPORTADOS" || origem === "AMBOS" || comTag)
-    partes.push(filtroProspects(criterio));
+  // Com contatos selecionados explicitamente, buscar compradores e prospects pelos IDs selecionados.
+  if (comContato) {
+    // Buscar em ambos os lados pelos IDs selecionados
+    partes.push(filtroCompradores({ ...(criterio as any), busca: null, cidade: null, uf: null, tipo: null, statusCompliance: null }));
+    partes.push(filtroProspects({ ...(criterio as any), tagIds: null, loteId: null, busca: null, cidade: null, uf: null }));
+  } else {
+    if (!comTag && (origem === "COMPRADORES" || origem === "AMBOS"))
+      partes.push(filtroCompradores(criterio));
+    if (origem === "IMPORTADOS" || origem === "AMBOS" || comTag)
+      partes.push(filtroProspects(criterio));
+  }
   if (!partes.length) return [];
 
   // UNION ALL como texto puro: o `sql.join` com um separador string tratava o
