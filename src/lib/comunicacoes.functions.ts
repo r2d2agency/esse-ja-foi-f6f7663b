@@ -388,6 +388,7 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
 
       const contatoIdsBrutos = data.contato_ids ?? data.filtros?.contatoIds ?? null;
       const contatoIds = Array.isArray(contatoIdsBrutos) && contatoIdsBrutos.length > 0 ? contatoIdsBrutos : null;
+      console.log("[criarCampanhaDisparo] contato_ids recebidos:", Array.isArray(contatoIdsBrutos) ? contatoIdsBrutos.length : 0, "usando:", contatoIds?.length || 0);
       const fila = await popularFilaCampanha(campanhaId, {
         origem: data.origem_publico,
         uf: contatoIds ? null : (data.filtros?.uf ?? null),
