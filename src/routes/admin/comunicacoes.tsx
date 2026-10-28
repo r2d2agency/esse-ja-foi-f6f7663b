@@ -1104,8 +1104,9 @@ function ComunicacoesPage() {
           nome,
           veiculo_id: campanhaGeral ? null : novaCampanha.veiculo_id,
           filtros: dadosEstimativa,
-          // Se houver contatos selecionados manualmente, usar apenas esses.
+          // Se houver contatos selecionados manualmente, usar apenas esses (ignorar tags/filtros).
           tag_ids: [],
+          filtros: contatosSelecionados.length ? { ...(dadosEstimativa || {}), tagIds: [], uf: null, cidade: null, busca: null } : dadosEstimativa,
           contato_ids: contatosSelecionados.length ? contatosSelecionados : undefined,
           enviar_agora: enviarAgora,
           // O datetime-local devolve hora local do navegador. Convertemos para
