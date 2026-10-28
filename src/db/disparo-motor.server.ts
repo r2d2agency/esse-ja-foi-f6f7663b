@@ -1117,8 +1117,24 @@ export async function popularFilaCampanha(
   criterio: CriterioPublico & { veiculoId?: string | null; mapeamento?: Record<string, string> },
 ) {
   const d = requireDb();
-  const publicos = await resolverPublico(criterio);
-  const contexto = await contextoVeiculo((criterio as any).veiculoId);
+  // Se houver contatos selecionados explicitamente, ignorar tag/filtros para garantir
+  // que só sejam enviados para os selecionados.
+  const criterioLimpo =
+    Array.isArray((criterio as any).contatoIds) && (criterio as any).contatoIds.length > 0
+      ? {
+          ...criterio,
+          tagIds: null,
+          uf: null,
+          cidade: null,
+          tipo: null,
+          statusCompliance: null,
+          loteId: null,
+          busca: null,
+          segmentoId: null,
+        }
+      : criterio;
+  const publicos = await resolverPublico(criterioLimpo);
+  const contexto = await contextoVeiculo((criterioLimpo as any).veiculoId);
   let inseridos = 0;
   let ignorados = 0;
   // O motivo da primeira falha vai junto do retorno: sem isso a tela só
