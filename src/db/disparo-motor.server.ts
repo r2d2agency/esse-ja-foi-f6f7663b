@@ -1119,11 +1119,15 @@ export async function popularFilaCampanha(
   const d = requireDb();
   // Se houver contatos selecionados explicitamente, ignorar tag/filtros para garantir
   // que só sejam enviados para os selecionados.
+  const contatoIdsCrit = Array.isArray((criterio as any).contatoIds) ? (criterio as any).contatoIds.filter((x:any)=>!!x) : [];
   const criterioLimpo =
-    Array.isArray((criterio as any).contatoIds) && (criterio as any).contatoIds.length > 0
+    contatoIdsCrit.length > 0
       ? {
           ...criterio,
+          contatoIds: contatoIdsCrit,
           tagIds: null,
+          tags: null,
+          tag_ids: null,
           uf: null,
           cidade: null,
           tipo: null,
@@ -1131,6 +1135,7 @@ export async function popularFilaCampanha(
           loteId: null,
           busca: null,
           segmentoId: null,
+          filtros: { ...(criterio as any).filtros, tagIds: null, tag_ids: null, uf: null, cidade: null, busca: null },
         }
       : criterio;
   const publicos = await resolverPublico(criterioLimpo);
