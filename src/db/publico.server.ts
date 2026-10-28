@@ -195,11 +195,11 @@ export async function resolverPublico(criterio: CriterioPublico = {}): Promise<D
   const d = requireDb();
   const origem: OrigemPublico = criterio.origem ?? "AMBOS";
 
-  // Com tag marcada, a tag define o público: buscar compradores junto traria
-  // gente de fora da etiqueta e a contagem da tela não bateria com a fila.
-  const comTag = Array.isArray(criterio.tagIds) && criterio.tagIds.length > 0;
   // Contatos selecionados explicitamente: define o público sozinho.
   const comContato = Array.isArray(criterio.contatoIds) && criterio.contatoIds.length > 0;
+  // Com tag marcada, a tag define o público: buscar compradores junto traria
+  // gente de fora da etiqueta e a contagem da tela não bateria com a fila.
+  const comTag = comContato ? false : Array.isArray(criterio.tagIds) && criterio.tagIds.length > 0;
 
   // "Só quem nunca recebeu": quem já saiu como ENVIADA em qualquer campanha
   // anterior sai do público — e também da contagem, para a estimativa da tela
