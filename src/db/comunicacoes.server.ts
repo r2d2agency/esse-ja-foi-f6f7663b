@@ -1131,14 +1131,16 @@ export async function criarCampanha(data: any, usuarioId: string) {
   const { popularFilaCampanha } = await import("./disparo-motor.server");
   // A tag mora no topo (`tag_ids`), com fallback para `filtros.tagIds`: sem
   // isso a campanha com tag gravava mas enfileirava zero pessoas.
+  const contatoIdsBrutos2 = (data as any).contato_ids ?? data.filtros?.contatoIds ?? null;
+  const contatoIds2 = Array.isArray(contatoIdsBrutos2) && contatoIdsBrutos2.length > 0 ? contatoIdsBrutos2 : null;
   const fila = await popularFilaCampanha(campanhaId, {
     origem: data.origem_publico ?? "AMBOS",
-    tipo: data.filtros?.tipo ?? null,
-    uf: data.filtros?.uf ?? null,
-    cidade: data.filtros?.cidade ?? null,
-    statusCompliance: data.filtros?.status ?? null,
-    tagIds: (data as any).tag_ids ?? data.filtros?.tagIds ?? null,
-    contatoIds: (data as any).contato_ids ?? data.filtros?.contatoIds ?? null,
+    tipo: contatoIds2 ? null : (data.filtros?.tipo ?? null),
+    uf: contatoIds2 ? null : (data.filtros?.uf ?? null),
+    cidade: contatoIds2 ? null : (data.filtros?.cidade ?? null),
+    statusCompliance: contatoIds2 ? null : (data.filtros?.status ?? null),
+    tagIds: contatoIds2 ? null : ((data as any).tag_ids ?? data.filtros?.tagIds ?? null),
+    contatoIds: contatoIds2,
     mapeamento: data.mapeamento_variaveis ?? {},
     apenasNaoEnviados:
       (data as any).apenas_nao_enviados ?? data.filtros?.apenasNaoEnviados ?? null,
