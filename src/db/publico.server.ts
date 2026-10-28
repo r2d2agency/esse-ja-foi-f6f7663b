@@ -133,6 +133,7 @@ function filtroProspects(c: CriterioPublico) {
   const comTag = tagIds.length > 0;
   const contatoIds = (Array.isArray(c.contatoIds) ? c.contatoIds : []).filter((t) => !!t);
   const comContato = contatoIds.length > 0;
+  const ignorarFiltrosExtras = comTag || comContato;
 
   // `comprador_id IS NULL` é o que impede mandar convite para quem já se
   // cadastrou: quem já é comprador chega pela outra UNION.
@@ -167,19 +168,19 @@ function filtroProspects(c: CriterioPublico) {
             : sql``
       }
       AND (
-        ${comTag}
+        ${ignorarFiltrosExtras}
         OR (${c.loteId ?? null}::uuid IS NULL OR m.origem = ${c.loteId ?? null})
       )
       AND (
-        ${comTag}
+        ${ignorarFiltrosExtras}
         OR (${uf}::text IS NULL OR upper(coalesce(m.uf, '')) = upper(${uf}))
       )
       AND (
-        ${comTag}
+        ${ignorarFiltrosExtras}
         OR (${cidade}::text IS NULL OR lower(coalesce(m.cidade, '')) = lower(${cidade}))
       )
       AND (
-        ${comTag}
+        ${ignorarFiltrosExtras}
         OR (${busca}::text IS NULL
           OR coalesce(nullif(m.empresa, ''), m.nome) ILIKE ${busca ? "%" + busca + "%" : null})
       )

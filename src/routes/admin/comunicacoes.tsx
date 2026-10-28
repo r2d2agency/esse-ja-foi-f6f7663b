@@ -902,7 +902,7 @@ function ComunicacoesPage() {
     }
     setCarregandoContatosCamp(true);
     listarContatosFn({
-      data: { tagIds: tagsSelecionadas, origem: "IMPORTADOS", limite: 5000 },
+      data: { tagIds: tagsSelecionadas, origem: "IMPORTADOS", limite: 20000 },
     })
       .then((res: any) => {
         if (!ativo) return;
@@ -1104,10 +1104,9 @@ function ComunicacoesPage() {
           nome,
           veiculo_id: campanhaGeral ? null : novaCampanha.veiculo_id,
           filtros: dadosEstimativa,
-          // A tag tem que ir no topo também: o motor lê `tag_ids` primeiro e
-          // só cai em `filtros.tagIds` como fallback. Sem isto a fila nascia
-          // vazia e o motor marcava a campanha como concluída sem enviar nada.
-          tag_ids: tagsSelecionadas,
+          // Se houver contatos selecionados manualmente, usar apenas esses.
+          // Caso contrário, usar a etiqueta (tag) selecionada.
+          tag_ids: contatosSelecionados.length ? [] : tagsSelecionadas,
           contato_ids: contatosSelecionados.length ? contatosSelecionados : undefined,
           enviar_agora: enviarAgora,
           // O datetime-local devolve hora local do navegador. Convertemos para
