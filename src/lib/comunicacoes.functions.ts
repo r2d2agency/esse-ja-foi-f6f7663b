@@ -395,7 +395,7 @@ export const criarCampanhaDisparoFn = createServerFn({ method: "POST" })
         cidade: contatoIds ? null : (data.filtros?.cidade ?? null),
         tipo: data.filtros?.tipo ?? null,
         // Se houver contatos selecionados manualmente, usar apenas esses.
-        tagIds: contatoIds ? null : (data.tag_ids ?? data.filtros?.tagIds ?? null),
+        tagIds: contatoIds ? null : (Array.isArray(data.tag_ids) && data.tag_ids.length ? data.tag_ids : (data.filtros?.tagIds ?? null)),
         contatoIds,
         // "So novos": tira da fila quem ja recebeu alguma campanha antes. Sem
         // isto a tela estimava 140 novos mas a fila entrava com todo mundo.

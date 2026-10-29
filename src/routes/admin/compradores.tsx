@@ -267,6 +267,16 @@ function CompradoresPage() {
       </div>
 
       <div className="flex flex-col gap-4">
+        <Tabs value={tipo} onValueChange={(v) => setTipo(v as "CADASTRADOS" | "WHATSAPP")}>
+          <TabsList className="h-11 bg-slate-100 p-1 rounded-xl w-full md:w-auto">
+            <TabsTrigger value="CADASTRADOS" className="font-bold text-xs px-4 rounded-lg data-[state=active]:bg-white">
+              Compradores cadastrados
+            </TabsTrigger>
+            <TabsTrigger value="WHATSAPP" className="font-bold text-xs px-4 rounded-lg data-[state=active]:bg-white">
+              Contatos do WhatsApp
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
         <div className="flex flex-col md:flex-row gap-4">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
