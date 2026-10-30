@@ -1955,6 +1955,12 @@ function ComunicacoesPage() {
             Automações
           </TabsTrigger>
           <TabsTrigger
+            value="membros-grupo"
+            className="px-6 py-3 data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md"
+          >
+            Membros do Grupo
+          </TabsTrigger>
+          <TabsTrigger
             value="segmentos"
             className="px-6 py-3 data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md"
           >

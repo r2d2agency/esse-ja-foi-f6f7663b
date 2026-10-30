@@ -1075,6 +1075,68 @@ export async function criarCampanhaDisparoGrupos(opts: {
   return { campanhaId };
 }
 
+export async function criarCampanhaEnvioMembrosUazapi(opts: {
+  nome: string;
+  numeros: string[];
+  texto: string;
+  foto?: string | null;
+  janela_inicio?: string;
+  janela_fim?: string;
+  intervalo_minutos?: number;
+  enviar_agora?: boolean;
+}) {
+  const d = requireDb();
+  const { rowsOf } = await import("./comunicacoes.server");
+  const numeros = Array.from(
+    new Set(opts.numeros.map((n) => String(n).replace(/\D/g, "")).filter(Boolean)),
+  );
+  if (!numeros.length) throw new Error("Informe pelo menos um número.");
+
+  const res = await d.execute(sql`
+    INSERT INTO whatsapp_campanhas (nome, template_id, status, canal_envio, janela_inicio, janela_fim, intervalo_minutos)
+    VALUES (
+      ${opts.nome},
+      NULL,
+      ${opts.enviar_agora ? "AGUARDANDO" : "RASCUNHO"},
+      'UAZAPI',
+      ${opts.janela_inicio || "08:00"},
+      ${opts.janela_fim || "18:00"},
+      ${opts.intervalo_minutos || 5}
+    )
+    RETURNING id
+  `);
+  const campanhaId = rowsOf(res)[0]?.id;
+  if (!campanhaId) throw new Error("Falha ao criar campanha de membros.");
+
+  // Uma linha por número: origem MEMBRO_UAZAPI, telefone = número individual.
+  await d.execute(sql`
+    INSERT INTO whatsapp_mensagens (campanha_id, telefone, origem, estado_fila, variaveis)
+    SELECT
+      ${campanhaId}::uuid,
+      n.numero,
+      'MEMBRO_UAZAPI',
+      'PENDENTE',
+      ${JSON.stringify({ texto: opts.texto, foto_capa: opts.foto || null })}::jsonb
+    FROM unnest(${JSON.stringify(numeros)}::text[]) AS n(numero)
+    ON CONFLICT DO NOTHING
+  `);
+
+  await d.execute(sql`
+    UPDATE whatsapp_campanhas SET total_destinatarios = (
+      SELECT count(*) FROM whatsapp_mensagens WHERE campanha_id = ${campanhaId}::uuid
+    ) WHERE id = ${campanhaId}::uuid
+  `);
+
+  await registrarLogCampanha({
+    campanhaId,
+    acao: "CRIADA",
+    detalhe: `Campanha de membros criada com ${numeros.length} número(s).`,
+    payload: { canal_envio: "UAZAPI", origem: "MEMBRO_UAZAPI" },
+  });
+
+  return { campanhaId };
+}
+
 export async function exemploDestinatario(criterio: {
   veiculoId?: string | null;
   mapeamento?: Record<string, string>;
