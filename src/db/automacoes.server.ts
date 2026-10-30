@@ -171,7 +171,7 @@ export async function salvarAutomacao(data: any, usuarioId: string) {
             ${data.nome}, ${data.evento}, ${data.publico}, ${data.template_id}::uuid,
             'RASCUNHO', ${JSON.stringify(configEnvio)}::jsonb,
             ${JSON.stringify(regras)}::jsonb, ${JSON.stringify(mapeamento)}::jsonb,
-            ${userIdValido}
+            ${userIdValido ? sql`${userIdValido}::uuid` : sql`NULL`}
           ) RETURNING id
         `)
       : await d.execute(sql`
@@ -181,7 +181,7 @@ export async function salvarAutomacao(data: any, usuarioId: string) {
             ${data.nome}, ${data.evento}, ${data.publico}, NULL,
             'RASCUNHO', ${JSON.stringify(configEnvio)}::jsonb,
             ${JSON.stringify(regras)}::jsonb, ${JSON.stringify(mapeamento)}::jsonb,
-            ${userIdValido}
+            ${userIdValido ? sql`${userIdValido}::uuid` : sql`NULL`}
           ) RETURNING id
         `);
     return rowsOf(res)[0];
