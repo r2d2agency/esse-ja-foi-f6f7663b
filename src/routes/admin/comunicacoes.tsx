@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -723,6 +724,92 @@ function ComunicacoesPage() {
       setErroGrupos(e?.message || "Falha ao listar grupos.");
     } finally {
       setCarregandoGrupos(false);
+    }
+  };
+
+  // Estado da aba Membros do Grupo (envio manual individual via Uazapi).
+  const [grupoMembrosId, setGrupoMembrosId] = useState("");
+  const [membrosGrupo, setMembrosGrupo] = useState<any[]>([]);
+  const [carregandoMembros, setCarregandoMembros] = useState(false);
+  const [erroMembros, setErroMembros] = useState<string | null>(null);
+  const [membrosSelecionados, setMembrosSelecionados] = useState<string[]>([]);
+  const [textoMembros, setTextoMembros] = useState("");
+  const [fotoMembros, setFotoMembros] = useState("");
+  const [enviandoMembros, setEnviandoMembros] = useState(false);
+
+  const carregarMembrosGrupo = async () => {
+    if (!grupoMembrosId) return;
+    setCarregandoMembros(true);
+    setErroMembros(null);
+    setMembrosGrupo([]);
+    setMembrosSelecionados([]);
+    try {
+      const r: any = await Promise.race([
+        listarMembrosGrupo({ data: { groupjid: grupoMembrosId } }),
+        new Promise((_, rej) =>
+          setTimeout(() => rej(new Error("A listagem demorou demais. Tente de novo.")), 40_000),
+        ),
+      ]);
+      if (!r?.ok) throw new Error(r?.message || "Falha ao listar membros.");
+      const membros = Array.isArray(r?.data) ? r.data : [];
+      setMembrosGrupo(membros);
+      setMembrosSelecionados(membros.map((m: any) => m.numero));
+      if (!membros.length) setErroMembros("Nenhum membro encontrado neste grupo.");
+    } catch (e: any) {
+      setErroMembros(e?.message || "Falha ao listar membros.");
+    } finally {
+      setCarregandoMembros(false);
+    }
+  };
+
+  const alternarMembro = (numero: string) => {
+    setMembrosSelecionados((atual) =>
+      atual.includes(numero) ? atual.filter((n) => n !== numero) : [...atual, numero],
+    );
+  };
+
+  const todosMembrosMarcados =
+    membrosGrupo.length > 0 && membrosSelecionados.length === membrosGrupo.length;
+
+  const alternarTodosMembros = () => {
+    setMembrosSelecionados(
+      todosMembrosMarcados ? [] : membrosGrupo.map((m: any) => m.numero),
+    );
+  };
+
+  const enviarParaMembros = async (enviarAgora: boolean) => {
+    if (!membrosSelecionados.length) {
+      setErroMembros("Selecione pelo menos um membro.");
+      return;
+    }
+    if (!textoMembros.trim()) {
+      setErroMembros("Escreva a mensagem a enviar.");
+      return;
+    }
+    setEnviandoMembros(true);
+    setErroMembros(null);
+    try {
+      const r: any = await criarCampanhaMembros({
+        data: {
+          nome: `Membros Uazapi — ${membrosSelecionados.length} destinatário(s)`,
+          numeros: membrosSelecionados,
+          texto: textoMembros.trim(),
+          foto: fotoMembros.trim() || null,
+          enviar_agora: enviarAgora,
+        },
+      });
+      if (!r?.ok) throw new Error(r?.message || "Falha ao criar campanha.");
+      setTextoMembros("");
+      setFotoMembros("");
+      alert(
+        enviarAgora
+          ? `Envio iniciado para ${membrosSelecionados.length} membro(s).`
+          : "Campanha salva como rascunho. Agende o envio na aba Campanhas.",
+      );
+    } catch (e: any) {
+      setErroMembros(e?.message || "Falha ao enviar.");
+    } finally {
+      setEnviandoMembros(false);
     }
   };
 
@@ -5608,7 +5695,130 @@ function ComunicacoesPage() {
 
         {/* Automações */}
         <TabsContent value="membros-grupo" className="mt-6 space-y-4">
-          {/* placeholder mínimo para não quebrar; UI completa a seguir */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Enviar para membros do grupo</CardTitle>
+              <CardDescription>
+                Escolha um grupo da Uazapi, selecione membros (ou todos) e envie uma
+                mensagem individual para cada um — sem passar pela aprovação da Meta.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-col md:flex-row gap-2">
+                <Select value={grupoMembrosId} onValueChange={setGrupoMembrosId}>
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="Selecione o grupo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {gruposVisiveisUazapi.map((g: any) => (
+                      <SelectItem key={g.id} value={g.id}>
+                        {g.nome ?? g.id}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={carregarGruposUazapi}
+                    disabled={carregandoGrupos}
+                  >
+                    {carregandoGrupos ? "Carregando grupos..." : "Atualizar grupos"}
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={carregarMembrosGrupo}
+                    disabled={!grupoMembrosId || carregandoMembros}
+                  >
+                    {carregandoMembros ? "Listando..." : "Listar membros"}
+                  </Button>
+                </div>
+              </div>
+
+              {erroMembros && (
+                <p className="text-xs text-red-600 dark:text-red-400">{erroMembros}</p>
+              )}
+
+              {membrosGrupo.length > 0 && (
+                <>
+                  <div className="flex items-center justify-between">
+                    <Label>
+                      {membrosSelecionados.length} de {membrosGrupo.length} selecionado(s)
+                    </Label>
+                    <Button type="button" variant="ghost" size="sm" onClick={alternarTodosMembros}>
+                      {todosMembrosMarcados ? "Desmarcar todos" : "Marcar todos"}
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 max-h-72 overflow-y-auto pr-1">
+                    {membrosGrupo.map((m: any) => {
+                      const ativo = membrosSelecionados.includes(m.numero);
+                      return (
+                        <label
+                          key={m.numero}
+                          className={`flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-all ${
+                            ativo
+                              ? "border-teal-600 bg-teal-50/50 dark:bg-teal-950/20"
+                              : "border-slate-200 bg-white dark:bg-slate-950 hover:border-slate-400"
+                          }`}
+                        >
+                          <Checkbox
+                            checked={ativo}
+                            onCheckedChange={() => alternarMembro(m.numero)}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">
+                              {m.nome || m.numero}
+                            </p>
+                            <p className="text-xs text-muted-foreground font-mono">
+                              {m.numero}
+                              {m.admin ? " • admin" : ""}
+                            </p>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Mensagem (texto livre)</Label>
+                    <Textarea
+                      value={textoMembros}
+                      onChange={(e) => setTextoMembros(e.target.value)}
+                      placeholder="Olá! Seja bem-vindo(a) ao grupo..."
+                      rows={4}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Foto/anexo (URL pública, opcional)</Label>
+                    <Input
+                      value={fotoMembros}
+                      onChange={(e) => setFotoMembros(e.target.value)}
+                      placeholder="https://..."
+                    />
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Button
+                      type="button"
+                      className="bg-teal-600 hover:bg-teal-700"
+                      onClick={() => enviarParaMembros(true)}
+                      disabled={enviandoMembros || !membrosSelecionados.length}
+                    >
+                      {enviandoMembros ? "Enviando..." : "Enviar agora"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => enviarParaMembros(false)}
+                      disabled={enviandoMembros || !membrosSelecionados.length}
+                    >
+                      Salvar como rascunho
+                    </Button>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
         <TabsContent value="automacoes" className="mt-6 space-y-4">
           <div className="flex justify-between items-center">
