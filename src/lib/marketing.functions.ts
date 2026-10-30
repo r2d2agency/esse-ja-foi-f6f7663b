@@ -403,6 +403,23 @@ export const listarMembrosGrupoUazapiFn = createServerFn({ method: "POST" })
     }
   });
 
+export const uploadMidiaMembrosUazapiFn = createServerFn({ method: "POST" })
+  .inputValidator((d) => z.object({ arquivo: z.string().min(1), nome: z.string().min(1), tipo: z.string().min(1) }).parse(d))
+  .handler(async ({ data }) => {
+    try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
+      const { salvarArquivo } = await import("@/db/arquivos.server");
+      const buffer = Buffer.from(String(data.arquivo).replace(/^data:[^;]+;base64,/, ""), "base64");
+      const arquivoId = await salvarArquivo(buffer, data.tipo);
+      const baseUrl = process.env.BASE_URL || process.env.VITE_BASE_URL || "";
+      const url = `${baseUrl.replace(/\/$/, "")}/api/public/arquivo/${arquivoId}`;
+      return { ok: true as const, url, id: arquivoId };
+    } catch (e: any) {
+      return { ok: false as const, message: e?.message || "Falha ao enviar arquivo." };
+    }
+  });
+
 export const obterInfoGrupoUazapiFn = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ groupjid: z.string().min(1) }).parse(d))
   .handler(async ({ data }) => {

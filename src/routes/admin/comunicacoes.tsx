@@ -101,7 +101,7 @@ import {
   dispararCampanhaAgoraFn,
   agendarDisparoCampanhaFn,
 } from "@/lib/comunicacoes.functions";
-import { listarMarketingTagsFn, listarGruposUazapiFn, getUazapiConfigFn, listarMembrosGrupoUazapiFn } from "@/lib/marketing.functions";
+import { listarMarketingTagsFn, listarGruposUazapiFn, getUazapiConfigFn, listarMembrosGrupoUazapiFn, uploadMidiaMembrosUazapiFn } from "@/lib/marketing.functions";
 import {
   normalizarStatusTemplate,
   rotuloStatusTemplate,
@@ -516,6 +516,7 @@ function ComunicacoesPage() {
   const listarTagsMarketing = useServerFn(listarMarketingTagsFn);
   const listarGruposUazapi = useServerFn(listarGruposUazapiFn);
   const listarMembrosGrupo = useServerFn(listarMembrosGrupoUazapiFn);
+  const uploadMidiaMembros = useServerFn(uploadMidiaMembrosUazapiFn);
   const criarCampanhaMembros = useServerFn(criarCampanhaEnvioMembrosUazapiFn);
   const obterConfigUazapi = useServerFn(getUazapiConfigFn);
 
@@ -5790,12 +5791,35 @@ function ComunicacoesPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Foto/anexo (URL pública, opcional)</Label>
+                    <Label>Mídia (imagem ou PDF) — upload do computador/celular</Label>
                     <Input
-                      value={fotoMembros}
-                      onChange={(e) => setFotoMembros(e.target.value)}
-                      placeholder="https://..."
+                      type="file"
+                      accept="image/*,application/pdf"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const reader = new FileReader();
+                        reader.onload = async () => {
+                          try {
+                            const r: any = await uploadMidiaMembros({
+                              data: {
+                                arquivo: String(reader.result),
+                                nome: file.name,
+                                tipo: file.type,
+                              },
+                            });
+                            if (!r?.ok) throw new Error(r?.message || "Falha no upload.");
+                            setFotoMembros(r.url);
+                          } catch (err: any) {
+                            setErroMembros(err?.message || "Falha no upload.");
+                          }
+                        };
+                        reader.readAsDataURL(file);
+                      }}
                     />
+                    {fotoMembros && (
+                      <p className="text-xs text-muted-foreground break-all">{fotoMembros}</p>
+                    )}
                   </div>
                   <div className="flex flex-col sm:flex-row gap-2">
                     <Button
