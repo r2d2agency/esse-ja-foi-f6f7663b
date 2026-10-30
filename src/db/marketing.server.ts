@@ -1070,8 +1070,20 @@ export async function obterInfoGrupoUazapi(groupjid: string) {
   }
 }
 
-/**
- * Adiciona participantes a um grupo via POST /group/updateParticipants.
+export async function listarMembrosGrupoUazapi(groupjid: string) {
+  const info: any = await obterInfoGrupoUazapi(groupjid);
+  const participantes = Array.isArray(info?.Participants)
+    ? info.Participants
+    : Array.isArray(info?.participants)
+      ? info.participants
+      : [];
+  return participantes.map((p: any) => ({
+    id: String(p?.id || p?.jid || p?.phone || p?.number || ""),
+    numero: String(p?.phone || p?.number || p?.id || "").replace(/\D/g, ""),
+    nome: String(p?.name || p?.pushName || p?.notify || ""),
+    admin: Boolean(p?.admin || p?.isAdmin),
+  })).filter((m: any) => m.numero);
+}
  * Se a privacidade bloquear, o retorno traz AddRequest para convite individual.
  */
 export async function adicionarParticipantesGrupoUazapi(groupjid: string, participantes: string[]) {
