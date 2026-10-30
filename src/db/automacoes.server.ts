@@ -31,11 +31,20 @@ export async function ensureAutomacoesSchema(silent = true) {
       );
     `);
 
-    // 1.2 Garantir que o CHECK de evento/publico aceite os novos valores.
-    // A tabela pode ter sido criada antes com CHECK restrito; CREATE TABLE
-    // IF NOT EXISTS não atualiza. Removemos qualquer CHECK antigo em `evento`
-    // e `publico` e recriamos aberto (text livre), para não bloquear novos
-    // eventos (GRUPO_MEMBRO_ENTROU) nem públicos (UAZAPI_NOVO_MEMBRO).
+    // 1.2 Remover QUALQUER constraint que possa bloquear (CHECK, FK, etc.)
+    // Tentamos nomes comuns e também um DO block genérico.
+    const nomesComuns = [
+      "whatsapp_automacoes_evento_check",
+      "whatsapp_automacoes_publico_check",
+      "whatsapp_automacoes_status_check",
+      "whatsapp_automacoes_evento_check1",
+      "whatsapp_automacoes_publico_check1",
+    ];
+    for (const nome of nomesComuns) {
+      try {
+        await d.execute(sql.raw(`ALTER TABLE whatsapp_automacoes DROP CONSTRAINT IF EXISTS ${nome}`));
+      } catch {}
+    }
     try {
       await d.execute(sql`
         DO $$
@@ -43,9 +52,11 @@ export async function ensureAutomacoesSchema(silent = true) {
         BEGIN
           FOR c IN
             SELECT conname FROM pg_constraint
-            WHERE conrelid = 'whatsapp_automacoes'::regclass AND contype = 'c'
+            WHERE conrelid = 'whatsapp_automacoes'::regclass
           LOOP
-            EXECUTE format('ALTER TABLE whatsapp_automacoes DROP CONSTRAINT %I', c.conname);
+            IF c.conname LIKE '%check%' OR c.conname LIKE '%evento%' OR c.conname LIKE '%publico%' THEN
+              EXECUTE format('ALTER TABLE whatsapp_automacoes DROP CONSTRAINT %I', c.conname);
+            END IF;
           END LOOP;
         END $$;
       `);
