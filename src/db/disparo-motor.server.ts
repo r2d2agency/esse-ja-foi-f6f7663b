@@ -1108,18 +1108,15 @@ export async function criarCampanhaEnvioMembrosUazapi(opts: {
   const campanhaId = rowsOf(res)[0]?.id;
   if (!campanhaId) throw new Error("Falha ao criar campanha de membros.");
 
-  // Uma linha por número: origem MEMBRO_UAZAPI, telefone = número individual.
-  await d.execute(sql`
+  const valoresJson = JSON.stringify({ texto: opts.texto, foto_capa: opts.foto || null });
+  // Inserção por número (array literal do Postgres via sql array), evitando
+  // unnest com JSON stringificado que quebrava o cast ::text[].
+  const placeholders = numeros.map((_, i) => `($${i + 1}::text)`).join(",");
+  await d.execute(sql.raw(`
     INSERT INTO whatsapp_mensagens (campanha_id, telefone, origem, estado_fila, variaveis)
-    SELECT
-      ${campanhaId}::uuid,
-      n.numero,
-      'MEMBRO_UAZAPI',
-      'PENDENTE',
-      ${JSON.stringify({ texto: opts.texto, foto_capa: opts.foto || null })}::jsonb
-    FROM unnest(${JSON.stringify(numeros)}::text[]) AS n(numero)
+    VALUES ${numeros.map((n) => `('${campanhaId}'::uuid, '${n}', 'MEMBRO_UAZAPI', 'PENDENTE', '${valoresJson}'::jsonb)`).join(",")}
     ON CONFLICT DO NOTHING
-  `);
+  `));
 
   await d.execute(sql`
     UPDATE whatsapp_campanhas SET total_destinatarios = (
