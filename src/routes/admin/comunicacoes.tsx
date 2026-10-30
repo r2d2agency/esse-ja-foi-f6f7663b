@@ -5777,7 +5777,38 @@ function ComunicacoesPage() {
                     </div>
                   )}
 
-                  {automacaoStep === 3 && novaAutomacao.publico !== "GRUPOS_UAZAPI" && (
+                  {automacaoStep === 3 && novaAutomacao.publico === "UAZAPI_NOVO_MEMBRO" && (
+                    <div className="space-y-4">
+                      <Label>Mensagem de boas-vindas (texto livre, sem template Meta)</Label>
+                      <Textarea
+                        value={novaAutomacao.regras?.texto || ""}
+                        onChange={(e) =>
+                          setNovaAutomacao({
+                            ...novaAutomacao,
+                            regras: { ...(novaAutomacao.regras || {}), texto: e.target.value },
+                          })
+                        }
+                        placeholder="Olá {{membro.numero}}! Seja bem-vindo ao grupo..."
+                        rows={4}
+                      />
+                      <Label>URL da mídia (opcional)</Label>
+                      <Input
+                        value={novaAutomacao.regras?.midia_url || ""}
+                        onChange={(e) =>
+                          setNovaAutomacao({
+                            ...novaAutomacao,
+                            regras: { ...(novaAutomacao.regras || {}), midia_url: e.target.value },
+                          })
+                        }
+                        placeholder="https://.../imagem.jpg"
+                      />
+                      <Button variant="secondary" size="sm" onClick={() => setAutomacaoStep(4)}>
+                        Continuar
+                      </Button>
+                    </div>
+                  )}
+
+                  {automacaoStep === 3 && novaAutomacao.publico !== "GRUPOS_UAZAPI" && novaAutomacao.publico !== "UAZAPI_NOVO_MEMBRO" && (
                     <div className="space-y-4">
                       <Label>Escolha o Template</Label>
                       <div className="grid grid-cols-1 gap-3">
