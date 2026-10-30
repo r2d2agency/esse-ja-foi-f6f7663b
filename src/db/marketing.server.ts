@@ -1072,17 +1072,28 @@ export async function obterInfoGrupoUazapi(groupjid: string) {
 
 export async function listarMembrosGrupoUazapi(groupjid: string) {
   const info: any = await obterInfoGrupoUazapi(groupjid);
-  const participantes = Array.isArray(info?.Participants)
-    ? info.Participants
-    : Array.isArray(info?.participants)
-      ? info.participants
-      : [];
-  return participantes.map((p: any) => ({
-    id: String(p?.id || p?.jid || p?.phone || p?.number || ""),
-    numero: String(p?.phone || p?.number || p?.id || "").replace(/\D/g, ""),
-    nome: String(p?.name || p?.pushName || p?.notify || ""),
-    admin: Boolean(p?.admin || p?.isAdmin),
-  })).filter((m: any) => m.numero);
+  // A Uazapi pode devolver participantes em `participant_profiles` (com jid/pn)
+  // ou em `Participants` (legado). Preferimos participant_profiles.
+  const profiles = Array.isArray(info?.participant_profiles)
+    ? info.participant_profiles
+    : Array.isArray(info?.ParticipantProfiles)
+      ? info.ParticipantProfiles
+      : null;
+  const participantes =
+    profiles ||
+    (Array.isArray(info?.Participants) ? info.Participants : Array.isArray(info?.participants) ? info.participants : []);
+
+  return participantes
+    .map((p: any) => {
+      const jid = String(p?.pn || p?.jid || p?.id || p?.phone || p?.number || "");
+      const numero = jid.replace(/\D/g, "");
+      const nome = String(p?.display_name || p?.name || p?.pushName || p?.notify || "").trim();
+      const admin = Boolean(
+        p?.is_super_admin || p?.is_admin || p?.admin || p?.isAdmin,
+      );
+      return { id: jid, numero, nome, admin };
+    })
+    .filter((m: any) => m.numero);
 }
 /**
  * Se a privacidade bloquear, o retorno traz AddRequest para convite individual.
