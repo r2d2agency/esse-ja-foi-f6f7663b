@@ -1084,6 +1084,7 @@ export async function listarMembrosGrupoUazapi(groupjid: string) {
     admin: Boolean(p?.admin || p?.isAdmin),
   })).filter((m: any) => m.numero);
 }
+/**
  * Se a privacidade bloquear, o retorno traz AddRequest para convite individual.
  */
 export async function adicionarParticipantesGrupoUazapi(groupjid: string, participantes: string[]) {

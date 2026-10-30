@@ -162,7 +162,7 @@ async function enviarParaGruposUazapi(auto: any, contexto: any) {
     enviar_agora: true,
   });
 
-  await db.execute(sql`
+  await db!.execute(sql`
     UPDATE whatsapp_automacoes SET ultima_execucao = now() WHERE id = ${auto.id}::uuid
   `);
 }
@@ -231,7 +231,7 @@ async function enviarParaNovoMembroUazapi(auto: any, contexto: any) {
     } else if (texto) {
       await enviarTextoUazapi(numero, texto);
     }
-    await db.execute(sql`
+    await db!.execute(sql`
       UPDATE whatsapp_automacoes SET total_enviados = total_enviados + 1, ultima_execucao = now() WHERE id = ${auto.id}::uuid
     `);
   } catch (e: any) {

@@ -390,6 +390,19 @@ export const listarGruposUazapiFn = createServerFn({ method: "POST" }).handler(a
   }
 });
 
+export const listarMembrosGrupoUazapiFn = createServerFn({ method: "POST" })
+  .inputValidator((d) => z.object({ groupjid: z.string().min(1) }).parse(d))
+  .handler(async ({ data }) => {
+    try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
+      const { listarMembrosGrupoUazapi } = await import("@/db/marketing.server");
+      return { ok: true as const, data: await listarMembrosGrupoUazapi(data.groupjid) };
+    } catch (e: any) {
+      return { ok: false as const, message: e?.message || "Falha ao listar membros." };
+    }
+  });
+
 export const obterInfoGrupoUazapiFn = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ groupjid: z.string().min(1) }).parse(d))
   .handler(async ({ data }) => {

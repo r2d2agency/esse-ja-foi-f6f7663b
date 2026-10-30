@@ -1000,6 +1000,31 @@ export const criarCampanhaFn = createServerFn({ method: "POST" })
     return db.criarCampanha(data, userId);
   });
 
+export const criarCampanhaEnvioMembrosUazapiFn = createServerFn({ method: "POST" })
+  .inputValidator((d) =>
+    z.object({
+      nome: z.string().min(1),
+      numeros: z.array(z.string()).min(1),
+      texto: z.string(),
+      foto: z.string().optional().nullable(),
+      janela_inicio: z.string().optional(),
+      janela_fim: z.string().optional(),
+      intervalo_minutos: z.number().int().optional(),
+      enviar_agora: z.boolean().optional(),
+    }).parse(d)
+  )
+  .handler(async ({ data }) => {
+    try {
+      const { adminDaSessao } = await import("@/lib/sessao.server");
+      await adminDaSessao();
+      const { criarCampanhaEnvioMembrosUazapi } = await import("@/db/disparo-motor.server");
+      const id = await criarCampanhaEnvioMembrosUazapi(data);
+      return { ok: true as const, id };
+    } catch (e: any) {
+      return { ok: false as const, message: e?.message || "Falha ao criar campanha." };
+    }
+  });
+
 export const getCampanhaDetalhesFn = createServerFn({ method: "GET" })
   .validator((id: string) => z.string().uuid().parse(id))
   .handler(async ({ data: id }) => {

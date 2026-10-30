@@ -85,6 +85,7 @@ import {
   estimarPublicoFn,
   criarCampanhaFn,
   criarCampanhaDisparoFn,
+  criarCampanhaEnvioMembrosUazapiFn,
   alterarStatusCampanhaFn,
   atualizarCampanhaFn,
   excluirCampanhaFn,
@@ -99,7 +100,7 @@ import {
   dispararCampanhaAgoraFn,
   agendarDisparoCampanhaFn,
 } from "@/lib/comunicacoes.functions";
-import { listarMarketingTagsFn, listarGruposUazapiFn, getUazapiConfigFn } from "@/lib/marketing.functions";
+import { listarMarketingTagsFn, listarGruposUazapiFn, getUazapiConfigFn, listarMembrosGrupoUazapiFn } from "@/lib/marketing.functions";
 import {
   normalizarStatusTemplate,
   rotuloStatusTemplate,
@@ -513,6 +514,8 @@ function ComunicacoesPage() {
   const getExecucoes = useServerFn(getExecucoesAutomacaoFn);
   const listarTagsMarketing = useServerFn(listarMarketingTagsFn);
   const listarGruposUazapi = useServerFn(listarGruposUazapiFn);
+  const listarMembrosGrupo = useServerFn(listarMembrosGrupoUazapiFn);
+  const criarCampanhaMembros = useServerFn(criarCampanhaEnvioMembrosUazapiFn);
   const obterConfigUazapi = useServerFn(getUazapiConfigFn);
 
   const [activeTab, setActiveTab] = useState("campanhas");
@@ -5604,6 +5607,9 @@ function ComunicacoesPage() {
         </TabsContent>
 
         {/* Automações */}
+        <TabsContent value="membros-grupo" className="mt-6 space-y-4">
+          {/* placeholder mínimo para não quebrar; UI completa a seguir */}
+        </TabsContent>
         <TabsContent value="automacoes" className="mt-6 space-y-4">
           <div className="flex justify-between items-center">
             <div>
