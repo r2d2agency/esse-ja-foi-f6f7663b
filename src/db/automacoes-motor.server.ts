@@ -8,7 +8,8 @@ export const EVENT_VARIABLES: Record<string, string[]> = {
   'VEICULO_PUBLICADO': ['comprador.nome', 'veiculo.marca', 'veiculo.modelo', 'veiculo.ano', 'anuncio.url', 'veiculo.foto_url'],
   'LANCE_SUPERADO': ['comprador.nome', 'veiculo.marca', 'veiculo.modelo', 'lance.valor_atual', 'leilao.url'],
   'VISTORIA_AGENDADA': ['vendedor.nome', 'veiculo.placa', 'vistoria.data', 'vistoria.horario', 'vistoria.local'],
-  'PAGAMENTO_CONFIRMADO': ['comprador.nome', 'negociacao.codigo', 'veiculo.modelo', 'negociacao.valor']
+  'PAGAMENTO_CONFIRMADO': ['comprador.nome', 'negociacao.codigo', 'veiculo.modelo', 'negociacao.valor'],
+  'GRUPO_MEMBRO_ENTROU': ['grupo.id', 'membro.numero']
 };
 
 export async function processarEventoSistema(evento: string, contexto: any) {
@@ -27,10 +28,19 @@ export async function processarEventoSistema(evento: string, contexto: any) {
     const rows = rowsOf(automacoes) || [];
 
     for (const auto of rows) {
+      // Ramo UAZAPI_NOVO_MEMBRO: envia texto + mídia para o número do
+      // participante que acabou de entrar no grupo, via Uazapi (canal não-oficial,
+      // sem necessidade de template aprovado pela Meta).
+      if (auto.publico === "UAZAPI_NOVO_MEMBRO") {
+        try {
+          await enviarParaNovoMembroUazapi(auto, contexto);
+        } catch (e: any) {
+          console.error("[Automacao Motor] falha no ramo UAZAPI_NOVO_MEMBRO:", e?.message || e);
+        }
+        continue;
+      }
+
       // Ramo GRUPOS_UAZAPI: veículo publicado na vitrine vai para os grupos da
-      // Uazapi com texto + foto. A Meta não aceita template para @g.us, então
-      // o envio é enfileirado como uma campanha Uazapi (o motor já respeita a
-      // janela 08-18 e o intervalo).
       if (auto.publico === "GRUPOS_UAZAPI") {
         try {
           await enviarParaGruposUazapi(auto, contexto);
@@ -204,7 +214,30 @@ function resolveOrigem(origem: string, contexto: any) {
   return String(current || '');
 }
 
-// O driver postgres-js devolve as linhas como array (sem .rows).
+async function enviarParaNovoMembroUazapi(auto: any, contexto: any) {
+  const { enviarTextoUazapi, enviarMidiaUazapi } = await import("./marketing.server");
+  const numero = String(contexto?.participante_numero || "").replace(/\D/g, "");
+  if (!numero) {
+    console.warn(`[Automacao Motor] UAZAPI_NOVO_MEMBRO sem participante_numero.`);
+    return;
+  }
+
+  const texto = String(auto.template_conteudo || auto?.regras?.texto || "").trim();
+  const midiaUrl = String(auto?.regras?.midia_url || "").trim();
+
+  try {
+    if (midiaUrl) {
+      await enviarMidiaUazapi(numero, midiaUrl, texto);
+    } else if (texto) {
+      await enviarTextoUazapi(numero, texto);
+    }
+    await db.execute(sql`
+      UPDATE whatsapp_automacoes SET total_enviados = total_enviados + 1, ultima_execucao = now() WHERE id = ${auto.id}::uuid
+    `);
+  } catch (e: any) {
+    console.error("[Automacao Motor] falha ao enviar para novo membro:", e?.message || e);
+  }
+}
 function rowsOf(res: any): any[] {
   if (!res) return [];
   if (Array.isArray(res)) return res;

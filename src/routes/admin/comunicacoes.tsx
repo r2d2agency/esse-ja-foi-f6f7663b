@@ -951,6 +951,25 @@ function ComunicacoesPage() {
 
   const idsContatosFiltrados = contatosFiltrados.map((c: any) => c.id);
 
+  const totalEfetivoMeta =
+    contatosSelecionados.length > 0
+      ? contatosSelecionados.length
+      : tagsSelecionadas.length
+        ? (estimativaTags?.total ?? estimativa.total)
+        : estimativa.total;
+  const elegiveisEfetivoMeta =
+    contatosSelecionados.length > 0
+      ? contatosSelecionados.length
+      : tagsSelecionadas.length
+        ? (estimativaTags?.elegiveis ?? estimativa.elegiveis)
+        : estimativa.elegiveis;
+  const naoElegiveisEfetivoMeta =
+    contatosSelecionados.length > 0
+      ? 0
+      : tagsSelecionadas.length
+        ? (estimativaTags?.nao_elegiveis ?? estimativa.nao_elegiveis)
+        : estimativa.nao_elegiveis;
+
   const alternarContato = (id: string) => {
     setContatosSelecionados((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
@@ -2600,14 +2619,18 @@ function ComunicacoesPage() {
                           <Users className="w-5 h-5 text-slate-400" />
                           <div>
                             <p className="text-sm font-semibold">
-                              {tagsSelecionadas.length
-                                ? `${estimativaTags?.total ?? "…"} contatos com a etiqueta`
-                                : `${estimativa.total} compradores encontrados`}
+                              {contatosSelecionados.length
+                                ? `${contatosSelecionados.length} contatos selecionados`
+                                : tagsSelecionadas.length
+                                  ? `${estimativaTags?.total ?? "…"} contatos com a etiqueta`
+                                  : `${estimativa.total} compradores encontrados`}
                             </p>
                             <p className="text-xs text-muted-foreground">
-                              {tagsSelecionadas.length
-                                ? `${estimativaTags?.nao_elegiveis ?? "…"} não elegíveis (sem WhatsApp ou número inválido)`
-                                : `${estimativa.nao_elegiveis} não elegíveis (ausência de WhatsApp ou desativado)`}
+                              {contatosSelecionados.length
+                                ? "Usando apenas os contatos marcados nesta campanha"
+                                : tagsSelecionadas.length
+                                  ? `${estimativaTags?.nao_elegiveis ?? "…"} não elegíveis (sem WhatsApp ou número inválido)`
+                                  : `${estimativa.nao_elegiveis} não elegíveis (ausência de WhatsApp ou desativado)`}
                             </p>
                           </div>
                         </div>
@@ -3019,11 +3042,13 @@ function ComunicacoesPage() {
                         </div>
                         <p className="text-[11px] text-muted-foreground">
                           Com {novaCampanha.intervalo_minutos} min entre mensagens,{" "}
-                          {estimativa.total} contatos levam cerca de{" "}
+                          {contatosSelecionados.length || (tagsSelecionadas.length ? (estimativaTags?.total ?? estimativa.total) : estimativa.total)} contatos levam cerca de{" "}
                           <strong>
                             {Math.max(
                               1,
-                              Math.ceil((estimativa.total * novaCampanha.intervalo_minutos) / 60),
+                              Math.ceil(
+                                ((contatosSelecionados.length || (tagsSelecionadas.length ? (estimativaTags?.total ?? estimativa.total) : estimativa.total)) * novaCampanha.intervalo_minutos) / 60,
+                              ),
                             )}{" "}
                             h
                           </strong>{" "}
@@ -5609,6 +5634,11 @@ function ComunicacoesPage() {
                             label: "Pagamento Confirmado",
                             icon: CheckCircle2,
                           },
+                          {
+                            id: "GRUPO_MEMBRO_ENTROU",
+                            label: "Novo Membro no Grupo (Uazapi)",
+                            icon: Users,
+                          },
                         ].map((ev) => (
                           <Card
                             key={ev.id}
@@ -5653,6 +5683,9 @@ function ComunicacoesPage() {
                         <SelectContent>
                           {novaAutomacao.evento === "VEICULO_PUBLICADO" && (
                             <SelectItem value="GRUPOS_UAZAPI">Grupos WhatsApp</SelectItem>
+                          )}
+                          {novaAutomacao.evento === "GRUPO_MEMBRO_ENTROU" && (
+                            <SelectItem value="UAZAPI_NOVO_MEMBRO">Novo Membro (Uazapi)</SelectItem>
                           )}
                           <SelectItem value="VENDEDOR">Vendedor</SelectItem>
                           <SelectItem value="COMPRADOR_VENCEDOR">Comprador Vencedor</SelectItem>
