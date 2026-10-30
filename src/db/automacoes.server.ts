@@ -31,7 +31,27 @@ export async function ensureAutomacoesSchema(silent = true) {
       );
     `);
 
-    // 1.1 Referência de template: SET NULL ao excluir.
+    // 1.2 Garantir que o CHECK de evento/publico aceite os novos valores.
+    // A tabela pode ter sido criada antes com CHECK restrito; CREATE TABLE
+    // IF NOT EXISTS não atualiza. Removemos qualquer CHECK antigo em `evento`
+    // e `publico` e recriamos aberto (text livre), para não bloquear novos
+    // eventos (GRUPO_MEMBRO_ENTROU) nem públicos (UAZAPI_NOVO_MEMBRO).
+    try {
+      await d.execute(sql`
+        DO $$
+        DECLARE c record;
+        BEGIN
+          FOR c IN
+            SELECT conname FROM pg_constraint
+            WHERE conrelid = 'whatsapp_automacoes'::regclass AND contype = 'c'
+          LOOP
+            EXECUTE format('ALTER TABLE whatsapp_automacoes DROP CONSTRAINT %I', c.conname);
+          END LOOP;
+        END $$;
+      `);
+    } catch (e) {
+      if (process.env['NODE_ENV'] === 'development') console.error("[automacoes] drop check:", e);
+    }
     // A FK original não tinha ação de delete, então excluir um template usado
     // por uma automação quebrava com violação de chave estrangeira (SQLSTATE
     // 23503). Recria a constraint de forma idempotente.
