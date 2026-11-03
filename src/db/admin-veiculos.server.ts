@@ -23,6 +23,8 @@ export async function ensureVeiculosAdminSchema() {
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS fotos_processadas jsonb;
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS fotos_camadas jsonb;
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS fotos_legendas jsonb;
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS fotos_comprador jsonb;
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS fotos_comprador_legendas jsonb;
   `);
 
   pronto = true;

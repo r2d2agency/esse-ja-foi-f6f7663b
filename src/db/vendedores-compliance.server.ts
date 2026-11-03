@@ -96,10 +96,14 @@ export function calcularProgressoVendedor(p: any) {
   // A CNH não é obrigatória: o RG é documento de identidade válido e há
   // vendedores que não possuem CNH. Aceitar qualquer um dos dois libera o
   // cadastro sem abrir mão da confirmação de identidade.
-  const identidadeFrente = p.documento_cnh_url || p.doc_cnh_frente || p.cnh_url
-    || p.documento_rg_url || p.rg_url;
-  const identidadeVerso = p.documento_cnh_verso_url || p.doc_cnh_verso || p.cnh_verso_url
-    || p.documento_rg_verso_url || p.rg_verso_url;
+  const temCnh = !!(p.documento_cnh_url || p.doc_cnh_frente || p.cnh_url);
+  const temCnhVerso = !!(p.documento_cnh_verso_url || p.doc_cnh_verso || p.cnh_verso_url);
+  const temRg = !!(p.documento_rg_url || p.rg_url);
+  const temRgVerso = !!(p.documento_rg_verso_url || p.rg_verso_url);
+
+  const identidadeFrente = temCnh || temRg;
+  const identidadeVerso = temCnh ? temCnhVerso : (temRg ? temRgVerso : false);
+
   if (identidadeFrente && identidadeVerso &&
       (p.documento_crlv_url || p.doc_crlv || p.crlv_url)) {
     etapas.documentos = "CONCLUIDO";
@@ -403,13 +407,29 @@ export async function aprovarVendedorCompliance(vendedorId: string, autorId: str
   if (!perfil) throw new RegraNegocioError("Vendedor não encontrado.", 404);
 
   const progresso = calcularProgressoVendedor(perfil);
+  // Comprovante de endereço não é mais obrigatório
+  const temCnh = !!(perfil.documento_cnh_url || perfil.doc_cnh_frente || perfil.cnh_url);
+  const temCnhVerso = !!(perfil.documento_cnh_verso_url || perfil.doc_cnh_verso || perfil.cnh_verso_url);
+  const temRg = !!(perfil.documento_rg_url || perfil.rg_url);
+  const temRgVerso = !!(perfil.documento_rg_verso_url || perfil.rg_verso_url);
+
+  const identidadeFrenteAprovada = temCnh
+    ? perfil.documento_cnh_status === 'APROVADO'
+    : temRg
+      ? perfil.documento_rg_status === 'APROVADO'
+      : false;
+  const identidadeVersoAprovada = temCnh
+    ? perfil.documento_cnh_verso_status === 'APROVADO'
+    : temRg
+      ? perfil.documento_rg_verso_status === 'APROVADO'
+      : false;
+
   const documentosAprovados = [
-    perfil.documento_cnh_status,
-    perfil.documento_cnh_verso_status,
-    perfil.documento_crlv_status,
-    perfil.documento_comprovante_endereco_status,
-    perfil.documento_selfie_status,
-  ].every((status) => status === 'APROVADO');
+    identidadeFrenteAprovada,
+    identidadeVersoAprovada,
+    perfil.documento_crlv_status === 'APROVADO',
+    perfil.documento_selfie_status === 'APROVADO',
+  ].every(Boolean);
 
   if (!progresso.isCompleto || !documentosAprovados) {
     throw new RegraNegocioError("Só é possível aprovar o vendedor com onboarding completo e todos os documentos aprovados.", 400);

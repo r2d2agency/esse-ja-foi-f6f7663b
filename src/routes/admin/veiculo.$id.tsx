@@ -489,6 +489,20 @@ function DetalheVeiculoAdminPage() {
     return [];
   })();
 
+  const fotosComprador = (() => {
+    const raw = (v as any).fotos_comprador;
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  })();
+
   const fotosProcessadas = (() => {
     if (Array.isArray(v.fotos_processadas)) return v.fotos_processadas;
     if (typeof v.fotos_processadas === 'string') {
@@ -613,7 +627,7 @@ function DetalheVeiculoAdminPage() {
               className="h-9 w-full sm:w-auto bg-teal-600 hover:bg-teal-700 text-white font-bold"
               onClick={() => navigate({ to: "/admin/vistorias", search: { tab: "aguardando", veiculoId: id } } as any)}
             >
-              <Calendar className="mr-2 h-4 w-4 shrink-0" /> <span className="truncate">Agendar vistoria</span>
+              <Calendar className="mr-2 h-4 w-4 shrink-0" /> <span className="truncate">Agendar análise</span>
             </Button>
           ) : (
             <Button
@@ -961,14 +975,104 @@ function DetalheVeiculoAdminPage() {
               </TabsContent>
 
               <TabsContent value="fotos" className="mt-0 space-y-6">
-                <p className="text-xs font-black uppercase tracking-widest text-slate-400">
-                  Fotos enviadas pelo vendedor
-                </p>
-                <p className="text-xs text-slate-400">
-                  Clique na varinha para posicionar manualmente a logo/marca d'água sobre a placa — você pode
-                  arrastar, redimensionar, trocar entre a logo colorida ou branca, e usar "Detectar placa (IA)"
-                  como ponto de partida.
-                </p>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-widest text-slate-400">
+                        Fotos do comprador
+                      </p>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Sessão geral para visualizar e enviar fotos do comprador. Visível apenas para administradores.
+                      </p>
+                    </div>
+                    {(user?.role === 'admin') && (
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        id="upload-fotos-comprador"
+                        onChange={async (e) => {
+                          const files = Array.from(e.target.files || []);
+                          if (!files.length) return;
+                          const toastId = toast.loading(`Enviando ${files.length} foto(s)...`);
+                          try {
+                            const novasFotos: string[] = [];
+                            for (const file of files) {
+                              const formData = new FormData();
+                              formData.append('file', file);
+                              const resUpload = await fetch('/api/public/upload', {
+                                method: 'POST',
+                                body: formData,
+                              });
+                              if (!resUpload.ok) throw new Error('Falha ao fazer upload');
+                              const json = await resUpload.json();
+                              if (json?.url) novasFotos.push(json.url);
+                            }
+                            if (novasFotos.length === 0) throw new Error('Nenhuma foto enviada');
+                            const listaAtual = Array.isArray((v as any).fotos_comprador)
+                              ? (v as any).fotos_comprador
+                              : typeof (v as any).fotos_comprador === 'string'
+                                ? (() => { try { const p = JSON.parse((v as any).fotos_comprador); return Array.isArray(p) ? p : []; } catch { return []; } })()
+                                : [];
+                            const listaNova = [...listaAtual, ...novasFotos];
+                            const { salvarConfiguracaoLeilao: salvarCfg } = await import('@/lib/leilao.functions');
+                            // Usar função genérica via API indireta - salvar direto no veiculo
+                            const { db } = await import('@/db/index');
+                            const { sql } = await import('drizzle-orm');
+                            await (db as any)?.execute(sql`UPDATE veiculos SET fotos_comprador = ${JSON.stringify(listaNova)}::jsonb, atualizado_em = now() WHERE id = ${id}::uuid`);
+                            toast.success(`${novasFotos.length} foto(s) adicionada(s)`, { id: toastId });
+                            await refetch();
+                          } catch (err: any) {
+                            toast.error(err?.message || 'Erro ao enviar fotos do comprador', { id: toastId });
+                          } finally {
+                            e.target.value = '';
+                          }
+                        }}
+                      />
+                    )}
+                    {(user?.role === 'admin') && (
+                      <Button
+                        onClick={() => document.getElementById('upload-fotos-comprador')?.click()}
+                        className="bg-slate-900 hover:bg-slate-800 text-white"
+                      >
+                        Adicionar fotos
+                      </Button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    {fotosComprador.length > 0 ? fotosComprador.map((foto: string, idx: number) => (
+                      <div key={idx} className="aspect-square bg-white border border-slate-200 rounded-xl overflow-hidden group relative">
+                        <img src={foto} alt={`Foto do comprador ${idx+1}`} className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 flex items-center justify-center gap-2 bg-slate-900/0 transition-colors group-hover:bg-slate-900/40">
+                          <Button
+                            size="icon"
+                            variant="secondary"
+                            className="h-9 w-9 rounded-full opacity-100 shadow-lg sm:h-8 sm:w-8 sm:opacity-0 sm:shadow-none sm:group-hover:opacity-100"
+                            onClick={() => setSelectedPreview({ url: foto, label: `Foto do comprador ${idx + 1}` })}
+                          >
+                            <Maximize2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    )) : (
+                      <div className="col-span-full text-center py-8 text-slate-400 italic text-sm border border-dashed border-slate-200 rounded-xl">
+                        Nenhuma foto do comprador enviada.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-200 pt-6">
+                  <p className="text-xs font-black uppercase tracking-widest text-slate-400">
+                    Fotos enviadas pelo vendedor
+                  </p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Clique na varinha para posicionar manualmente a logo/marca d'água sobre a placa — você pode
+                    arrastar, redimensionar, trocar entre a logo colorida ou branca, e usar "Detectar placa (IA)"
+                    como ponto de partida.
+                  </p>
+                </div>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                   {fotos.length > 0 ? fotos.map((foto: string, idx: number) => (
                     <div key={idx} className="aspect-square bg-white border border-slate-200 rounded-xl overflow-hidden group relative">

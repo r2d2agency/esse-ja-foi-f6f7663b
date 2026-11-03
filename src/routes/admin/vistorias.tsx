@@ -1708,7 +1708,7 @@ function VistoriasAdminPage() {
       <Dialog open={agendaOpen} onOpenChange={(open) => (open ? setAgendaOpen(true) : fecharAgenda())}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{remarcacao ? "Remarcar vistoria" : "Agendar vistoria"}</DialogTitle>
+            <DialogTitle>{remarcacao ? "Remarcar análise" : "Agendar análise"}</DialogTitle>
             <DialogDescription>
               {remarcacao
                 ? `Remarcação de ${remarcacao.dataOriginal ?? "-"} às ${remarcacao.horarioOriginal ?? "-"}. Selecione qualquer nova data e horário disponível.`

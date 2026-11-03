@@ -113,11 +113,15 @@ function DetalheVendedorPage() {
     : perfil.status_compliance === 'PENDENCIA' || perfil.status_compliance === 'REPROVADO' || perfil.status_compliance === 'BLOQUEADO'
       ? "bg-red-600"
       : "bg-amber-500";
+  const temCnh = !!(perfil.documento_cnh_url || perfil.doc_cnh_frente || perfil.cnh_url);
+  const temRg = !!(perfil.documento_rg_url || perfil.rg_url);
+
   const documentosPendentes = [
-    perfil.documento_cnh_status !== 'APROVADO' ? 'CNH frente' : null,
-    perfil.documento_cnh_verso_status !== 'APROVADO' ? 'CNH verso' : null,
+    temCnh && perfil.documento_cnh_status !== 'APROVADO' ? 'CNH frente' : null,
+    temCnh && perfil.documento_cnh_verso_status !== 'APROVADO' ? 'CNH verso' : null,
+    !temCnh && temRg && perfil.documento_rg_status !== 'APROVADO' ? 'RG frente' : null,
+    !temCnh && temRg && perfil.documento_rg_verso_status !== 'APROVADO' ? 'RG verso' : null,
     perfil.documento_crlv_status !== 'APROVADO' ? 'CRLV' : null,
-    perfil.documento_comprovante_endereco_status !== 'APROVADO' ? 'Comprovante de residência' : null,
     perfil.documento_selfie_status !== 'APROVADO' ? 'Selfie com documento' : null,
   ].filter(Boolean) as string[];
 

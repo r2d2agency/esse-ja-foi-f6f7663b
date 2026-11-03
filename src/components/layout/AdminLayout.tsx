@@ -118,17 +118,10 @@ const MENU_SECTIONS: MenuSection[] = [
         activePrefixes: ["/admin/compradores", "/admin/comprador"],
         description: "Pré-aprovação de compra",
       },
-      {
-        label: "Contratos",
-        icon: FileText,
-        to: "/admin/contratos",
-        activePrefixes: ["/admin/contratos", "/admin/contrato"],
-        description: "Assinaturas pendentes",
-      },
     ],
   },
   {
-    label: "2. Vistoria",
+    label: "2. Análise",
     items: [
       {
         label: "Fila e Agenda",

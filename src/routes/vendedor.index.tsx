@@ -10,7 +10,6 @@ import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { StatusBadge, statusVeiculo } from '@/components/vendedor/StatusBadge';
 import { ProgressoCadastro, montarEtapas, percentual } from '@/components/vendedor/ProgressoCadastro';
-import { CardContratoVendedor } from '@/components/contratos/CardContratoVendedor';
 import { CardVistoriaVendedor } from '@/components/vendedor/CardVistoriaVendedor';
 import { CardOfertaVencedora } from '@/components/negociacao/CardOfertaVencedora';
 import { CardPropostaVendedor } from '@/components/vendedor/CardPropostaVendedor';
