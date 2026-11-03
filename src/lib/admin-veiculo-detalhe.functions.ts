@@ -156,6 +156,29 @@ export const atualizarStatusAnaliseFn = createServerFn({ method: "POST" })
  * Aprova o veículo direto para publicação, pulando a etapa de vistoria —
  * usado quando a vistoria passou a ser feita só depois da venda.
  */
+export const salvarFotosCompradorFn = createServerFn({ method: "POST" })
+  .validator(z.object({
+    veiculoId: z.string().uuid(),
+    fotos: z.array(z.string().min(1)).max(200),
+  }))
+  .handler(async ({ data }) => {
+    const { db } = await import("@/db/index");
+    const { sql } = await import("drizzle-orm");
+    const { ensureVeiculosAdminSchema } = await import("@/db/admin-veiculos.server");
+
+    if (!db) throw new Error("Banco de dados indisponível");
+    await ensureVeiculosAdminSchema();
+
+    await db.execute(sql`
+      UPDATE veiculos
+      SET fotos_comprador = ${JSON.stringify(data.fotos)}::jsonb,
+          atualizado_em = now()
+      WHERE id = ${data.veiculoId}::uuid
+    `);
+
+    return { ok: true as const };
+  });
+
 export const aprovarParaPublicacaoFn = createServerFn({ method: "POST" })
   .validator(z.object({
     veiculoId: z.string().uuid(),

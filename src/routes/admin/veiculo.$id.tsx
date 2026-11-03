@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { getVeiculoDetalheAdminFn, assumirAnaliseVeiculoFn, atualizarStatusAnaliseFn, atualizarStatusDocumentoVeiculoFn, aprovarParaPublicacaoFn } from "@/lib/admin-veiculo-detalhe.functions";
+import { getVeiculoDetalheAdminFn, assumirAnaliseVeiculoFn, atualizarStatusAnaliseFn, atualizarStatusDocumentoVeiculoFn, aprovarParaPublicacaoFn, salvarFotosCompradorFn } from "@/lib/admin-veiculo-detalhe.functions";
 import { salvarVeiculoFn } from "@/lib/cadastro.functions";
 import { obterConsultaRegistradaFn, consultarDesvalorizacaoFipeFn, listarConsultasVeiculoFn } from "@/lib/consulta-veicular.functions";
 import { salvarConfiguracaoLeilao } from "@/lib/leilao.functions";
@@ -152,6 +152,7 @@ function DetalheVeiculoAdminPage() {
   const atualizarStatus = useServerFn(atualizarStatusAnaliseFn);
   const atualizarStatusDoc = useServerFn(atualizarStatusDocumentoVeiculoFn);
   const aprovarPublicacao = useServerFn(aprovarParaPublicacaoFn);
+  const salvarFotosComprador = useServerFn(salvarFotosCompradorFn);
   const salvarVeiculo = useServerFn(salvarVeiculoFn);
   const consultarDesvalorizacaoFipe = useServerFn(consultarDesvalorizacaoFipeFn);
   const listarConsultasFipe = useServerFn(listarConsultasVeiculoFn);
@@ -985,7 +986,7 @@ function DetalheVeiculoAdminPage() {
                         Sessão geral para visualizar e enviar fotos do comprador. Visível apenas para administradores.
                       </p>
                     </div>
-                    {(user?.role === 'admin') && (
+                    {(user?.role === 'admin' || user?.protegido) && (
                       <input
                         type="file"
                         accept="image/*"
@@ -1016,11 +1017,8 @@ function DetalheVeiculoAdminPage() {
                                 ? (() => { try { const p = JSON.parse((v as any).fotos_comprador); return Array.isArray(p) ? p : []; } catch { return []; } })()
                                 : [];
                             const listaNova = [...listaAtual, ...novasFotos];
-                            const { salvarConfiguracaoLeilao: salvarCfg } = await import('@/lib/leilao.functions');
-                            // Usar função genérica via API indireta - salvar direto no veiculo
-                            const { db } = await import('@/db/index');
-                            const { sql } = await import('drizzle-orm');
-                            await (db as any)?.execute(sql`UPDATE veiculos SET fotos_comprador = ${JSON.stringify(listaNova)}::jsonb, atualizado_em = now() WHERE id = ${id}::uuid`);
+                            const resp = await salvarFotosComprador({ data: { veiculoId: id, fotos: listaNova } });
+                            if (!resp?.ok) throw new Error("Falha ao salvar as fotos.");
                             toast.success(`${novasFotos.length} foto(s) adicionada(s)`, { id: toastId });
                             await refetch();
                           } catch (err: any) {
@@ -1031,7 +1029,7 @@ function DetalheVeiculoAdminPage() {
                         }}
                       />
                     )}
-                    {(user?.role === 'admin') && (
+                    {(user?.role === 'admin' || user?.protegido) && (
                       <Button
                         onClick={() => document.getElementById('upload-fotos-comprador')?.click()}
                         className="bg-slate-900 hover:bg-slate-800 text-white"
