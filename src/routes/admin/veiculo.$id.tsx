@@ -690,7 +690,9 @@ function DetalheVeiculoAdminPage() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
           <div className="bg-white border-b border-slate-200 px-3 sm:px-6 py-1 sm:py-0">
             <TabsList className="flex-wrap justify-start bg-transparent border-none h-auto sm:h-12 gap-x-4 gap-y-2 sm:gap-6 p-0">
-              {["Resumo", "Dados", "Documentação", "Condição", "Fotos", "Valores", "Análise", "Publicação", "Laudos", "Histórico"].map((tab) => (
+              {(user?.role === 'admin' || user?.protegido
+                ? ["Resumo", "Dados", "Documentação", "Condição", "Fotos", "Valores", "Análise", "Publicação", "Laudos", "Histórico"]
+                : ["Resumo", "Dados", "Documentação", "Condição", "Fotos", "Valores", "Análise", "Laudos", "Histórico"]).map((tab) => (
                 <TabsTrigger 
                   key={tab} 
                   value={tab.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")}
@@ -986,7 +988,7 @@ function DetalheVeiculoAdminPage() {
                         Sessão geral para visualizar e enviar fotos do comprador. Visível apenas para administradores.
                       </p>
                     </div>
-                    {(user?.role === 'admin' || user?.protegido) && (
+                    {(user?.role === 'admin' || user?.role === 'operacao' || user?.protegido) && (
                       <input
                         type="file"
                         accept="image/*"
@@ -1011,13 +1013,7 @@ function DetalheVeiculoAdminPage() {
                               if (json?.url) novasFotos.push(json.url);
                             }
                             if (novasFotos.length === 0) throw new Error('Nenhuma foto enviada');
-                            const listaAtual = Array.isArray((v as any).fotos_comprador)
-                              ? (v as any).fotos_comprador
-                              : typeof (v as any).fotos_comprador === 'string'
-                                ? (() => { try { const p = JSON.parse((v as any).fotos_comprador); return Array.isArray(p) ? p : []; } catch { return []; } })()
-                                : [];
-                            const listaNova = [...listaAtual, ...novasFotos];
-                            const resp = await salvarFotosComprador({ data: { veiculoId: id, fotos: listaNova } });
+                            const resp = await salvarFotosComprador({ data: { veiculoId: id, fotos: [...fotosComprador, ...novasFotos] } });
                             if (!resp?.ok) throw new Error("Falha ao salvar as fotos.");
                             toast.success(`${novasFotos.length} foto(s) adicionada(s)`, { id: toastId });
                             await refetch();
@@ -1029,8 +1025,9 @@ function DetalheVeiculoAdminPage() {
                         }}
                       />
                     )}
-                    {(user?.role === 'admin' || user?.protegido) && (
+                    {(user?.role === 'admin' || user?.role === 'operacao' || user?.protegido) && (
                       <Button
+                        type="button"
                         onClick={() => document.getElementById('upload-fotos-comprador')?.click()}
                         className="bg-slate-900 hover:bg-slate-800 text-white"
                       >
@@ -1422,9 +1419,11 @@ function DetalheVeiculoAdminPage() {
                 </Card>
               </TabsContent>
 
-              <TabsContent value="publicacao" className="mt-0 space-y-6">
-                <CanaisPublicacao veiculoId={id} />
-              </TabsContent>
+              {(user?.role === 'admin' || user?.protegido) && (
+                <TabsContent value="publicacao" className="mt-0 space-y-6">
+                  <CanaisPublicacao veiculoId={id} />
+                </TabsContent>
+              )}
 
               <TabsContent value="laudos" className="mt-0 space-y-6">
                 <LaudosVeiculo

@@ -339,6 +339,11 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           )}
           {section.items
             .filter((item) => item.label !== "App Vistoriador" || appVistoriadorAtivo)
+            .filter((item) => {
+              // Perfil operação não vê a seção de Análise (Fila e Agenda / Unidades e Equipe)
+              if (user?.role === "operacao" && (section.label === "2. Análise" || item.to === "/vistoriador")) return false;
+              return true;
+            })
             .map((item) => (
               <Link
                 key={item.label}
