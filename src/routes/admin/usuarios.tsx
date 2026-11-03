@@ -200,6 +200,17 @@ function UsuariosAdminPage() {
     }
   };
 
+  const trocarPerfil = async (id: string, role: InternalRole) => {
+    const res = await gerenciarUsuarioFn({ data: { id, role } });
+    if (res.ok) {
+      toast.success(`Perfil alterado para ${getRoleMeta(role).label}.`);
+      setDetalhes((current: any) => current ? { ...current, role } : null);
+      void carregar();
+    } else {
+      toast.error(res.message || "Erro ao alterar perfil do usuário.");
+    }
+  };
+
   const enviarSenhaTemporaria = (email: string) => {
     toast.info(`O envio de recuperação de acesso para ${email} entra na próxima etapa de integração.`);
   };
@@ -519,7 +530,29 @@ function UsuariosAdminPage() {
                   : "Esse usuário faz parte da equipe interna do admin e pode atuar no backoffice conforme o perfil."}
               </div>
 
-              <div className="flex flex-col gap-3 border-t border-slate-200 pt-6">
+              <div className="space-y-2 border-t border-slate-200 pt-6">
+                <Label>Perfil de acesso</Label>
+                <Select
+                  value={detalhes.role}
+                  onValueChange={(value: InternalRole) => {
+                    if (value !== detalhes.role) void trocarPerfil(detalhes.id, value);
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o perfil" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ROLE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-slate-500">{getRoleMeta(detalhes.role).description}</p>
+              </div>
+
+              <div className="flex flex-col gap-3 pt-2">
                 <Button
                   variant={detalhes.ativo ? "destructive" : "default"}
                   className="w-full"
