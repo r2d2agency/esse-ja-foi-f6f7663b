@@ -51,6 +51,7 @@ type Estado = {
   placa: string;
   marca: string; modelo: string; versao: string;
   anoFabricacao: string; anoModelo: string; cor: string;
+  renavam: string;
   combustivel: string; cambio: string; portas: string; blindado: boolean;
   km: string; cep: string; cidade: string; uf: string;
   emSeuNome: string; relacaoProprietario: string; relacaoDescricao: string;
@@ -69,6 +70,7 @@ type Estado = {
 const INICIAL: Estado = {
   tipoVeiculo: 'CARRO',
   placa: '', marca: '', modelo: '', versao: '', anoFabricacao: '', anoModelo: '', cor: '',
+  renavam: '',
   combustivel: '', cambio: '', portas: '', blindado: false, km: '', cep: '', cidade: '', uf: '',
   emSeuNome: 'Sim', relacaoProprietario: '', relacaoDescricao: '',
   financiado: 'Não, está quitado', instituicao: '', saldoQuitacao: '',
@@ -249,7 +251,8 @@ function CadastrarVeiculo() {
     marca: form.marca || 'Em preenchimento',
     modelo: form.modelo || 'Em preenchimento',
     versao: form.versao || undefined,
-    cor: form.cor || undefined,
+    cor: form.cor.trim() || undefined,
+    renavam: form.renavam.trim() || undefined,
     anoFabricacao: form.anoFabricacao || undefined,
     anoModelo: form.anoModelo || undefined,
     combustivel: form.combustivel || undefined,

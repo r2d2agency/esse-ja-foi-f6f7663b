@@ -609,7 +609,7 @@ function DetalheVeiculoAdminPage() {
               onClick={handleAprovarPublicacao}
             >
               <CheckCircle2 className="mr-2 h-4 w-4 shrink-0" />
-              <span className="hidden sm:inline">Aprovar para publicação (sem vistoria)</span>
+              <span className="hidden sm:inline">Aprovar para publicação</span>
               <span className="sm:hidden truncate">Aprovar p/ publicação</span>
             </Button>
           ) : null;
