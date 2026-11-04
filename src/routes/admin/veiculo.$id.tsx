@@ -690,7 +690,7 @@ function DetalheVeiculoAdminPage() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
           <div className="bg-white border-b border-slate-200 px-3 sm:px-6 py-1 sm:py-0">
             <TabsList className="flex-wrap justify-start bg-transparent border-none h-auto sm:h-12 gap-x-4 gap-y-2 sm:gap-6 p-0">
-              {(user?.role === 'admin' || user?.protegido
+              {(user?.role === 'admin'
                 ? ["Resumo", "Dados", "Documentação", "Condição", "Fotos", "Valores", "Análise", "Publicação", "Laudos", "Histórico"]
                 : ["Resumo", "Dados", "Documentação", "Condição", "Fotos", "Valores", "Análise", "Laudos", "Histórico"]).map((tab) => (
                 <TabsTrigger 
@@ -1419,7 +1419,7 @@ function DetalheVeiculoAdminPage() {
                 </Card>
               </TabsContent>
 
-              {(user?.role === 'admin' || user?.protegido) && (
+              {(user?.role === 'admin') && (
                 <TabsContent value="publicacao" className="mt-0 space-y-6">
                   <CanaisPublicacao veiculoId={id} />
                 </TabsContent>
