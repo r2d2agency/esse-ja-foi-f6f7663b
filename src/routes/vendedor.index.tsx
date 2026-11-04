@@ -12,6 +12,7 @@ import { StatusBadge, statusVeiculo } from '@/components/vendedor/StatusBadge';
 import { ProgressoCadastro, montarEtapas, percentual } from '@/components/vendedor/ProgressoCadastro';
 import { CardVistoriaVendedor } from '@/components/vendedor/CardVistoriaVendedor';
 import { CardOfertaVencedora } from '@/components/negociacao/CardOfertaVencedora';
+import { CardPropostaVendedor } from '@/components/vendedor/CardPropostaVendedor';
 import { CardContratoVendedor } from '@/components/contratos/CardContratoVendedor';
 
 export const Route = createFileRoute('/vendedor/')({
