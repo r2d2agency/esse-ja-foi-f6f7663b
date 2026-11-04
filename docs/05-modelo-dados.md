@@ -1,6 +1,6 @@
 # 05 — Modelo de dados
 
-**Status:** Beta Operacional • **Última revisão:** 2026-10-20
+**Status:** Beta Operacional • **Última revisão:** 2026-11-04
 
 PostgreSQL. Aproximadamente **90 tabelas**. Este documento diz o que cada uma guarda e como
 elas se relacionam.

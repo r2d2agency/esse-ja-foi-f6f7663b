@@ -1,6 +1,6 @@
 # 02 — Módulos e telas
 
-**Status:** Beta Operacional • **Última revisão:** 2026-10-20
+**Status:** Beta Operacional • **Última revisão:** 2026-11-04
 
 Inventário de tudo que o sistema faz, agrupado por módulo. Cada módulo aponta para o arquivo de
 regra (`src/db/*.server.ts`) e para as server functions (`src/lib/*.functions.ts`).
@@ -63,9 +63,9 @@ Funções: `src/lib/comprador.functions.ts` + `comprador-pre-cadastro.functions.
 
 | Tela | O que faz |
 |---|---|
-| `index.tsx` | Dashboard: veículos, status, pendências |
+| `index.tsx` | Dashboard: veículos, status, pendências. Exibe `CardOfertaVencedora`, `CardVistoriaVendedor`, `CardPropostaVendedor` e `CardContratoVendedor` (cada card com import próprio — atenção: remover um import quebra todos) |
 | `boas-vindas.tsx` / `onboarding.tsx` | Onboarding progressivo (etapa atual calculada) |
-| `cadastrar.tsx` | Cadastro do vendedor (dados + OTP) |
+| `cadastrar.tsx` | Wizard de cadastro do veículo em 7 etapas: placa → dados (**cor e RENAVAM obrigatórios**, etapa 2) → fotos → condição → localização → valores → revisão. Envio bloqueado sem cor/renavam (front) e rejeitado no servidor (Zod `min`) |
 | `documentos.tsx` | Upload dos documentos de compliance |
 | `veiculos.tsx` | Lista de veículos do vendedor |
 | `veiculo..tsx` | Cadastro/edição de um veículo |
@@ -99,17 +99,17 @@ Funções: `src/lib/vistoriador.functions.ts`, `vistorias.functions.ts`, `laudos
 
 ---
 
-## F. Backoffice (`/admin`) — 36 telas
+## F. Backoffice (`/admin`) — 35 telas
 
 ### Operação
 
 | Tela | O que faz |
 |---|---|
 | `index.tsx` | Dashboard: pendências por etapa |
-| `veiculos.tsx` / `veiculo.$id.tsx` | Fila e dossiê do veículo |
+| `veiculos.tsx` / `veiculo.$id.tsx` | Fila e dossiê do veículo. Aba "Publicação" + botão "Aprovar para publicação" visíveis só para `admin`/protegido; veículo sem cor/renavam mostra "não informado" e trava a vistoria |
 | `veiculo.$id.pos-vistoria.tsx` | Análise pós-vistoria |
 | `analise-vistoria.$id.tsx` | Análise de vistoria |
-| `vendedores.tsx` / `vendedor.$id.tsx` | Fila e dossiê do vendedor |
+| `vendedores.tsx` / `vendedor.$id.tsx` | Fila e dossiê do vendedor. Resumo mostra CNH **ou** RG (o que foi enviado); comprovante opcional só aparece se enviado (sem envio = "—") |
 | `compradores.tsx` / `comprador.$id.tsx` | Fila e dossiê do comprador |
 | `vistorias.tsx` | Agendamentos, unidades, vistoriadores |
 | `anuncios.tsx` / `anuncios.nuevo..tsx` | Publicação e criação de anúncio |

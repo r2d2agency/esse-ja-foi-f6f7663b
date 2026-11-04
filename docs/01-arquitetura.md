@@ -1,6 +1,6 @@
 # 01 — Arquitetura
 
-**Status:** Beta Operacional • **Última revisão:** 2026-10-20
+**Status:** Beta Operacional • **Última revisão:** 2026-11-04
 
 ---
 
@@ -24,11 +24,11 @@
 
 ```
 src/
-├── routes/                    # 92 arquivos de rota
+├── routes/                    # 84 arquivos de rota
 │   ├── __root.tsx             # shell da aplicação (layout, toasts, providers)
 │   ├── index.tsx              # landing page pública
 │   ├── admin.tsx              # LAYOUT do backoffice (menu lateral)
-│   ├── admin/                 # 36 telas administrativas
+│   ├── admin/                 # 35 telas administrativas
 │   ├── api/public/            # webhooks + upload (upload.ts, arquivo.$id.ts)
 │   ├── comprador/             # 8 telas do painel do comprador
 │   ├── vendedor.*             # 12 telas do painel do vendedor
@@ -42,12 +42,12 @@ src/
 │                              # ui, veiculo, vendedor, vistoria, vistoriador
 │
 ├── lib/                       # CAMADA DE API + UTILITÁRIOS
-│   ├── *.functions.ts         # ~400 server functions (createServerFn) — a API do front
-│   ├── sessao.server.ts       # cookie de sessão (identidade do usuário)
+│   ├── *.functions.ts         # 52 arquivos, ~424 server functions (createServerFn) — a API do front
+│   ├── sessao.server.ts       # cookie de sessão + guards (adminDaSessao, adminOuOperacaoDaSessao, superadminDaSessao)
 │   ├── brasil.ts, viacep.ts, tempo.ts, validators.ts, utils.ts
 │   └── superadmin.functions.ts, automacoes.functions.ts, ...
 │
-├── db/                        # 60+ arquivos — UM POR MÓDULO
+├── db/                        # 57 arquivos — UM POR MÓDULO
 │   ├── index.ts               # conexão + migrateDb() + ensureSuperAdmin()
 │   ├── schema/index.ts        # ⚠️ NÃO é a fonte de verdade do schema
 │   ├── leilao.server.ts       # regra + SQL do módulo leilão

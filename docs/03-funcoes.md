@@ -1,6 +1,6 @@
 # 03 — Referência de funções
 
-**Status:** Beta Operacional • **Última revisão:** 2026-10-20
+**Status:** Beta Operacional • **Última revisão:** 2026-11-04
 
 Catálogo das ~400 server functions do sistema, agrupadas por domínio. Todas ficam em
 `src/lib/*.functions.ts` e sigam o mesmo padrão:
@@ -34,7 +34,22 @@ e sim a camada de regra.
 | `resetarSenhaFinalFn` | Aplica a nova senha |
 
 Helpers (não são server functions) em `src/lib/sessao.server.ts`:
-`usuarioDaSessao()`, `perfilDaSessao()`, `superadminDaSessao()`, `definirSessao()`, `encerrarSessao()`.
+`usuarioDaSessao()`, `perfilDaSessao()`, `adminDaSessao()`, `adminOuOperacaoDaSessao()`,
+`superadminDaSessao()`, `definirSessao()`, `encerrarSessao()`.
+
+**Convenção de guards (qual usar):**
+
+| Guard | Quem passa | Quando usar |
+|---|---|---|
+| `adminDaSessao()` | `role='admin'` ativo | Ações administrativas (publicação, aprovar, usuários internos, configurações) |
+| `adminOuOperacaoDaSessao()` | `admin` **ou** `operacao` ativo | Leitura operacional (logs, relatórios, marketing, checklists) |
+| `superadminDaSessao()` | `admin` + ativo + `protegido` | 4 ações críticas (excluir forçado, promover superadmin, reset base) |
+
+No front, `user.role`/`user.protegido` (store `useAuth`) só **esconde** botão/seção — a
+autorização real é sempre o guard no servidor. Perfil `operacao` não vê as seções
+"2. Análise" e "Administração" do menu (`src/components/layout/AdminLayout.tsx`); a aba
+"Publicação" e o botão "Aprovar para publicação" do detalhe do veículo exigem
+`admin`/protegido (`src/routes/admin/veiculo.$id.tsx`).
 
 ## 2. Superadmin e ações críticas — `src/lib/superadmin.functions.ts`
 
@@ -66,7 +81,8 @@ Ações liberadas (exatamente 4): `PROMOVER_SUPERADMIN`, `EXCLUIR_VEICULO_FORCAD
 |---|---|
 | `cadastrarVendedorFn` | Cadastro com OTP por e-mail |
 | `validarOTPCadastroFn` / `resenderOTPCadastroFn` | Valida e reenvia o OTP do cadastro |
-| `listarMeusVeiculosFn` / `cadastrarMeuVeiculoFn` | CRUD de veículos do vendedor |
+| `listarMeusVeiculosFn` / `cadastrarMeuVeiculoFn` | CRUD de veículos do vendedor. **Obrigatórios no servidor:** `placa`, `marca`, `modelo`, `renavam`, `cor` (Zod `min`). `cor` e `renavam` têm campo próprio no wizard (`/vendedor/cadastrar`, etapa 2) e validação no botão Enviar |
+| `atualizarPerfilVendedorFn` | Atualiza dados + documentos do vendedor; com `finalizar: true` valida pendências antes de concluir |
 | `obterMeuPerfilFn` / `atualizarMeuPerfilFn` / `alterarMinhaSenhaFn` | Perfil do vendedor |
 
 ## 5. Compliance do vendedor — `src/lib/vendedores-compliance.functions.ts`, `admin-compliance.functions.ts`
@@ -77,7 +93,7 @@ Ações liberadas (exatamente 4): `PROMOVER_SUPERADMIN`, `EXCLUIR_VEICULO_FORCAD
 | `obterDetalheVendedorFn` | Dossiê (documentos + histórico + IA) |
 | `assumirAnaliseFn` | Admin assume o caso → `EM_ANALISE` |
 | `atualizarStatusDocumentoFn` | Status de um documento |
-| `aprovarVendedorComplianceFn` | Aprova (exige onboarding completo + 5 docs APROVADOS) |
+| `aprovarVendedorComplianceFn` | Aprova (exige onboarding completo + documentos obrigatórios APROVADOS: CNH **ou** RG, CRLV, selfie; comprovante é opcional) |
 | `solicitarPendenciaComplianceFn` | Marca pendência com motivo |
 | `getComplianceVendedorFn` | Dossiê de compliance |
 | `atualizarComplianceFn` | Status de documento; se reprovado → força `PENDENCIA` + `cadastro_completo=false` |

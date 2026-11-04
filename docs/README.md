@@ -9,13 +9,13 @@ vá para o documento específico do módulo que você vai mexer.
 |---|---|
 | [01-arquitetura.md](01-arquitetura.md) | Stack, estrutura de pastas, como o dado circula, deploy, variáveis de ambiente |
 | [02-modulos.md](02-modulos.md) | Inventário de todos os módulos e telas do sistema |
-| [03-funcoes.md](03-funcoes.md) | Referência das ~400 server functions, agrupadas por domínio |
+| [03-funcoes.md](03-funcoes.md) | Referência das ~424 server functions, agrupadas por domínio + convenção de guards por perfil |
 | [04-regras-negocio.md](04-regras-negocio.md) | **As regras que o sistema respeita** — permissões, estados, validações |
 | [05-modelo-dados.md](05-modelo-dados.md) | As ~90 tabelas, o que cada uma guarda e como se relacionam |
 | [06-integracoes.md](06-integracoes.md) | Meta, Uazapi, Supabase, OpenAI, Conferi, PIX, SMTP, FIPE |
 | [07-convencoes.md](07-convencoes.md) | Padrões de código, como adicionar algo novo, armadilhas conhecidas |
 
-**Status:** Beta Operacional • **Última revisão:** 2026-10-20
+**Status:** Beta Operacional • **Última revisão:** 2026-11-04
 
 ---
 
@@ -50,7 +50,7 @@ Lead (campanha WhatsApp / anúncio / indicação)
 
 ## Os 5 fatos que você precisa saber antes de mexer em qualquer coisa
 
-1. **O banco não é o `schema/index.ts`.** O schema real é criado por ~25 funções
+1. **O banco não é o `schema/index.ts`.** O schema real é criado por ~38 funções
    `ensure*Schema()` que rodam `CREATE TABLE IF NOT EXISTS` em SQL puro. Se você adicionar uma
    coluna, ela vai num `ensure*Schema()` — não no Drizzle. Detalhes em
    [05-modelo-dados.md](05-modelo-dados.md).
@@ -78,10 +78,10 @@ Lead (campanha WhatsApp / anúncio / indicação)
 
 ```
 src/
-├── routes/          # 92 rotas (arquivo = rota). src/routes/admin/* = backoffice
+├── routes/          # 84 rotas (arquivo = rota). src/routes/admin/* = backoffice (35 telas)
 ├── components/      # 17 pastas por domínio (admin, vendedor, vistoriador, ...)
-├── lib/             # *.functions.ts = camada de API (server functions). *.server.ts = regra/SQL
-├── db/              # 60+ arquivos: um por módulo, com o ensure*Schema() dele
+├── lib/             # 52 *.functions.ts = camada de API (server functions). sessao.server.ts = guards
+├── db/              # 57 arquivos: um por módulo, com o ensure*Schema() dele
 ├── hooks/           # use-auth (login/logout), use-mobile, use-salvamento
 ├── integrations/    # Supabase (gerado)
 └── routeTree.gen.ts # gerado pelo TanStack Router — não editar

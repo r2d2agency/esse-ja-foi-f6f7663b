@@ -1,6 +1,6 @@
 # 07 — Convenções e armadilhas
 
-**Status:** Beta Operacional • **Última revisão:** 2026-10-20
+**Status:** Beta Operacional • **Última revisão:** 2026-11-04
 
 Como o código é escrito neste repositório, como adicionar coisas novas e — o mais importante —
 **onde o sistema pode te bite**.
@@ -91,7 +91,7 @@ Esta é a área mais delicate do sistema. Entenda antes de mexer.
   `protegido`.
 - As 4 ações críticas exigem OTP.
 - `consulta-logs.functions.ts` valida `role === 'admin'` no servidor.
-- **Desde 2026-10-20** os arquivos de backoffice `admin.functions.ts`, `logs.functions.ts`,
+- **Desde 2026-11-04** os arquivos de backoffice `admin.functions.ts`, `logs.functions.ts`,
   `relatorios.functions.ts`, `demo.functions.ts`, `admin-checklist.functions.ts` e
   `marketing.functions.ts` exigem guard de servidor em **todas** as server fns. São dois níveis:
 
@@ -119,10 +119,16 @@ formato que as telas já sabem exibir, em vez de uma exceção crua.
 > (`atualizarComplianceFn`, `aprovarParaPublicacaoFn`) — nenhuma delas aceita `adminId` do
 > corpo: devem vir da sessão.
 
-Os guards de rota (`AdminLayout.tsx:317`, `vendedor.tsx:32`, `comprador.tsx:30`) verificam
-**apenas se há sessão**, não o role. `vistoriador.tsx` **não tem guard nenhum**. As únicas duas
-telas que checam role no client são `veiculos.index.tsx` e `veiculos.$slug.tsx`
-(`role === 'comprador'`).
+Os guards de rota (`AdminLayout.tsx`, `vendedor.tsx:32`, `comprador.tsx:30`) verificam
+**apenas se há sessão**, não o role — exceto o filtro de menu do `AdminLayout`, que oculta
+para `operacao` as seções "2. Análise" e "Administração". `vistoriador.tsx` **não tem guard
+nenhum**. As únicas duas telas que checam role no client são `veiculos.index.tsx` e
+`veiculos.$slug.tsx` (`role === 'comprador'`).
+
+No detalhe do veículo (`veiculo.$id.tsx`), a aba "Publicação" e o botão "Aprovar para
+publicação" são renderizados só para `role === 'admin' || protegido` — mas isso é
+**cosmético**: sem o guard `adminDaSessao()` no servidor, um `operacao` pode chamar a
+função pelo console.
 
 **Consequência concreta:** um `vendedor` ou `comprador` autenticado que chame
 `listarVendedoresFn` direto no console **vai passar**. O cookie httpOnly impede forjar o role,
@@ -227,7 +233,7 @@ exclusão — `excluirPerfilFn` (`src/lib/admin.functions.ts:108`) **não tem ro
 
 ### N. O segredo de sessão não vem do ambiente
 
-**Desde 2026-10-20** o HMAC do cookie `ejf_sessao` é resolvido em três degraus
+**Desde 2026-11-04** o HMAC do cookie `ejf_sessao` é resolvido em três degraus
 ([src/db/auth.server.ts](src/db/auth.server.ts)):
 
 1. `SESSION_SECRET` do ambiente, se existir e tiver ≥ 16 caracteres;
@@ -249,7 +255,7 @@ Armadilhas:
 
 ### O. O webhook do WhatsApp é falha-fechada
 
-**Desde 2026-10-20** o webhook da Meta ([src/routes/api/public/webhooks/whatsapp.ts](src/routes/api/public/webhooks/whatsapp.ts))
+**Desde 2026-11-04** o webhook da Meta ([src/routes/api/public/webhooks/whatsapp.ts](src/routes/api/public/webhooks/whatsapp.ts))
 **recusa (401)** quando a assinatura não pode ser conferida:
 
 - `app_secret` ausente → 401 (salvo `WEBHOOK_ASSINATURA_OPCIONAL=true`);
@@ -261,6 +267,14 @@ Armadilhas:
 `Admin > Comunicações > Configurações`. Sem isso, **toda** mensagem recebida é rejeitada.
 `WEBHOOK_ASSINATURA_OPCIONAL=true` existe só como ponte — é o estado inseguro que a correção
 fechou.
+
+### P. Cada card da dashboard do vendedor tem import próprio
+
+`src/routes/vendedor.index.tsx` renderiza `CardOfertaVencedora`, `CardVistoriaVendedor`,
+`CardPropostaVendedor` e `CardContratoVendedor` — cada um com seu import. Trocar um import
+por outro (em vez de adicionar) quebra a tela com `ReferenceError: X is not defined` no
+bundle de produção, que só aparece depois do deploy. Ao editar os imports dessa tela,
+confira que **os 4 continuam importados**.
 
 ---
 

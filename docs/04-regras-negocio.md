@@ -1,6 +1,6 @@
 # 04 — Regras de negócio
 
-**Status:** Beta Operacional • **Última revisão:** 2026-10-20
+**Status:** Beta Operacional • **Última revisão:** 2026-11-04
 
 Este é o documento que descreve **o que o sistema respeita**. Se você vai mexer em regra,
 comece por aqui.
@@ -72,9 +72,32 @@ que lembrar de limpar a flag — o código faz.
 Para `APROVADO`, são exigidas **duas** coisas:
 
 - onboarding completo, **e**
-- **5 documentos** com status `APROVADO`.
+- documentos obrigatórios com status `APROVADO`.
 
 Qualquer um dos dois pendente → o vendedor não chega a `APROVADO`.
+
+**Documentos do vendedor (compliance):**
+
+| Documento | Obrigatório? | Regra |
+|---|---|---|
+| CNH frente + verso **ou** RG frente + verso | Sim (um dos dois) | O resumo mostra só o documento enviado (`temCnh ? CNH : RG`) — `src/routes/admin/vendedor.$id.tsx:116-126` |
+| CRLV | Sim | Status `APROVADO` exigido |
+| Selfie com documento | Sim | Status `APROVADO` exigido |
+| Comprovante de residência | **Não** (opcional) | Só aparece como pendente se houver URL enviada; sem envio mostra "—" no resumo e não bloqueia aprovação |
+
+**Cadastro de veículo — campos obrigatórios (`cadastrarMeuVeiculoFn`, `src/lib/vendedor.functions.ts:161-190`):**
+
+| Campo | Validação servidor | Onde preenche |
+|---|---|---|
+| `placa` | `z.string().min(7)` | Etapa 1 do wizard |
+| `marca` | `z.string().min(2)` | Etapa 1 |
+| `modelo` | `z.string().min(2)` | Etapa 1 |
+| `renavam` | `z.string().min(1)` — **obrigatório** | Etapa de dados (campo `renavam` em `src/routes/vendedor.cadastrar.tsx`) |
+| `cor` | `z.string().min(1)` — **obrigatória** | Etapa de dados (`ComboboxSearch` + `allowOther`) |
+
+Sem renavam/cor o servidor rejeita com erro de validação Zod. O veículo que já existia sem
+esses dados aparece no admin como "Renavam não informado" / "Cor não informado" e precisa ser
+preenchido antes da vistoria.
 
 ---
 

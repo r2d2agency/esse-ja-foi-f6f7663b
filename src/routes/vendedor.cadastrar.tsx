@@ -307,6 +307,7 @@ function CadastrarVeiculo() {
           anoFabricacao: veiculo.ano_fabricacao || obs.anoFabricacao || '',
           anoModelo: veiculo.ano_modelo || obs.anoModelo || '',
           cor: veiculo.cor || obs.cor || '',
+          renavam: veiculo.renavam || obs.renavam || '',
           combustivel: veiculo.combustivel || obs.combustivel || '',
           cambio: veiculo.cambio || obs.cambio || '',
           blindado: veiculo.blindado ?? obs.blindado ?? false,
@@ -408,6 +409,7 @@ function CadastrarVeiculo() {
           marca: res.dados.marca || form.marca,
           modelo: res.dados.modelo || form.modelo,
           cor: res.dados.cor || form.cor,
+          renavam: res.dados.renavam || form.renavam,
           anoFabricacao: res.dados.anoFabricacao || form.anoFabricacao,
           anoModelo: res.dados.anoModelo || form.anoModelo,
           combustivel: res.dados.combustivel || form.combustivel,
@@ -475,6 +477,14 @@ function CadastrarVeiculo() {
   };
 
   const enviar = async () => {
+    if (!form.cor.trim()) {
+      toast.error('Informe a cor do veículo — campo obrigatório.');
+      return;
+    }
+    if (!form.renavam.trim()) {
+      toast.error('Informe o RENAVAM do veículo — campo obrigatório.');
+      return;
+    }
     setEnviando(true);
     try {
       const res: any = await salvarVeiculo({
@@ -647,8 +657,19 @@ function CadastrarVeiculo() {
                 />
               </div>
               <div className="space-y-2">
-                <Label className="text-sm font-bold text-slate-900">Cor</Label>
-                <ComboboxSearch options={CORES} value={form.cor} onChange={(v) => set({ cor: v })} placeholder="Selecione a cor" allowOther />
+                <Label className="text-sm font-bold text-slate-900">Cor <span className="text-rose-600">*</span></Label>
+                <ComboboxSearch options={CORES} value={form.cor} onChange={(v) => set({ cor: v })} placeholder="Selecione a cor *" allowOther />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm font-bold text-slate-900">RENAVAM <span className="text-rose-600">*</span></Label>
+                <Input
+                  value={form.renavam}
+                  onChange={(e) => set({ renavam: e.target.value.replace(/\D/g, '').slice(0, 11) })}
+                  placeholder="Somente números *"
+                  inputMode="numeric"
+                  maxLength={11}
+                  className="h-12 rounded-xl font-bold"
+                />
               </div>
               <div className="space-y-2">
                 <Label className="text-sm font-bold text-slate-900">Ano de fabricação</Label>

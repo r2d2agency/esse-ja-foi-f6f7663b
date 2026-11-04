@@ -1,6 +1,6 @@
 # 06 — Integrações
 
-**Status:** Beta Operacional • **Última revisão:** 2026-10-20
+**Status:** Beta Operacional • **Última revisão:** 2026-11-04
 
 Com quem o sistema conversa e onde cada chave mora.
 
