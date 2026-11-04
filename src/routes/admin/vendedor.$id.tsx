@@ -123,6 +123,7 @@ function DetalheVendedorPage() {
     !temCnh && temRg && perfil.documento_rg_verso_status !== 'APROVADO' ? 'RG verso' : null,
     perfil.documento_crlv_status !== 'APROVADO' ? 'CRLV' : null,
     perfil.documento_selfie_status !== 'APROVADO' ? 'Selfie com documento' : null,
+    perfil.documento_comprovante_endereco_status !== 'APROVADO' && perfil.documento_comprovante_endereco_url ? 'Comprovante de residência' : null,
   ].filter(Boolean) as string[];
 
   const handleAssumir = async () => {
@@ -381,7 +382,7 @@ function DetalheVendedorPage() {
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-slate-500">Comprovante</span>
-                  <Badge variant="outline">{perfil.documento_comprovante_endereco_status || "PENDENTE"}</Badge>
+                  <Badge variant="outline">{perfil.documento_comprovante_endereco_status || "—"}</Badge>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-slate-500">Selfie</span>
