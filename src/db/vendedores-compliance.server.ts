@@ -147,6 +147,10 @@ export async function listarVendedores(filtros: { status?: string | undefined, b
   } catch (e) {
     console.error("[vendedores] vistoria_links schema", e);
   }
+  const { ensureLixeiraSchema, filtroApagados } = await import("./lixeira.server");
+  const { ehSuperadminDaSessao } = await import("../lib/sessao.server");
+  try { await ensureLixeiraSchema(); } catch (e) { console.error("[lixeira] schema", e); }
+  const incluirApagados = await ehSuperadminDaSessao();
 
   const busca = `%${filtros.busca || ""}%`;
   // "LINK_PENDENTE" é um pseudo-status: não existe em status_compliance, representa
@@ -161,7 +165,7 @@ export async function listarVendedores(filtros: { status?: string | undefined, b
 
   const rows = (await d.execute(sql`
     SELECT
-      p.id, p.nome, p.cpf, p.email, p.whatsapp, p.criado_em,
+      p.id, p.nome, p.cpf, p.email, p.whatsapp, p.criado_em, p.apagado,
       p.status_compliance as compliance_status,
       p.cadastro_completo,
       (SELECT count(*)::int FROM veiculos v WHERE v.perfil_id = p.id) as total_veiculos,
@@ -175,6 +179,7 @@ export async function listarVendedores(filtros: { status?: string | undefined, b
     WHERE p.role = 'vendedor'::app_role
       ${whereStatus}
       ${whereLinkPendente}
+      ${filtroApagados("p", incluirApagados)}
       AND (p.nome ILIKE ${busca} OR p.cpf ILIKE ${busca} OR p.email ILIKE ${busca})
     ORDER BY p.criado_em DESC;
   `)) as any;

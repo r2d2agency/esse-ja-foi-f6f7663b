@@ -125,7 +125,8 @@ export const migrateDb = async () => {
         console.error('[Diagnóstico WhatsApp] Falha ao rodar:', erro?.message || erro);
       }
 
-      await ensureSuperAdmin();
+      const { ensureLixeiraSchema } = await import('./lixeira.server');
+      await ensureLixeiraSchema();
     } finally {
       await db.execute(sql`SELECT pg_advisory_unlock(918273645)`);
     }

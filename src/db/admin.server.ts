@@ -195,10 +195,15 @@ export async function listarVendedoresPendentes(status?: string | null) {
 
 export async function listarCompradores() {
   const d = requireDb();
+  const { ensureLixeiraSchema, filtroApagados } = await import("./lixeira.server");
+  const { ehSuperadminDaSessao } = await import("../lib/sessao.server");
+  try { await ensureLixeiraSchema(); } catch {}
+  const incluirApagados = await ehSuperadminDaSessao();
   const rows = await d.execute(sql`
-    SELECT id, nome, email, whatsapp, cpf, cidade, uf, ativo, criado_em
-    FROM profiles 
+    SELECT id, nome, email, whatsapp, cpf, cidade, uf, ativo, criado_em, apagado
+    FROM profiles p
     WHERE role = 'comprador'::app_role
+      ${filtroApagados("p", incluirApagados)}
     ORDER BY criado_em DESC;
   `);
   return rowsOf(rows) || rows;

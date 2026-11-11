@@ -174,6 +174,16 @@ export async function ensureCadastroSchema(silent = true) {
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'veiculos' AND column_name = 'fotos_legendas') THEN
           ALTER TABLE veiculos ADD COLUMN fotos_legendas jsonb;
         END IF;
+        -- Lixeira do superadmin: veículo marcado como apagado some para os demais.
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'veiculos' AND column_name = 'apagado') THEN
+          ALTER TABLE veiculos ADD COLUMN apagado boolean NOT NULL DEFAULT false;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'veiculos' AND column_name = 'apagado_em') THEN
+          ALTER TABLE veiculos ADD COLUMN apagado_em timestamptz;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'veiculos' AND column_name = 'apagado_por') THEN
+          ALTER TABLE veiculos ADD COLUMN apagado_por uuid;
+        END IF;
       END $$;
     `);
 

@@ -125,3 +125,17 @@ export async function superadminDaSessao() {
     protegido: boolean;
   };
 }
+
+/**
+ * Informa se a sessão atual é de superadmin — sem lançar erro.
+ * Listagens usam isso para decidir se incluem os registros apagados
+ * (só o superadmin os vê, com selo "Apagado").
+ */
+export async function ehSuperadminDaSessao(): Promise<boolean> {
+  try {
+    await superadminDaSessao();
+    return true;
+  } catch {
+    return false;
+  }
+}

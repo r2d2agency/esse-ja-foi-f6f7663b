@@ -44,6 +44,11 @@ export async function listarVeiculosAdmin(filtros: {
   const d = db;
   if (!d) return [];
 
+  const { ensureLixeiraSchema, filtroApagados } = await import("./lixeira.server");
+  const { ehSuperadminDaSessao } = await import("../lib/sessao.server");
+  try { await ensureLixeiraSchema(); } catch {}
+  const incluirApagados = await ehSuperadminDaSessao();
+
   const termo = filtros.busca ? `%${filtros.busca}%` : null;
   const status = filtros.status_analise;
   const marca = filtros.marca ? `%${filtros.marca}%` : null;
@@ -51,7 +56,7 @@ export async function listarVeiculosAdmin(filtros: {
   const rows = await d.execute(sql`
     SELECT
       v.id, v.marca, v.modelo, v.placa, v.ano_modelo, v.valor_interesse_cliente,
-      v.status_analise, v.atualizado_em, v.cor, v.km, v.criado_em, v.blindado,
+      v.status_analise, v.atualizado_em, v.cor, v.km, v.criado_em, v.blindado, v.apagado,
       p.nome as vendedor_nome,
       p.status_compliance as compliance_status,
       resp.nome as responsavel_nome
@@ -59,6 +64,7 @@ export async function listarVeiculosAdmin(filtros: {
     LEFT JOIN profiles p ON (p.id = v.perfil_id OR p.id = v.vendedor_id)
     LEFT JOIN profiles resp ON (resp.id = v.responsavel_analise_id)
     WHERE 1=1
+      ${filtroApagados("v", incluirApagados)}
       ${status ? sql`AND v.status_analise = ${status}` : sql``}
       ${termo ? sql`AND (v.placa ILIKE ${termo} OR v.marca ILIKE ${termo} OR v.modelo ILIKE ${termo} OR p.nome ILIKE ${termo})` : sql``}
       ${marca ? sql`AND v.marca ILIKE ${marca}` : sql``}
