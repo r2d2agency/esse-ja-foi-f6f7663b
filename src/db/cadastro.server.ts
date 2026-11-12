@@ -432,7 +432,7 @@ export async function salvarVeiculo(input: VeiculoInput) {
   }
 
   const dup = (await d.execute(sql`
-    SELECT id FROM veiculos WHERE placa = ${placa} AND id <> ${input.id ?? "00000000-0000-0000-0000-000000000000"} LIMIT 1;
+    SELECT id FROM veiculos WHERE placa = ${placa} AND id <> ${input.id ?? "00000000-0000-0000-0000-000000000000"} AND COALESCE(apagado, false) = false LIMIT 1;
   `)) as unknown as Array<{ id: string }>;
   if (dup.length > 0) throw new RegraNegocioError("Já existe um veículo cadastrado com esta placa.", 409);
 

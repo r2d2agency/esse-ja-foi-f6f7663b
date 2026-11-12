@@ -1,14 +1,17 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-const ACOES = ["PROMOVER_SUPERADMIN", "EXCLUIR_VEICULO_FORCADO", "EXCLUIR_PERFIL_FORCADO", "RESET_BASE_OPERACIONAL"] as const;
+const ACOES = ["PROMOVER_SUPERADMIN", "EXCLUIR_VEICULO_FORCADO", "EXCLUIR_PERFIL_FORCADO", "MARCAR_PERFIL_APAGADO", "MARCAR_VEICULO_APAGADO", "RESTAURAR_PERFIL_APAGADO", "RESTAURAR_VEICULO_APAGADO"] as const;
 type AcaoCritica = (typeof ACOES)[number];
 
 const LABEL_ACOES: Record<AcaoCritica, string> = {
   PROMOVER_SUPERADMIN: "Promover um usuário a superadmin",
   EXCLUIR_VEICULO_FORCADO: "Excluir veículo com vínculos no sistema",
   EXCLUIR_PERFIL_FORCADO: "Excluir vendedor/comprador com vínculos no sistema",
-  RESET_BASE_OPERACIONAL: "Limpar todos os dados operacionais da base",
+  MARCAR_PERFIL_APAGADO: "Mover vendedor/comprador para a lixeira (ocultar)",
+  MARCAR_VEICULO_APAGADO: "Mover carro para a lixeira (ocultar de todos, exceto superadmin)",
+  RESTAURAR_PERFIL_APAGADO: "Restaurar vendedor/comprador da lixeira",
+  RESTAURAR_VEICULO_APAGADO: "Restaurar carro da lixeira",
 };
 
 /** Envia o código de confirmação (por e-mail, a todos os superadmins) para uma ação crítica. */
@@ -65,6 +68,12 @@ export const confirmarAcaoSuperadminFn = createServerFn({ method: "POST" })
       } else if (data.acao === "EXCLUIR_PERFIL_FORCADO") {
         const { excluirPerfilForcado } = await import("@/db/exclusao-forcada.server");
         await excluirPerfilForcado(data.alvoId);
+      } else if (data.acao === "MARCAR_PERFIL_APAGADO" || data.acao === "RESTAURAR_PERFIL_APAGADO") {
+        const { marcarPerfilApagado } = await import("@/db/lixeira.server");
+        await marcarPerfilApagado(data.alvoId, data.acao === "MARCAR_PERFIL_APAGADO", solicitante.id);
+      } else if (data.acao === "MARCAR_VEICULO_APAGADO" || data.acao === "RESTAURAR_VEICULO_APAGADO") {
+        const { marcarVeiculoApagado } = await import("@/db/lixeira.server");
+        await marcarVeiculoApagado(data.alvoId, data.acao === "MARCAR_VEICULO_APAGADO", solicitante.id);
       } else if (data.acao === "RESET_BASE_OPERACIONAL") {
         const { resetBaseOperacional } = await import("@/db/purge-operacional.server");
         await resetBaseOperacional(data.confirmacao || "");
