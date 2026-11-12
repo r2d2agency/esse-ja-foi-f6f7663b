@@ -12,7 +12,10 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { toast } from "sonner";
+import { useAuth } from "@/hooks/use-auth";
+import { useConfirmacaoAcaoCritica } from "@/components/admin/ConfirmacaoAcaoCritica";
+import { confirmarAcaoSuperadminFn } from "@/lib/superadmin.functions";
+import { useQueryClient } from "@tanstack/react-query";
 
 export const Route = createFileRoute("/admin/veiculos")({
   validateSearch: (search: Record<string, unknown>): { status?: string } => ({
@@ -36,6 +39,10 @@ function AdminVeiculosPage() {
 
   const filtrosAtivos = Object.values(filtros).filter((valor) => valor && valor !== "TODOS").length;
 
+  const { user } = useAuth();
+  const confirmacaoCritica = useConfirmacaoAcaoCritica();
+  const queryClient = useQueryClient();
+
   const getVeiculos = useServerFn(getVeiculosAdminFn);
   const removerVeiculo = useServerFn(removerVeiculoFn);
   const { data: res, isLoading, refetch } = useQuery({
@@ -58,6 +65,15 @@ function AdminVeiculosPage() {
   const veiculos = res?.data || [];
 
   async function handleExcluir(id: string, rotulo: string) {
+    if (user?.protegido) {
+      confirmacaoCritica.iniciar({
+        acao: "MARCAR_VEICULO_APAGADO",
+        alvoId: id,
+        alvoDescricao: rotulo,
+        onSucesso: () => refetch(),
+      });
+      return;
+    }
     if (!window.confirm(`Excluir "${rotulo}" permanentemente? Essa ação não pode ser desfeita.`)) return;
     const toastId = toast.loading("Excluindo veículo...");
     try {
@@ -79,6 +95,7 @@ function AdminVeiculosPage() {
 
   return (
     <div className="flex flex-col h-full bg-slate-50">
+      {confirmacaoCritica.dialog}
 
       {/* Header */}
       <div className="bg-white border-b border-slate-200 p-4 md:p-8 space-y-4 md:space-y-6">
